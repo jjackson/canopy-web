@@ -65,17 +65,8 @@ export function DiscoveryPage() {
     )
   }, [skills, search])
 
-  async function handleNew() {
-    const name = window.prompt('Collection name:')
-    if (!name?.trim()) return
-    try {
-      const result = (await api.createCollection(name.trim())) as { session_id?: number }
-      if (result.session_id) {
-        navigate(`/workspace/${result.session_id}`)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create collection')
-    }
+  function handleNew() {
+    navigate('/new')
   }
 
   if (error) {
@@ -91,7 +82,7 @@ export function DiscoveryPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-gray-900">Published Skills</h1>
-        <Button size="sm" onClick={() => void handleNew()}>
+        <Button size="sm" onClick={handleNew}>
           New
         </Button>
       </div>
@@ -122,7 +113,7 @@ export function DiscoveryPage() {
           <p className="mt-1 text-sm text-gray-500">
             Paste a conversation to create your first reusable skill.
           </p>
-          <Button size="sm" className="mt-4" onClick={() => void handleNew()}>
+          <Button size="sm" className="mt-4" onClick={handleNew}>
             Create Skill
           </Button>
         </div>

@@ -5,19 +5,24 @@ Provides endpoints for starting workspace analysis, viewing session state,
 editing skills, and publishing finalized skills.
 """
 import json
+import logging
 
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.collections.models import Collection
+from apps.common.anthropic_client import get_client
 from apps.common.envelope import error_response, start_timing, success_response
 from apps.evals.models import EvalCase, EvalSuite
 from apps.skills.models import Skill
 
+from . import prompts
 from .engine import WorkspaceEngine
 from .models import WorkspaceSession
 from .stream import stream_re_proposal, stream_workspace_analysis
+
+logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
@@ -215,3 +220,78 @@ def publish_skill(request, session_id):
     }
 
     return JsonResponse(success_response(data), status=201)
+
+
+@csrf_exempt
+@require_POST
+def analyze_workspace(request, collection_id):
+    """
+    Start analysis synchronously. Returns session ID and results when done.
+
+    POST /api/workspace/analyze/<collection_id>/
+
+    Runs the full AI analysis in a single request (no streaming).
+    Saves the proposal to the session and returns it as JSON.
+    """
+    start_timing()
+
+    try:
+        collection = Collection.objects.prefetch_related("sources").get(pk=collection_id)
+    except Collection.DoesNotExist:
+        return JsonResponse(
+            error_response("NOT_FOUND", "Collection not found."),
+            status=404,
+        )
+
+    engine = WorkspaceEngine(collection)
+
+    try:
+        prompt = engine.build_analysis_prompt()
+    except ValueError as e:
+        return JsonResponse(
+            error_response("EMPTY_COLLECTION", str(e)),
+            status=400,
+        )
+
+    session = engine.create_session()
+    session.status = "analyzing"
+    session.save(update_fields=["status"])
+
+    try:
+        client = get_client()
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            system=prompts.SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw_text = response.content[0].text
+        result = engine.parse_ai_response(raw_text)
+
+        session.proposed_approach = result.get("approach", {})
+        session.proposed_eval_cases = result.get("eval_cases", [])
+        session.skill_draft = result.get("approach", {})
+        session.status = "proposed"
+        session.save(
+            update_fields=["status", "proposed_approach", "proposed_eval_cases", "skill_draft"]
+        )
+
+        return JsonResponse(
+            success_response(
+                {
+                    "session_id": session.id,
+                    "status": "proposed",
+                    "approach": session.proposed_approach,
+                    "eval_cases": session.proposed_eval_cases,
+                }
+            ),
+            status=201,
+        )
+    except Exception as e:
+        logger.exception("Error during synchronous workspace analysis")
+        session.status = "created"
+        session.save(update_fields=["status"])
+        return JsonResponse(
+            error_response("ANALYSIS_FAILED", str(e)),
+            status=500,
+        )

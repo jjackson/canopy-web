@@ -28,4 +28,9 @@ export const api = {
   getEvalSuite: (skillId: number) => request(`/evals/${skillId}/`),
   runEval: (skillId: number) => request(`/evals/${skillId}/run/`, { method: 'POST' }),
   getEvalHistory: (skillId: number) => request(`/evals/${skillId}/history/`),
+  analyzeWorkspace: (collectionId: number) =>
+    request<{ session_id: number; status: string; approach: Record<string, unknown>; eval_cases: Record<string, unknown>[] }>(
+      `/workspace/analyze/${collectionId}/`,
+      { method: 'POST' },
+    ),
 }

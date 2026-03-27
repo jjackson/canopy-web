@@ -12,9 +12,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 /** Map session status string to step indicator index */
 function statusToStep(status: string): number {
   switch (status) {
-    case 'ingesting':
+    case 'created':
+    case 'analyzing':
       return 0
-    case 'proposing':
     case 'proposed':
       return 1
     case 'editing':
@@ -32,8 +32,8 @@ interface WorkspaceData {
   id?: number
   collection_id?: number
   status?: string
-  approach?: Record<string, unknown> | null
-  eval_cases?: Record<string, unknown>[]
+  proposed_approach?: Record<string, unknown> | null
+  proposed_eval_cases?: Record<string, unknown>[]
   skill_draft?: Record<string, unknown> | null
 }
 
@@ -77,6 +77,7 @@ export function WorkspacePage() {
     setSession(sessionId)
 
     let cancelled = false
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
 
     async function load() {
       try {
@@ -85,8 +86,8 @@ export function WorkspacePage() {
         if (cancelled) return
 
         setStatus(workspace.status ?? '')
-        if (workspace.approach) setApproach(workspace.approach)
-        if (workspace.eval_cases) setEvalCases(workspace.eval_cases)
+        if (workspace.proposed_approach) setApproach(workspace.proposed_approach)
+        if (workspace.proposed_eval_cases) setEvalCases(workspace.proposed_eval_cases)
         if (workspace.skill_draft) setSkillDraft(workspace.skill_draft)
 
         // Load sources from collection
@@ -102,6 +103,13 @@ export function WorkspacePage() {
             // Sources loading is non-critical
           }
         }
+
+        // If still analyzing, poll for updates
+        if (workspace.status === 'created' || workspace.status === 'analyzing') {
+          pollTimer = setTimeout(() => {
+            if (!cancelled) void load()
+          }, 2000)
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load workspace')
@@ -115,6 +123,7 @@ export function WorkspacePage() {
 
     return () => {
       cancelled = true
+      if (pollTimer) clearTimeout(pollTimer)
     }
   }, [sessionId, reset, setSession, setStatus, setApproach, setEvalCases, setSkillDraft, setSources])
 
