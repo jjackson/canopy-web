@@ -1,11 +1,9 @@
 import { createBrowserRouter } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout/AppLayout'
 import { WorkspacePage } from './pages/WorkspacePage'
-
-// Placeholder pages
-function DiscoveryPage() { return <div className="text-gray-500">Discovery Feed — coming in Task 10</div> }
-function SkillDetailPage() { return <div className="text-gray-500">Skill Detail — coming in Task 10</div> }
-function LeaderboardPage() { return <div className="text-gray-500">Leaderboard — coming in Task 10</div> }
+import { DiscoveryPage } from './pages/DiscoveryPage'
+import { SkillDetailPage } from './pages/SkillDetailPage'
+import { LeaderboardPage } from './pages/LeaderboardPage'
 
 export const router = createBrowserRouter([
   {
