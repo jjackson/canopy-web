@@ -73,56 +73,61 @@ export function LeaderboardPage() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && skills.length === 0 && (
-        <div className="py-16 text-center">
-          <p className="text-sm font-medium text-gray-900">No eval data yet</p>
-          <p className="mt-1 text-sm text-gray-500">
-            Run some evals to see the leaderboard.
-          </p>
-        </div>
-      )}
-
-      {/* Table */}
-      {!loading && skills.length > 0 && (
+      {/* Table — always show headers for visual structure */}
+      {!loading && (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Skill</TableHead>
               <TableHead className="text-right">Eval Score</TableHead>
+              <TableHead className="text-right">Trend</TableHead>
               <TableHead className="text-right">Runs</TableHead>
               <TableHead className="text-right">Last Updated</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {skills.map((skill) => (
-              <TableRow
-                key={skill.id}
-                className="cursor-pointer"
-                onClick={() => navigate(`/skills/${skill.id}`)}
-              >
-                <TableCell className="font-medium text-gray-900">
-                  {skill.name}
-                </TableCell>
-                <TableCell className="text-right">
-                  {skill.usage_count < 2 ? (
-                    <span className="text-xs text-gray-400">needs data</span>
-                  ) : skill.eval_score != null ? (
-                    <Badge variant={skill.eval_score >= 7 ? 'default' : 'secondary'}>
-                      {skill.eval_score.toFixed(1)}
-                    </Badge>
-                  ) : (
-                    <span className="text-xs text-gray-400">--</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-right text-sm text-gray-500">
-                  {skill.usage_count}
-                </TableCell>
-                <TableCell className="text-right text-xs text-gray-400">
-                  {formatDate(skill.updated_at)}
+            {skills.length > 0 ? (
+              skills.map((skill) => (
+                <TableRow
+                  key={skill.id}
+                  className="cursor-pointer"
+                  onClick={() => navigate(`/skills/${skill.id}`)}
+                >
+                  <TableCell className="font-medium text-gray-900">
+                    {skill.name}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {skill.usage_count < 2 ? (
+                      <span className="text-xs text-gray-400">needs data</span>
+                    ) : skill.eval_score != null ? (
+                      <Badge variant={skill.eval_score >= 7 ? 'default' : 'secondary'}>
+                        {skill.eval_score.toFixed(1)}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-gray-400">--</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-gray-400">
+                    --
+                  </TableCell>
+                  <TableCell className="text-right text-sm text-gray-500">
+                    {skill.usage_count}
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-gray-400">
+                    {formatDate(skill.updated_at)}
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="h-32 text-center">
+                  <p className="text-sm font-medium text-gray-900">No eval data yet</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Run some evals to see the leaderboard.
+                  </p>
                 </TableCell>
               </TableRow>
-            ))}
+            )}
           </TableBody>
         </Table>
       )}

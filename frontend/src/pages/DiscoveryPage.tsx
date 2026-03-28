@@ -106,28 +106,8 @@ export function DiscoveryPage() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && skills.length === 0 && (
-        <div className="py-16 text-center">
-          <p className="text-sm font-medium text-gray-900">No skills yet</p>
-          <p className="mt-1 text-sm text-gray-500">
-            Paste a conversation to create your first reusable skill.
-          </p>
-          <Button size="sm" className="mt-4" onClick={handleNew}>
-            Create Skill
-          </Button>
-        </div>
-      )}
-
-      {/* No search results */}
-      {!loading && skills.length > 0 && filtered.length === 0 && (
-        <div className="py-12 text-center">
-          <p className="text-sm text-gray-500">No skills match "{search}"</p>
-        </div>
-      )}
-
-      {/* Skills table */}
-      {!loading && filtered.length > 0 && (
+      {/* Skills table — always show headers for visual structure */}
+      {!loading && (
         <Table>
           <TableHeader>
             <TableRow>
@@ -139,35 +119,55 @@ export function DiscoveryPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((skill) => (
-              <TableRow
-                key={skill.id}
-                className="cursor-pointer"
-                onClick={() => navigate(`/skills/${skill.id}`)}
-              >
-                <TableCell className="font-medium text-gray-900">
-                  {skill.name}
-                </TableCell>
-                <TableCell className="max-w-xs truncate text-sm text-gray-500">
-                  {skill.description}
-                </TableCell>
-                <TableCell className="text-right text-sm text-gray-500">
-                  {skill.usage_count}
-                </TableCell>
-                <TableCell className="text-right">
-                  {skill.eval_score != null ? (
-                    <Badge variant={skill.eval_score >= 7 ? 'default' : 'secondary'}>
-                      {skill.eval_score.toFixed(1)}
-                    </Badge>
+            {filtered.length > 0 ? (
+              filtered.map((skill) => (
+                <TableRow
+                  key={skill.id}
+                  className="cursor-pointer"
+                  onClick={() => navigate(`/skills/${skill.id}`)}
+                >
+                  <TableCell className="font-medium text-gray-900">
+                    {skill.name}
+                  </TableCell>
+                  <TableCell className="max-w-xs truncate text-sm text-gray-500">
+                    {skill.description}
+                  </TableCell>
+                  <TableCell className="text-right text-sm text-gray-500">
+                    {skill.usage_count}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {skill.eval_score != null ? (
+                      <Badge variant={skill.eval_score >= 7 ? 'default' : 'secondary'}>
+                        {skill.eval_score.toFixed(1)}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-gray-400">--</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-gray-400">
+                    {formatDate(skill.updated_at)}
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="h-32 text-center">
+                  {skills.length === 0 ? (
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">No skills yet</p>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Paste a conversation to create your first reusable skill.
+                      </p>
+                      <Button size="sm" className="mt-3" onClick={handleNew}>
+                        Create Skill
+                      </Button>
+                    </div>
                   ) : (
-                    <span className="text-xs text-gray-400">--</span>
+                    <p className="text-sm text-gray-500">No skills match &ldquo;{search}&rdquo;</p>
                   )}
                 </TableCell>
-                <TableCell className="text-right text-xs text-gray-400">
-                  {formatDate(skill.updated_at)}
-                </TableCell>
               </TableRow>
-            ))}
+            )}
           </TableBody>
         </Table>
       )}
