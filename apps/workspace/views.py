@@ -258,14 +258,9 @@ def analyze_workspace(request, collection_id):
     session.save(update_fields=["status"])
 
     try:
-        client = get_client()
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            system=prompts.SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw_text = response.content[0].text
+        from apps.common.anthropic_client import call_ai
+
+        raw_text = call_ai(prompts.SYSTEM_PROMPT, prompt)
         result = engine.parse_ai_response(raw_text)
 
         session.proposed_approach = result.get("approach", {})

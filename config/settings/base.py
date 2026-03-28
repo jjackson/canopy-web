@@ -110,7 +110,8 @@ STATIC_URL = "static/"
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Anthropic
+# AI Backend: "api" (direct Anthropic SDK) or "cli" (claude code CLI)
+AI_BACKEND = env("AI_BACKEND", default="api")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 
 # CORS

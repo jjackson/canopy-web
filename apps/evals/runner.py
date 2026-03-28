@@ -10,21 +10,16 @@ from .models import EvalRun
 
 
 def run_skill_step(skill_definition, input_data):
-    """Execute a skill against input data using Anthropic API."""
-    from apps.common.anthropic_client import get_client
+    """Execute a skill against input data using the configured AI backend."""
+    from apps.common.anthropic_client import call_ai
 
     steps_desc = "\n".join(
         f"- {s['name']}: {s['description']}" for s in skill_definition.get("steps", [])
     )
+    system = "You are executing a skill. Follow the steps and produce the output."
     prompt = f"Execute this skill:\n{steps_desc}\n\nInput: {input_data}\n\nProduce the complete output."
 
-    client = get_client()
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2048,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text
+    return call_ai(system, prompt, max_tokens=2048)
 
 
 def check_expected(output: str, expected: dict) -> tuple[bool, list[str]]:
