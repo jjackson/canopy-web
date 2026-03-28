@@ -112,17 +112,13 @@ async def _cli_stream(system_prompt, user_message):
 
 # --- CLI auth helpers ---
 
-_clean_env = None
-
 def _get_clean_env():
     """Env dict without ANTHROPIC_API_KEY so CLI uses subscription login."""
-    global _clean_env
-    if _clean_env is None:
-        _clean_env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
-    return _clean_env
+    return {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 
 
-# Holds the in-progress login process between HTTP requests
+# Holds the pty master fd and process for the in-progress login
+_login_master_fd = None
 _login_process = None
 
 
@@ -148,92 +144,156 @@ def cli_auth_status():
 
 
 def cli_start_login():
-    """Start the Claude CLI login flow.
-    Launches `claude auth login` as a background process with stdin pipe.
-    Returns the auth URL. The process stays alive waiting for the auth code on stdin.
-    Call cli_submit_login_code() to complete the flow."""
+    """Start the Claude CLI login flow using a pseudo-TTY.
+    `claude setup-token` needs a TTY to render its TUI.
+    We use pty to provide one, read the OAuth URL, and keep the process alive
+    so we can feed the auth code back later via cli_submit_login_code()."""
+    import pty
     import re
-    import threading
-    global _login_process
+    import select
+    import time
+    global _login_process, _login_master_fd
 
     # Kill any existing login process
-    if _login_process and _login_process.poll() is None:
-        _login_process.kill()
+    if _login_process is not None:
+        try:
+            _login_process.kill()
+        except Exception:
+            pass
         _login_process = None
+    if _login_master_fd is not None:
+        try:
+            os.close(_login_master_fd)
+        except Exception:
+            pass
+        _login_master_fd = None
 
     try:
+        master, slave = pty.openpty()
         proc = subprocess.Popen(
-            ["claude", "auth", "login"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            ["claude", "setup-token"],
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            close_fds=True,
             env=_get_clean_env(),
         )
+        os.close(slave)
+
         _login_process = proc
+        _login_master_fd = master
 
-        # Read stdout in a thread to capture the URL without blocking
-        output_lines = []
+        # Read output for up to 12 seconds to capture the OAuth URL
+        output = b""
+        for _ in range(120):
+            if select.select([master], [], [], 0.1)[0]:
+                try:
+                    output += os.read(master, 4096)
+                except OSError:
+                    break
+            time.sleep(0.1)
 
-        def reader(pipe, dest):
-            for line in iter(pipe.readline, ''):
-                dest.append(line)
-            pipe.close()
-
-        t_out = threading.Thread(target=reader, args=(proc.stdout, output_lines), daemon=True)
-        t_out.start()
-
-        # Wait briefly for the URL to appear
-        t_out.join(timeout=8)
-
-        output = "".join(output_lines)
-        url_match = re.search(r'(https://claude\.com/[^\s]+)', output)
+        # Strip ANSI escape codes and control characters
+        clean = re.sub(rb'\x1b\[[0-9;]*[a-zA-Z]|\x1b\[\?[0-9]*[hl]', b'', output)
+        text = clean.decode(errors="replace")
+        # Remove control chars but keep newlines/spaces for line-by-line search
+        text = re.sub(r'[^\x20-\x7E\n]', '', text)
+        # Find URL fragments across lines and reconstruct
+        lines = text.split('\n')
+        url = None
+        url_building = False
+        url_parts = []
+        for line in lines:
+            stripped = line.strip()
+            if 'https://claude.com/' in stripped:
+                url_building = True
+                url_parts = [stripped[stripped.index('https://'):]]
+            elif url_building and stripped and not any(c in stripped for c in ['>', '<', ' ']):
+                url_parts.append(stripped)
+            elif url_building:
+                # Line has spaces or other chars — URL ended on previous line
+                break
+        if url_parts:
+            raw_url = ''.join(url_parts)
+            # Trim any trailing text that's not part of the URL
+            # The state param value is base64url: [A-Za-z0-9_-]
+            m = re.match(r'(https://claude\.com/cai/oauth/authorize\?.*?&state=[A-Za-z0-9_\-]+)', raw_url)
+            url = m.group(1) if m else raw_url
+        url_match = url
 
         return {
-            "url": url_match.group(1) if url_match else None,
-            "output": output.strip(),
+            "url": url_match if url_match else None,
+            "output": "Login started. Visit the URL, authenticate, and paste the code back.",
             "waiting_for_code": True,
         }
     except FileNotFoundError:
         return {"url": None, "output": "claude CLI not found", "waiting_for_code": False}
     except Exception as e:
+        logger.exception("Failed to start login")
         return {"url": None, "output": str(e), "waiting_for_code": False}
 
 
 def cli_submit_login_code(code):
-    """Submit the OAuth code to the waiting `claude auth login` process.
-    Returns success/failure after the process completes."""
-    global _login_process
+    """Submit the OAuth code to the waiting `claude setup-token` process via its PTY."""
+    import select
+    import time
+    global _login_process, _login_master_fd
 
-    if not _login_process or _login_process.poll() is not None:
-        return {"success": False, "output": "No login process waiting. Start login first."}
+    if _login_process is None or _login_master_fd is None:
+        return {"success": False, "output": "No login process waiting. Click Login first."}
+
+    if _login_process.poll() is not None:
+        _login_process = None
+        _login_master_fd = None
+        return {"success": False, "output": "Login process exited. Click Login to restart."}
 
     try:
-        # Write the code to stdin and close it
-        _login_process.stdin.write(code.strip() + "\n")
-        _login_process.stdin.flush()
-        _login_process.stdin.close()
+        # Write the code to the PTY (simulates keyboard input)
+        os.write(_login_master_fd, (code.strip() + "\n").encode())
 
-        # Wait for the process to finish
-        _login_process.wait(timeout=15)
+        # Wait for the process to finish (up to 15 seconds)
+        for _ in range(150):
+            # Drain any output
+            if select.select([_login_master_fd], [], [], 0.1)[0]:
+                try:
+                    os.read(_login_master_fd, 4096)
+                except OSError:
+                    break
 
-        stderr = _login_process.stderr.read() if _login_process.stderr else ""
-        success = _login_process.returncode == 0
+            if _login_process.poll() is not None:
+                break
+            time.sleep(0.1)
+
+        # Clean up
+        try:
+            os.close(_login_master_fd)
+        except OSError:
+            pass
+        _login_master_fd = None
+
+        exited = _login_process.poll() is not None
         _login_process = None
 
-        # Verify auth status
+        # Check if we're now logged in
         status = cli_auth_status()
-
         return {
             "success": status["logged_in"],
-            "output": stderr.strip() if stderr.strip() else ("Login successful" if status["logged_in"] else "Login may have failed"),
+            "output": "Login successful!" if status["logged_in"] else "Code submitted but login didn't complete. Try again.",
         }
-    except subprocess.TimeoutExpired:
-        _login_process.kill()
-        _login_process = None
-        return {"success": False, "output": "Login process timed out after submitting code."}
     except Exception as e:
+        # Clean up on error
+        try:
+            if _login_master_fd is not None:
+                os.close(_login_master_fd)
+        except OSError:
+            pass
+        if _login_process is not None:
+            try:
+                _login_process.kill()
+            except Exception:
+                pass
         _login_process = None
+        _login_master_fd = None
         return {"success": False, "output": str(e)}
 
 
