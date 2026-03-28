@@ -8,18 +8,23 @@ const NAV_ITEMS = [
   { path: '/leaderboard', label: 'Leaderboard' },
 ]
 
+type LoginStep = 'idle' | 'starting' | 'waiting_for_code' | 'submitting' | 'done'
+
 function AiStatusBadge() {
   const [status, setStatus] = useState<{
     backend: string; ready: boolean; logged_in: boolean; detail: string; description: string
   } | null>(null)
+  const [loginStep, setLoginStep] = useState<LoginStep>('idle')
   const [loginUrl, setLoginUrl] = useState<string | null>(null)
-  const [loggingIn, setLoggingIn] = useState(false)
+  const [code, setCode] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     api.getAiStatus().then(setStatus).catch(() => {})
   }, [])
 
   if (!status) return null
+
   if (status.ready) {
     return (
       <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded" title={status.detail}>
@@ -28,30 +33,43 @@ function AiStatusBadge() {
     )
   }
 
-  async function handleLogin() {
-    setLoggingIn(true)
+  async function handleStartLogin() {
+    setLoginStep('starting')
+    setError(null)
     try {
       const result = await api.startAiLogin()
-      // Extract URL from output
-      const urlMatch = result.output.match(/(https:\/\/claude\.com\/[^\s]+)/)
-      if (urlMatch) {
-        setLoginUrl(urlMatch[1])
-        window.open(urlMatch[1], '_blank')
+      if (result.url) {
+        setLoginUrl(result.url)
+        setLoginStep('waiting_for_code')
+        window.open(result.url, '_blank')
+      } else {
+        setError('Could not get login URL')
+        setLoginStep('idle')
       }
-      // Poll for completion
-      const poll = setInterval(async () => {
+    } catch {
+      setError('Failed to start login')
+      setLoginStep('idle')
+    }
+  }
+
+  async function handleSubmitCode() {
+    if (!code.trim()) return
+    setLoginStep('submitting')
+    setError(null)
+    try {
+      const result = await api.submitLoginCode(code.trim())
+      if (result.success) {
+        setLoginStep('done')
+        // Refresh status
         const s = await api.getAiStatus()
         setStatus(s)
-        if (s.ready) {
-          clearInterval(poll)
-          setLoginUrl(null)
-          setLoggingIn(false)
-        }
-      }, 3000)
-      // Stop polling after 2 minutes
-      setTimeout(() => { clearInterval(poll); setLoggingIn(false) }, 120000)
+      } else {
+        setError(result.output || 'Login failed. Try again.')
+        setLoginStep('waiting_for_code')
+      }
     } catch {
-      setLoggingIn(false)
+      setError('Failed to submit code')
+      setLoginStep('waiting_for_code')
     }
   }
 
@@ -60,21 +78,54 @@ function AiStatusBadge() {
       <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
         AI: Not connected
       </span>
-      {status.backend === 'cli' && !loginUrl && (
+
+      {/* Step 1: Start login */}
+      {status.backend === 'cli' && loginStep === 'idle' && (
         <button
-          onClick={() => void handleLogin()}
-          disabled={loggingIn}
+          onClick={() => void handleStartLogin()}
           className="text-xs text-blue-600 hover:text-blue-800 underline"
         >
-          {loggingIn ? 'Opening login...' : 'Login'}
+          Login
         </button>
       )}
-      {loginUrl && (
-        <a href={loginUrl} target="_blank" rel="noopener noreferrer"
-          className="text-xs text-blue-600 hover:text-blue-800 underline">
-          Complete login &rarr;
-        </a>
+
+      {loginStep === 'starting' && (
+        <span className="text-xs text-gray-500">Opening login...</span>
       )}
+
+      {/* Step 2: Paste auth code */}
+      {loginStep === 'waiting_for_code' && (
+        <div className="flex items-center gap-1">
+          {loginUrl && (
+            <a href={loginUrl} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:text-blue-800 underline">
+              Auth page
+            </a>
+          )}
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleSubmitCode() }}
+            placeholder="Paste auth code"
+            className="text-xs border border-gray-300 rounded px-2 py-0.5 w-48"
+            autoFocus
+          />
+          <button
+            onClick={() => void handleSubmitCode()}
+            disabled={!code.trim()}
+            className="text-xs bg-gray-900 text-white px-2 py-0.5 rounded disabled:opacity-50"
+          >
+            Submit
+          </button>
+        </div>
+      )}
+
+      {loginStep === 'submitting' && (
+        <span className="text-xs text-gray-500">Authenticating...</span>
+      )}
+
+      {error && <span className="text-xs text-red-500">{error}</span>}
     </div>
   )
 }
