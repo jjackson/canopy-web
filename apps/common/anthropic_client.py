@@ -9,6 +9,7 @@ and `stream_message()` for SSE streaming.
 """
 import json
 import logging
+import os
 import subprocess
 
 import anthropic
@@ -76,8 +77,13 @@ async def _api_stream(system_prompt, user_message, model="claude-sonnet-4-202505
 # --- CLI backend (claude code CLI) ---
 
 def _cli_call(system_prompt, user_message, max_tokens=4096):
-    """Call Claude Code CLI: claude -p --output-format text"""
+    """Call Claude Code CLI using subscription login (not API key).
+    Runs without --bare so it uses OAuth/token auth from claude login."""
     combined_prompt = f"{system_prompt}\n\n{user_message}"
+
+    # Strip ANTHROPIC_API_KEY from env so CLI uses subscription login, not API key
+    env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+
     try:
         result = subprocess.run(
             ["claude", "-p", "--output-format", "text"],
@@ -85,6 +91,7 @@ def _cli_call(system_prompt, user_message, max_tokens=4096):
             capture_output=True,
             text=True,
             timeout=120,
+            env=env,
         )
         if result.returncode != 0:
             raise RuntimeError(f"claude CLI failed (exit {result.returncode}): {result.stderr[:500]}")
@@ -101,6 +108,53 @@ async def _cli_stream(system_prompt, user_message):
     but for V1 this is simpler and still works with the SSE protocol."""
     text = _cli_call(system_prompt, user_message)
     yield text
+
+
+# --- CLI auth helpers ---
+
+def cli_auth_status():
+    """Check if Claude CLI is authenticated. Returns dict with status info."""
+    try:
+        result = subprocess.run(
+            ["claude", "auth", "status"],
+            capture_output=True, text=True, timeout=10,
+            env={k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"},
+        )
+        output = (result.stdout + result.stderr).strip()
+        logged_in = result.returncode == 0 and "not logged in" not in output.lower()
+        return {
+            "installed": True,
+            "logged_in": logged_in,
+            "output": output,
+        }
+    except FileNotFoundError:
+        return {"installed": False, "logged_in": False, "output": "claude CLI not found"}
+    except Exception as e:
+        return {"installed": True, "logged_in": False, "output": str(e)}
+
+
+def cli_start_login():
+    """Start the Claude CLI login flow. Returns the auth URL for the user to visit."""
+    try:
+        # claude auth login prints a URL and waits for the user to complete OAuth
+        # We run it with a short timeout to capture the URL, then let it run in background
+        result = subprocess.run(
+            ["claude", "auth", "login"],
+            capture_output=True, text=True, timeout=10,
+            env={k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"},
+        )
+        output = (result.stdout + result.stderr).strip()
+        return {"output": output, "success": result.returncode == 0}
+    except subprocess.TimeoutExpired as e:
+        # Login is interactive — capture whatever URL was printed
+        output = ""
+        if e.stdout:
+            output = e.stdout.decode() if isinstance(e.stdout, bytes) else e.stdout
+        if e.stderr:
+            output += e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr
+        return {"output": output.strip(), "success": False, "waiting": True}
+    except FileNotFoundError:
+        return {"output": "claude CLI not found", "success": False}
 
 
 # --- Public interface ---

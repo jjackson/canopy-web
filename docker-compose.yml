@@ -16,12 +16,14 @@ services:
       - "9100:8000"
     environment:
       DATABASE_URL: postgres://canopy:canopy@db:5432/canopy_web
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AI_BACKEND: ${AI_BACKEND:-cli}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       DEBUG: "true"
     depends_on:
       - db
     volumes:
       - .:/app
+      - claude-auth:/root/.claude  # Persist Claude CLI login across container rebuilds
 
   frontend:
     build:
@@ -34,3 +36,4 @@ services:
 
 volumes:
   pgdata:
+  claude-auth:

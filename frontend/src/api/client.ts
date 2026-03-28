@@ -33,4 +33,11 @@ export const api = {
       `/workspace/analyze/${collectionId}/`,
       { method: 'POST' },
     ),
+
+  // AI backend
+  getAiStatus: () => request<{
+    backend: string; description: string; installed?: boolean;
+    logged_in: boolean; ready: boolean; detail: string;
+  }>('/ai/status/'),
+  startAiLogin: () => request<{ output: string; success: boolean; waiting?: boolean }>('/ai/login/', { method: 'POST' }),
 }
