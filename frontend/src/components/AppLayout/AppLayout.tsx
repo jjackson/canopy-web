@@ -8,124 +8,53 @@ const NAV_ITEMS = [
   { path: '/leaderboard', label: 'Leaderboard' },
 ]
 
-type LoginStep = 'idle' | 'starting' | 'waiting_for_code' | 'submitting' | 'done'
-
 function AiStatusBadge() {
   const [status, setStatus] = useState<{
-    backend: string; ready: boolean; logged_in: boolean; detail: string; description: string
+    backend: string; ready: boolean; detail: string; setup_command: string | null
   } | null>(null)
-  const [loginStep, setLoginStep] = useState<LoginStep>('idle')
-  const [loginUrl, setLoginUrl] = useState<string | null>(null)
-  const [code, setCode] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [showSetup, setShowSetup] = useState(false)
 
   useEffect(() => {
     api.getAiStatus().then(setStatus).catch(() => {})
+    // Poll every 5s while not ready (in case user runs setup-token in terminal)
+    const interval = setInterval(() => {
+      api.getAiStatus().then((s) => {
+        setStatus(s)
+        if (s.ready) clearInterval(interval)
+      }).catch(() => {})
+    }, 5000)
+    return () => clearInterval(interval)
   }, [])
 
   if (!status) return null
 
   if (status.ready) {
     return (
-      <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded" title={status.detail}>
+      <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
         AI: {status.backend === 'cli' ? 'Claude CLI' : 'API'}
       </span>
     )
   }
 
-  async function handleStartLogin() {
-    setLoginStep('starting')
-    setError(null)
-    try {
-      const result = await api.startAiLogin()
-      if (result.url) {
-        setLoginUrl(result.url)
-        setLoginStep('waiting_for_code')
-        window.open(result.url, '_blank')
-      } else {
-        setError('Could not get login URL')
-        setLoginStep('idle')
-      }
-    } catch {
-      setError('Failed to start login')
-      setLoginStep('idle')
-    }
-  }
-
-  async function handleSubmitCode() {
-    if (!code.trim()) return
-    setLoginStep('submitting')
-    setError(null)
-    try {
-      const result = await api.submitLoginCode(code.trim())
-      if (result.success) {
-        setLoginStep('done')
-        // Refresh status
-        const s = await api.getAiStatus()
-        setStatus(s)
-      } else {
-        setError(result.output || 'Login failed. Try again.')
-        setLoginStep('waiting_for_code')
-      }
-    } catch {
-      setError('Failed to submit code')
-      setLoginStep('waiting_for_code')
-    }
-  }
-
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+      <button
+        onClick={() => setShowSetup(!showSetup)}
+        className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded hover:bg-amber-100"
+      >
         AI: Not connected
-      </span>
-
-      {/* Step 1: Start login */}
-      {status.backend === 'cli' && loginStep === 'idle' && (
-        <button
-          onClick={() => void handleStartLogin()}
-          className="text-xs text-blue-600 hover:text-blue-800 underline"
-        >
-          Login
-        </button>
-      )}
-
-      {loginStep === 'starting' && (
-        <span className="text-xs text-gray-500">Opening login...</span>
-      )}
-
-      {/* Step 2: Paste auth code */}
-      {loginStep === 'waiting_for_code' && (
-        <div className="flex items-center gap-1">
-          {loginUrl && (
-            <a href={loginUrl} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:text-blue-800 underline">
-              Auth page
-            </a>
-          )}
-          <input
-            type="text"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void handleSubmitCode() }}
-            placeholder="Paste auth code"
-            className="text-xs border border-gray-300 rounded px-2 py-0.5 w-48"
-            autoFocus
-          />
-          <button
-            onClick={() => void handleSubmitCode()}
-            disabled={!code.trim()}
-            className="text-xs bg-gray-900 text-white px-2 py-0.5 rounded disabled:opacity-50"
-          >
-            Submit
-          </button>
+      </button>
+      {showSetup && status.setup_command && (
+        <div className="absolute right-6 top-12 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-50 max-w-md">
+          <p className="text-sm text-gray-700 mb-2">Run this in your terminal:</p>
+          <code className="block bg-gray-50 text-xs p-2 rounded font-mono select-all">
+            {status.setup_command}
+          </code>
+          <p className="text-xs text-gray-500 mt-2">
+            This connects to your Claude subscription (one-time setup). The page will update automatically when done.
+          </p>
         </div>
       )}
-
-      {loginStep === 'submitting' && (
-        <span className="text-xs text-gray-500">Authenticating...</span>
-      )}
-
-      {error && <span className="text-xs text-red-500">{error}</span>}
     </div>
   )
 }
@@ -134,7 +63,7 @@ export function AppLayout() {
   const location = useLocation()
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="border-b border-gray-200 bg-white">
+      <header className="border-b border-gray-200 bg-white relative">
         <div className="mx-auto max-w-7xl px-6 py-3 flex items-center justify-between">
           <Link to="/" className="text-lg font-semibold text-gray-900">Canopy</Link>
           <div className="flex items-center gap-6">

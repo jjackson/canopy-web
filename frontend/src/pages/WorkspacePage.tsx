@@ -190,7 +190,7 @@ export function WorkspacePage() {
           </div>
 
           {/* Eval cases — collapsible */}
-          <EvalPanel evalCases={evalCases as { name?: string; input?: string; expected_output?: string }[]} />
+          <EvalPanel evalCases={evalCases as { name?: string; input?: string | Record<string, unknown>; expected?: string | Record<string, unknown>; expected_output?: string | Record<string, unknown> }[]} />
 
           {/* Action bar */}
           <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-4 py-2 flex items-center justify-end gap-2">

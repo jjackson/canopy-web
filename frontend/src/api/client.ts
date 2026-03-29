@@ -36,9 +36,6 @@ export const api = {
 
   // AI backend
   getAiStatus: () => request<{
-    backend: string; description: string; installed?: boolean;
-    logged_in: boolean; ready: boolean; detail: string;
+    backend: string; ready: boolean; detail: string; setup_command: string | null;
   }>('/ai/status/'),
-  startAiLogin: () => request<{ url: string | null; output: string; waiting_for_code: boolean }>('/ai/login/', { method: 'POST' }),
-  submitLoginCode: (code: string) => request<{ success: boolean; output: string }>('/ai/login/code/', { method: 'POST', body: JSON.stringify({ code }) }),
 }
