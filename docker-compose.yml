@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: canopy_web
+      POSTGRES_USER: canopy
+      POSTGRES_PASSWORD: canopy
+    ports:
+      - "9102:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: .
+    ports:
+      - "9100:8000"
+    environment:
+      DATABASE_URL: postgres://canopy:canopy@db:5432/canopy_web
+      AI_BACKEND: ${AI_BACKEND:-cli}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEBUG: "true"
+    depends_on:
+      - db
+    volumes:
+      - .:/app
+      - claude-home:/root/claude-data  # Persist Claude CLI auth across rebuilds
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "9101:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  claude-home:
