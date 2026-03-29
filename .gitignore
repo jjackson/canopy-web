@@ -30,3 +30,4 @@ media/
 
 # Node (frontend)
 node_modules/
+.gstack/

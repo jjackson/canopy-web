@@ -23,7 +23,7 @@ services:
       - db
     volumes:
       - .:/app
-      - claude-auth:/root/.claude  # Persist Claude CLI login across container rebuilds
+      - claude-home:/root/claude-data  # Persist Claude CLI auth across rebuilds
 
   frontend:
     build:
@@ -36,4 +36,4 @@ services:
 
 volumes:
   pgdata:
-  claude-auth:
+  claude-home:
