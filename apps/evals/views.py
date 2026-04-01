@@ -107,3 +107,35 @@ def propose_eval_case(request, skill_id):
     )
     serializer = EvalCaseSerializer(case)
     return Response(success_response(serializer.data), status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH", "DELETE"])
+def eval_case_detail(request, skill_id, case_id):
+    """PATCH/DELETE — Edit or delete an eval case."""
+    start_timing()
+
+    try:
+        case = EvalCase.objects.select_related("suite__skill").get(
+            pk=case_id, suite__skill_id=skill_id
+        )
+    except EvalCase.DoesNotExist:
+        return Response(
+            error_response("NOT_FOUND", "Eval case not found."),
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if request.method == "DELETE":
+        case.delete()
+        return Response(success_response({"deleted": True}))
+
+    # PATCH
+    if "name" in request.data:
+        case.name = request.data["name"]
+    if "input_data" in request.data:
+        case.input_data = request.data["input_data"]
+    if "expected_output" in request.data:
+        case.expected_output = request.data["expected_output"]
+    case.save()
+
+    serializer = EvalCaseSerializer(case)
+    return Response(success_response(serializer.data))

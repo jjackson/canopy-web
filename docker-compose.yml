@@ -18,6 +18,7 @@ services:
       DATABASE_URL: postgres://canopy:canopy@db:5432/canopy_web
       AI_BACKEND: ${AI_BACKEND:-cli}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       DEBUG: "true"
     depends_on:
       - db

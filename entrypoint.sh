@@ -25,4 +25,9 @@ else
     ln -sf "$PERSIST_DIR/.claude.json" /root/.claude.json
 fi
 
+# Load persisted OAuth token for Claude CLI
+if [ -f "$PERSIST_DIR/oauth-token" ]; then
+    export CLAUDE_CODE_OAUTH_TOKEN=$(cat "$PERSIST_DIR/oauth-token")
+fi
+
 exec "$@"
