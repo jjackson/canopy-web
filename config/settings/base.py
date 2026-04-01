@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     # Local apps
+    "apps.common",
     "apps.collections",
     "apps.workspace",
     "apps.skills",

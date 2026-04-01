@@ -23,14 +23,20 @@ def run_skill_step(skill_definition, input_data):
 
 
 def check_expected(output: str, expected: dict) -> tuple[bool, list[str]]:
-    """Check if output meets expected criteria."""
+    """Check if output meets expected criteria. Returns (passed, reasons)."""
     reasons = []
     passed = True
+    output_lower = output.lower()
 
     for term in expected.get("contains", []):
-        if term.lower() not in output.lower():
+        if term.lower() not in output_lower:
             passed = False
-            reasons.append(f"Missing expected term: '{term}'")
+            # Show a snippet of what the output actually contains
+            preview = output[:200].replace("\n", " ")
+            reasons.append(
+                f"Expected '{term}' in output but not found. "
+                f"Output starts with: \"{preview}...\""
+            )
 
     return passed, reasons
 

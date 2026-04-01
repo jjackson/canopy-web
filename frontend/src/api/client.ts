@@ -28,6 +28,10 @@ export const api = {
   getEvalSuite: (skillId: number) => request(`/evals/${skillId}/`),
   runEval: (skillId: number) => request(`/evals/${skillId}/run/`, { method: 'POST' }),
   getEvalHistory: (skillId: number) => request(`/evals/${skillId}/history/`),
+  updateEvalCase: (skillId: number, caseId: number, data: object) =>
+    request(`/evals/${skillId}/cases/${caseId}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteEvalCase: (skillId: number, caseId: number) =>
+    request(`/evals/${skillId}/cases/${caseId}/`, { method: 'DELETE' }),
   analyzeWorkspace: (collectionId: number) =>
     request<{ session_id: number; status: string; approach: Record<string, unknown>; eval_cases: Record<string, unknown>[] }>(
       `/workspace/analyze/${collectionId}/`,
@@ -36,6 +40,19 @@ export const api = {
 
   // AI backend
   getAiStatus: () => request<{
-    backend: string; ready: boolean; detail: string; setup_command: string | null;
+    backend: string; ready: boolean; detail: string; setup_hint: string | null;
   }>('/ai/status/'),
+
+  // Auth flow
+  authStart: () => request<{
+    auth_url: string | null; token: string | null; status: string;
+  }>('/ai/auth/start/', { method: 'POST' }),
+
+  authComplete: (code: string) => request<{
+    token_preview: string; status: string;
+  }>('/ai/auth/complete/', { method: 'POST', body: JSON.stringify({ code }) }),
+
+  authPoll: () => request<{
+    active: boolean; authenticated: boolean; elapsed_seconds?: number;
+  }>('/ai/auth/poll/'),
 }

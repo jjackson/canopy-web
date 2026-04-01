@@ -6,17 +6,16 @@ import { api } from '@/api/client'
 const NAV_ITEMS = [
   { path: '/', label: 'Skills' },
   { path: '/leaderboard', label: 'Leaderboard' },
+  { path: '/settings', label: 'Settings' },
 ]
 
 function AiStatusBadge() {
   const [status, setStatus] = useState<{
-    backend: string; ready: boolean; detail: string; setup_command: string | null
+    backend: string; ready: boolean; detail: string; setup_hint: string | null
   } | null>(null)
-  const [showSetup, setShowSetup] = useState(false)
 
   useEffect(() => {
     api.getAiStatus().then(setStatus).catch(() => {})
-    // Poll every 5s while not ready (in case user runs setup-token in terminal)
     const interval = setInterval(() => {
       api.getAiStatus().then((s) => {
         setStatus(s)
@@ -37,25 +36,12 @@ function AiStatusBadge() {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <button
-        onClick={() => setShowSetup(!showSetup)}
-        className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded hover:bg-amber-100"
-      >
-        AI: Not connected
-      </button>
-      {showSetup && status.setup_command && (
-        <div className="absolute right-6 top-12 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-50 max-w-md">
-          <p className="text-sm text-gray-700 mb-2">Run this in your terminal:</p>
-          <code className="block bg-gray-50 text-xs p-2 rounded font-mono select-all">
-            {status.setup_command}
-          </code>
-          <p className="text-xs text-gray-500 mt-2">
-            This connects to your Claude subscription (one-time setup). The page will update automatically when done.
-          </p>
-        </div>
-      )}
-    </div>
+    <Link
+      to="/settings"
+      className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded hover:bg-amber-100"
+    >
+      AI: Not connected — click to set up
+    </Link>
   )
 }
 

@@ -7,4 +7,5 @@ urlpatterns = [
     path("<int:skill_id>/run/", views.run_eval, name="run-eval"),
     path("<int:skill_id>/history/", views.eval_history, name="eval-history"),
     path("<int:skill_id>/cases/", views.propose_eval_case, name="propose-eval-case"),
+    path("<int:skill_id>/cases/<int:case_id>/", views.eval_case_detail, name="eval-case-detail"),
 ]

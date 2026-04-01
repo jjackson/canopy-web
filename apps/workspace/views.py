@@ -190,24 +190,58 @@ def publish_skill(request, session_id):
             status=400,
         )
 
-    # Create the skill
-    skill = Skill.objects.create(
-        name=approach.get("name", "Untitled Skill"),
-        description=approach.get("description", ""),
-        definition=approach,
-        workspace_session=session,
-    )
+    # Check if this is a revision of an existing skill
+    try:
+        body = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        body = {}
+    revise_skill_id = body.get("revise_skill_id")
 
-    # Create eval suite and cases
-    eval_suite = EvalSuite.objects.create(skill=skill)
-    eval_cases = session.proposed_eval_cases or []
-    for case_data in eval_cases:
-        EvalCase.objects.create(
-            suite=eval_suite,
-            name=case_data.get("name", "Unnamed Case"),
-            input_data=case_data.get("input", {}),
-            expected_output=case_data.get("expected", {}),
+    if revise_skill_id:
+        # Revise existing skill — bump version, update definition
+        try:
+            skill = Skill.objects.get(pk=revise_skill_id)
+        except Skill.DoesNotExist:
+            return JsonResponse(
+                error_response("NOT_FOUND", "Skill to revise not found."),
+                status=404,
+            )
+        skill.definition = approach
+        skill.description = approach.get("description", skill.description)
+        skill.version += 1
+        skill.workspace_session = session
+        skill.save(update_fields=["definition", "description", "version", "workspace_session"])
+
+        # Update eval cases if new ones proposed
+        eval_cases = session.proposed_eval_cases or []
+        if eval_cases:
+            suite, _ = EvalSuite.objects.get_or_create(skill=skill)
+            for case_data in eval_cases:
+                EvalCase.objects.create(
+                    suite=suite,
+                    name=case_data.get("name", "Unnamed Case"),
+                    input_data=case_data.get("input", {}),
+                    expected_output=case_data.get("expected", {}),
+                )
+    else:
+        # Create new skill
+        skill = Skill.objects.create(
+            name=approach.get("name", "Untitled Skill"),
+            description=approach.get("description", ""),
+            definition=approach,
+            workspace_session=session,
         )
+
+        # Create eval suite and cases
+        eval_suite = EvalSuite.objects.create(skill=skill)
+        eval_cases = session.proposed_eval_cases or []
+        for case_data in eval_cases:
+            EvalCase.objects.create(
+                suite=eval_suite,
+                name=case_data.get("name", "Unnamed Case"),
+                input_data=case_data.get("input", {}),
+                expected_output=case_data.get("expected", {}),
+            )
 
     # Update session status
     session.status = "published"
@@ -216,7 +250,8 @@ def publish_skill(request, session_id):
     data = {
         "skill_id": skill.pk,
         "name": skill.name,
-        "eval_count": len(eval_cases),
+        "version": skill.version,
+        "eval_count": len(session.proposed_eval_cases or []),
     }
 
     return JsonResponse(success_response(data), status=201)

@@ -1,0 +1,80 @@
+name: "Canopy Web — Skill Builder Demo"
+narrative: "Turn messy conversations into tested, reusable AI skills — from paste to publish in minutes"
+base_url: "http://localhost:9101"
+
+# No auth needed — single-tenant, no login in V1.
+# Requires: docker compose up -d && docker compose exec backend python manage.py seed_demo
+
+personas:
+  maya:
+    name: "Maya Torres"
+    role: "AI Platform Engineer"
+    color: "#2563eb"
+    intro: "Maya builds internal AI tooling. She curates the skill library and tracks quality through evals."
+  ravi:
+    name: "Ravi Sharma"
+    role: "Solutions Engineer"
+    color: "#059669"
+    intro: "Ravi works with clients daily. He captures great conversations and wants to turn them into repeatable workflows anyone can use."
+
+scenes:
+  # Act 1: Discovery — what's already built
+  - persona: maya
+    title: "The skill library"
+    show: "Skills feed at / showing published skills with names, descriptions, eval scores, and usage counts"
+    impressive_because: "Dense, scannable table — not flashy cards. Shows which skills are actually used and how well they score."
+
+  - persona: maya
+    title: "Inside a skill"
+    show: "Click into a skill to see its full definition — steps, tools, inputs/outputs — plus eval history"
+    impressive_because: "Complete skill anatomy at a glance. Eval runs show quality trending over time."
+
+  - persona: maya
+    title: "Who's shipping quality"
+    show: "Leaderboard page showing skills ranked by eval scores and usage"
+    impressive_because: "Surfaces which skills are battle-tested vs. freshly published. Creates healthy competition."
+
+  # Act 2: Creation — building a new skill from scratch
+  - persona: ravi
+    title: "Start from a conversation"
+    show: "Click New, create a collection named 'Customer Onboarding Workflow', add a description"
+    impressive_because: "Zero friction — name it, describe it, start pasting."
+
+  - persona: ravi
+    title: "Paste the source material"
+    show: "Add a source with type 'transcript' containing a real onboarding conversation — the AI session where an agent walked a customer through setup"
+    impressive_because: "Accepts raw messy transcripts. No reformatting needed."
+
+  - persona: ravi
+    title: "AI extracts the skill"
+    show: "Start workspace analysis — streaming response shows AI reading the sources and proposing a skill definition with eval cases"
+    impressive_because: "Streams the analysis in real-time. Proposes concrete steps, tools, and testable eval cases — not just a summary."
+    ai_quality: "Proposed skill should have specific, actionable steps with clear inputs/outputs. Eval cases should test real scenarios from the source, not generic placeholders."
+
+  - persona: ravi
+    title: "Review the proposal"
+    show: "Workspace page showing the proposed approach (skill definition) and eval cases side by side"
+    impressive_because: "Everything is editable. You can see exactly what the AI extracted and fix anything before publishing."
+
+  - persona: ravi
+    title: "Publish the skill"
+    show: "Click publish — skill appears in the library with eval suite auto-created"
+    impressive_because: "One click from draft to published. Eval cases ship with the skill — quality is built in from day one."
+
+  # Act 3: Evaluation — measuring quality
+  - persona: maya
+    title: "Run the eval suite"
+    show: "Navigate to the newly published skill, run its eval suite, see pass/fail results per case"
+    impressive_because: "Evals run against the actual AI backend. Each case shows what passed, what failed, and why."
+    ai_quality: "Eval results should show meaningful pass/fail with specific output. Failures should explain what was expected vs what was produced."
+
+  - persona: maya
+    title: "Eval history over time"
+    show: "View eval history showing scores across multiple runs"
+    impressive_because: "Track quality over time. Catch regressions before they hit production."
+
+  # Act 4: Settings — infrastructure
+  - persona: maya
+    title: "Connected to your subscription"
+    show: "Settings page showing AI backend connected via Claude subscription"
+    impressive_because: "Uses your existing Claude subscription — no separate API key billing. Token persists across container restarts."
