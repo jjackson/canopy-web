@@ -8,5 +8,7 @@ RUN npm run build
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY frontend/nginx.prod.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.cloudrun.conf.template /etc/nginx/templates/cloudrun.conf.template
 EXPOSE 3000
-CMD ["nginx", "-g", "daemon off;"]
+# If BACKEND_URL is set (Cloud Run), use envsubst template; otherwise use static config
+CMD ["/bin/sh", "-c", "if [ -n \"$BACKEND_URL\" ]; then envsubst '${BACKEND_URL}' < /etc/nginx/templates/cloudrun.conf.template > /etc/nginx/conf.d/default.conf; fi && nginx -g 'daemon off;'"]

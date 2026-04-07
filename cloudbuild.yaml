@@ -1,0 +1,43 @@
+steps:
+  # Build backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/backend:$SHORT_SHA'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/backend:latest'
+      - '-f'
+      - 'Dockerfile'
+      - '.'
+    id: 'build-backend'
+
+  # Build frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/frontend:$SHORT_SHA'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/frontend:latest'
+      - '-f'
+      - 'Dockerfile.frontend'
+      - '.'
+    id: 'build-frontend'
+
+  # Push backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/backend']
+    waitFor: ['build-backend']
+
+  # Push frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/frontend']
+    waitFor: ['build-frontend']
+
+images:
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/backend'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/frontend'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
