@@ -1,0 +1,36 @@
+server {
+    listen 3000;
+    root /usr/share/nginx/html;
+    index index.html;
+    resolver 8.8.8.8 valid=30s;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        set $backend "${BACKEND_URL}";
+        proxy_pass $backend;
+        proxy_ssl_server_name on;
+        proxy_set_header Host canopy-web-backend-502453377792.us-central1.run.app;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 120s;
+    }
+
+    location /health/ {
+        set $backend "${BACKEND_URL}";
+        proxy_pass $backend;
+        proxy_ssl_server_name on;
+        proxy_set_header Host canopy-web-backend-502453377792.us-central1.run.app;
+    }
+
+    location /admin/ {
+        set $backend "${BACKEND_URL}";
+        proxy_pass $backend;
+        proxy_ssl_server_name on;
+        proxy_set_header Host canopy-web-backend-502453377792.us-central1.run.app;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
