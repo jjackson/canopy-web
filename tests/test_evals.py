@@ -62,8 +62,8 @@ class TestCheckExpectedContains:
         passed, reasons = check_expected(output, expected)
         assert passed is False
         assert len(reasons) == 2
-        assert "Missing expected term: 'climate'" in reasons
-        assert "Missing expected term: 'temperature'" in reasons
+        assert any("Expected 'climate' in output but not found" in r for r in reasons)
+        assert any("Expected 'temperature' in output but not found" in r for r in reasons)
 
     def test_case_insensitive_match(self):
         output = "CLIMATE and TEMPERATURE are related."
@@ -92,7 +92,7 @@ class TestCheckExpectedContains:
         passed, reasons = check_expected(output, expected)
         assert passed is False
         assert len(reasons) == 1
-        assert "Missing expected term: 'temperature'" in reasons
+        assert any("Expected 'temperature' in output but not found" in r for r in reasons)
 
 
 class TestRunEvalAllPass:
