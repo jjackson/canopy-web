@@ -40,6 +40,31 @@ def ai_status(request):
         }))
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def ai_switch(request):
+    """POST /api/ai/switch/ — switch AI backend between 'api' and 'cli'."""
+    start_timing()
+    try:
+        body = json.loads(request.body)
+        backend = body.get("backend", "").strip()
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse(error_response("invalid_body", "Expected JSON with 'backend' field"), status=400)
+
+    if backend not in ("api", "cli"):
+        return JsonResponse(error_response("invalid_backend", "backend must be 'api' or 'cli'"), status=400)
+
+    # Switch at runtime by updating the Django setting
+    settings.AI_BACKEND = backend
+
+    # Reset the cached API client so it picks up any changes
+    from . import anthropic_client
+    anthropic_client._client = None
+    anthropic_client._consecutive_failures = 0
+
+    return JsonResponse(success_response({"backend": backend}))
+
+
 # ── Auth flow endpoints (for CLI backend in Docker) ─────────────────
 
 

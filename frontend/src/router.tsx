@@ -6,6 +6,7 @@ import { NewCollectionPage } from './pages/NewCollectionPage'
 import { SkillDetailPage } from './pages/SkillDetailPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { GuidePage } from './pages/GuidePage'
 
 export const router = createBrowserRouter([
   {
@@ -16,6 +17,7 @@ export const router = createBrowserRouter([
       { path: '/workspace/:sessionId', element: <WorkspacePage /> },
       { path: '/skills/:skillId', element: <SkillDetailPage /> },
       { path: '/leaderboard', element: <LeaderboardPage /> },
+      { path: '/guide', element: <GuidePage /> },
       { path: '/settings', element: <SettingsPage /> },
     ],
   },
