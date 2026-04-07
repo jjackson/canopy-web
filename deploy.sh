@@ -19,11 +19,13 @@ else
 fi
 
 echo "==> Building and pushing backend image..."
-docker build -t "${REPO}/backend:${TAG}" -f Dockerfile .
+# --platform linux/amd64 is required because Cloud Run only runs amd64/linux
+# and docker build on Apple Silicon defaults to arm64.
+docker build --platform linux/amd64 -t "${REPO}/backend:${TAG}" -f Dockerfile .
 docker push "${REPO}/backend:${TAG}"
 
 echo "==> Building and pushing frontend image..."
-docker build -t "${REPO}/frontend:${TAG}" -f Dockerfile.frontend .
+docker build --platform linux/amd64 -t "${REPO}/frontend:${TAG}" -f Dockerfile.frontend .
 docker push "${REPO}/frontend:${TAG}"
 
 echo "==> Deploying backend to Cloud Run..."
