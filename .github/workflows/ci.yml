@@ -1,8 +1,9 @@
 name: CI / Deploy
 
 # Runs backend tests + frontend build on every PR and push to main.
-# On push to main (and on manual workflow_dispatch), the deploy job
-# runs after both test jobs pass and ships images to Cloud Run.
+# Deploy is manual-only: trigger via the "Run workflow" button on the
+# Actions tab (workflow_dispatch). When triggered, the deploy job waits
+# for both test jobs to pass before shipping images to Cloud Run.
 #
 # One-time GCP setup required for the deploy job to authenticate via
 # Workload Identity Federation (no long-lived service account keys):
@@ -88,7 +89,9 @@ jobs:
   deploy:
     name: Deploy to Cloud Run
     needs: [test-backend, test-frontend]
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    # Manual-only: must be triggered from the Actions tab via "Run workflow".
+    # Tests still gate the deploy because of `needs:` above.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read

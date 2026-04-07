@@ -32,7 +32,8 @@ uv run honcho start -f Procfile.dev
 # Docker (backend + frontend + Postgres)
 docker compose up
 
-# Deploy to GCP Cloud Run (local; CI also deploys on push to main)
+# Deploy to GCP Cloud Run (local). CI also has a manual deploy job —
+# trigger it from the Actions tab ("CI / Deploy" → Run workflow).
 ./deploy.sh                  # runs tests + frontend build first
 SKIP_TESTS=1 ./deploy.sh     # bypass test gate (emergencies only)
 ```
@@ -47,7 +48,7 @@ uv run pytest tests/test_workspace_engine.py -v  # Specific
 cd frontend && npm run build                     # Frontend type check + build
 ```
 
-CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main, and gates auto-deploy. Walkthrough QA spec at `docs/walkthroughs/canopy-web-demo.yaml` (run via `/walkthrough canopy-web-demo`).
+CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deploy is a separate manual job in the same workflow — trigger it from the Actions tab via "Run workflow"; the deploy step waits for the test jobs to pass before shipping. Walkthrough QA spec at `docs/walkthroughs/canopy-web-demo.yaml` (run via `/walkthrough canopy-web-demo`).
 
 ## Key URLs
 
