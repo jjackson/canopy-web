@@ -42,6 +42,8 @@ export const api = {
   getAiStatus: () => request<{
     backend: string; ready: boolean; detail: string; setup_hint: string | null;
   }>('/ai/status/'),
+  switchAiBackend: (backend: 'api' | 'cli') =>
+    request<{ backend: string }>('/ai/switch/', { method: 'POST', body: JSON.stringify({ backend }) }),
 
   // Auth flow
   authStart: () => request<{
