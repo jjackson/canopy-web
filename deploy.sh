@@ -6,6 +6,17 @@ REGION="us-central1"
 REPO="us-central1-docker.pkg.dev/${PROJECT_ID}/canopy-web"
 SQL_INSTANCE="${PROJECT_ID}:${REGION}:canopy-web-db"
 TAG="${1:-latest}"
+SKIP_TESTS="${SKIP_TESTS:-0}"
+
+if [ "${SKIP_TESTS}" = "1" ]; then
+  echo "==> SKIP_TESTS=1, skipping pre-deploy verification"
+else
+  echo "==> Running backend tests..."
+  uv run pytest
+
+  echo "==> Building frontend (type check + bundle)..."
+  (cd frontend && npm run build)
+fi
 
 echo "==> Building and pushing backend image..."
 docker build -t "${REPO}/backend:${TAG}" -f Dockerfile .

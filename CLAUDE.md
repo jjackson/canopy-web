@@ -13,25 +13,29 @@ Collaborative web workspace for building reusable AI skills from conversations.
 
 ## Development
 
+Backend uses [`uv`](https://docs.astral.sh/uv/) for dependency management (uv.lock is committed). Install uv first if you don't have it: `curl -LsSf https://astral.sh/uv/install.sh | sh`.
+
 ```bash
 # Backend
 cp .env.example .env  # Set AI_BACKEND=api + ANTHROPIC_API_KEY, or AI_BACKEND=cli
-pip install -e ".[dev]"
-python manage.py migrate
-python manage.py seed_demo   # optional: 5 demo skills with eval history
-python manage.py runserver
+uv sync --extra dev
+uv run python manage.py migrate
+uv run python manage.py seed_demo   # optional: 5 demo skills with eval history
+uv run python manage.py runserver
 
 # Frontend
 cd frontend && npm install && npm run dev
 
 # Both (via honcho)
-honcho start -f Procfile.dev
+uv run honcho start -f Procfile.dev
 
 # Docker (backend + frontend + Postgres)
 docker compose up
 
-# Deploy to GCP Cloud Run
-./deploy.sh
+# Deploy to GCP Cloud Run (local). CI also has a manual deploy job —
+# trigger it from the Actions tab ("CI / Deploy" → Run workflow).
+./deploy.sh                  # runs tests + frontend build first
+SKIP_TESTS=1 ./deploy.sh     # bypass test gate (emergencies only)
 ```
 
 When `AI_BACKEND=cli`, the `claude` binary must be on PATH and authenticated. In Docker, use the headless auth flow at `/settings` (drives `claude setup-token` via PTY; token persists in `CLAUDE_CODE_OAUTH_TOKEN`).
@@ -39,12 +43,12 @@ When `AI_BACKEND=cli`, the `claude` binary must be on PATH and authenticated. In
 ## Testing
 
 ```bash
-pytest                                    # All backend tests
-pytest tests/test_workspace_engine.py -v  # Specific
-cd frontend && npm run build              # Frontend type check + build
+uv run pytest                                    # All backend tests
+uv run pytest tests/test_workspace_engine.py -v  # Specific
+cd frontend && npm run build                     # Frontend type check + build
 ```
 
-Walkthrough QA spec at `docs/walkthroughs/canopy-web-demo.yaml` (run via `/walkthrough canopy-web-demo`).
+CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deploy is a separate manual job in the same workflow — trigger it from the Actions tab via "Run workflow"; the deploy step waits for the test jobs to pass before shipping. Walkthrough QA spec at `docs/walkthroughs/canopy-web-demo.yaml` (run via `/walkthrough canopy-web-demo`).
 
 ## Key URLs
 
