@@ -52,7 +52,8 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 
 ## Key URLs
 
-- `/` — Skill discovery feed
+- `/` — Project workbench (tile grid dashboard)
+- `/skills` — Skill discovery feed
 - `/new` — New collection / source ingestion flow
 - `/workspace/:sessionId` — Co-authoring workspace
 - `/skills/:skillId` — Skill detail + eval history
@@ -64,6 +65,17 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/health/` — Health check
 
 ## API Endpoints
+
+### Projects
+- `GET /api/projects/` — List projects with latest context
+- `POST /api/projects/` — Create project
+- `GET /api/projects/{slug}/` — Project detail with full context
+- `PATCH /api/projects/{slug}/` — Update project
+- `DELETE /api/projects/{slug}/` — Delete project
+- `POST /api/projects/{slug}/context/` — Push context entry
+- `GET /api/projects/{slug}/context/` — List context entries
+- `GET /api/projects/{slug}/context/latest/` — Latest context per type
+- `POST /api/projects/seed/` — Bulk seed projects
 
 ### Collections
 - `POST /api/collections/` — Create collection

@@ -4,7 +4,8 @@ import { clsx } from 'clsx'
 import { api } from '@/api/client'
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Skills' },
+  { path: '/', label: 'Projects' },
+  { path: '/skills', label: 'Skills' },
   { path: '/leaderboard', label: 'Leaderboard' },
   { path: '/guide', label: 'Guide' },
   { path: '/settings', label: 'Settings' },

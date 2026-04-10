@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout/AppLayout'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { DiscoveryPage } from './pages/DiscoveryPage'
+import { ProjectsPage } from './pages/ProjectsPage'
 import { NewCollectionPage } from './pages/NewCollectionPage'
 import { SkillDetailPage } from './pages/SkillDetailPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
@@ -12,7 +13,8 @@ export const router = createBrowserRouter([
   {
     element: <AppLayout />,
     children: [
-      { path: '/', element: <DiscoveryPage /> },
+      { path: '/', element: <ProjectsPage /> },
+      { path: '/skills', element: <DiscoveryPage /> },
       { path: '/new', element: <NewCollectionPage /> },
       { path: '/workspace/:sessionId', element: <WorkspacePage /> },
       { path: '/skills/:skillId', element: <SkillDetailPage /> },
