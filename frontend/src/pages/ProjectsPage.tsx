@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { type Project, type ProjectContextEntry, projectsApi } from '@/api/projects'
+import { type Project, projectsApi } from '@/api/projects'
 
 function DeployBadge({ url }: { url: string }) {
   if (!url) return <span className="text-[10px] text-stone-600">—</span>
