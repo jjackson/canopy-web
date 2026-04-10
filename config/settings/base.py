@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "apps.workspace",
     "apps.skills",
     "apps.evals",
+    "apps.projects",
 ]
 
 MIDDLEWARE = [
