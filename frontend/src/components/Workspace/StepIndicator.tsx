@@ -17,17 +17,17 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
             {index > 0 && (
               <span
                 className={cn(
-                  'mx-1 h-px w-4',
-                  isCompleted ? 'bg-gray-400' : 'bg-gray-200'
+                  'mx-1 h-px w-5',
+                  isCompleted ? 'bg-orange-400/40' : 'bg-stone-800'
                 )}
               />
             )}
             <span
               className={cn(
-                'rounded px-2 py-0.5 text-xs font-medium',
-                isCurrent && 'bg-gray-900 text-white',
-                isCompleted && 'text-gray-500 bg-gray-200',
-                !isCurrent && !isCompleted && 'text-gray-400'
+                'rounded px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold transition-colors',
+                isCurrent && 'bg-orange-400/10 border border-orange-400/30 text-orange-400',
+                isCompleted && 'text-stone-400 bg-stone-900 border border-stone-800',
+                !isCurrent && !isCompleted && 'text-stone-600'
               )}
             >
               {label}
