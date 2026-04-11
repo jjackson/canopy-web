@@ -33,6 +33,8 @@ export interface Project {
   visibility: string
   status: string
   latest_context: Record<string, ProjectContext>
+  skills: Array<{ name: string; path?: string; description?: string }>
+  has_guide: boolean
   created_at: string
   updated_at: string
 }
@@ -46,6 +48,15 @@ export interface ProjectDetail {
   visibility: string
   status: string
   contexts: ProjectContextEntry[]
+  skills: Array<{ name: string; path?: string; description?: string }>
+  has_guide: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectGuide {
+  content: string
+  source: string
   created_at: string
   updated_at: string
 }
@@ -65,4 +76,7 @@ export const projectsApi = {
     request<ProjectContextEntry[]>(`/projects/${slug}/context/${type ? `?type=${type}` : ''}`),
   getLatestContext: (slug: string) =>
     request<Record<string, ProjectContext>>(`/projects/${slug}/context/latest/`),
+  getGuide: (slug: string) => request<ProjectGuide>(`/projects/${slug}/guide/`),
+  putGuide: (slug: string, data: { content: string; source: string }) =>
+    request<ProjectGuide>(`/projects/${slug}/guide/`, { method: 'PUT', body: JSON.stringify(data) }),
 }
