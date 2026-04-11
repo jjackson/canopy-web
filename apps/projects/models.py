@@ -18,6 +18,7 @@ class Project(models.Model):
     deploy_url = models.URLField(blank=True, default="")
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default="public")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
+    skills = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -48,3 +49,14 @@ class ProjectContext(models.Model):
 
     def __str__(self):
         return f"{self.project.slug}:{self.context_type}"
+
+
+class ProjectGuide(models.Model):
+    project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="guide")
+    content = models.TextField()
+    source = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.project.slug}:guide"

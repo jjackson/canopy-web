@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Project, ProjectContext
+from .models import Project, ProjectContext, ProjectGuide
 
 
 class ProjectContextSerializer(serializers.ModelSerializer):
@@ -10,12 +10,13 @@ class ProjectContextSerializer(serializers.ModelSerializer):
 
 class ProjectListSerializer(serializers.ModelSerializer):
     latest_context = serializers.SerializerMethodField()
+    has_guide = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
         fields = [
             "id", "name", "slug", "repo_url", "deploy_url",
-            "visibility", "status", "latest_context",
+            "visibility", "status", "skills", "has_guide", "latest_context",
             "created_at", "updated_at",
         ]
 
@@ -36,23 +37,30 @@ class ProjectListSerializer(serializers.ModelSerializer):
                 }
         return result
 
+    def get_has_guide(self, obj):
+        return hasattr(obj, "guide")
+
 
 class ProjectDetailSerializer(serializers.ModelSerializer):
     contexts = ProjectContextSerializer(many=True, read_only=True)
+    has_guide = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
         fields = [
             "id", "name", "slug", "repo_url", "deploy_url",
-            "visibility", "status", "contexts",
+            "visibility", "status", "skills", "has_guide", "contexts",
             "created_at", "updated_at",
         ]
+
+    def get_has_guide(self, obj):
+        return hasattr(obj, "guide")
 
 
 class ProjectCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = ["name", "slug", "repo_url", "deploy_url", "visibility", "status"]
+        fields = ["name", "slug", "repo_url", "deploy_url", "visibility", "status", "skills"]
 
     def validate_slug(self, value):
         if Project.objects.filter(slug=value).exists():
@@ -69,3 +77,9 @@ class ProjectContextCreateSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Content cannot be empty.")
         return value
+
+
+class ProjectGuideSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectGuide
+        fields = ["content", "source", "created_at", "updated_at"]

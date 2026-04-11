@@ -5,12 +5,13 @@ from rest_framework.response import Response
 
 from apps.common.envelope import error_response, start_timing, success_response
 
-from .models import Project, ProjectContext
+from .models import Project, ProjectContext, ProjectGuide
 from .serializers import (
     ProjectContextCreateSerializer,
     ProjectContextSerializer,
     ProjectCreateSerializer,
     ProjectDetailSerializer,
+    ProjectGuideSerializer,
     ProjectListSerializer,
 )
 
@@ -131,6 +132,49 @@ def project_context_latest(request, slug):
                 "created_at": ctx.created_at.isoformat(),
             }
     return Response(success_response(result))
+
+
+@api_view(["GET", "PUT", "DELETE"])
+def project_guide(request, slug):
+    start_timing()
+
+    project = _get_project_or_404(slug)
+    if project is None:
+        return Response(
+            error_response("NOT_FOUND", "Project not found."),
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if request.method == "GET":
+        try:
+            guide = project.guide
+        except ProjectGuide.DoesNotExist:
+            return Response(
+                error_response("NOT_FOUND", "No guide for this project."),
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(success_response(ProjectGuideSerializer(guide).data))
+
+    if request.method == "PUT":
+        content = request.data.get("content", "")
+        source = request.data.get("source", "")
+        if not content or not content.strip():
+            return Response(
+                error_response("VALIDATION_ERROR", "Guide content cannot be empty."),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        guide, _ = ProjectGuide.objects.update_or_create(
+            project=project,
+            defaults={"content": content, "source": source},
+        )
+        return Response(success_response(ProjectGuideSerializer(guide).data))
+
+    # DELETE
+    try:
+        project.guide.delete()
+    except ProjectGuide.DoesNotExist:
+        pass
+    return Response(success_response({"deleted": slug}))
 
 
 @api_view(["POST"])

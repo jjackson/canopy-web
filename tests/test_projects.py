@@ -229,3 +229,111 @@ class TestSeedAPI:
         body = response.json()
         assert body["data"]["created"] == 1
         assert body["data"]["skipped"] == 1
+
+
+class TestProjectSkillsField:
+    def test_skills_default_empty(self, project):
+        assert project.skills == []
+
+    def test_set_skills_list(self, db):
+        p = Project.objects.create(
+            name="test", slug="test",
+            skills=[{"name": "alpha", "path": "skills/alpha"}],
+        )
+        p.refresh_from_db()
+        assert len(p.skills) == 1
+        assert p.skills[0]["name"] == "alpha"
+
+    def test_skills_in_list_response(self, client, db):
+        Project.objects.create(
+            name="x", slug="x",
+            skills=[{"name": "s1", "path": "skills/s1", "description": "d"}],
+        )
+        response = client.get("/api/projects/")
+        body = response.json()
+        assert body["data"][0]["skills"][0]["name"] == "s1"
+
+    def test_patch_project_skills(self, client, project):
+        response = client.patch(
+            "/api/projects/canopy-web/",
+            data={"skills": [{"name": "new", "path": "skills/new"}]},
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        body = response.json()
+        # The skills field should round-trip
+        canopy = client.get("/api/projects/canopy-web/").json()["data"]
+        assert canopy["skills"][0]["name"] == "new"
+
+
+class TestProjectGuideAPI:
+    def test_get_guide_not_found(self, client, project):
+        response = client.get("/api/projects/canopy-web/guide/")
+        assert response.status_code == 404
+
+    def test_put_guide_creates(self, client, project):
+        response = client.put(
+            "/api/projects/canopy-web/guide/",
+            data={"content": "# Setup\nDo this.", "source": "jonathan"},
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["data"]["content"] == "# Setup\nDo this."
+
+    def test_put_guide_overwrites(self, client, project):
+        client.put(
+            "/api/projects/canopy-web/guide/",
+            data={"content": "v1", "source": "jonathan"},
+            content_type="application/json",
+        )
+        response = client.put(
+            "/api/projects/canopy-web/guide/",
+            data={"content": "v2", "source": "jonathan"},
+            content_type="application/json",
+        )
+        body = response.json()
+        assert body["data"]["content"] == "v2"
+
+    def test_get_guide_after_put(self, client, project):
+        client.put(
+            "/api/projects/canopy-web/guide/",
+            data={"content": "guide content", "source": "canopy:user-guide"},
+            content_type="application/json",
+        )
+        response = client.get("/api/projects/canopy-web/guide/")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["data"]["source"] == "canopy:user-guide"
+
+    def test_put_guide_empty_content(self, client, project):
+        response = client.put(
+            "/api/projects/canopy-web/guide/",
+            data={"content": "", "source": "jonathan"},
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_delete_guide(self, client, project):
+        client.put(
+            "/api/projects/canopy-web/guide/",
+            data={"content": "x", "source": "j"},
+            content_type="application/json",
+        )
+        response = client.delete("/api/projects/canopy-web/guide/")
+        assert response.status_code == 200
+        get_response = client.get("/api/projects/canopy-web/guide/")
+        assert get_response.status_code == 404
+
+    def test_has_guide_in_detail(self, client, project):
+        # Without guide
+        response = client.get("/api/projects/canopy-web/")
+        assert response.json()["data"]["has_guide"] is False
+        # With guide
+        client.put(
+            "/api/projects/canopy-web/guide/",
+            data={"content": "x", "source": "j"},
+            content_type="application/json",
+        )
+        response = client.get("/api/projects/canopy-web/")
+        assert response.json()["data"]["has_guide"] is True
