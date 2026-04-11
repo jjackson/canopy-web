@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import { type Project, projectsApi } from '@/api/projects'
+
+const SPRING = { type: 'spring' as const, stiffness: 400, damping: 35 }
 
 function StatusDot({ status }: { status: string }) {
   const color = status === 'active'
@@ -39,7 +42,7 @@ function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () =
   const currentWork = ctx.current_work?.content
   return (
     <div
-      className="bg-stone-900 border border-stone-800 hover:border-stone-700 rounded-lg p-4 cursor-pointer transition-colors"
+      className="bg-stone-900 border border-stone-800 hover:border-stone-700 rounded-lg p-4 cursor-pointer transition-colors h-full"
       onClick={onExpand}
     >
       <div className="flex items-center gap-3 mb-2">
@@ -135,7 +138,10 @@ function ExpandedCard({ project, onClose, onContextSaved }: {
   const skills = project.skills || []
 
   return (
-    <div className="bg-stone-900 border border-stone-700 rounded-xl overflow-hidden mb-3">
+    <div
+      className="bg-stone-900 border border-stone-700 rounded-xl overflow-hidden"
+      onClick={(e) => e.stopPropagation()}
+    >
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-stone-800">
         <StatusDot status={project.status} />
@@ -165,8 +171,11 @@ function ExpandedCard({ project, onClose, onContextSaved }: {
             </Link>
           )}
         </div>
-        <button onClick={onClose}
-          className="text-stone-700 hover:text-stone-400 text-lg ml-2">✕</button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onClose() }}
+          className="text-stone-700 hover:text-stone-400 text-lg ml-2"
+          aria-label="Close"
+        >✕</button>
       </div>
 
       {/* Body — 3 columns */}
@@ -242,7 +251,7 @@ function ExpandedCard({ project, onClose, onContextSaved }: {
           {/* Skills (collapsible) */}
           <div>
             <button
-              onClick={() => setSkillsExpanded(!skillsExpanded)}
+              onClick={(e) => { e.stopPropagation(); setSkillsExpanded(!skillsExpanded) }}
               className="flex items-center gap-2 text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-2 hover:text-stone-400 transition-colors">
               <span>Skills ({skills.length})</span>
               <span>{skillsExpanded ? '▾' : '▸'}</span>
@@ -270,11 +279,43 @@ function ExpandedCard({ project, onClose, onContextSaved }: {
   )
 }
 
+function LoadingSkeleton() {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-lg font-semibold text-stone-100">Projects</h1>
+        <span className="text-xs text-stone-700 bg-stone-900 px-2.5 py-1 rounded">
+          loading…
+        </span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div
+            key={i}
+            className="bg-stone-900 border border-stone-800 rounded-lg p-4 animate-pulse"
+            style={{ animationDelay: `${i * 60}ms` }}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-[7px] h-[7px] rounded-full bg-stone-800 shrink-0" />
+              <div className="h-3 bg-stone-800 rounded w-1/2" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-2 bg-stone-800/70 rounded w-full" />
+              <div className="h-2 bg-stone-800/70 rounded w-4/5" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [expandedSlug, setExpandedSlug] = useState<string | null>(null)
+  // Ordered list of slugs that are expanded; first = most-recently clicked (top of stack).
+  const [expandedOrder, setExpandedOrder] = useState<string[]>([])
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -293,26 +334,26 @@ export function ProjectsPage() {
     return () => { cancelled = true }
   }, [refreshKey])
 
+  function expand(slug: string) {
+    setExpandedOrder((order) => (order.includes(slug) ? order : [slug, ...order]))
+  }
+
+  function collapse(slug: string) {
+    setExpandedOrder((order) => order.filter((s) => s !== slug))
+  }
+
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-stone-600 text-sm">Loading projects...</div>
+    return <LoadingSkeleton />
   }
   if (error) {
     return <div className="flex items-center justify-center h-64 text-red-400 text-sm">{error}</div>
   }
 
-  // Split projects: before-expanded, expanded, after-expanded
-  const expandedIndex = expandedSlug ? projects.findIndex(p => p.slug === expandedSlug) : -1
-  const expandedProject = expandedIndex >= 0 ? projects[expandedIndex] : null
-  const beforeProjects = expandedIndex >= 0 ? projects.slice(0, expandedIndex) : projects
-  const afterProjects = expandedIndex >= 0 ? projects.slice(expandedIndex + 1) : []
-
-  const renderGrid = (items: Project[]) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 mb-3">
-      {items.map((project) => (
-        <CollapsedTile key={project.id} project={project} onExpand={() => setExpandedSlug(project.slug)} />
-      ))}
-    </div>
-  )
+  const expandedSet = new Set(expandedOrder)
+  const expandedProjects = expandedOrder
+    .map((slug) => projects.find((p) => p.slug === slug))
+    .filter((p): p is Project => Boolean(p))
+  const collapsedProjects = projects.filter((p) => !expandedSet.has(p.slug))
 
   return (
     <div>
@@ -323,15 +364,51 @@ export function ProjectsPage() {
         </span>
       </div>
 
-      {beforeProjects.length > 0 && renderGrid(beforeProjects)}
-      {expandedProject && (
-        <ExpandedCard
-          project={expandedProject}
-          onClose={() => setExpandedSlug(null)}
-          onContextSaved={() => setRefreshKey((k) => k + 1)}
-        />
-      )}
-      {afterProjects.length > 0 && renderGrid(afterProjects)}
+      <LayoutGroup>
+        {/* Stack of expanded cards at the top */}
+        <div className="space-y-3 mb-3">
+          <AnimatePresence initial={false}>
+            {expandedProjects.map((project) => (
+              <motion.div
+                key={project.id}
+                layout
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={SPRING}
+              >
+                <ExpandedCard
+                  project={project}
+                  onClose={() => collapse(project.slug)}
+                  onContextSaved={() => setRefreshKey((k) => k + 1)}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+
+        {/* Collapsed tile grid */}
+        <motion.div
+          layout
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2"
+          transition={SPRING}
+        >
+          <AnimatePresence initial={false}>
+            {collapsedProjects.map((project, i) => (
+              <motion.div
+                key={project.id}
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{ ...SPRING, delay: Math.min(i * 0.03, 0.3), duration: 0.2 }}
+              >
+                <CollapsedTile project={project} onExpand={() => expand(project.slug)} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </motion.div>
+      </LayoutGroup>
     </div>
   )
 }
