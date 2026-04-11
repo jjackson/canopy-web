@@ -1,20 +1,6 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { type Project, projectsApi } from '@/api/projects'
-
-function DeployBadge({ url }: { url: string }) {
-  if (!url) return <span className="text-[10px] text-stone-600">—</span>
-  const hostname = (() => {
-    try { return new URL(url).hostname.replace('www.', '') } catch { return url }
-  })()
-  return (
-    <a href={url} target="_blank" rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 text-[10px] bg-stone-800 text-stone-400 px-2 py-0.5 rounded hover:text-stone-200 transition-colors"
-      onClick={(e) => e.stopPropagation()}>
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(74,222,128,0.4)]" />
-      {hostname}
-    </a>
-  )
-}
 
 function StatusDot({ status }: { status: string }) {
   const color = status === 'active'
@@ -25,122 +11,261 @@ function StatusDot({ status }: { status: string }) {
   return <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${color}`} />
 }
 
-function ContextLine({ label, text, muted }: { label: string; text?: string; muted?: boolean }) {
-  if (!text) return null
+function DeployBadge({ url, compact }: { url: string; compact?: boolean }) {
+  if (!url) return null
+  const hostname = (() => {
+    try { return new URL(url).hostname.replace('www.', '') } catch { return url }
+  })()
   return (
-    <div className={`text-xs leading-relaxed ${muted ? 'text-stone-600' : 'text-stone-400'}`}>
-      <span className="text-stone-600 uppercase text-[9px] tracking-wide font-medium mr-2">{label}</span>
-      {text}
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      className={`inline-flex items-center gap-1.5 ${compact ? 'text-[10px]' : 'text-[11px]'} bg-stone-800 text-stone-400 px-2 py-0.5 rounded hover:text-stone-200 transition-colors max-w-[240px] overflow-hidden`}
+      onClick={(e) => e.stopPropagation()}>
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(74,222,128,0.4)] shrink-0" />
+      <span className="truncate">{hostname}</span>
+    </a>
+  )
+}
+
+function PrivateBadge() {
+  return (
+    <span className="text-[9px] text-stone-500 border border-orange-400/15 bg-orange-400/5 px-1.5 py-0.5 rounded uppercase tracking-wide">
+      private
+    </span>
+  )
+}
+
+function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () => void }) {
+  const ctx = project.latest_context || {}
+  const currentWork = ctx.current_work?.content
+  return (
+    <div
+      className="bg-stone-900 border border-stone-800 hover:border-stone-700 rounded-lg p-4 cursor-pointer transition-colors"
+      onClick={onExpand}
+    >
+      <div className="flex items-center gap-3 mb-2">
+        <StatusDot status={project.status} />
+        <span className="text-sm font-semibold text-stone-100">{project.name}</span>
+        <div className="ml-auto flex items-center gap-2">
+          {project.visibility === 'private' && <PrivateBadge />}
+          {project.deploy_url && <DeployBadge url={project.deploy_url} compact />}
+        </div>
+      </div>
+      <div className="text-xs text-stone-500 leading-relaxed line-clamp-2">
+        {currentWork || <span className="text-stone-700 italic">No context yet</span>}
+      </div>
     </div>
   )
 }
 
-function ProjectTile({ project, onContextSaved }: { project: Project; onContextSaved: () => void }) {
-  const [expanded, setExpanded] = useState(false)
-  const [editType, setEditType] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState('')
+function ContextDisplay({ label, content, onEdit }: { label: string; content?: string; onEdit: () => void }) {
+  return (
+    <div className="mb-4 group">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[9px] uppercase tracking-wide text-stone-600 font-medium">{label}</span>
+        <button onClick={onEdit}
+          className="text-stone-700 hover:text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity text-[10px]">
+          ✎ edit
+        </button>
+      </div>
+      <div className="text-xs text-stone-400 leading-relaxed">
+        {content || <span className="text-stone-700 italic">Not set</span>}
+      </div>
+    </div>
+  )
+}
+
+function ContextEditor({ contextType, current, slug, onSaved, onCancel }: {
+  contextType: string
+  current?: string
+  slug: string
+  onSaved: () => void
+  onCancel: () => void
+}) {
+  const [value, setValue] = useState(current || '')
   const [saving, setSaving] = useState(false)
-
-  const ctx = project.latest_context || {}
-
-  async function saveContext() {
-    if (!editType || !editValue.trim()) return
+  async function save() {
+    if (!value.trim()) return
     setSaving(true)
     try {
-      await projectsApi.postContext(project.slug, {
-        context_type: editType,
-        content: editValue.trim(),
+      await projectsApi.postContext(slug, {
+        context_type: contextType,
+        content: value.trim(),
         source: 'jonathan',
       })
-      setEditType(null)
-      setEditValue('')
-      onContextSaved()
+      onSaved()
     } finally {
       setSaving(false)
     }
   }
+  return (
+    <div className="mb-4">
+      <div className="text-[9px] uppercase tracking-wide text-stone-600 font-medium mb-2">
+        {contextType.replace('_', ' ')}
+      </div>
+      <textarea
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape') onCancel() }}
+        className="w-full bg-stone-950 border border-stone-700 rounded px-3 py-2 text-xs text-stone-200 placeholder:text-stone-600 focus:outline-none focus:border-orange-400/50 resize-none"
+        rows={3}
+      />
+      <div className="flex gap-2 mt-2">
+        <button onClick={save} disabled={saving}
+          className="text-[11px] px-3 py-1 rounded bg-orange-400/10 border border-orange-400/30 text-orange-400 hover:bg-orange-400/20 disabled:opacity-50 transition-colors">
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button onClick={onCancel}
+          className="text-[11px] px-3 py-1 rounded bg-stone-950 border border-stone-700 text-stone-500 hover:text-stone-300 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ExpandedCard({ project, onClose, onContextSaved }: {
+  project: Project
+  onClose: () => void
+  onContextSaved: () => void
+}) {
+  const [editingType, setEditingType] = useState<string | null>(null)
+  const [skillsExpanded, setSkillsExpanded] = useState(false)
+  const ctx = project.latest_context || {}
+  const skills = project.skills || []
 
   return (
-    <div
-      className={`bg-stone-900 border rounded-lg cursor-pointer transition-colors ${
-        expanded ? 'border-stone-700' : 'border-stone-800 hover:border-stone-700'
-      }`}
-      onClick={() => setExpanded(!expanded)}
-    >
-      <div className="p-4">
-        <div className="flex items-center gap-3 mb-2">
-          <StatusDot status={project.status} />
-          <span className="text-sm font-semibold text-stone-100">{project.name}</span>
-          <div className="ml-auto flex items-center gap-2">
-            {project.visibility === 'private' && (
-              <span className="text-[9px] text-stone-500 border border-orange-400/15 bg-orange-400/5 px-1.5 py-0.5 rounded uppercase tracking-wide">private</span>
-            )}
-            <DeployBadge url={project.deploy_url} />
-          </div>
+    <div className="bg-stone-900 border border-stone-700 rounded-xl overflow-hidden mb-3">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-stone-800">
+        <StatusDot status={project.status} />
+        <span className="text-base font-bold text-stone-100">{project.name}</span>
+        {project.visibility === 'private' && <PrivateBadge />}
+        {project.deploy_url && <DeployBadge url={project.deploy_url} />}
+        <div className="ml-auto flex items-center gap-4 text-[11px]">
+          {project.repo_url && (
+            <a href={project.repo_url} target="_blank" rel="noopener noreferrer"
+              className="text-orange-400/70 hover:text-orange-400 transition-colors"
+              onClick={(e) => e.stopPropagation()}>
+              GitHub ↗
+            </a>
+          )}
+          {project.deploy_url && (
+            <a href={project.deploy_url} target="_blank" rel="noopener noreferrer"
+              className="text-orange-400/70 hover:text-orange-400 transition-colors"
+              onClick={(e) => e.stopPropagation()}>
+              Live Site ↗
+            </a>
+          )}
+          {project.has_guide && (
+            <Link to={`/projects/${project.slug}/guide`}
+              className="text-orange-400/70 hover:text-orange-400 transition-colors"
+              onClick={(e) => e.stopPropagation()}>
+              Docs ↗
+            </Link>
+          )}
         </div>
-        <ContextLine label="now" text={ctx.current_work?.content} />
-        <ContextLine label="next" text={ctx.next_step?.content} muted />
-        {!ctx.current_work && !ctx.next_step && (
-          <div className="text-xs text-stone-700 italic">No context yet</div>
-        )}
+        <button onClick={onClose}
+          className="text-stone-700 hover:text-stone-400 text-lg ml-2">✕</button>
       </div>
 
-      {expanded && (
-        <div className="border-t border-stone-800 px-4 pb-4 pt-3" onClick={(e) => e.stopPropagation()}>
-          <div className="flex gap-4 mb-3 text-[11px]">
-            {project.repo_url && (
-              <a href={project.repo_url} target="_blank" rel="noopener noreferrer"
-                className="text-orange-400/70 hover:text-orange-400 transition-colors">
-                GitHub ↗
-              </a>
-            )}
-            {project.deploy_url && (
-              <a href={project.deploy_url} target="_blank" rel="noopener noreferrer"
-                className="text-orange-400/70 hover:text-orange-400 transition-colors">
-                Live Site ↗
-              </a>
-            )}
-          </div>
+      {/* Body — 3 columns */}
+      <div className="grid grid-cols-1 md:grid-cols-3 divide-x divide-stone-800">
+        {/* Column 1: Context */}
+        <div className="p-6">
+          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Context</div>
+          {editingType === 'current_work' ? (
+            <ContextEditor contextType="current_work" current={ctx.current_work?.content} slug={project.slug}
+              onSaved={() => { setEditingType(null); onContextSaved() }}
+              onCancel={() => setEditingType(null)} />
+          ) : (
+            <ContextDisplay label="now" content={ctx.current_work?.content}
+              onEdit={() => setEditingType('current_work')} />
+          )}
+          {editingType === 'next_step' ? (
+            <ContextEditor contextType="next_step" current={ctx.next_step?.content} slug={project.slug}
+              onSaved={() => { setEditingType(null); onContextSaved() }}
+              onCancel={() => setEditingType(null)} />
+          ) : (
+            <ContextDisplay label="next" content={ctx.next_step?.content}
+              onEdit={() => setEditingType('next_step')} />
+          )}
+        </div>
 
-          {ctx.summary && (
-            <div className="bg-stone-950 border-l-2 border-orange-400 rounded-r-lg p-3 mb-3 text-xs text-stone-400 leading-relaxed">
-              {ctx.summary.content}
-              <div className="text-[10px] text-stone-700 mt-1">
+        {/* Column 2: Latest summary */}
+        <div className="p-6">
+          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Latest summary</div>
+          {ctx.summary ? (
+            <div>
+              <div className="bg-stone-950 border-l-2 border-orange-400 rounded-r-lg p-3 text-xs text-stone-400 leading-relaxed">
+                {ctx.summary.content}
+              </div>
+              <div className="text-[10px] text-stone-700 mt-2">
                 {ctx.summary.source} · {new Date(ctx.summary.created_at).toLocaleDateString()}
               </div>
             </div>
-          )}
-
-          {editType ? (
-            <div className="flex gap-2 mt-2">
-              <input
-                type="text"
-                className="flex-1 bg-stone-950 border border-stone-700 rounded px-3 py-1.5 text-xs text-stone-200 placeholder:text-stone-600 focus:outline-none focus:border-orange-400/50"
-                placeholder={`Update ${editType === 'current_work' ? 'current work' : 'next step'}...`}
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') saveContext(); if (e.key === 'Escape') setEditType(null) }}
-                autoFocus
-              />
-              <button onClick={saveContext} disabled={saving}
-                className="text-xs px-3 py-1.5 rounded bg-orange-400/10 border border-orange-400/30 text-orange-400 hover:bg-orange-400/20 disabled:opacity-50 transition-colors">
-                {saving ? '...' : 'Save'}
-              </button>
-            </div>
           ) : (
-            <div className="flex gap-2 mt-2">
-              <button onClick={() => setEditType('current_work')}
-                className="text-[11px] px-2.5 py-1 rounded bg-stone-950 border border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-600 transition-colors">
-                Update current work
-              </button>
-              <button onClick={() => setEditType('next_step')}
-                className="text-[11px] px-2.5 py-1 rounded bg-stone-950 border border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-600 transition-colors">
-                Update next step
-              </button>
-            </div>
+            <div className="text-xs text-stone-700 italic">No summary yet</div>
           )}
         </div>
-      )}
+
+        {/* Column 3: Details + Skills */}
+        <div className="p-6">
+          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Details</div>
+          <div className="space-y-2 mb-6">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-stone-600">Repo</span>
+              {project.repo_url ? (
+                <a href={project.repo_url} target="_blank" rel="noopener noreferrer"
+                  className="text-orange-400/80 hover:text-orange-400 truncate ml-3 max-w-[180px]"
+                  onClick={(e) => e.stopPropagation()}>
+                  {project.repo_url.replace('https://github.com/', '')}
+                </a>
+              ) : <span className="text-stone-700">—</span>}
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-stone-600">Deploy</span>
+              {project.deploy_url ? (
+                <a href={project.deploy_url} target="_blank" rel="noopener noreferrer"
+                  className="text-orange-400/80 hover:text-orange-400 truncate ml-3 max-w-[180px]"
+                  onClick={(e) => e.stopPropagation()}>
+                  {(() => { try { return new URL(project.deploy_url).hostname } catch { return project.deploy_url } })()}
+                </a>
+              ) : <span className="text-stone-700">—</span>}
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-stone-600">Visibility</span>
+              <span className="text-stone-300">{project.visibility}</span>
+            </div>
+          </div>
+
+          {/* Skills (collapsible) */}
+          <div>
+            <button
+              onClick={() => setSkillsExpanded(!skillsExpanded)}
+              className="flex items-center gap-2 text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-2 hover:text-stone-400 transition-colors">
+              <span>Skills ({skills.length})</span>
+              <span>{skillsExpanded ? '▾' : '▸'}</span>
+            </button>
+            {skillsExpanded && (
+              <div className="space-y-1">
+                {skills.length === 0 ? (
+                  <div className="text-[11px] text-stone-700 italic">No skills discovered</div>
+                ) : (
+                  skills.map((skill, i) => (
+                    <div key={i} className="text-[11px] text-stone-400 py-1">
+                      <div className="font-medium text-stone-300">{skill.name}</div>
+                      {skill.description && (
+                        <div className="text-stone-600 text-[10px] line-clamp-2">{skill.description}</div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -149,6 +274,7 @@ export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedSlug, setExpandedSlug] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
@@ -168,20 +294,25 @@ export function ProjectsPage() {
   }, [refreshKey])
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64 text-stone-600 text-sm">
-        Loading projects...
-      </div>
-    )
+    return <div className="flex items-center justify-center h-64 text-stone-600 text-sm">Loading projects...</div>
+  }
+  if (error) {
+    return <div className="flex items-center justify-center h-64 text-red-400 text-sm">{error}</div>
   }
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-64 text-red-400 text-sm">
-        {error}
-      </div>
-    )
-  }
+  // Split projects: before-expanded, expanded, after-expanded
+  const expandedIndex = expandedSlug ? projects.findIndex(p => p.slug === expandedSlug) : -1
+  const expandedProject = expandedIndex >= 0 ? projects[expandedIndex] : null
+  const beforeProjects = expandedIndex >= 0 ? projects.slice(0, expandedIndex) : projects
+  const afterProjects = expandedIndex >= 0 ? projects.slice(expandedIndex + 1) : []
+
+  const renderGrid = (items: Project[]) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 mb-3">
+      {items.map((project) => (
+        <CollapsedTile key={project.id} project={project} onExpand={() => setExpandedSlug(project.slug)} />
+      ))}
+    </div>
+  )
 
   return (
     <div>
@@ -191,11 +322,16 @@ export function ProjectsPage() {
           {projects.length} projects
         </span>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-        {projects.map((project) => (
-          <ProjectTile key={project.id} project={project} onContextSaved={() => setRefreshKey((k) => k + 1)} />
-        ))}
-      </div>
+
+      {beforeProjects.length > 0 && renderGrid(beforeProjects)}
+      {expandedProject && (
+        <ExpandedCard
+          project={expandedProject}
+          onClose={() => setExpandedSlug(null)}
+          onContextSaved={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
+      {afterProjects.length > 0 && renderGrid(afterProjects)}
     </div>
   )
 }

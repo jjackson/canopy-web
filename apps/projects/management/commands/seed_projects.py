@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from apps.projects.models import Project
 
 PROJECTS = [
-    {"name": "canopy-web", "slug": "canopy-web", "repo_url": "https://github.com/jjackson/canopy-web", "deploy_url": "https://canopy.run.app", "visibility": "public", "status": "active"},
+    {"name": "canopy-web", "slug": "canopy-web", "repo_url": "https://github.com/jjackson/canopy-web", "deploy_url": "https://canopy-web-frontend-hhhi4yut3q-uc.a.run.app", "visibility": "public", "status": "active"},
     {"name": "ace", "slug": "ace", "repo_url": "https://github.com/jjackson/ace", "visibility": "public", "status": "active"},
     {"name": "ace-web", "slug": "ace-web", "repo_url": "https://github.com/jjackson/ace-web", "deploy_url": "https://labs.connect.dimagi.com/ace", "visibility": "public", "status": "active"},
     {"name": "commcare-ios", "slug": "commcare-ios", "repo_url": "https://github.com/jjackson/commcare-ios", "visibility": "public", "status": "active"},
