@@ -49,38 +49,41 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
+    /* Warm Earth dark theme — tokens tuned to match Tailwind stone-* palette
+       so shadcn UI components (Button, Input, Table, Tabs, Badge, Skeleton)
+       inherit the dark look automatically. */
+    --background: oklch(0.147 0.004 49.25);      /* ~stone-950 */
+    --foreground: oklch(0.923 0.003 48.72);      /* ~stone-100 */
+    --card: oklch(0.216 0.006 56.04);            /* ~stone-900 */
+    --card-foreground: oklch(0.923 0.003 48.72);
+    --popover: oklch(0.216 0.006 56.04);
+    --popover-foreground: oklch(0.923 0.003 48.72);
+    --primary: oklch(0.757 0.161 53.57);         /* orange-400 */
+    --primary-foreground: oklch(0.147 0.004 49.25);
+    --secondary: oklch(0.268 0.007 34.3);        /* ~stone-800 */
+    --secondary-foreground: oklch(0.923 0.003 48.72);
+    --muted: oklch(0.268 0.007 34.3);            /* ~stone-800 */
+    --muted-foreground: oklch(0.553 0.013 58.07);/* ~stone-500 */
+    --accent: oklch(0.268 0.007 34.3);
+    --accent-foreground: oklch(0.923 0.003 48.72);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(0.268 0.007 34.3);           /* ~stone-800 */
+    --input: oklch(0.374 0.01 67.56);            /* ~stone-700 */
+    --ring: oklch(0.757 0.161 53.57 / 0.4);      /* orange-400/40 */
+    --chart-1: oklch(0.757 0.161 53.57);
+    --chart-2: oklch(0.553 0.013 58.07);
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --sidebar: oklch(0.147 0.004 49.25);
+    --sidebar-foreground: oklch(0.923 0.003 48.72);
+    --sidebar-primary: oklch(0.757 0.161 53.57);
+    --sidebar-primary-foreground: oklch(0.147 0.004 49.25);
+    --sidebar-accent: oklch(0.216 0.006 56.04);
+    --sidebar-accent-foreground: oklch(0.923 0.003 48.72);
+    --sidebar-border: oklch(0.268 0.007 34.3);
+    --sidebar-ring: oklch(0.757 0.161 53.57 / 0.4);
 }
 
 .dark {
