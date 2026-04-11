@@ -57,29 +57,29 @@ function relativeTime(iso: string | null): string {
 function TrendIndicator({ trend }: { trend: Skill['eval_trend'] }) {
   switch (trend) {
     case 'improving':
-      return <span className="text-green-600 font-medium">▲</span>
+      return <span className="text-emerald-400 font-medium">▲</span>
     case 'declining':
-      return <span className="text-red-600 font-medium">▼</span>
+      return <span className="text-red-400 font-medium">▼</span>
     case 'stable':
     default:
-      return <span className="text-gray-400">—</span>
+      return <span className="text-stone-600">—</span>
   }
 }
 
 function ScoreBadge({ score }: { score: number | null }) {
   if (score == null) {
-    return <span className="text-xs text-gray-400">--</span>
+    return <span className="text-xs text-stone-600">--</span>
   }
 
   const pct = Math.round(score * 100)
   let colorClass: string
 
   if (score >= 0.8) {
-    colorClass = 'text-green-700 bg-green-50 border-green-200'
+    colorClass = 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30'
   } else if (score >= 0.5) {
-    colorClass = 'text-amber-700 bg-amber-50 border-amber-200'
+    colorClass = 'text-amber-400 bg-amber-400/10 border-amber-400/30'
   } else {
-    colorClass = 'text-red-700 bg-red-50 border-red-200'
+    colorClass = 'text-red-400 bg-red-400/10 border-red-400/30'
   }
 
   return (
@@ -110,12 +110,12 @@ function SortableHeader({
       <Button
         variant="ghost"
         size="xs"
-        className={`-ml-2 font-medium ${active ? 'text-foreground' : 'text-muted-foreground'}`}
+        className={`-ml-2 font-semibold uppercase tracking-wider text-[10px] ${active ? 'text-stone-200' : 'text-stone-500'}`}
         onClick={() => onSort(field)}
       >
         {label}
         {active ? (
-          <span className="ml-1 text-[10px]">{sortDir === 'desc' ? '↓' : '↑'}</span>
+          <span className="ml-1 text-[10px] text-orange-400">{sortDir === 'desc' ? '↓' : '↑'}</span>
         ) : null}
       </Button>
     </TableHead>
@@ -206,15 +206,20 @@ export function LeaderboardPage() {
 
   if (error) {
     return (
-      <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-400">
         {error}
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-gray-900">Leaderboard</h1>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-lg font-semibold text-stone-100">Leaderboard</h1>
+        <p className="mt-0.5 text-xs text-stone-500">
+          Skills ranked by eval score, with freshness and trend tracking.
+        </p>
+      </div>
 
       {loading && (
         <div className="space-y-2">
@@ -229,7 +234,7 @@ export function LeaderboardPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-8 text-right text-muted-foreground">#</TableHead>
+              <TableHead className="w-10 text-right">#</TableHead>
               <SortableHeader
                 label="Skill"
                 field="name"
@@ -271,13 +276,13 @@ export function LeaderboardPage() {
                 return (
                   <TableRow
                     key={skill.id}
-                    className={`cursor-pointer ${stale ? 'bg-amber-50/60' : ''}`}
+                    className={`cursor-pointer ${stale ? 'bg-amber-400/5' : ''}`}
                     onClick={() => navigate(`/skills/${skill.id}`)}
                   >
-                    <TableCell className="text-right text-xs text-gray-400 tabular-nums">
+                    <TableCell className="text-right text-xs text-stone-600 tabular-nums">
                       {idx + 1}
                     </TableCell>
-                    <TableCell className="font-medium text-gray-900">
+                    <TableCell className="font-medium text-stone-100">
                       {skill.name}
                     </TableCell>
                     <TableCell className="text-right">
@@ -286,14 +291,14 @@ export function LeaderboardPage() {
                     <TableCell className="text-right">
                       <TrendIndicator trend={skill.eval_trend} />
                     </TableCell>
-                    <TableCell className="text-right text-sm text-gray-500 tabular-nums">
+                    <TableCell className="text-right text-sm text-stone-400 tabular-nums">
                       {skill.usage_count}
                     </TableCell>
-                    <TableCell className="text-right text-xs text-gray-400">
+                    <TableCell className="text-right text-xs text-stone-500">
                       <span className="inline-flex items-center gap-1.5">
                         {relativeTime(skill.last_eval_at)}
                         {stale && (
-                          <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-[10px] px-1 py-0">
+                          <Badge variant="outline" className="text-amber-400 border-amber-400/30 bg-amber-400/10 text-[10px] px-1 py-0">
                             stale
                           </Badge>
                         )}
@@ -304,9 +309,9 @@ export function LeaderboardPage() {
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center">
-                  <p className="text-sm font-medium text-gray-900">No eval data yet</p>
-                  <p className="mt-1 text-sm text-gray-500">
+                <TableCell colSpan={6} className="h-40 text-center">
+                  <p className="text-sm font-semibold text-stone-200">No eval data yet</p>
+                  <p className="mt-1 text-sm text-stone-500">
                     Run some evals to see the leaderboard.
                   </p>
                 </TableCell>

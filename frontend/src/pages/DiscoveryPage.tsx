@@ -71,19 +71,24 @@ export function DiscoveryPage() {
 
   if (error) {
     return (
-      <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-400">
         {error}
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900">Published Skills</h1>
+        <div>
+          <h1 className="text-lg font-semibold text-stone-100">Published Skills</h1>
+          <p className="mt-0.5 text-xs text-stone-500">
+            Reusable AI skills extracted from conversations and documents.
+          </p>
+        </div>
         <Button size="sm" onClick={handleNew}>
-          New
+          New Skill
         </Button>
       </div>
 
@@ -126,13 +131,13 @@ export function DiscoveryPage() {
                   className="cursor-pointer"
                   onClick={() => navigate(`/skills/${skill.id}`)}
                 >
-                  <TableCell className="font-medium text-gray-900">
+                  <TableCell className="font-medium text-stone-100">
                     {skill.name}
                   </TableCell>
-                  <TableCell className="max-w-xs truncate text-sm text-gray-500">
+                  <TableCell className="max-w-xs truncate text-sm text-stone-500">
                     {skill.description}
                   </TableCell>
-                  <TableCell className="text-right text-sm text-gray-500">
+                  <TableCell className="text-right text-sm text-stone-400 tabular-nums">
                     {skill.usage_count}
                   </TableCell>
                   <TableCell className="text-right">
@@ -141,29 +146,29 @@ export function DiscoveryPage() {
                         {skill.eval_score.toFixed(1)}
                       </Badge>
                     ) : (
-                      <span className="text-xs text-gray-400">--</span>
+                      <span className="text-xs text-stone-600">--</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right text-xs text-gray-400">
+                  <TableCell className="text-right text-xs text-stone-500">
                     {formatDate(skill.updated_at)}
                   </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="h-32 text-center">
+                <TableCell colSpan={5} className="h-40 text-center">
                   {skills.length === 0 ? (
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">No skills yet</p>
-                      <p className="mt-1 text-sm text-gray-500">
+                    <div className="flex flex-col items-center gap-2">
+                      <p className="text-sm font-semibold text-stone-200">No skills yet</p>
+                      <p className="text-sm text-stone-500">
                         Paste a conversation to create your first reusable skill.
                       </p>
-                      <Button size="sm" className="mt-3" onClick={handleNew}>
+                      <Button size="sm" className="mt-2" onClick={handleNew}>
                         Create Skill
                       </Button>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">No skills match &ldquo;{search}&rdquo;</p>
+                    <p className="text-sm text-stone-500">No skills match &ldquo;{search}&rdquo;</p>
                   )}
                 </TableCell>
               </TableRow>

@@ -23,15 +23,15 @@ export function EvalPanel({ evalCases }: EvalPanelProps) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <div className="border-t border-gray-200">
+    <div className="border-t border-stone-800 bg-stone-950/50 max-h-64 overflow-y-auto">
       <button
         type="button"
         onClick={() => setCollapsed(!collapsed)}
-        className="flex w-full items-center gap-2 px-4 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50"
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold text-stone-500 hover:text-stone-300 hover:bg-stone-900/50 transition-colors"
       >
         <span
           className={cn(
-            'text-gray-400 transition-transform',
+            'text-stone-600 transition-transform',
             collapsed && '-rotate-90'
           )}
         >
@@ -43,7 +43,7 @@ export function EvalPanel({ evalCases }: EvalPanelProps) {
       {!collapsed && (
         <div className="px-4 pb-4 space-y-2">
           {evalCases.length === 0 && (
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-stone-600 italic">
               No eval cases yet. The AI will propose cases after analyzing your sources.
             </p>
           )}
@@ -52,23 +52,23 @@ export function EvalPanel({ evalCases }: EvalPanelProps) {
             return (
               <div
                 key={ec.name ?? i}
-                className="rounded border border-gray-200 p-3"
+                className="rounded-lg border border-stone-800 bg-stone-900 p-3"
               >
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm font-medium text-stone-100">
                   {ec.name ?? `Case ${i + 1}`}
                 </p>
                 {ec.input != null && (
                   <div className="mt-2">
-                    <span className="text-xs font-semibold text-gray-500">Input</span>
-                    <pre className="mt-0.5 max-h-28 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700 font-mono">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-stone-500">Input</span>
+                    <pre className="mt-1 max-h-28 overflow-auto rounded border border-stone-800 bg-stone-950 p-2 text-xs text-stone-400 font-mono">
                       {displayValue(ec.input)}
                     </pre>
                   </div>
                 )}
                 {expectedValue != null && (
                   <div className="mt-2">
-                    <span className="text-xs font-semibold text-gray-500">Expected Output</span>
-                    <pre className="mt-0.5 max-h-28 overflow-auto rounded bg-gray-50 p-2 text-xs text-gray-700 font-mono">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-stone-500">Expected Output</span>
+                    <pre className="mt-1 max-h-28 overflow-auto rounded border border-stone-800 bg-stone-950 p-2 text-xs text-stone-400 font-mono">
                       {displayValue(expectedValue)}
                     </pre>
                   </div>
