@@ -8,4 +8,6 @@ urlpatterns = [
     path("<slug:slug>/context/", views.project_context, name="project-context"),
     path("<slug:slug>/context/latest/", views.project_context_latest, name="project-context-latest"),
     path("<slug:slug>/guide/", views.project_guide, name="project-guide"),
+    path("<slug:slug>/actions/", views.project_actions, name="project-actions"),
+    path("<slug:slug>/actions/summary/", views.project_actions_summary, name="project-actions-summary"),
 ]

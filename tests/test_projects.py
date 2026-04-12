@@ -1,4 +1,5 @@
 import pytest
+from django.utils import timezone
 from apps.projects.models import Project, ProjectContext
 from django.test import Client
 
@@ -337,3 +338,100 @@ class TestProjectGuideAPI:
         )
         response = client.get("/api/projects/canopy-web/")
         assert response.json()["data"]["has_guide"] is True
+
+
+class TestProjectActionsAPI:
+    def test_post_action(self, client, project):
+        response = client.post(
+            "/api/projects/canopy-web/actions/",
+            data={
+                "skill_name": "code-review",
+                "session_id": "abc-123",
+                "status": "completed",
+                "started_at": "2026-04-10T12:00:00Z",
+                "completed_at": "2026-04-10T12:05:00Z",
+                "duration_ms": 300000,
+            },
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["data"]["skill_name"] == "code-review"
+        assert body["data"]["status"] == "completed"
+
+    def test_list_actions(self, client, project):
+        from apps.projects.models import ProjectAction
+        ProjectAction.objects.create(
+            project=project, skill_name="doc-regen",
+            status="completed", started_at=timezone.now(),
+        )
+        response = client.get("/api/projects/canopy-web/actions/")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["data"]) == 1
+
+    def test_filter_by_skill(self, client, project):
+        from apps.projects.models import ProjectAction
+        ProjectAction.objects.create(
+            project=project, skill_name="code-review",
+            status="completed", started_at=timezone.now(),
+        )
+        ProjectAction.objects.create(
+            project=project, skill_name="doc-regen",
+            status="completed", started_at=timezone.now(),
+        )
+        response = client.get("/api/projects/canopy-web/actions/?skill=code-review")
+        body = response.json()
+        assert len(body["data"]) == 1
+
+    def test_actions_summary(self, client, project):
+        from apps.projects.models import ProjectAction
+        ProjectAction.objects.create(
+            project=project, skill_name="code-review",
+            status="completed", started_at=timezone.now(),
+        )
+        ProjectAction.objects.create(
+            project=project, skill_name="doc-regen",
+            status="completed", started_at=timezone.now(),
+        )
+        response = client.get("/api/projects/canopy-web/actions/summary/")
+        assert response.status_code == 200
+        body = response.json()
+        assert "code-review" in body["data"]
+        assert "doc-regen" in body["data"]
+
+    def test_latest_actions_in_list(self, client, project):
+        from apps.projects.models import ProjectAction
+        ProjectAction.objects.create(
+            project=project, skill_name="code-review",
+            status="completed", started_at=timezone.now(),
+        )
+        response = client.get("/api/projects/")
+        body = response.json()
+        proj = body["data"][0]
+        assert "latest_actions" in proj
+        assert "code-review" in proj["latest_actions"]
+
+    def test_post_action_empty_skill(self, client, project):
+        response = client.post(
+            "/api/projects/canopy-web/actions/",
+            data={
+                "skill_name": "",
+                "status": "started",
+                "started_at": "2026-04-10T12:00:00Z",
+            },
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_post_action_not_found(self, client, db):
+        response = client.post(
+            "/api/projects/nonexistent/actions/",
+            data={
+                "skill_name": "x",
+                "status": "started",
+                "started_at": "2026-04-10T12:00:00Z",
+            },
+            content_type="application/json",
+        )
+        assert response.status_code == 404
