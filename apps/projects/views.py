@@ -5,8 +5,10 @@ from rest_framework.response import Response
 
 from apps.common.envelope import error_response, start_timing, success_response
 
-from .models import Project, ProjectContext, ProjectGuide
+from .models import Project, ProjectAction, ProjectContext, ProjectGuide
 from .serializers import (
+    ProjectActionCreateSerializer,
+    ProjectActionSerializer,
     ProjectContextCreateSerializer,
     ProjectContextSerializer,
     ProjectCreateSerializer,
@@ -33,7 +35,12 @@ def project_list(request):
                 "contexts",
                 queryset=ProjectContext.objects.order_by("-created_at"),
                 to_attr="_prefetched_contexts",
-            )
+            ),
+            Prefetch(
+                "actions",
+                queryset=ProjectAction.objects.order_by("-started_at"),
+                to_attr="_prefetched_actions",
+            ),
         ).all()
         serializer = ProjectListSerializer(projects, many=True)
         return Response(success_response(serializer.data))
@@ -175,6 +182,62 @@ def project_guide(request, slug):
     except ProjectGuide.DoesNotExist:
         pass
     return Response(success_response({"deleted": slug}))
+
+
+@api_view(["GET", "POST"])
+def project_actions(request, slug):
+    start_timing()
+
+    project = _get_project_or_404(slug)
+    if project is None:
+        return Response(
+            error_response("NOT_FOUND", "Project not found."),
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if request.method == "GET":
+        actions = project.actions.all()
+        skill = request.query_params.get("skill")
+        if skill:
+            actions = actions.filter(skill_name=skill)
+        serializer = ProjectActionSerializer(actions[:50], many=True)
+        return Response(success_response(serializer.data))
+
+    serializer = ProjectActionCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(project=project)
+        return Response(
+            success_response(ProjectActionSerializer(serializer.instance).data),
+            status=status.HTTP_201_CREATED,
+        )
+    return Response(
+        error_response("VALIDATION_ERROR", serializer.errors),
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+@api_view(["GET"])
+def project_actions_summary(request, slug):
+    """Returns latest action per skill for a project."""
+    start_timing()
+
+    project = _get_project_or_404(slug)
+    if project is None:
+        return Response(
+            error_response("NOT_FOUND", "Project not found."),
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    result = {}
+    for action in project.actions.order_by("-started_at"):
+        if action.skill_name not in result:
+            result[action.skill_name] = {
+                "status": action.status,
+                "started_at": action.started_at.isoformat(),
+                "completed_at": action.completed_at.isoformat() if action.completed_at else None,
+                "duration_ms": action.duration_ms,
+            }
+    return Response(success_response(result))
 
 
 @api_view(["POST"])

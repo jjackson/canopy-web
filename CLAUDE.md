@@ -76,6 +76,9 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `GET /api/projects/{slug}/context/` — List context entries
 - `GET /api/projects/{slug}/context/latest/` — Latest context per type
 - `POST /api/projects/seed/` — Bulk seed projects
+- `POST /api/projects/{slug}/actions/` — Record a skill action
+- `GET /api/projects/{slug}/actions/` — List actions (filter: ?skill=name)
+- `GET /api/projects/{slug}/actions/summary/` — Latest action per skill
 
 ### Collections
 - `POST /api/collections/` — Create collection
