@@ -3,6 +3,7 @@ import { AppLayout } from './components/AppLayout/AppLayout'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { DiscoveryPage } from './pages/DiscoveryPage'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { InsightsPage } from './pages/InsightsPage'
 import { NewCollectionPage } from './pages/NewCollectionPage'
 import { SkillDetailPage } from './pages/SkillDetailPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
@@ -15,6 +16,7 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { path: '/', element: <ProjectsPage /> },
+      { path: '/insights', element: <InsightsPage /> },
       { path: '/skills', element: <DiscoveryPage /> },
       { path: '/projects/:slug/guide', element: <ProjectGuidePage /> },
       { path: '/new', element: <NewCollectionPage /> },
