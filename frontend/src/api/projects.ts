@@ -34,6 +34,7 @@ export interface Project {
   status: string
   latest_context: Record<string, ProjectContext>
   skills: Array<{ name: string; path?: string; description?: string }>
+  latest_actions: Record<string, { status: string; started_at: string; completed_at: string | null }>
   has_guide: boolean
   created_at: string
   updated_at: string
