@@ -1,6 +1,6 @@
 import pytest
 from django.utils import timezone
-from apps.projects.models import Project, ProjectContext
+from apps.projects.models import Project, ProjectAction, ProjectContext
 from django.test import Client
 
 
@@ -435,3 +435,59 @@ class TestProjectActionsAPI:
             content_type="application/json",
         )
         assert response.status_code == 404
+
+
+class TestInsightsAPI:
+    def test_list_insights_empty(self, client, db):
+        response = client.get("/api/insights/")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert body["data"] == []
+
+    def test_list_insights_returns_only_insights(self, client, project):
+        ProjectContext.objects.create(
+            project=project, context_type="insight",
+            content="[ship_gap] ace-web has 6 commits since last deploy",
+            source="canopy:portfolio-review",
+        )
+        ProjectContext.objects.create(
+            project=project, context_type="summary",
+            content="This is a summary", source="canopy:activity-summary",
+        )
+        response = client.get("/api/insights/")
+        body = response.json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["project_slug"] == "canopy-web"
+
+    def test_list_insights_across_projects(self, client, db):
+        p1 = Project.objects.create(name="alpha", slug="alpha")
+        p2 = Project.objects.create(name="beta", slug="beta")
+        ProjectContext.objects.create(project=p1, context_type="insight", content="A", source="test")
+        ProjectContext.objects.create(project=p2, context_type="insight", content="B", source="test")
+        response = client.get("/api/insights/")
+        body = response.json()
+        assert len(body["data"]) == 2
+
+    def test_filter_by_category(self, client, project):
+        ProjectContext.objects.create(project=project, context_type="insight", content="[ship_gap] X", source="test")
+        ProjectContext.objects.create(project=project, context_type="insight", content="[hygiene] Y", source="test")
+        response = client.get("/api/insights/?category=ship_gap")
+        body = response.json()
+        assert len(body["data"]) == 1
+
+    def test_dismiss_insight(self, client, project):
+        ctx = ProjectContext.objects.create(project=project, context_type="insight", content="X", source="test")
+        response = client.delete(f"/api/insights/{ctx.id}/")
+        assert response.status_code == 200
+        assert ProjectContext.objects.filter(id=ctx.id).count() == 0
+
+    def test_dismiss_not_found(self, client, db):
+        response = client.delete("/api/insights/9999/")
+        assert response.status_code == 404
+
+    def test_default_limit(self, client, project):
+        for i in range(25):
+            ProjectContext.objects.create(project=project, context_type="insight", content=f"I{i}", source="test")
+        response = client.get("/api/insights/")
+        assert len(response.json()["data"]) == 20
