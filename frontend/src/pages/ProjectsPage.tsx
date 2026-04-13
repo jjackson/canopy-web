@@ -200,6 +200,26 @@ function ExpandedCard({ project, onClose }: {
             </div>
           </div>
 
+          {/* Last actions */}
+          {project.latest_actions && Object.keys(project.latest_actions).length > 0 && (
+            <div className="mb-6">
+              <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-2">Last actions</div>
+              <div className="space-y-1">
+                {Object.entries(project.latest_actions).map(([name, action]) => (
+                  <div key={name} className="flex items-center justify-between text-[11px]">
+                    <span className="text-stone-400 truncate mr-2">{name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-stone-600">{relativeTime(action.completed_at || action.started_at)}</span>
+                      {action.status === 'completed' && <span className="text-emerald-400">&#10003;</span>}
+                      {action.status === 'failed' && <span className="text-red-400">&#10007;</span>}
+                      {action.status === 'started' && <span className="text-orange-400">&#9679;</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Skills (collapsible) */}
           <div>
             <button
