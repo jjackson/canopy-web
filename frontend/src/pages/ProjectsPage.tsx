@@ -50,7 +50,7 @@ function PrivateBadge() {
 
 function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () => void }) {
   const ctx = project.latest_context || {}
-  const currentWork = ctx.current_work?.content
+  const summaryText = ctx.summary?.content || ctx.current_work?.content
   return (
     <div
       className="bg-stone-900 border border-stone-800 hover:border-stone-700 rounded-lg p-4 cursor-pointer transition-colors h-full"
@@ -65,85 +65,16 @@ function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () =
         </div>
       </div>
       <div className="text-xs text-stone-500 leading-relaxed line-clamp-2">
-        {currentWork || <span className="text-stone-700 italic">No context yet</span>}
+        {summaryText || <span className="text-stone-700 italic">No summary yet</span>}
       </div>
     </div>
   )
 }
 
-function ContextDisplay({ label, content, onEdit }: { label: string; content?: string; onEdit: () => void }) {
-  return (
-    <div className="mb-4 group">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-[9px] uppercase tracking-wide text-stone-600 font-medium">{label}</span>
-        <button onClick={onEdit}
-          className="text-stone-700 hover:text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity text-[10px]">
-          ✎ edit
-        </button>
-      </div>
-      <div className="text-xs text-stone-400 leading-relaxed">
-        {content || <span className="text-stone-700 italic">Not set</span>}
-      </div>
-    </div>
-  )
-}
-
-function ContextEditor({ contextType, current, slug, onSaved, onCancel }: {
-  contextType: string
-  current?: string
-  slug: string
-  onSaved: () => void
-  onCancel: () => void
-}) {
-  const [value, setValue] = useState(current || '')
-  const [saving, setSaving] = useState(false)
-  async function save() {
-    if (!value.trim()) return
-    setSaving(true)
-    try {
-      await projectsApi.postContext(slug, {
-        context_type: contextType,
-        content: value.trim(),
-        source: 'jonathan',
-      })
-      onSaved()
-    } finally {
-      setSaving(false)
-    }
-  }
-  return (
-    <div className="mb-4">
-      <div className="text-[9px] uppercase tracking-wide text-stone-600 font-medium mb-2">
-        {contextType.replace('_', ' ')}
-      </div>
-      <textarea
-        autoFocus
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Escape') onCancel() }}
-        className="w-full bg-stone-950 border border-stone-700 rounded px-3 py-2 text-xs text-stone-200 placeholder:text-stone-600 focus:outline-none focus:border-orange-400/50 resize-none"
-        rows={3}
-      />
-      <div className="flex gap-2 mt-2">
-        <button onClick={save} disabled={saving}
-          className="text-[11px] px-3 py-1 rounded bg-orange-400/10 border border-orange-400/30 text-orange-400 hover:bg-orange-400/20 disabled:opacity-50 transition-colors">
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-        <button onClick={onCancel}
-          className="text-[11px] px-3 py-1 rounded bg-stone-950 border border-stone-700 text-stone-500 hover:text-stone-300 transition-colors">
-          Cancel
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function ExpandedCard({ project, onClose, onContextSaved }: {
+function ExpandedCard({ project, onClose }: {
   project: Project
   onClose: () => void
-  onContextSaved: () => void
 }) {
-  const [editingType, setEditingType] = useState<string | null>(null)
   const [skillsExpanded, setSkillsExpanded] = useState(false)
   const ctx = project.latest_context || {}
   const skills = project.skills || []
@@ -191,30 +122,9 @@ function ExpandedCard({ project, onClose, onContextSaved }: {
 
       {/* Body — 3 columns */}
       <div className="grid grid-cols-1 md:grid-cols-3 divide-x divide-stone-800">
-        {/* Column 1: Context */}
+        {/* Column 1: Summary */}
         <div className="p-6">
-          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Context</div>
-          {editingType === 'current_work' ? (
-            <ContextEditor contextType="current_work" current={ctx.current_work?.content} slug={project.slug}
-              onSaved={() => { setEditingType(null); onContextSaved() }}
-              onCancel={() => setEditingType(null)} />
-          ) : (
-            <ContextDisplay label="now" content={ctx.current_work?.content}
-              onEdit={() => setEditingType('current_work')} />
-          )}
-          {editingType === 'next_step' ? (
-            <ContextEditor contextType="next_step" current={ctx.next_step?.content} slug={project.slug}
-              onSaved={() => { setEditingType(null); onContextSaved() }}
-              onCancel={() => setEditingType(null)} />
-          ) : (
-            <ContextDisplay label="next" content={ctx.next_step?.content}
-              onEdit={() => setEditingType('next_step')} />
-          )}
-        </div>
-
-        {/* Column 2: Latest summary */}
-        <div className="p-6">
-          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Latest summary</div>
+          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Summary</div>
           {ctx.summary ? (
             <div>
               <div className="bg-stone-950 border-l-2 border-orange-400 rounded-r-lg p-3 text-xs text-stone-400 leading-relaxed">
@@ -225,8 +135,39 @@ function ExpandedCard({ project, onClose, onContextSaved }: {
               </div>
             </div>
           ) : (
-            <div className="text-xs text-stone-700 italic">No summary yet</div>
+            <div className="text-xs text-stone-700 italic">No summary yet — run canopy:activity-summary</div>
           )}
+        </div>
+
+        {/* Column 2: Actions */}
+        <div className="p-6">
+          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Actions</div>
+          {(() => {
+            const HYGIENE_ACTIONS = ['code-review', 'doc-regen', 'doc-regeneration', 'improve', 'brief', 'patterns', 'walkthrough', 'walkthrough-eval']
+            const actions = project.latest_actions || {}
+            return (
+              <div className="space-y-2">
+                {HYGIENE_ACTIONS.map((name) => {
+                  const action = actions[name]
+                  return (
+                    <div key={name} className="flex items-center justify-between text-[11px]">
+                      <span className="text-stone-400">{name}</span>
+                      {action ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-stone-600">{relativeTime(action.completed_at || action.started_at)}</span>
+                          {action.status === 'completed' && <span className="text-emerald-400">&#10003;</span>}
+                          {action.status === 'failed' && <span className="text-red-400">&#10007;</span>}
+                          {action.status === 'started' && <span className="text-orange-400">&#9679;</span>}
+                        </div>
+                      ) : (
+                        <span className="text-stone-800">never</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </div>
 
         {/* Column 3: Details + Skills */}
@@ -347,7 +288,6 @@ export function ProjectsPage() {
   const [error, setError] = useState<string | null>(null)
   // Ordered list of slugs that are expanded; first = most-recently clicked (top of stack).
   const [expandedOrder, setExpandedOrder] = useState<string[]>([])
-  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -363,7 +303,7 @@ export function ProjectsPage() {
       }
     })()
     return () => { cancelled = true }
-  }, [refreshKey])
+  }, [])
 
   function expand(slug: string) {
     setExpandedOrder((order) => (order.includes(slug) ? order : [slug, ...order]))
@@ -411,7 +351,6 @@ export function ProjectsPage() {
                 <ExpandedCard
                   project={project}
                   onClose={() => collapse(project.slug)}
-                  onContextSaved={() => setRefreshKey((k) => k + 1)}
                 />
               </motion.div>
             ))}

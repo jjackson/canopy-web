@@ -14,20 +14,37 @@ SLUG="${REPO#*/}"
 
 echo "Scanning ${REPO} skills/ ..."
 
-# Fetch the skills/ directory listing; handle missing directory gracefully
-RESPONSE=$(gh api "repos/${REPO}/contents/skills" 2>/dev/null || echo "[]")
+# Scan multiple possible skill locations
+SKILLS_JSON=$(python3 -c "
+import subprocess, json, sys
 
-# If the response is an object (error message) instead of an array, treat as empty
-if echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if isinstance(d,list) else 1)" 2>/dev/null; then
-  SKILLS_JSON=$(echo "$RESPONSE" | python3 -c "
-import sys, json
-entries = json.load(sys.stdin)
-skills = [{'name': e['name'], 'path': 'skills/' + e['name']} for e in entries if e['type'] == 'dir']
-print(json.dumps(skills))
+repo = '${REPO}'
+skill_dirs = [
+    ('skills', 'skills/'),
+    ('plugins/canopy/skills', 'plugins/canopy/skills/'),
+    ('plugins/ace/skills', 'plugins/ace/skills/'),
+]
+
+all_skills = []
+for api_path, prefix in skill_dirs:
+    try:
+        result = subprocess.run(
+            ['gh', 'api', f'repos/{repo}/contents/{api_path}'],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            continue
+        entries = json.loads(result.stdout)
+        if not isinstance(entries, list):
+            continue
+        for e in entries:
+            if e['type'] == 'dir':
+                all_skills.append({'name': e['name'], 'path': prefix + e['name']})
+    except Exception:
+        continue
+
+print(json.dumps(all_skills))
 ")
-else
-  SKILLS_JSON="[]"
-fi
 
 COUNT=$(echo "$SKILLS_JSON" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
 echo "Found ${COUNT} skills in ${REPO}"
