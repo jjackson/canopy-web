@@ -15,6 +15,7 @@ urlpatterns = [
     path("api/skills/", include("apps.skills.urls")),
     path("api/evals/", include("apps.evals.urls")),
     path("api/insights/", views_insights.insights_list, name="insights-list"),
+    path("api/insights/clear/", views_insights.insights_clear, name="insights-clear"),
     path("api/insights/<int:pk>/", views_insights.insight_dismiss, name="insight-dismiss"),
     path("api/projects/", include("apps.projects.urls")),
     path("api/ai/", include("apps.common.urls")),
