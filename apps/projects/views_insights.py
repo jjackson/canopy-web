@@ -27,6 +27,19 @@ def insights_list(request):
 
 
 @api_view(["DELETE"])
+def insights_clear(request):
+    """Clear all insights (or filter by source). Used before regenerating."""
+    start_timing()
+    qs = ProjectContext.objects.filter(context_type="insight")
+    source = request.query_params.get("source")
+    if source:
+        qs = qs.filter(source=source)
+    count = qs.count()
+    qs.delete()
+    return Response(success_response({"cleared": count}))
+
+
+@api_view(["DELETE"])
 def insight_dismiss(request, pk):
     start_timing()
     try:
