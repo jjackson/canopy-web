@@ -176,8 +176,8 @@ export function SettingsPage() {
         </div>
       )}
 
-      {/* Success state */}
-      {(step === 'complete' || aiStatus?.ready) && (
+      {/* Success state — only after completing CLI auth flow, not for general readiness */}
+      {step === 'complete' && aiStatus?.backend === 'cli' && (
         <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4 space-y-1">
           <p className="text-sm font-semibold text-emerald-400">Authenticated</p>
           {tokenPreview && (
