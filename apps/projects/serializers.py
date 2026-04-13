@@ -120,3 +120,12 @@ class ProjectActionCreateSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Skill name cannot be empty.")
         return value
+
+
+class InsightSerializer(serializers.ModelSerializer):
+    project_slug = serializers.CharField(source="project.slug", read_only=True)
+    project_name = serializers.CharField(source="project.name", read_only=True)
+
+    class Meta:
+        model = ProjectContext
+        fields = ["id", "project_slug", "project_name", "context_type", "content", "source", "created_at"]

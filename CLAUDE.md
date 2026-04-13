@@ -59,6 +59,7 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/skills/:skillId` — Skill detail + eval history
 - `/leaderboard` — Eval improvement leaderboard
 - `/guide` — Interactive walkthrough ("Try It Now" sample flow + adapter reference)
+- `/insights` — Cross-portfolio AI insights feed
 - `/settings` — AI backend status, switch backends, headless Claude CLI auth
 - `/api/` — REST API
 - `/admin/` — Django admin
@@ -79,6 +80,10 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `POST /api/projects/{slug}/actions/` — Record a skill action
 - `GET /api/projects/{slug}/actions/` — List actions (filter: ?skill=name)
 - `GET /api/projects/{slug}/actions/summary/` — Latest action per skill
+
+### Insights
+- `GET /api/insights/` — List all insights across projects (filter: ?category=ship_gap)
+- `DELETE /api/insights/{id}/` — Dismiss an insight
 
 ### Collections
 - `POST /api/collections/` — Create collection

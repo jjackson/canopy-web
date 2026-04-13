@@ -5,6 +5,7 @@ import { api } from '@/api/client'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Projects' },
+  { path: '/insights', label: 'Insights' },
   { path: '/skills', label: 'Skills' },
   { path: '/leaderboard', label: 'Leaderboard' },
   { path: '/guide', label: 'Guide' },
