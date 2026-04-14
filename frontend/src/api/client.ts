@@ -1,13 +1,59 @@
 const BASE = '/api'
 
+function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)
+  return match ? decodeURIComponent(match[1]) : ''
+}
+
+function redirectToLogin(): never {
+  const next = encodeURIComponent(window.location.pathname + window.location.search)
+  window.location.href = `/accounts/google/login/?next=${next}`
+  // window.location.href is async; throw so callers don't see an undefined return.
+  throw new Error('Redirecting to login')
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method || 'GET').toUpperCase()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string> | undefined),
+  }
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+    const token = getCsrfToken()
+    if (token) headers['X-CSRFToken'] = token
+  }
+
   const resp = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    credentials: 'same-origin',
     ...options,
+    headers,
   })
+
+  if (resp.status === 401) {
+    redirectToLogin()
+  }
+
   const data = await resp.json()
   if (!data.success) throw new Error(data.error?.message || 'Request failed')
   return data.data
+}
+
+async function requestRaw(path: string, options?: RequestInit): Promise<Response> {
+  const method = (options?.method || 'GET').toUpperCase()
+  const headers: Record<string, string> = {
+    ...(options?.headers as Record<string, string> | undefined),
+  }
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+    const token = getCsrfToken()
+    if (token) headers['X-CSRFToken'] = token
+  }
+  return fetch(`${BASE}${path}`, { credentials: 'same-origin', ...options, headers })
+}
+
+export type MeResponse = {
+  email: string
+  name: string
+  avatar_url: string
 }
 
 export const api = {
@@ -37,6 +83,15 @@ export const api = {
       `/workspace/analyze/${collectionId}/`,
       { method: 'POST' },
     ),
+
+  // Auth / session
+  bootstrapCsrf: () => request<{ ok: boolean }>('/csrf/'),
+  me: async (): Promise<MeResponse | null> => {
+    const resp = await requestRaw('/me/')
+    if (resp.status === 401) return null
+    const json = await resp.json()
+    return json as MeResponse
+  },
 
   // AI backend
   getAiStatus: () => request<{

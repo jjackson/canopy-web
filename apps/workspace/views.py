@@ -8,7 +8,6 @@ import json
 import logging
 
 from django.http import JsonResponse, StreamingHttpResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.collections.models import Collection
@@ -25,7 +24,6 @@ from .stream import stream_re_proposal, stream_workspace_analysis
 logger = logging.getLogger(__name__)
 
 
-@csrf_exempt
 @require_POST
 def start_workspace(request, collection_id):
     """
@@ -99,7 +97,6 @@ def workspace_detail(request, session_id):
     return JsonResponse(success_response(data))
 
 
-@csrf_exempt
 @require_http_methods(["PATCH"])
 def edit_skill(request, session_id):
     """
@@ -162,7 +159,6 @@ def edit_skill(request, session_id):
     return JsonResponse(success_response(data))
 
 
-@csrf_exempt
 @require_POST
 def publish_skill(request, session_id):
     """
@@ -257,7 +253,6 @@ def publish_skill(request, session_id):
     return JsonResponse(success_response(data), status=201)
 
 
-@csrf_exempt
 @require_POST
 def analyze_workspace(request, collection_id):
     """

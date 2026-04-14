@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { api } from '@/api/client'
+import { useAuth } from '@/auth/AuthProvider'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Projects' },
@@ -135,6 +136,65 @@ function AiStatusBadge() {
   )
 }
 
+function UserChip() {
+  const auth = useAuth()
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  if (auth.status !== 'authenticated') return null
+
+  const csrfToken = (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? '')
+  const initials = (auth.user.name || auth.user.email).slice(0, 1).toUpperCase()
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 rounded-full border border-stone-800 bg-stone-900 pl-1 pr-3 py-1 hover:bg-stone-800"
+      >
+        {auth.user.avatar_url ? (
+          <img src={auth.user.avatar_url} alt="" className="h-6 w-6 rounded-full" />
+        ) : (
+          <span className="h-6 w-6 rounded-full bg-orange-500 text-white text-xs font-semibold flex items-center justify-center">
+            {initials}
+          </span>
+        )}
+        <span className="text-xs text-stone-300 max-w-[12rem] truncate">{auth.user.email}</span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-stone-700 bg-stone-900 shadow-lg z-50">
+          <div className="px-3 py-2 border-b border-stone-800 text-xs text-stone-400">
+            Signed in as
+            <div className="text-stone-200 truncate">{auth.user.email}</div>
+          </div>
+          <form method="post" action="/accounts/logout/">
+            <input type="hidden" name="csrfmiddlewaretoken" value={decodeURIComponent(csrfToken)} />
+            <button
+              type="submit"
+              className="w-full text-left px-3 py-2 text-sm text-stone-200 hover:bg-stone-800"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function AppLayout() {
   const location = useLocation()
   return (
@@ -156,6 +216,7 @@ export function AppLayout() {
               ))}
             </nav>
             <AiStatusBadge />
+            <UserChip />
           </div>
         </div>
       </header>
