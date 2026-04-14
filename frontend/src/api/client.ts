@@ -84,8 +84,10 @@ export const api = {
       { method: 'POST' },
     ),
 
-  // Auth / session
-  bootstrapCsrf: () => request<{ ok: boolean }>('/csrf/'),
+  // Auth / session — these endpoints return plain JSON (not the success envelope).
+  bootstrapCsrf: async (): Promise<void> => {
+    await requestRaw('/csrf/')
+  },
   me: async (): Promise<MeResponse | null> => {
     const resp = await requestRaw('/me/')
     if (resp.status === 401) return null
