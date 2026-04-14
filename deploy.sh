@@ -8,6 +8,7 @@ SQL_INSTANCE="${PROJECT_ID}:${REGION}:canopy-web-db"
 SERVICE_NAME="canopy-web"
 TAG="${1:-latest}"
 SKIP_TESTS="${SKIP_TESTS:-0}"
+REQUIRE_AUTH_FLAG="${REQUIRE_AUTH:-True}"
 
 if [ "${SKIP_TESTS}" = "1" ]; then
   echo "==> SKIP_TESTS=1, skipping pre-deploy verification"
@@ -42,7 +43,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --set-env-vars="DJANGO_SETTINGS_MODULE=config.settings.production" \
   --set-env-vars="AI_BACKEND=api" \
   --set-env-vars="AUTH_ALLOWED_EMAIL_DOMAIN=dimagi.com" \
-  --set-env-vars="REQUIRE_AUTH=True" \
+  --set-env-vars="REQUIRE_AUTH=${REQUIRE_AUTH_FLAG}" \
   --set-secrets="SECRET_KEY=django-secret-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=canopy-db-url:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest" \
   --allow-unauthenticated \
   --quiet

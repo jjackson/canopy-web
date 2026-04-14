@@ -32,7 +32,8 @@ function DeployBadge({ url, compact }: { url: string; compact?: boolean }) {
   })()
   return (
     <a href={url} target="_blank" rel="noopener noreferrer"
-      className={`inline-flex items-center gap-1.5 ${compact ? 'text-[10px]' : 'text-[11px]'} bg-stone-800 text-stone-400 px-2 py-0.5 rounded hover:text-stone-200 transition-colors max-w-[240px] overflow-hidden`}
+      title={hostname}
+      className={`flex items-center gap-1.5 min-w-0 ${compact ? 'text-[10px] max-w-[110px]' : 'text-[11px] max-w-[240px]'} bg-stone-800 text-stone-400 px-2 py-0.5 rounded hover:text-stone-200 transition-colors overflow-hidden`}
       onClick={(e) => e.stopPropagation()}>
       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(74,222,128,0.4)] shrink-0" />
       <span className="truncate">{hostname}</span>
@@ -56,10 +57,10 @@ function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () =
       className="bg-stone-900 border border-stone-800 hover:border-stone-700 rounded-lg p-4 cursor-pointer transition-colors h-full"
       onClick={onExpand}
     >
-      <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center gap-3 mb-2 min-w-0">
         <StatusDot status={project.status} />
-        <span className="text-sm font-semibold text-stone-100">{project.name}</span>
-        <div className="ml-auto flex items-center gap-2">
+        <span className="text-sm font-semibold text-stone-100 truncate min-w-0">{project.name}</span>
+        <div className="ml-auto flex items-center gap-2 min-w-0 shrink">
           {project.visibility === 'private' && <PrivateBadge />}
           {project.deploy_url && <DeployBadge url={project.deploy_url} compact />}
         </div>
