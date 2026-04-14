@@ -31,3 +31,6 @@ media/
 # Node (frontend)
 node_modules/
 .gstack/
+
+# Claude Code local state
+.claude/
