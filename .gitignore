@@ -31,3 +31,7 @@ media/
 # Node (frontend)
 node_modules/
 .gstack/
+
+# Claude Code local state (only ignore ephemeral lock files; walkthroughs are tracked)
+.claude/scheduled_tasks.lock
+.claude/tasks/
