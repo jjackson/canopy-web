@@ -58,23 +58,14 @@ class LoginRequiredMiddleware:
 
         # Bearer-token bypass for a narrow set of machine write endpoints.
         expected_token = getattr(settings, "WORKBENCH_WRITE_TOKEN", "")
-        writable = _is_token_writable_path(request.path)
-        provided = _extract_bearer_token(request)
-        if expected_token and writable:
+        if expected_token and _is_token_writable_path(request.path):
+            provided = _extract_bearer_token(request)
             if provided and provided == expected_token:
                 request._workbench_token_auth = True
                 request._dont_enforce_csrf_checks = True
                 return self.get_response(request)
 
         if request.path.startswith("/api/"):
-            # Temporary diagnostic header (safe — only length + prefix, never the value)
-            token_len = len(expected_token) if expected_token else 0
-            provided_len = len(provided) if provided else 0
-            resp = JsonResponse({"detail": "Authentication required"}, status=401)
-            resp["X-Debug-Writable"] = str(writable)
-            resp["X-Debug-Expected-Len"] = str(token_len)
-            resp["X-Debug-Provided-Len"] = str(provided_len)
-            resp["X-Debug-Match"] = str(bool(expected_token and provided and provided == expected_token))
-            return resp
+            return JsonResponse({"detail": "Authentication required"}, status=401)
 
         return redirect(f"{settings.LOGIN_URL}?next={request.path}")
