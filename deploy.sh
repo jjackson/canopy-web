@@ -44,7 +44,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --set-env-vars="AI_BACKEND=api" \
   --set-env-vars="AUTH_ALLOWED_EMAIL_DOMAIN=dimagi.com" \
   --set-env-vars="REQUIRE_AUTH=${REQUIRE_AUTH_FLAG}" \
-  --set-secrets="SECRET_KEY=django-secret-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=canopy-db-url:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest" \
+  --set-secrets="SECRET_KEY=django-secret-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=canopy-db-url:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,WORKBENCH_WRITE_TOKEN=workbench-write-token:latest" \
   --allow-unauthenticated \
   --quiet
 
