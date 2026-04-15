@@ -159,6 +159,12 @@ AUTH_ALLOWED_EMAIL_DOMAIN = env("AUTH_ALLOWED_EMAIL_DOMAIN", default="dimagi.com
 # Whether LoginRequiredMiddleware enforces auth. Default on; toggle off during rollout.
 REQUIRE_AUTH = env.bool("REQUIRE_AUTH", default=True)
 
+# Shared-secret Bearer token that lets machine callers (e.g. the canopy
+# post_tool_use hook) write to a narrow set of /api/projects/*/actions/
+# and /api/projects/*/context/ endpoints without Google OAuth. Empty
+# disables the bypass entirely.
+WORKBENCH_WRITE_TOKEN = os.environ.get("WORKBENCH_WRITE_TOKEN", "")
+
 # AI Backend: "api" (direct Anthropic SDK) or "cli" (claude code CLI)
 AI_BACKEND = env("AI_BACKEND", default="api")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")

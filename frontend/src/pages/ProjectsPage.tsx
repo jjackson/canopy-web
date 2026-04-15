@@ -35,7 +35,7 @@ function DeployBadge({ url, compact }: { url: string; compact?: boolean }) {
       title={hostname}
       className={`flex items-center gap-1.5 min-w-0 ${compact ? 'text-[10px] max-w-[110px]' : 'text-[11px] max-w-[240px]'} bg-stone-800 text-stone-400 px-2 py-0.5 rounded hover:text-stone-200 transition-colors overflow-hidden`}
       onClick={(e) => e.stopPropagation()}>
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(74,222,128,0.4)] shrink-0" />
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse-slow shadow-[0_0_4px_rgba(74,222,128,0.4)]" />
       <span className="truncate">{hostname}</span>
     </a>
   )
@@ -52,9 +52,16 @@ function PrivateBadge() {
 function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () => void }) {
   const ctx = project.latest_context || {}
   const summaryText = ctx.summary?.content || ctx.current_work?.content
+  const summaryDate = ctx.summary?.created_at
+  const isStale = summaryDate
+    ? (Date.now() - new Date(summaryDate).getTime()) / (1000 * 60 * 60 * 24) > 7
+    : false
+  const borderClass = isStale
+    ? 'border border-l-2 border-stone-800 border-l-amber-400/30 hover:border-stone-700 hover:border-l-amber-400/50'
+    : 'border border-stone-800 hover:border-stone-700'
   return (
     <div
-      className="bg-stone-900 border border-stone-800 hover:border-stone-700 rounded-lg p-4 cursor-pointer transition-colors h-full"
+      className={`bg-stone-900 ${borderClass} rounded-lg p-4 cursor-pointer transition-colors h-full`}
       onClick={onExpand}
     >
       <div className="flex items-center gap-3 mb-2 min-w-0">
