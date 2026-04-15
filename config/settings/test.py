@@ -18,3 +18,7 @@ DATABASES = {
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
+
+# Default tests to unauthenticated access so existing suites keep passing.
+# Auth-specific tests override this per-test via settings().
+REQUIRE_AUTH = False

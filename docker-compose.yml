@@ -10,7 +10,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  backend:
+  app:
     build: .
     ports:
       - "9100:8000"
@@ -19,21 +19,16 @@ services:
       AI_BACKEND: ${AI_BACKEND:-cli}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      AUTH_ALLOWED_EMAIL_DOMAIN: ${AUTH_ALLOWED_EMAIL_DOMAIN:-dimagi.com}
+      REQUIRE_AUTH: ${REQUIRE_AUTH:-True}
       DEBUG: "true"
     depends_on:
       - db
     volumes:
       - .:/app
       - claude-home:/root/claude-data  # Persist Claude CLI auth across rebuilds
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    ports:
-      - "9101:3000"
-    depends_on:
-      - backend
 
 volumes:
   pgdata:

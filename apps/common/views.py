@@ -3,7 +3,6 @@ import json
 
 from django.conf import settings
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from .envelope import error_response, start_timing, success_response
@@ -40,7 +39,6 @@ def ai_status(request):
         }))
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def ai_switch(request):
     """POST /api/ai/switch/ — switch AI backend between 'api' and 'cli'."""
@@ -68,7 +66,6 @@ def ai_switch(request):
 # ── Auth flow endpoints (for CLI backend in Docker) ─────────────────
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def auth_start(request):
     """POST /api/ai/auth/start/ — begin setup-token flow, return auth URL."""
@@ -87,7 +84,6 @@ def auth_start(request):
         return JsonResponse(error_response("auth_start_failed", str(e)), status=500)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def auth_complete(request):
     """POST /api/ai/auth/complete/ — send pasted code, get back OAuth token."""
