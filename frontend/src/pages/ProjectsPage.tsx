@@ -14,11 +14,7 @@ const HYGIENE_ACTIONS: Array<{ key: string; label: string }> = [
   { key: 'code-review', label: 'code-review' },
   { key: 'canopy:doc-regen', label: 'doc-regen' },
   { key: 'canopy:improve', label: 'improve' },
-  { key: 'canopy:brief', label: 'brief' },
-  { key: 'canopy:patterns', label: 'patterns' },
-  { key: 'canopy:walkthrough', label: 'walkthrough' },
-  { key: 'canopy:walkthrough-eval', label: 'walkthrough-eval' },
-  { key: 'canopy:session-review', label: 'session-review' },
+  { key: 'canopy:pm-scout', label: 'pm-scout' },
 ]
 
 function relativeTime(iso: string): string {
