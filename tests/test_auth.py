@@ -165,6 +165,22 @@ def test_adapter_case_insensitive(rf):
     adapter.pre_social_login(request, sociallogin)
 
 
+@override_settings(AUTH_ALLOWED_EMAIL_DOMAIN="dimagi.com")
+def test_rejection_page_shows_email_domain_and_contact(rf):
+    """The rejection response must tell the user their email, the allowed
+    domain, and a way to request access — otherwise it's a dead end."""
+    adapter = CustomSocialAccountAdapter()
+    request = rf.get("/accounts/google/login/callback/")
+    sociallogin = _make_social_login("mallory@gmail.com")
+    with pytest.raises(ImmediateHttpResponse) as exc:
+        adapter.pre_social_login(request, sociallogin)
+    body = exc.value.response.content.decode()
+    assert "mallory@gmail.com" in body
+    assert "dimagi.com" in body
+    assert "mailto:jjackson@dimagi.com" in body
+    assert "accounts.google.com/Logout" in body
+
+
 # ──────────────────────────────────────────────────────────────────────
 # CSRF enforcement on state-mutating endpoints
 # ──────────────────────────────────────────────────────────────────────
