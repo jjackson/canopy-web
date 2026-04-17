@@ -120,6 +120,9 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `POST /api/ai/auth/complete/` — Submit OAuth code
 - `GET /api/ai/auth/poll/` — Poll auth status
 
+### Debug access (`apps/common/views_debug`)
+- `POST /api/debug/mint-session/` — authenticated user mints a short-lived Django session cookie (body: `{ttl_seconds: int}`, clamped to 60s–1w). Returns cookie + curl example. Used to hand access to an AI assistant without going through OAuth. UI lives at `/settings` → "Debug access".
+
 ## Design Decisions
 
 - APP UI: dense, readable, tables not cards
