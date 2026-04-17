@@ -3,6 +3,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path("", views.workspace_list, name="workspace-list"),
     path("start/<int:collection_id>/", views.start_workspace, name="start-workspace"),
     path("analyze/<int:collection_id>/", views.analyze_workspace, name="analyze-workspace"),
     path("<int:session_id>/", views.workspace_detail, name="workspace-detail"),

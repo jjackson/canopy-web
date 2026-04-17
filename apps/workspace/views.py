@@ -24,6 +24,56 @@ from .stream import stream_re_proposal, stream_workspace_analysis
 logger = logging.getLogger(__name__)
 
 
+@require_GET
+def workspace_list(request):
+    """
+    List workspace sessions, ordered by most recently updated.
+
+    GET /api/workspace/
+    Query params:
+        status: filter by session status (created, analyzing, proposed, editing, testing, published)
+        collection: filter by collection ID
+        limit: max results (default 50, max 200)
+    """
+    start_timing()
+
+    qs = WorkspaceSession.objects.select_related("collection").order_by("-updated_at")
+
+    status_filter = request.GET.get("status")
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+
+    collection_id = request.GET.get("collection")
+    if collection_id:
+        try:
+            qs = qs.filter(collection_id=int(collection_id))
+        except ValueError:
+            return JsonResponse(
+                error_response("VALIDATION_ERROR", "'collection' must be an integer."),
+                status=400,
+            )
+
+    try:
+        limit = min(int(request.GET.get("limit", 50)), 200)
+    except ValueError:
+        limit = 50
+
+    sessions = list(qs[:limit])
+    data = [
+        {
+            "id": s.pk,
+            "collection_id": s.collection_id,
+            "collection_name": s.collection.name if s.collection else None,
+            "status": s.status,
+            "skill_name": (s.proposed_approach or {}).get("name") or None,
+            "created_at": s.created_at.isoformat(),
+            "updated_at": s.updated_at.isoformat(),
+        }
+        for s in sessions
+    ]
+    return JsonResponse(success_response(data))
+
+
 @require_POST
 def start_workspace(request, collection_id):
     """

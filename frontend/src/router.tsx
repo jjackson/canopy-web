@@ -1,6 +1,7 @@
 import { createBrowserRouter } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout/AppLayout'
 import { WorkspacePage } from './pages/WorkspacePage'
+import { WorkspacesPage } from './pages/WorkspacesPage'
 import { DiscoveryPage } from './pages/DiscoveryPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { path: '/skills', element: <DiscoveryPage /> },
       { path: '/projects/:slug/guide', element: <ProjectGuidePage /> },
       { path: '/new', element: <NewCollectionPage /> },
+      { path: '/workspaces', element: <WorkspacesPage /> },
       { path: '/workspace/:sessionId', element: <WorkspacePage /> },
       { path: '/skills/:skillId', element: <SkillDetailPage /> },
       { path: '/leaderboard', element: <LeaderboardPage /> },
