@@ -188,6 +188,152 @@ export function SettingsPage() {
           </p>
         </div>
       )}
+
+      <DebugAccessPanel />
     </div>
   )
+}
+
+type Mint = Awaited<ReturnType<typeof api.mintDebugSession>>
+
+const TTL_OPTIONS: Array<{ label: string; seconds: number }> = [
+  { label: '1 hour', seconds: 60 * 60 },
+  { label: '24 hours', seconds: 24 * 60 * 60 },
+  { label: '1 week', seconds: 7 * 24 * 60 * 60 },
+]
+
+function DebugAccessPanel() {
+  const [mint, setMint] = useState<Mint | null>(null)
+  const [minting, setMinting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [ttl, setTtl] = useState<number>(24 * 60 * 60)
+  const [copied, setCopied] = useState<string | null>(null)
+
+  async function handleMint() {
+    setMinting(true)
+    setError(null)
+    setCopied(null)
+    try {
+      const result = await api.mintDebugSession(ttl)
+      setMint(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mint session')
+    } finally {
+      setMinting(false)
+    }
+  }
+
+  async function copy(text: string, key: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(key)
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500)
+    } catch {
+      // ignore
+    }
+  }
+
+  const expiresRelative = mint
+    ? formatExpiry(new Date(mint.expires_at))
+    : null
+
+  return (
+    <div className="rounded-xl border border-stone-800 bg-stone-900 p-5 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-stone-100">Debug access</h2>
+        <p className="mt-1 text-sm text-stone-500">
+          Mint a short-lived session cookie you can hand to an AI assistant
+          (or any HTTP client). It authenticates as you, for the TTL you pick.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-stone-500">Valid for:</span>
+        <div className="flex gap-1">
+          {TTL_OPTIONS.map((opt) => (
+            <button
+              key={opt.seconds}
+              type="button"
+              onClick={() => setTtl(opt.seconds)}
+              className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                ttl === opt.seconds
+                  ? 'bg-orange-400/10 border-orange-400/30 text-orange-400'
+                  : 'bg-stone-950 border-stone-800 text-stone-500 hover:text-stone-300 hover:border-stone-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto">
+          <Button size="sm" onClick={handleMint} disabled={minting}>
+            {minting ? 'Minting…' : mint ? 'Mint another' : 'Mint session cookie'}
+          </Button>
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {mint && (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-300/80">
+            <strong className="text-amber-300">Treat this like a password.</strong>{' '}
+            Anyone with this cookie has your access until {expiresRelative}.
+          </div>
+
+          <CopyBlock
+            label="Cookie"
+            value={`${mint.cookie_name}=${mint.cookie_value}`}
+            copied={copied === 'cookie'}
+            onCopy={() =>
+              copy(`${mint.cookie_name}=${mint.cookie_value}`, 'cookie')
+            }
+          />
+
+          <CopyBlock
+            label="curl example"
+            value={mint.curl_example}
+            copied={copied === 'curl'}
+            onCopy={() => copy(mint.curl_example, 'curl')}
+          />
+
+          <div className="text-[11px] text-stone-600">
+            Minted for {mint.email} · expires {expiresRelative} ({new Date(mint.expires_at).toLocaleString()})
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CopyBlock({
+  label, value, copied, onCopy,
+}: { label: string; value: string; copied: boolean; onCopy: () => void }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] uppercase tracking-wider text-stone-600 font-semibold">{label}</span>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre className="bg-stone-950 border border-stone-800 rounded-lg p-3 text-xs text-stone-300 font-mono overflow-x-auto whitespace-pre-wrap break-all">
+        {value}
+      </pre>
+    </div>
+  )
+}
+
+function formatExpiry(date: Date): string {
+  const diffMs = date.getTime() - Date.now()
+  if (diffMs <= 0) return 'expired'
+  const hours = Math.round(diffMs / (1000 * 60 * 60))
+  if (hours < 1) return 'in <1 hour'
+  if (hours < 48) return `in ${hours}h`
+  const days = Math.round(hours / 24)
+  return `in ${days}d`
 }

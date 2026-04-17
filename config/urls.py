@@ -22,6 +22,7 @@ urlpatterns = [
     path("api/insights/<int:pk>/", views_insights.insight_dismiss, name="insight-dismiss"),
     path("api/projects/", include("apps.projects.urls")),
     path("api/ai/", include("apps.common.urls")),
+    path("api/debug/", include("apps.common.urls_debug")),
     # Catch-all: serve the SPA for any non-API route (last).
     re_path(r"^(?!api/|admin/|accounts/|health/|static/).*$", spa_view, name="spa"),
 ]

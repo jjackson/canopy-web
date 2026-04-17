@@ -130,4 +130,19 @@ export const api = {
   authPoll: () => request<{
     active: boolean; authenticated: boolean; elapsed_seconds?: number;
   }>('/ai/auth/poll/'),
+
+  // Debug access — mints a session cookie an agent can use on your behalf.
+  mintDebugSession: (ttlSeconds?: number) =>
+    request<{
+      cookie_name: string
+      cookie_value: string
+      origin: string
+      expires_at: string
+      ttl_seconds: number
+      email: string
+      curl_example: string
+    }>('/debug/mint-session/', {
+      method: 'POST',
+      body: JSON.stringify(ttlSeconds ? { ttl_seconds: ttlSeconds } : {}),
+    }),
 }
