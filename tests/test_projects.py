@@ -491,3 +491,128 @@ class TestInsightsAPI:
             ProjectContext.objects.create(project=project, context_type="insight", content=f"I{i}", source="test")
         response = client.get("/api/insights/")
         assert len(response.json()["data"]) == 20
+
+
+class TestBatchContextAPI:
+    def test_batch_creates_across_projects(self, client, db):
+        Project.objects.create(name="alpha", slug="alpha")
+        Project.objects.create(name="beta", slug="beta")
+        response = client.post(
+            "/api/projects/batch-context/",
+            data={
+                "updates": {
+                    "alpha": [{"context_type": "summary", "content": "A1", "source": "test"}],
+                    "beta": [
+                        {"context_type": "summary", "content": "B1", "source": "test"},
+                        {"context_type": "next_step", "content": "B2", "source": "test"},
+                    ],
+                }
+            },
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["data"]["total_created"] == 3
+        assert body["data"]["total_errors"] == 0
+        assert body["data"]["results"]["alpha"]["created"] == 1
+        assert body["data"]["results"]["beta"]["created"] == 2
+        assert ProjectContext.objects.filter(project__slug="alpha").count() == 1
+        assert ProjectContext.objects.filter(project__slug="beta").count() == 2
+
+    def test_batch_partial_success_unknown_slug(self, client, project):
+        response = client.post(
+            "/api/projects/batch-context/",
+            data={
+                "updates": {
+                    "canopy-web": [{"context_type": "summary", "content": "Good", "source": "test"}],
+                    "unknown": [{"context_type": "summary", "content": "X", "source": "test"}],
+                }
+            },
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["data"]["results"]["canopy-web"]["created"] == 1
+        assert body["data"]["results"]["unknown"]["created"] == 0
+        assert body["data"]["results"]["unknown"]["errors"][0]["code"] == "NOT_FOUND"
+        assert body["data"]["total_created"] == 1
+        assert body["data"]["total_errors"] == 1
+
+    def test_batch_entry_validation_error(self, client, project):
+        response = client.post(
+            "/api/projects/batch-context/",
+            data={
+                "updates": {
+                    "canopy-web": [
+                        {"context_type": "summary", "content": "Valid", "source": "test"},
+                        {"context_type": "note", "content": "   ", "source": "test"},
+                    ]
+                }
+            },
+            content_type="application/json",
+        )
+        body = response.json()
+        assert body["data"]["results"]["canopy-web"]["created"] == 1
+        assert len(body["data"]["results"]["canopy-web"]["errors"]) == 1
+
+    def test_batch_invalid_shape(self, client, db):
+        response = client.post(
+            "/api/projects/batch-context/",
+            data={"updates": "not a dict"},
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_batch_empty_updates(self, client, db):
+        response = client.post(
+            "/api/projects/batch-context/",
+            data={"updates": {}},
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["total_created"] == 0
+
+
+class TestBatchActionsAPI:
+    def test_batch_actions_across_projects(self, client, db):
+        Project.objects.create(name="alpha", slug="alpha")
+        Project.objects.create(name="beta", slug="beta")
+        response = client.post(
+            "/api/projects/batch-actions/",
+            data={
+                "updates": {
+                    "alpha": [{
+                        "skill_name": "code-review",
+                        "status": "completed",
+                        "started_at": "2026-04-10T12:00:00Z",
+                    }],
+                    "beta": [{
+                        "skill_name": "doc-regen",
+                        "status": "started",
+                        "started_at": "2026-04-10T12:00:00Z",
+                    }],
+                }
+            },
+            content_type="application/json",
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["data"]["total_created"] == 2
+        assert ProjectAction.objects.filter(project__slug="alpha").count() == 1
+        assert ProjectAction.objects.filter(project__slug="beta").count() == 1
+
+    def test_batch_actions_invalid_entry(self, client, project):
+        response = client.post(
+            "/api/projects/batch-actions/",
+            data={
+                "updates": {
+                    "canopy-web": [
+                        {"skill_name": "", "status": "started", "started_at": "2026-04-10T12:00:00Z"},
+                    ]
+                }
+            },
+            content_type="application/json",
+        )
+        body = response.json()
+        assert body["data"]["results"]["canopy-web"]["created"] == 0
+        assert len(body["data"]["results"]["canopy-web"]["errors"]) == 1

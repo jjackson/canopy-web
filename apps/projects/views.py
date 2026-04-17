@@ -241,6 +241,143 @@ def project_actions_summary(request, slug):
 
 
 @api_view(["POST"])
+def batch_context(request):
+    """
+    Create context entries across multiple projects in one request.
+
+    POST /api/projects/batch-context/
+    Body: {"updates": {slug: [{context_type, content, source}, ...]}}
+
+    Returns per-slug results with counts and errors. Partial success is allowed —
+    valid slugs get their entries created even if other slugs fail.
+    """
+    start_timing()
+
+    updates = request.data.get("updates")
+    if not isinstance(updates, dict):
+        return Response(
+            error_response(
+                "VALIDATION_ERROR",
+                "'updates' must be an object mapping slug to a list of context entries.",
+            ),
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    results = {}
+    total_created = 0
+    total_errors = 0
+
+    for slug, entries in updates.items():
+        if not isinstance(entries, list):
+            results[slug] = {
+                "created": 0,
+                "errors": [{"code": "VALIDATION_ERROR", "message": "Entries must be a list."}],
+            }
+            total_errors += 1
+            continue
+
+        project = _get_project_or_404(slug)
+        if project is None:
+            results[slug] = {
+                "created": 0,
+                "errors": [{"code": "NOT_FOUND", "message": "Project not found."}],
+            }
+            total_errors += len(entries)
+            continue
+
+        created = 0
+        errors = []
+        for entry in entries:
+            serializer = ProjectContextCreateSerializer(data=entry)
+            if serializer.is_valid():
+                serializer.save(project=project)
+                created += 1
+            else:
+                errors.append({"code": "VALIDATION_ERROR", "message": serializer.errors})
+                total_errors += 1
+
+        results[slug] = {"created": created, "errors": errors}
+        total_created += created
+
+    return Response(
+        success_response({
+            "results": results,
+            "total_created": total_created,
+            "total_errors": total_errors,
+        }),
+        status=status.HTTP_201_CREATED if total_created else status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+def batch_actions(request):
+    """
+    Create action entries across multiple projects in one request.
+
+    POST /api/projects/batch-actions/
+    Body: {"updates": {slug: [{skill_name, status, started_at, ...}, ...]}}
+
+    Returns per-slug results with counts and errors. Partial success is allowed.
+    """
+    start_timing()
+
+    updates = request.data.get("updates")
+    if not isinstance(updates, dict):
+        return Response(
+            error_response(
+                "VALIDATION_ERROR",
+                "'updates' must be an object mapping slug to a list of action entries.",
+            ),
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    results = {}
+    total_created = 0
+    total_errors = 0
+
+    for slug, entries in updates.items():
+        if not isinstance(entries, list):
+            results[slug] = {
+                "created": 0,
+                "errors": [{"code": "VALIDATION_ERROR", "message": "Entries must be a list."}],
+            }
+            total_errors += 1
+            continue
+
+        project = _get_project_or_404(slug)
+        if project is None:
+            results[slug] = {
+                "created": 0,
+                "errors": [{"code": "NOT_FOUND", "message": "Project not found."}],
+            }
+            total_errors += len(entries)
+            continue
+
+        created = 0
+        errors = []
+        for entry in entries:
+            serializer = ProjectActionCreateSerializer(data=entry)
+            if serializer.is_valid():
+                serializer.save(project=project)
+                created += 1
+            else:
+                errors.append({"code": "VALIDATION_ERROR", "message": serializer.errors})
+                total_errors += 1
+
+        results[slug] = {"created": created, "errors": errors}
+        total_created += created
+
+    return Response(
+        success_response({
+            "results": results,
+            "total_created": total_created,
+            "total_errors": total_errors,
+        }),
+        status=status.HTTP_201_CREATED if total_created else status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
 def seed_projects(request):
     start_timing()
 

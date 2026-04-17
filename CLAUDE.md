@@ -54,6 +54,7 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 
 - `/` — Project workbench (tile grid dashboard)
 - `/skills` — Skill discovery feed
+- `/workspaces` — Workspace session list (resume in-progress sessions)
 - `/new` — New collection / source ingestion flow
 - `/workspace/:sessionId` — Co-authoring workspace
 - `/skills/:skillId` — Skill detail + eval history
@@ -77,6 +78,8 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `GET /api/projects/{slug}/context/` — List context entries
 - `GET /api/projects/{slug}/context/latest/` — Latest context per type
 - `POST /api/projects/seed/` — Bulk seed projects
+- `POST /api/projects/batch-context/` — Create context entries across many projects in one request (body: `{updates: {slug: [...]}}`)
+- `POST /api/projects/batch-actions/` — Record actions across many projects in one request (body: `{updates: {slug: [...]}}`)
 - `POST /api/projects/{slug}/actions/` — Record a skill action
 - `GET /api/projects/{slug}/actions/` — List actions (filter: ?skill=name)
 - `GET /api/projects/{slug}/actions/summary/` — Latest action per skill
@@ -91,6 +94,7 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `POST /api/collections/{id}/sources/` — Add source
 
 ### Workspace
+- `GET /api/workspace/` — List workspace sessions (filter: ?status=proposed, ?collection=id, ?limit=50)
 - `POST /api/workspace/start/{collection_id}/` — Start workspace (SSE stream)
 - `POST /api/workspace/analyze/{collection_id}/` — Run AI analysis to propose approach + eval
 - `GET /api/workspace/{session_id}/` — Get workspace state
