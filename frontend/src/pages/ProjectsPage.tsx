@@ -5,6 +5,22 @@ import { type Project, projectsApi } from '@/api/projects'
 
 const SPRING = { type: 'spring' as const, stiffness: 400, damping: 35 }
 
+// Curated hygiene checklist rendered in the expanded card's "Actions" column.
+// `key` MUST match the exact `skill_name` written via POST /api/projects/{slug}/actions/
+// (canopy skills are namespaced with `canopy:`; other writers use bare names).
+// `label` is what the user sees — keep it clean and prefix-free.
+// Update this list as new hygiene skills are added to the portfolio workflow.
+const HYGIENE_ACTIONS: Array<{ key: string; label: string }> = [
+  { key: 'code-review', label: 'code-review' },
+  { key: 'canopy:doc-regen', label: 'doc-regen' },
+  { key: 'canopy:improve', label: 'improve' },
+  { key: 'canopy:brief', label: 'brief' },
+  { key: 'canopy:patterns', label: 'patterns' },
+  { key: 'canopy:walkthrough', label: 'walkthrough' },
+  { key: 'canopy:walkthrough-eval', label: 'walkthrough-eval' },
+  { key: 'canopy:session-review', label: 'session-review' },
+]
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const minutes = Math.floor(diff / 60000)
@@ -151,15 +167,14 @@ function ExpandedCard({ project, onClose }: {
         <div className="p-6">
           <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Actions</div>
           {(() => {
-            const HYGIENE_ACTIONS = ['code-review', 'doc-regen', 'doc-regeneration', 'improve', 'brief', 'patterns', 'walkthrough', 'walkthrough-eval']
             const actions = project.latest_actions || {}
             return (
               <div className="space-y-2">
-                {HYGIENE_ACTIONS.map((name) => {
-                  const action = actions[name]
+                {HYGIENE_ACTIONS.map(({ key, label }) => {
+                  const action = actions[key]
                   return (
-                    <div key={name} className="flex items-center justify-between text-[11px]">
-                      <span className="text-stone-400">{name}</span>
+                    <div key={key} className="flex items-center justify-between text-[11px]">
+                      <span className="text-stone-400">{label}</span>
                       {action ? (
                         <div className="flex items-center gap-2">
                           <span className="text-stone-600">{relativeTime(action.completed_at || action.started_at)}</span>
