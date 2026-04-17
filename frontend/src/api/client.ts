@@ -63,6 +63,22 @@ export const api = {
     request(`/collections/${collectionId}/sources/`, { method: 'POST', body: JSON.stringify(source) }),
   getCollection: (id: number) => request(`/collections/${id}/`),
   getWorkspace: (sessionId: number) => request(`/workspace/${sessionId}/`),
+  listWorkspaces: (params?: { status?: string; collection?: number; limit?: number }) => {
+    const search = new URLSearchParams()
+    if (params?.status) search.set('status', params.status)
+    if (params?.collection !== undefined) search.set('collection', String(params.collection))
+    if (params?.limit !== undefined) search.set('limit', String(params.limit))
+    const qs = search.toString()
+    return request<Array<{
+      id: number
+      collection_id: number
+      collection_name: string | null
+      status: string
+      skill_name: string | null
+      created_at: string
+      updated_at: string
+    }>>(`/workspace/${qs ? `?${qs}` : ''}`)
+  },
   editSkill: (sessionId: number, edit: object, structural: boolean) =>
     request(`/workspace/${sessionId}/edit/`, { method: 'PATCH', body: JSON.stringify({ edit, structural }) }),
   publishSkill: (sessionId: number) =>

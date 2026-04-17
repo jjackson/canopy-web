@@ -254,3 +254,63 @@ class TestEditSkill:
         assert response.status_code == 400
         body = response.json()
         assert body["error"]["code"] == "INVALID_JSON"
+
+
+class TestWorkspaceList:
+    def test_list_empty(self, client, db):
+        response = client.get("/api/workspace/")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert body["data"] == []
+
+    def test_list_returns_sessions_with_summary_fields(self, client, session_with_proposal):
+        response = client.get("/api/workspace/")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["data"]) == 1
+        entry = body["data"][0]
+        assert entry["id"] == session_with_proposal.pk
+        assert entry["status"] == "proposed"
+        assert entry["skill_name"] == "Deployment Helper"
+        assert entry["collection_id"] == session_with_proposal.collection_id
+        assert entry["collection_name"] == "Test Collection"
+
+    def test_list_ordered_by_updated_desc(self, client, collection_with_sources):
+        a = WorkspaceSession.objects.create(collection=collection_with_sources, status="created")
+        b = WorkspaceSession.objects.create(collection=collection_with_sources, status="created")
+        # Touch b to bump updated_at
+        b.save()
+        response = client.get("/api/workspace/")
+        ids = [e["id"] for e in response.json()["data"]]
+        assert ids[0] == b.pk
+        assert ids[1] == a.pk
+
+    def test_list_filter_by_status(self, client, collection_with_sources):
+        WorkspaceSession.objects.create(collection=collection_with_sources, status="proposed")
+        WorkspaceSession.objects.create(collection=collection_with_sources, status="published")
+        response = client.get("/api/workspace/?status=proposed")
+        body = response.json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["status"] == "proposed"
+
+    def test_list_filter_by_collection(self, client, db):
+        c1 = Collection.objects.create(name="C1")
+        c2 = Collection.objects.create(name="C2")
+        WorkspaceSession.objects.create(collection=c1)
+        WorkspaceSession.objects.create(collection=c2)
+        response = client.get(f"/api/workspace/?collection={c1.pk}")
+        body = response.json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["collection_id"] == c1.pk
+
+    def test_list_invalid_collection(self, client, db):
+        response = client.get("/api/workspace/?collection=abc")
+        assert response.status_code == 400
+
+    def test_list_limit(self, client, collection_with_sources):
+        for _ in range(5):
+            WorkspaceSession.objects.create(collection=collection_with_sources)
+        response = client.get("/api/workspace/?limit=3")
+        body = response.json()
+        assert len(body["data"]) == 3
