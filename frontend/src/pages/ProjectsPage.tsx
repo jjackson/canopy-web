@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import { type Project, projectsApi } from '@/api/projects'
 
@@ -124,13 +123,6 @@ function ExpandedCard({ project, onClose }: {
               onClick={(e) => e.stopPropagation()}>
               Live Site ↗
             </a>
-          )}
-          {project.has_guide && (
-            <Link to={`/projects/${project.slug}/guide`}
-              className="text-orange-400/70 hover:text-orange-400 transition-colors"
-              onClick={(e) => e.stopPropagation()}>
-              Docs ↗
-            </Link>
           )}
         </div>
         <button

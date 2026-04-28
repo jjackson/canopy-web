@@ -51,17 +51,6 @@ class ProjectContext(models.Model):
         return f"{self.project.slug}:{self.context_type}"
 
 
-class ProjectGuide(models.Model):
-    project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="guide")
-    content = models.TextField()
-    source = models.CharField(max_length=100)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"{self.project.slug}:guide"
-
-
 class ProjectAction(models.Model):
     STATUS_CHOICES = [
         ("started", "Started"),
