@@ -124,11 +124,31 @@ def test_guide_put_without_bearer_is_rejected(project):
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
 def test_read_projects_list_with_bearer_is_still_rejected(project):
-    """Bearer only covers the allowlisted write endpoints, not reads."""
+    """Bearer only covers the allowlisted endpoints. /api/projects/ (the
+    full list with nested contexts/actions) is not in the allowlist."""
     client = Client()
     resp = client.get("/api/projects/", **_bearer(TEST_TOKEN))
     assert resp.status_code == 401
     assert resp.json() == {"detail": "Authentication required"}
+
+
+@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
+def test_slugs_get_with_valid_bearer_succeeds(project):
+    """GET /api/projects/slugs/ is the slim curated list — bearer-readable."""
+    client = Client()
+    resp = client.get("/api/projects/slugs/", **_bearer(TEST_TOKEN))
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["success"] is True
+    slugs = [row["slug"] for row in body["data"]]
+    assert project.slug in slugs
+
+
+@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
+def test_slugs_get_without_bearer_is_rejected(project):
+    client = Client()
+    resp = client.get("/api/projects/slugs/")
+    assert resp.status_code == 401
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)

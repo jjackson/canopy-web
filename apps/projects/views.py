@@ -25,6 +25,23 @@ def _get_project_or_404(slug):
         return None
 
 
+@api_view(["GET"])
+def project_slugs(request):
+    """Slim list of curated project slugs, intended for machine callers.
+
+    Returns slug + name + status + visibility for active projects only —
+    no contexts, actions, or guides. This is the canonical list of
+    projects on canopy-web that the workbench bearer token can read.
+    """
+    start_timing()
+    projects = (
+        Project.objects.filter(status="active")
+        .order_by("slug")
+        .values("slug", "name", "status", "visibility")
+    )
+    return Response(success_response(list(projects)))
+
+
 @api_view(["GET", "POST"])
 def project_list(request):
     start_timing()

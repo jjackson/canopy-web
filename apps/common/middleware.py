@@ -17,6 +17,13 @@ PUBLIC_PATH_PREFIXES = (
 # with one of these suffixes.
 WORKBENCH_TOKEN_WRITE_SUFFIXES = ("/actions/", "/context/", "/guide/")
 
+# Read endpoints callable with a Bearer token. Exact-match paths only —
+# scoped tightly to slim "what projects exist?" lookups so machine clients
+# (like the canopy portfolio-guide skill) can iterate without a session
+# cookie. Anything richer (full project list, contexts, guides) still
+# requires OAuth.
+WORKBENCH_TOKEN_READABLE_PATHS = ("/api/projects/slugs/",)
+
 
 def _is_public(path: str) -> bool:
     return any(path == p or path.startswith(p) for p in PUBLIC_PATH_PREFIXES)
@@ -26,6 +33,10 @@ def _is_token_writable_path(path: str) -> bool:
     if not path.startswith("/api/projects/"):
         return False
     return any(path.endswith(suffix) for suffix in WORKBENCH_TOKEN_WRITE_SUFFIXES)
+
+
+def _is_token_readable_path(method: str, path: str) -> bool:
+    return method == "GET" and path in WORKBENCH_TOKEN_READABLE_PATHS
 
 
 def _extract_bearer_token(request) -> str | None:
@@ -56,11 +67,12 @@ class LoginRequiredMiddleware:
         if request.user.is_authenticated or _is_public(request.path):
             return self.get_response(request)
 
-        # Bearer-token bypass for a narrow set of machine write endpoints.
+        # Bearer-token bypass for a narrow set of machine endpoints.
         expected_token = getattr(settings, "WORKBENCH_WRITE_TOKEN", "")
         writable = _is_token_writable_path(request.path)
+        readable = _is_token_readable_path(request.method, request.path)
         provided = _extract_bearer_token(request)
-        if expected_token and writable:
+        if expected_token and (writable or readable):
             if provided and provided == expected_token:
                 request._workbench_token_auth = True
                 request._dont_enforce_csrf_checks = True
