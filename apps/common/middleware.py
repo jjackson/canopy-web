@@ -15,7 +15,7 @@ PUBLIC_PATH_PREFIXES = (
 # Write endpoints callable with a Bearer token (machine writes like the
 # canopy post_tool_use hook). Path must start with /api/projects/ AND end
 # with one of these suffixes.
-WORKBENCH_TOKEN_WRITE_SUFFIXES = ("/actions/", "/context/")
+WORKBENCH_TOKEN_WRITE_SUFFIXES = ("/actions/", "/context/", "/guide/")
 
 
 def _is_public(path: str) -> bool:

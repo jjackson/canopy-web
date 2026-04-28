@@ -100,6 +100,29 @@ def test_context_post_with_valid_bearer_succeeds(project):
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
+def test_guide_put_with_valid_bearer_succeeds(project):
+    client = Client()
+    resp = client.put(
+        f"/api/projects/{project.slug}/guide/",
+        data=json.dumps({"content": "# Next up\n- ship it", "source": "test"}),
+        content_type="application/json",
+        **_bearer(TEST_TOKEN),
+    )
+    assert resp.status_code == 200, resp.content
+
+
+@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
+def test_guide_put_without_bearer_is_rejected(project):
+    client = Client()
+    resp = client.put(
+        f"/api/projects/{project.slug}/guide/",
+        data=json.dumps({"content": "x", "source": "test"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 401
+
+
+@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
 def test_read_projects_list_with_bearer_is_still_rejected(project):
     """Bearer only covers the allowlisted write endpoints, not reads."""
     client = Client()
