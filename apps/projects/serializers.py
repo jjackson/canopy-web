@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Project, ProjectAction, ProjectContext, ProjectGuide
+from .models import Project, ProjectAction, ProjectContext
 
 
 class ProjectContextSerializer(serializers.ModelSerializer):
@@ -10,14 +10,13 @@ class ProjectContextSerializer(serializers.ModelSerializer):
 
 class ProjectListSerializer(serializers.ModelSerializer):
     latest_context = serializers.SerializerMethodField()
-    has_guide = serializers.SerializerMethodField()
     latest_actions = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
         fields = [
             "id", "name", "slug", "repo_url", "deploy_url",
-            "visibility", "status", "skills", "has_guide",
+            "visibility", "status", "skills",
             "latest_context", "latest_actions",
             "created_at", "updated_at",
         ]
@@ -38,9 +37,6 @@ class ProjectListSerializer(serializers.ModelSerializer):
                     "created_at": ctx.created_at.isoformat(),
                 }
         return result
-
-    def get_has_guide(self, obj):
-        return hasattr(obj, "guide")
 
     def get_latest_actions(self, obj):
         """Return the most recent action per skill_name."""
@@ -63,18 +59,14 @@ class ProjectListSerializer(serializers.ModelSerializer):
 
 class ProjectDetailSerializer(serializers.ModelSerializer):
     contexts = ProjectContextSerializer(many=True, read_only=True)
-    has_guide = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
         fields = [
             "id", "name", "slug", "repo_url", "deploy_url",
-            "visibility", "status", "skills", "has_guide", "contexts",
+            "visibility", "status", "skills", "contexts",
             "created_at", "updated_at",
         ]
-
-    def get_has_guide(self, obj):
-        return hasattr(obj, "guide")
 
 
 class ProjectCreateSerializer(serializers.ModelSerializer):
@@ -97,12 +89,6 @@ class ProjectContextCreateSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Content cannot be empty.")
         return value
-
-
-class ProjectGuideSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProjectGuide
-        fields = ["content", "source", "created_at", "updated_at"]
 
 
 class ProjectActionSerializer(serializers.ModelSerializer):
