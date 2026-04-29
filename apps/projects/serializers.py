@@ -11,13 +11,14 @@ class ProjectContextSerializer(serializers.ModelSerializer):
 class ProjectListSerializer(serializers.ModelSerializer):
     latest_context = serializers.SerializerMethodField()
     latest_actions = serializers.SerializerMethodField()
+    insight_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
         fields = [
             "id", "name", "slug", "repo_url", "deploy_url",
             "visibility", "status", "skills",
-            "latest_context", "latest_actions",
+            "latest_context", "latest_actions", "insight_count",
             "created_at", "updated_at",
         ]
 
@@ -55,6 +56,21 @@ class ProjectListSerializer(serializers.ModelSerializer):
                     "completed_at": action.completed_at.isoformat() if action.completed_at else None,
                 }
         return result
+
+    def get_insight_count(self, obj):
+        """Count of open (not-yet-dismissed) insight contexts on this project.
+
+        Reuses the prefetched contexts list when available so the projects-list
+        endpoint stays a 2-query call (projects + contexts) regardless of how
+        many insights exist. Insights live as `ProjectContext` rows with
+        `context_type='insight'`; dismissal deletes the row, so a simple count
+        of remaining rows is the right signal.
+        """
+        if hasattr(obj, "_prefetched_contexts"):
+            contexts = obj._prefetched_contexts
+        else:
+            contexts = obj.contexts.all()
+        return sum(1 for ctx in contexts if ctx.context_type == "insight")
 
 
 class ProjectDetailSerializer(serializers.ModelSerializer):
