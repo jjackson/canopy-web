@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   type Insight,
@@ -54,8 +54,9 @@ function InsightCard({ insight, onDismiss }: { insight: Insight; onDismiss: (id:
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <Link
-            to="/"
+            to={`/?expand=${encodeURIComponent(insight.project_slug)}`}
             className="text-xs font-medium text-stone-400 hover:text-orange-400 transition-colors shrink-0"
+            title={`Open ${insight.project_name} on the dashboard`}
           >
             {insight.project_name}
           </Link>
@@ -106,14 +107,18 @@ export function InsightsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const projectFilter = searchParams.get('project') || ''
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     void (async () => {
       try {
-        const category = activeFilter === 'all' ? undefined : activeFilter
-        const data = await insightsApi.list(category)
+        const data = await insightsApi.list({
+          category: activeFilter === 'all' ? undefined : activeFilter,
+          project: projectFilter || undefined,
+        })
         if (!cancelled) setInsights(data)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load insights')
@@ -122,7 +127,7 @@ export function InsightsPage() {
       }
     })()
     return () => { cancelled = true }
-  }, [activeFilter])
+  }, [activeFilter, projectFilter])
 
   async function handleDismiss(id: number) {
     try {
@@ -133,6 +138,34 @@ export function InsightsPage() {
     }
   }
 
+  function clearProjectFilter() {
+    const next = new URLSearchParams(searchParams)
+    next.delete('project')
+    setSearchParams(next, { replace: true })
+  }
+
+  // Display name for the active project filter (best-effort: use the first
+  // matching insight's project_name; fall back to the slug). Avoids a separate
+  // API call just to render a chip label.
+  const projectFilterLabel = useMemo(() => {
+    if (!projectFilter) return ''
+    const hit = insights.find((i) => i.project_slug === projectFilter)
+    return hit?.project_name || projectFilter
+  }, [projectFilter, insights])
+
+  const emptyMessage = (() => {
+    if (projectFilter && activeFilter !== 'all') {
+      const catLabel = CATEGORIES.find((c) => c.key === activeFilter)?.label.toLowerCase() ?? activeFilter
+      return `No ${catLabel} insights for ${projectFilterLabel}.`
+    }
+    if (projectFilter) return `No insights for ${projectFilterLabel} yet.`
+    if (activeFilter !== 'all') {
+      const catLabel = CATEGORIES.find((c) => c.key === activeFilter)?.label.toLowerCase() ?? activeFilter
+      return `No ${catLabel} insights yet.`
+    }
+    return 'No insights yet.'
+  })()
+
   return (
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -141,6 +174,24 @@ export function InsightsPage() {
           {loading ? 'loading...' : `${insights.length} insights`}
         </span>
       </div>
+
+      {/* Active project filter chip */}
+      {projectFilter && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-stone-300 bg-stone-900 border border-orange-400/30 px-2.5 py-1 rounded">
+            <span className="text-stone-500">Project:</span>
+            <span className="font-medium">{projectFilterLabel}</span>
+            <button
+              onClick={clearProjectFilter}
+              className="text-stone-600 hover:text-stone-300 leading-none ml-0.5"
+              aria-label="Clear project filter"
+              title="Clear project filter"
+            >
+              ✕
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Category filter tabs */}
       <div className="flex gap-1 mb-6 bg-stone-900 rounded-lg p-1 overflow-x-auto">
@@ -185,7 +236,7 @@ export function InsightsPage() {
           {/* Empty state */}
           {insights.length === 0 && (
             <div className="flex flex-col items-center justify-center h-48 text-center">
-              <p className="text-sm text-stone-500 mb-1">No insights yet.</p>
+              <p className="text-sm text-stone-500 mb-1">{emptyMessage}</p>
               <p className="text-xs text-stone-700">
                 Run <code className="text-orange-400/70 bg-stone-900 px-1.5 py-0.5 rounded">canopy:portfolio-review</code> to generate insights.
               </p>
