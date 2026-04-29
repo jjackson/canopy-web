@@ -165,6 +165,12 @@ REQUIRE_AUTH = env.bool("REQUIRE_AUTH", default=True)
 # disables the bypass entirely.
 WORKBENCH_WRITE_TOKEN = os.environ.get("WORKBENCH_WRITE_TOKEN", "")
 
+# Pre-shared secret for /api/auth/e2e-login/ — token-gated login for
+# automated tools (gstack walkthroughs, autonomous PM cycles, AI-driven
+# QA) so they can drive OAuth-gated UI surfaces without a human in the
+# loop. Empty disables the endpoint (404).
+CANOPY_E2E_AUTH_TOKEN = os.environ.get("CANOPY_E2E_AUTH_TOKEN", "")
+
 # AI Backend: "api" (direct Anthropic SDK) or "cli" (claude code CLI)
 AI_BACKEND = env("AI_BACKEND", default="api")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")

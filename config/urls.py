@@ -4,6 +4,7 @@ URL configuration for canopy-web project.
 from django.contrib import admin
 from django.urls import include, path, re_path
 
+from apps.common import views_auth_e2e
 from apps.projects import views_insights
 from config.views import csrf_view, health_check, me_view, spa_view
 
@@ -13,6 +14,7 @@ urlpatterns = [
     path("health/", health_check, name="health-check"),
     path("api/me/", me_view, name="me"),
     path("api/csrf/", csrf_view, name="csrf"),
+    path("api/auth/e2e-login/", views_auth_e2e.e2e_login, name="auth-e2e-login"),
     path("api/collections/", include("apps.collections.urls")),
     path("api/workspace/", include("apps.workspace.urls")),
     path("api/skills/", include("apps.skills.urls")),
