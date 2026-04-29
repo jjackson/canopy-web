@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>canopy-web — release notes</title></head>
+<body style="margin:0;padding:0;background-color:#f6f7f9;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f6f7f9;">
+    <tr><td align="center" style="padding:32px 16px;">
+      <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">
+
+        <!-- Brand bar -->
+        <tr><td style="padding:20px 32px;background:#0f172a;color:#fff;">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;">CANOPY · RELEASE NOTES</td>
+            <td align="right" style="font-size:13px;color:#94a3b8;">April 29, 2026</td>
+          </tr></table>
+        </td></tr>
+
+        <!-- Hero -->
+        <tr><td style="padding:36px 32px 8px;">
+          <h1 style="margin:0 0 12px;font-size:26px;line-height:1.25;color:#0f172a;font-weight:700;">Open the dashboard, see what needs attention first.</h1>
+          <p style="margin:0;font-size:16px;line-height:1.6;color:#475569;">Active projects lead the grid. Each tile now wears an insight count when something's waiting in the cross-portfolio feed — one click filters it for you.</p>
+        </td></tr>
+
+        <!-- Highlight 1: Active first -->
+        <tr><td style="padding:28px 32px 0;">
+          <h2 style="margin:0 0 8px;font-size:18px;font-weight:600;">
+            <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/" style="color:#0f172a;text-decoration:none;">Active first, stale tucked behind a toggle</a>
+          </h2>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">The projects grid leads with active projects. Stale ones — DB <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:13px;">status=stale</code> or any project whose summary is &gt; 7 days old — drop into a fold-down section behind a "Show stale (N)" toggle. The daily check-in lands on what's hot now, with stale projects one click away when you want them.</p>
+          <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/" style="text-decoration:none;display:block;">
+            <img src="https://raw.githubusercontent.com/jjackson/canopy-web/pm-assets/2026-04-29-self-prioritizing-dashboard/screenshots/projects-dashboard.png"
+                 alt="Projects dashboard with active projects in the grid and a 'Show stale (2)' toggle at the bottom"
+                 width="576"
+                 style="display:block;width:100%;max-width:576px;height:auto;border:1px solid #e2e8f0;border-radius:8px;margin:0 0 8px;">
+          </a>
+          <p style="margin:0 0 18px;font-size:13px;color:#64748b;font-style:italic;">After: 11 active projects in the grid; 2 stale projects collapsed under a single toggle.</p>
+          <p style="margin:0 0 4px;font-size:14px;">
+            <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/" style="color:#4338ca;text-decoration:none;font-weight:500;">Try it on canopy-web →</a>
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:28px 32px 0;"><div style="height:1px;background:#e2e8f0;"></div></td></tr>
+
+        <!-- Highlight 2: Insight badges -->
+        <tr><td style="padding:28px 32px 0;">
+          <h2 style="margin:0 0 8px;font-size:18px;font-weight:600;">
+            <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/insights?project=connect-search" style="color:#0f172a;text-decoration:none;">"N insights" pill on every project tile</a>
+          </h2>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">When the cross-portfolio insights feed has open items for a project, the project's tile now wears a small orange pill — "3", "5", "8". Click the pill to land directly on <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:13px;">/insights?project=&lt;slug&gt;</code> filtered to that project. The dashboard tells you, at a glance, where attention is owed — without leaving the homepage.</p>
+          <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/insights?project=connect-search" style="text-decoration:none;display:block;">
+            <img src="https://raw.githubusercontent.com/jjackson/canopy-web/pm-assets/2026-04-29-self-prioritizing-dashboard/screenshots/insights-filtered.png"
+                 alt="Insights feed filtered to a single project (connect-search) with a removable filter chip"
+                 width="576"
+                 style="display:block;width:100%;max-width:576px;height:auto;border:1px solid #e2e8f0;border-radius:8px;margin:0 0 8px;">
+          </a>
+          <p style="margin:0 0 18px;font-size:13px;color:#64748b;font-style:italic;">After: clicking the "3" pill on connect-search lands on the feed pre-filtered to that project, with a chip you can remove to widen the view.</p>
+          <p style="margin:0 0 4px;font-size:14px;">
+            <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/insights?project=connect-search" style="color:#4338ca;text-decoration:none;font-weight:500;">Try it on canopy-web →</a>
+          </p>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="padding:36px 32px 32px;">
+          <div style="height:1px;background:#e2e8f0;margin-bottom:20px;"></div>
+          <p style="margin:0 0 8px;font-size:13px;color:#64748b;">
+            <strong style="color:#475569;">Sprint internals.</strong> One autonomous cycle on the adoption-blockers lens, one bundled PR (<a href="https://github.com/jjackson/canopy-web/pull/35" style="color:#4338ca;text-decoration:none;">#35</a>), gates green, deploy verified. The screenshots above were pulled from prod through the new <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:12px;">/api/auth/e2e-login/</code> automation — last cycle's #1 ask.
+          </p>
+          <p style="margin:0 0 8px;font-size:13px;color:#64748b;">
+            <strong style="color:#475569;">Up next, optionally.</strong> Sort active projects within the active group by recency (most-recently-touched first) — currently the API order ("-updated_at") wins by accident.
+          </p>
+          <p style="margin:0 0 14px;font-size:13px;color:#64748b;font-style:italic;">— canopy autonomous PM, on behalf of the canopy-web team</p>
+          <p style="margin:0;font-size:12px;color:#94a3b8;">Sent automatically by the autonomous PM cycle. Reply to opt out.</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
