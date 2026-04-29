@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import { type Project, projectsApi } from '@/api/projects'
+import {
+  type Insight,
+  insightsApi,
+  parseInsightBody,
+  parseInsightCategory,
+} from '@/api/insights'
+import { CategoryBadge } from '@/components/InsightChip'
 
 const SPRING = { type: 'spring' as const, stiffness: 400, damping: 35 }
 
@@ -55,6 +62,60 @@ function InsightBadge({ slug, count, compact }: { slug: string; count: number; c
     >
       {count}{compact ? '' : ` insight${count === 1 ? '' : 's'}`}
     </Link>
+  )
+}
+
+// Inline insight row rendered atop the expanded project card. Each row mirrors
+// the standalone /insights feed's card semantics (category badge + body + ✕),
+// but compacted into the card so triage can happen without leaving the
+// dashboard. Dismiss calls back through to the parent so the project's
+// `insight_count` badge can decrement live without a refetch.
+function InlineInsightStrip({
+  insights,
+  onDismiss,
+}: {
+  insights: Insight[]
+  onDismiss: (id: number) => void
+}) {
+  if (!insights.length) return null
+  return (
+    <div className="px-6 py-4 bg-stone-950/40 border-b border-stone-800">
+      <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-3">
+        Insights ({insights.length})
+      </div>
+      <div className="space-y-2">
+        <AnimatePresence initial={false}>
+          {insights.map((insight) => {
+            const category = parseInsightCategory(insight.content)
+            const body = parseInsightBody(insight.content)
+            return (
+              <motion.div
+                key={insight.id}
+                layout
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: -32, transition: { duration: 0.18 } }}
+                transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+                className="flex items-start gap-3 text-xs text-stone-300"
+              >
+                <div className="pt-0.5 shrink-0">
+                  <CategoryBadge category={category} />
+                </div>
+                <p className="flex-1 leading-relaxed">{body}</p>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDismiss(insight.id) }}
+                  className="text-stone-700 hover:text-stone-400 text-sm shrink-0 leading-none mt-0.5"
+                  aria-label="Dismiss insight"
+                  title="Dismiss"
+                >
+                  ✕
+                </button>
+              </motion.div>
+            )
+          })}
+        </AnimatePresence>
+      </div>
+    </div>
   )
 }
 
@@ -122,10 +183,12 @@ function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () =
   )
 }
 
-function ExpandedCard({ project, onClose, scrollIntoViewOnMount }: {
+function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDismissInsight }: {
   project: Project
   onClose: () => void
   scrollIntoViewOnMount?: boolean
+  insights: Insight[]
+  onDismissInsight: (id: number) => void
 }) {
   const [skillsExpanded, setSkillsExpanded] = useState(false)
   const cardRef = useRef<HTMLDivElement | null>(null)
@@ -183,6 +246,9 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount }: {
           aria-label="Close"
         >✕</button>
       </div>
+
+      {/* Inline insights — triaged in place, decrements the badge above on dismiss */}
+      <InlineInsightStrip insights={insights} onDismiss={onDismissInsight} />
 
       {/* Body — 3 columns */}
       <div className="grid grid-cols-1 md:grid-cols-3 divide-x divide-stone-800">
@@ -358,14 +424,30 @@ export function ProjectsPage() {
   // Stale projects (status=stale|archived OR summary >7d old) are tucked behind
   // this toggle so the daily-check-in surface leads with what's actually hot.
   const [showStale, setShowStale] = useState(false)
+  // All open insights, grouped by project_slug. Bulk-fetched alongside the
+  // projects list so an expanded card can render its insights without a
+  // per-card request. Dismiss removes from this map AND decrements the
+  // matching project's `insight_count`, so the orange "N insights" pill on
+  // the tile updates live in lockstep with the inline strip.
+  const [insightsByProject, setInsightsByProject] = useState<Record<string, Insight[]>>({})
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     void (async () => {
       try {
-        const data = await projectsApi.list()
-        if (!cancelled) setProjects(data)
+        const [projectsData, insightsData] = await Promise.all([
+          projectsApi.list(),
+          insightsApi.list({ limit: 200 }).catch(() => [] as Insight[]),
+        ])
+        if (cancelled) return
+        setProjects(projectsData)
+        const grouped: Record<string, Insight[]> = {}
+        for (const insight of insightsData) {
+          if (!grouped[insight.project_slug]) grouped[insight.project_slug] = []
+          grouped[insight.project_slug].push(insight)
+        }
+        setInsightsByProject(grouped)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load projects')
       } finally {
@@ -374,6 +456,45 @@ export function ProjectsPage() {
     })()
     return () => { cancelled = true }
   }, [])
+
+  async function handleDismissInsight(slug: string, id: number) {
+    // Optimistic local update — the card animates the row out immediately and
+    // the badge count decrements in the same frame. If the network call
+    // fails, we restore by refetching the full insights list (rare).
+    setInsightsByProject((prev) => {
+      const list = prev[slug] || []
+      return { ...prev, [slug]: list.filter((i) => i.id !== id) }
+    })
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.slug === slug
+          ? { ...p, insight_count: Math.max(0, (p.insight_count || 0) - 1) }
+          : p,
+      ),
+    )
+    try {
+      await insightsApi.dismiss(id)
+    } catch {
+      // Best-effort recovery: refetch insights so the UI matches server truth.
+      try {
+        const fresh = await insightsApi.list({ limit: 200 })
+        const grouped: Record<string, Insight[]> = {}
+        for (const insight of fresh) {
+          if (!grouped[insight.project_slug]) grouped[insight.project_slug] = []
+          grouped[insight.project_slug].push(insight)
+        }
+        setInsightsByProject(grouped)
+        setProjects((prev) =>
+          prev.map((p) => ({
+            ...p,
+            insight_count: (grouped[p.slug] || []).length,
+          })),
+        )
+      } catch {
+        // Give up silently; user can refresh the page.
+      }
+    }
+  }
 
   // Handle ?expand=<slug> deep links from the insights feed (and bookmarks).
   // Wait until projects load so we only expand a slug that actually exists.
@@ -452,6 +573,8 @@ export function ProjectsPage() {
                   project={project}
                   onClose={() => collapse(project.slug)}
                   scrollIntoViewOnMount={pendingScrollSlug === project.slug}
+                  insights={insightsByProject[project.slug] || []}
+                  onDismissInsight={(id) => handleDismissInsight(project.slug, id)}
                 />
               </motion.div>
             ))}
