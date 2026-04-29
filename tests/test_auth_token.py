@@ -12,7 +12,6 @@ from django.test import Client, override_settings
 
 from apps.projects.models import Project
 
-
 TEST_TOKEN = "test-token-123"
 
 
@@ -165,3 +164,23 @@ def test_bearer_does_not_bypass_non_projects_api(project):
     client = Client()
     resp = client.get("/api/skills/", **_bearer(TEST_TOKEN))
     assert resp.status_code == 401
+
+
+@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("get", "/api/projects/"),
+        ("post", "/api/projects/some-slug/actions/"),
+        ("get", "/api/skills/"),
+    ],
+)
+def test_401_response_does_not_leak_debug_headers(method, path, project):
+    """401 responses must not carry X-Debug-* headers that disclose auth
+    metadata (token length, per-request match oracle). PR #21 added these
+    as 'temporary diagnostic'; they were never removed until now."""
+    client = Client()
+    resp = getattr(client, method)(path)
+    assert resp.status_code == 401
+    leaked = [h for h in resp.headers.keys() if h.lower().startswith("x-debug-")]
+    assert leaked == [], f"401 leaked debug headers: {leaked}"

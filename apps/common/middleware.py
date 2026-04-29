@@ -3,7 +3,6 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import redirect
 
-
 PUBLIC_PATH_PREFIXES = (
     "/accounts/",        # allauth login/logout/callback
     "/admin/",           # Django admin has its own auth
@@ -79,14 +78,6 @@ class LoginRequiredMiddleware:
                 return self.get_response(request)
 
         if request.path.startswith("/api/"):
-            # Temporary diagnostic header (safe — only length + prefix, never the value)
-            token_len = len(expected_token) if expected_token else 0
-            provided_len = len(provided) if provided else 0
-            resp = JsonResponse({"detail": "Authentication required"}, status=401)
-            resp["X-Debug-Writable"] = str(writable)
-            resp["X-Debug-Expected-Len"] = str(token_len)
-            resp["X-Debug-Provided-Len"] = str(provided_len)
-            resp["X-Debug-Match"] = str(bool(expected_token and provided and provided == expected_token))
-            return resp
+            return JsonResponse({"detail": "Authentication required"}, status=401)
 
         return redirect(f"{settings.LOGIN_URL}?next={request.path}")
