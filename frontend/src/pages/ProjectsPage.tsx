@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import { type Project, projectsApi } from '@/api/projects'
 
@@ -90,16 +91,27 @@ function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () =
   )
 }
 
-function ExpandedCard({ project, onClose }: {
+function ExpandedCard({ project, onClose, scrollIntoViewOnMount }: {
   project: Project
   onClose: () => void
+  scrollIntoViewOnMount?: boolean
 }) {
   const [skillsExpanded, setSkillsExpanded] = useState(false)
+  const cardRef = useRef<HTMLDivElement | null>(null)
   const ctx = project.latest_context || {}
   const skills = project.skills || []
 
+  useEffect(() => {
+    if (scrollIntoViewOnMount && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    // Only run on mount; the parent flips this flag exactly once per deep link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <div
+      ref={cardRef}
       className="bg-stone-900 border border-stone-700 rounded-xl overflow-hidden"
       onClick={(e) => e.stopPropagation()}
     >
@@ -110,6 +122,14 @@ function ExpandedCard({ project, onClose }: {
         {project.visibility === 'private' && <PrivateBadge />}
         {project.deploy_url && <DeployBadge url={project.deploy_url} />}
         <div className="ml-auto flex items-center gap-4 text-[11px]">
+          <Link
+            to={`/insights?project=${encodeURIComponent(project.slug)}`}
+            className="text-orange-400/70 hover:text-orange-400 transition-colors"
+            onClick={(e) => e.stopPropagation()}
+            title={`See insights for ${project.name}`}
+          >
+            View insights →
+          </Link>
           {project.repo_url && (
             <a href={project.repo_url} target="_blank" rel="noopener noreferrer"
               className="text-orange-400/70 hover:text-orange-400 transition-colors"
@@ -299,6 +319,10 @@ export function ProjectsPage() {
   const [error, setError] = useState<string | null>(null)
   // Ordered list of slugs that are expanded; first = most-recently clicked (top of stack).
   const [expandedOrder, setExpandedOrder] = useState<string[]>([])
+  const [searchParams, setSearchParams] = useSearchParams()
+  // The slug that the URL asked us to expand; we strip it from the URL once
+  // applied so refreshing the page doesn't keep re-scrolling.
+  const [pendingScrollSlug, setPendingScrollSlug] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -316,12 +340,38 @@ export function ProjectsPage() {
     return () => { cancelled = true }
   }, [])
 
+  // Handle ?expand=<slug> deep links from the insights feed (and bookmarks).
+  // Wait until projects load so we only expand a slug that actually exists.
+  useEffect(() => {
+    if (loading) return
+    const target = searchParams.get('expand')
+    if (!target) return
+    if (!projects.some((p) => p.slug === target)) {
+      // Unknown slug — drop the param silently rather than leaving a stale URL.
+      const next = new URLSearchParams(searchParams)
+      next.delete('expand')
+      setSearchParams(next, { replace: true })
+      return
+    }
+    setExpandedOrder((order) => (order.includes(target) ? order : [target, ...order]))
+    setPendingScrollSlug(target)
+    const next = new URLSearchParams(searchParams)
+    next.delete('expand')
+    setSearchParams(next, { replace: true })
+    // Clear the scroll flag after the ExpandedCard has had a chance to mount
+    // and run its scrollIntoView, so a later collapse+re-expand of the same
+    // card doesn't keep auto-scrolling.
+    const t = window.setTimeout(() => setPendingScrollSlug(null), 600)
+    return () => window.clearTimeout(t)
+  }, [loading, projects, searchParams, setSearchParams])
+
   function expand(slug: string) {
     setExpandedOrder((order) => (order.includes(slug) ? order : [slug, ...order]))
   }
 
   function collapse(slug: string) {
     setExpandedOrder((order) => order.filter((s) => s !== slug))
+    if (pendingScrollSlug === slug) setPendingScrollSlug(null)
   }
 
   if (loading) {
@@ -362,6 +412,7 @@ export function ProjectsPage() {
                 <ExpandedCard
                   project={project}
                   onClose={() => collapse(project.slug)}
+                  scrollIntoViewOnMount={pendingScrollSlug === project.slug}
                 />
               </motion.div>
             ))}

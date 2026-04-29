@@ -32,12 +32,19 @@ export function parseInsightBody(content: string): string {
   return content.replace(/^\[\w+\]\s*/, '')
 }
 
+export interface InsightListParams {
+  category?: string
+  project?: string
+  limit?: number
+}
+
 export const insightsApi = {
-  list: (category?: string, limit?: number) => {
-    const params = new URLSearchParams()
-    if (category) params.set('category', category)
-    if (limit) params.set('limit', String(limit))
-    const qs = params.toString()
+  list: (params: InsightListParams = {}) => {
+    const qp = new URLSearchParams()
+    if (params.category) qp.set('category', params.category)
+    if (params.project) qp.set('project', params.project)
+    if (params.limit) qp.set('limit', String(params.limit))
+    const qs = qp.toString()
     return request<Insight[]>(`/insights/${qs ? `?${qs}` : ''}`)
   },
   dismiss: (id: number) =>
