@@ -4,11 +4,12 @@ from django.http import JsonResponse
 from django.shortcuts import redirect
 
 PUBLIC_PATH_PREFIXES = (
-    "/accounts/",        # allauth login/logout/callback
-    "/admin/",           # Django admin has its own auth
-    "/health/",          # health check for Cloud Run
-    "/static/",          # static assets
-    "/api/csrf/",        # bootstraps CSRF cookie before login
+    "/accounts/",            # allauth login/logout/callback
+    "/admin/",               # Django admin has its own auth
+    "/health/",              # health check for Cloud Run
+    "/static/",              # static assets
+    "/api/csrf/",            # bootstraps CSRF cookie before login
+    "/api/auth/e2e-login/",  # token-gated login for automated tools
 )
 
 # Write endpoints callable with a Bearer token (machine writes like the

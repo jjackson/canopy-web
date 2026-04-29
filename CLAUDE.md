@@ -120,6 +120,9 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `POST /api/ai/auth/complete/` — Submit OAuth code
 - `GET /api/ai/auth/poll/` — Poll auth status
 
+### Automated-tool login (`apps/common/views_auth_e2e`)
+- `POST /api/auth/e2e-login/` — token-gated login for automated tools (gstack walkthroughs, autonomous PM cycles, AI-driven QA). Body: `{email, token}`. Disabled by default — returns 404 unless `CANOPY_E2E_AUTH_TOKEN` is set. Email must be in `AUTH_ALLOWED_EMAIL_DOMAIN`. Sessions carry `_canopy_e2e_session` marker for audit. See `docs/e2e-login.md`.
+
 ### Debug access (`apps/common/views_debug`)
 - `POST /api/debug/mint-session/` — authenticated user mints a short-lived Django session cookie (body: `{ttl_seconds: int}`, clamped to 60s–1w). Returns cookie + curl example. Used to hand access to an AI assistant without going through OAuth. UI lives at `/settings` → "Debug access".
 
