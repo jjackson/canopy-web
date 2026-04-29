@@ -17,11 +17,15 @@ PUBLIC_PATH_PREFIXES = (
 WORKBENCH_TOKEN_WRITE_SUFFIXES = ("/actions/", "/context/")
 
 # Read endpoints callable with a Bearer token. Exact-match paths only —
-# scoped tightly to slim "what projects exist?" lookups so machine clients
-# (like the canopy portfolio-guide skill) can iterate without a session
-# cookie. Anything richer (full project list, contexts, guides) still
+# scoped tightly to slim machine lookups (what projects exist?, what
+# insights have I already published?) so producer skills like
+# canopy:portfolio-review can iterate without a session cookie. Anything
+# richer (full project list, contexts, raw context entries) still
 # requires OAuth.
-WORKBENCH_TOKEN_READABLE_PATHS = ("/api/projects/slugs/",)
+WORKBENCH_TOKEN_READABLE_PATHS = (
+    "/api/projects/slugs/",
+    "/api/insights/",
+)
 
 
 def _is_public(path: str) -> bool:

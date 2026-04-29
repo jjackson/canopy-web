@@ -128,6 +128,61 @@ def test_slugs_get_without_bearer_is_rejected(project):
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
+def test_insights_get_with_valid_bearer_succeeds(project):
+    """Producer skills like canopy:portfolio-review can GET their own
+    insights via Bearer token to dedupe before re-publishing."""
+    client = Client()
+    resp = client.get("/api/insights/", **_bearer(TEST_TOKEN))
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["success"] is True
+
+
+@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
+def test_insights_get_with_filter_via_bearer(project):
+    """Bearer GET preserves source/project query filters end-to-end."""
+    from apps.projects.models import ProjectContext
+    ProjectContext.objects.create(
+        project=project, context_type="insight",
+        content="[ship_gap] x", source="canopy:portfolio-review",
+    )
+    ProjectContext.objects.create(
+        project=project, context_type="insight",
+        content="[hygiene] y", source="canopy:doctor",
+    )
+    client = Client()
+    resp = client.get(
+        "/api/insights/?source=canopy:portfolio-review", **_bearer(TEST_TOKEN)
+    )
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert len(body["data"]) == 1
+    assert body["data"][0]["source"] == "canopy:portfolio-review"
+
+
+@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
+def test_insights_get_without_bearer_is_rejected(project):
+    client = Client()
+    resp = client.get("/api/insights/")
+    assert resp.status_code == 401
+
+
+@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
+def test_insight_dismiss_with_bearer_is_rejected(project):
+    """Bearer is GET-only on /api/insights/. DELETE (dismiss) still
+    requires OAuth — producers shouldn't be able to clear the inbox."""
+    from apps.projects.models import ProjectContext
+    ctx = ProjectContext.objects.create(
+        project=project, context_type="insight",
+        content="x", source="t",
+    )
+    client = Client()
+    resp = client.delete(f"/api/insights/{ctx.id}/", **_bearer(TEST_TOKEN))
+    assert resp.status_code == 401
+    assert ProjectContext.objects.filter(id=ctx.id).exists()
+
+
+@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
 def test_actions_summary_with_bearer_is_rejected(project):
     """The Bearer bypass is scoped to exact /actions/ and /context/ suffixes —
     nested read endpoints like /actions/summary/ should still require OAuth."""

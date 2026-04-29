@@ -19,6 +19,14 @@ def insights_list(request):
     if category:
         insights = insights.filter(content__startswith=f"[{category}]")
 
+    source = request.query_params.get("source")
+    if source:
+        insights = insights.filter(source=source)
+
+    project_slug = request.query_params.get("project")
+    if project_slug:
+        insights = insights.filter(project__slug=project_slug)
+
     limit = int(request.query_params.get("limit", 20))
     limit = min(limit, 100)
 

@@ -85,8 +85,8 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `GET /api/projects/{slug}/actions/summary/` — Latest action per skill
 
 ### Insights
-- `GET /api/insights/` — List all insights across projects (filter: ?category=ship_gap)
-- `DELETE /api/insights/{id}/` — Dismiss an insight
+- `GET /api/insights/` — List all insights across projects. Filters: `?category=<slug>` (matches `[<slug>]` content prefix), `?source=<producer>` (filters by writer), `?project=<slug>`. Bearer-readable for machine producers (e.g. `canopy:portfolio-review`) so they can dedupe before re-publishing.
+- `DELETE /api/insights/{id}/` — Dismiss an insight (OAuth only — bearer is GET-only here).
 
 ### Collections
 - `POST /api/collections/` — Create collection

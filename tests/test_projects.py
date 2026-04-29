@@ -1,7 +1,8 @@
 import pytest
-from django.utils import timezone
-from apps.projects.models import Project, ProjectAction, ProjectContext
 from django.test import Client
+from django.utils import timezone
+
+from apps.projects.models import Project, ProjectAction, ProjectContext
 
 
 @pytest.fixture
@@ -261,7 +262,6 @@ class TestProjectSkillsField:
             content_type="application/json",
         )
         assert response.status_code == 200
-        body = response.json()
         # The skills field should round-trip
         canopy = client.get("/api/projects/canopy-web/").json()["data"]
         assert canopy["skills"][0]["name"] == "new"
@@ -418,6 +418,48 @@ class TestInsightsAPI:
             ProjectContext.objects.create(project=project, context_type="insight", content=f"I{i}", source="test")
         response = client.get("/api/insights/")
         assert len(response.json()["data"]) == 20
+
+    def test_filter_by_source(self, client, project):
+        ProjectContext.objects.create(
+            project=project, context_type="insight",
+            content="[ship_gap] from review", source="canopy:portfolio-review",
+        )
+        ProjectContext.objects.create(
+            project=project, context_type="insight",
+            content="[hygiene] from doctor", source="canopy:doctor",
+        )
+        response = client.get("/api/insights/?source=canopy:portfolio-review")
+        body = response.json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["source"] == "canopy:portfolio-review"
+
+    def test_filter_by_project(self, client, db):
+        a = Project.objects.create(name="alpha", slug="alpha")
+        b = Project.objects.create(name="beta", slug="beta")
+        ProjectContext.objects.create(project=a, context_type="insight", content="A", source="x")
+        ProjectContext.objects.create(project=b, context_type="insight", content="B", source="x")
+        response = client.get("/api/insights/?project=alpha")
+        body = response.json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["project_slug"] == "alpha"
+
+    def test_filter_source_and_project_compose(self, client, db):
+        a = Project.objects.create(name="alpha", slug="alpha")
+        b = Project.objects.create(name="beta", slug="beta")
+        # Two producers x two projects = 4 insights
+        for proj in (a, b):
+            for src in ("canopy:portfolio-review", "canopy:doctor"):
+                ProjectContext.objects.create(
+                    project=proj, context_type="insight",
+                    content=f"{proj.slug}/{src}", source=src,
+                )
+        response = client.get(
+            "/api/insights/?project=alpha&source=canopy:portfolio-review"
+        )
+        body = response.json()
+        assert len(body["data"]) == 1
+        assert body["data"][0]["project_slug"] == "alpha"
+        assert body["data"][0]["source"] == "canopy:portfolio-review"
 
 
 class TestBatchContextAPI:
