@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background-color:#f6f7f9;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f6f7f9;">
+    <tr><td align="center" style="padding:32px 16px;">
+      <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">
+
+        <tr><td style="padding:20px 32px;background:#1c1917;color:#fff;">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a8a29e;">canopy-web · release notes</td>
+            <td align="right" style="font-size:13px;color:#a8a29e;">April 29, 2026</td>
+          </tr></table>
+        </td></tr>
+
+        <tr><td style="padding:36px 32px 8px;">
+          <h1 style="margin:0 0 12px;font-size:26px;line-height:1.25;color:#1c1917;font-weight:700;">Click an insight, land on the project.</h1>
+          <p style="margin:0;font-size:16px;line-height:1.6;color:#57534e;">The insights feed and the projects dashboard now navigate into each other. One click moves you between cross-portfolio signals and the project that owns them.</p>
+        </td></tr>
+
+        <tr><td style="padding:28px 32px 0;">
+          <h2 style="margin:0 0 8px;font-size:18px;font-weight:600;">
+            <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/insights" style="color:#1c1917;text-decoration:none;">From insights → project</a>
+          </h2>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#44403c;">The project name on every insight card is now a deep link. Click it and the dashboard opens with that project's card pre-expanded and scrolled into view — no more bouncing back to the homepage and hunting through tiles.</p>
+          <p style="margin:0 0 4px;font-size:14px;">
+            <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/insights" style="color:#c2410c;text-decoration:none;font-weight:500;">Try it: open the insights feed →</a>
+          </p>
+          <p style="margin:6px 0 0;font-size:13px;color:#78716c;font-style:italic;">Click any project name on a card to jump straight to its expanded dashboard view.</p>
+        </td></tr>
+
+        <tr><td style="padding:28px 32px 0;"><div style="height:1px;background:#e7e5e4;"></div></td></tr>
+
+        <tr><td style="padding:28px 32px 0;">
+          <h2 style="margin:0 0 8px;font-size:18px;font-weight:600;">
+            <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/" style="color:#1c1917;text-decoration:none;">From project → insights</a>
+          </h2>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#44403c;">Every expanded project card now carries a <strong>View insights</strong> link. The insights feed gained a project filter (URL-driven, bookmarkable), and the empty-state copy now reflects the active filter instead of always nudging you to <code style="background:#f5f5f4;padding:1px 5px;border-radius:3px;font-size:13px;">canopy:portfolio-review</code>.</p>
+          <p style="margin:0 0 4px;font-size:14px;">
+            <a href="https://canopy-web-hhhi4yut3q-uc.a.run.app/" style="color:#c2410c;text-decoration:none;font-weight:500;">Try it: open the dashboard →</a>
+          </p>
+          <p style="margin:6px 0 0;font-size:13px;color:#78716c;font-style:italic;">Click any project tile, then "View insights" inside the expanded card to land on a focused feed.</p>
+        </td></tr>
+
+        <tr><td style="padding:36px 32px 32px;">
+          <div style="height:1px;background:#e7e5e4;margin-bottom:20px;"></div>
+          <p style="margin:0 0 8px;font-size:13px;color:#78716c;">
+            <strong style="color:#57534e;">Sprint internals.</strong> 1 autonomous cycle, 1 bundled PR (<a href="https://github.com/jjackson/canopy-web/pull/33" style="color:#c2410c;text-decoration:none;">#33</a>), gates green, deploy verified. Frontend-only wiring on top of the backend filter shipped in #32.
+          </p>
+          <p style="margin:0 0 8px;font-size:13px;color:#78716c;">
+            <strong style="color:#57534e;">No screenshots this cycle.</strong> Canopy-web is OAuth-gated and the autonomous agent has no minted session, so prod screenshots couldn't be captured per the format's hard rule #3 (no localhost substitutes). An automation login (à la ace-web's <code style="font-size:12px;">/auth/e2e-login/</code>) would unblock visual hero blocks for future sprints — flagged as a follow-up.
+          </p>
+          <p style="margin:0 0 8px;font-size:13px;color:#78716c;">
+            <strong style="color:#57534e;">Up next.</strong> Lens for the next sprint: <em>integration-depth</em>. Likely candidate: surfacing per-project insight counts on dashboard tiles so the signal flows back into the daily glance, not only the click-through.
+          </p>
+          <p style="margin:18px 0 0;font-size:13px;color:#57534e;">— Canopy autonomous PM</p>
+          <p style="margin:6px 0 0;font-size:12px;color:#a8a29e;">Sent automatically by /canopy:pm-autonomous. Reply to opt out.</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
