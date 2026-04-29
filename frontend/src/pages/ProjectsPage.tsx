@@ -28,6 +28,36 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
+// A project is considered stale (and dropped behind the "Show stale" toggle)
+// if its DB status is `stale` or `archived`, OR if its most recent summary is
+// older than 7 days. We mirror the per-tile staleness threshold used on the
+// collapsed tile's left-border so the visual hint and the page-level grouping
+// stay in sync.
+const STALE_DAYS = 7
+function isProjectStale(p: Project): boolean {
+  if (p.status === 'stale' || p.status === 'archived') return true
+  const summaryDate = p.latest_context?.summary?.created_at
+  if (!summaryDate) return false
+  const ageDays = (Date.now() - new Date(summaryDate).getTime()) / (1000 * 60 * 60 * 24)
+  return ageDays > STALE_DAYS
+}
+
+function InsightBadge({ slug, count, compact }: { slug: string; count: number; compact?: boolean }) {
+  if (!count) return null
+  return (
+    <Link
+      to={`/insights?project=${encodeURIComponent(slug)}`}
+      onClick={(e) => e.stopPropagation()}
+      title={`${count} insight${count === 1 ? '' : 's'} for this project — click to filter the feed`}
+      className={`font-semibold text-orange-400/90 hover:text-orange-300 bg-orange-400/10 border border-orange-400/25 rounded transition-colors shrink-0 ${
+        compact ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2 py-0.5'
+      }`}
+    >
+      {count}{compact ? '' : ` insight${count === 1 ? '' : 's'}`}
+    </Link>
+  )
+}
+
 function StatusDot({ status }: { status: string }) {
   const color = status === 'active'
     ? 'bg-orange-400 shadow-[0_0_6px_rgba(251,146,60,0.3)]'
@@ -80,6 +110,7 @@ function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () =
         <StatusDot status={project.status} />
         <span className="text-sm font-semibold text-stone-100 truncate min-w-0">{project.name}</span>
         <div className="ml-auto flex items-center gap-2 min-w-0 shrink">
+          <InsightBadge slug={project.slug} count={project.insight_count || 0} compact />
           {project.visibility === 'private' && <PrivateBadge />}
           {project.deploy_url && <DeployBadge url={project.deploy_url} compact />}
         </div>
@@ -119,6 +150,7 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount }: {
       <div className="flex items-center gap-3 px-6 py-4 border-b border-stone-800">
         <StatusDot status={project.status} />
         <span className="text-base font-bold text-stone-100">{project.name}</span>
+        <InsightBadge slug={project.slug} count={project.insight_count || 0} />
         {project.visibility === 'private' && <PrivateBadge />}
         {project.deploy_url && <DeployBadge url={project.deploy_url} />}
         <div className="ml-auto flex items-center gap-4 text-[11px]">
@@ -323,6 +355,9 @@ export function ProjectsPage() {
   // The slug that the URL asked us to expand; we strip it from the URL once
   // applied so refreshing the page doesn't keep re-scrolling.
   const [pendingScrollSlug, setPendingScrollSlug] = useState<string | null>(null)
+  // Stale projects (status=stale|archived OR summary >7d old) are tucked behind
+  // this toggle so the daily-check-in surface leads with what's actually hot.
+  const [showStale, setShowStale] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -385,7 +420,11 @@ export function ProjectsPage() {
   const expandedProjects = expandedOrder
     .map((slug) => projects.find((p) => p.slug === slug))
     .filter((p): p is Project => Boolean(p))
-  const collapsedProjects = projects.filter((p) => !expandedSet.has(p.slug))
+  const collapsedAll = projects.filter((p) => !expandedSet.has(p.slug))
+  // Hot grid leads; stale grid is hidden behind the toggle. Expanded cards
+  // are NOT filtered — if the user expanded a stale card, it stays open.
+  const collapsedHot = collapsedAll.filter((p) => !isProjectStale(p))
+  const collapsedStale = collapsedAll.filter((p) => isProjectStale(p))
 
   return (
     <div>
@@ -419,14 +458,14 @@ export function ProjectsPage() {
           </AnimatePresence>
         </div>
 
-        {/* Collapsed tile grid */}
+        {/* Collapsed tile grid — active projects */}
         <motion.div
           layout
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2"
           transition={SPRING}
         >
           <AnimatePresence initial={false}>
-            {collapsedProjects.map((project, i) => (
+            {collapsedHot.map((project, i) => (
               <motion.div
                 key={project.id}
                 layout
@@ -440,6 +479,42 @@ export function ProjectsPage() {
             ))}
           </AnimatePresence>
         </motion.div>
+
+        {/* Stale toggle + (optional) stale grid */}
+        {collapsedStale.length > 0 && (
+          <div className="mt-6">
+            <button
+              onClick={() => setShowStale((v) => !v)}
+              className="text-[11px] text-stone-500 hover:text-stone-300 transition-colors flex items-center gap-2"
+              aria-expanded={showStale}
+            >
+              <span>{showStale ? '▾' : '▸'}</span>
+              <span>{showStale ? 'Hide' : 'Show'} stale ({collapsedStale.length})</span>
+            </button>
+            {showStale && (
+              <motion.div
+                layout
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 mt-3 opacity-70"
+                transition={SPRING}
+              >
+                <AnimatePresence initial={false}>
+                  {collapsedStale.map((project, i) => (
+                    <motion.div
+                      key={project.id}
+                      layout
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 8 }}
+                      transition={{ ...SPRING, delay: Math.min(i * 0.03, 0.3), duration: 0.2 }}
+                    >
+                      <CollapsedTile project={project} onExpand={() => expand(project.slug)} />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            )}
+          </div>
+        )}
       </LayoutGroup>
     </div>
   )

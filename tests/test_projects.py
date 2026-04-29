@@ -91,6 +91,28 @@ class TestProjectListAPI:
         assert "current_work" in ctx
         assert ctx["current_work"]["content"] == "Building project workbench feature"
 
+    def test_list_includes_insight_count(self, client, project):
+        ProjectContext.objects.create(
+            project=project, context_type="insight",
+            content="[ship_gap] X", source="test",
+        )
+        ProjectContext.objects.create(
+            project=project, context_type="insight",
+            content="[hygiene] Y", source="test",
+        )
+        ProjectContext.objects.create(
+            project=project, context_type="note",
+            content="not an insight", source="test",
+        )
+        response = client.get("/api/projects/")
+        body = response.json()
+        assert body["data"][0]["insight_count"] == 2
+
+    def test_list_insight_count_zero_when_no_insights(self, client, project):
+        response = client.get("/api/projects/")
+        body = response.json()
+        assert body["data"][0]["insight_count"] == 0
+
     def test_create_project(self, client, db):
         response = client.post(
             "/api/projects/",
