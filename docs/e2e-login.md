@@ -15,10 +15,10 @@ Manager (`canopy-e2e-auth-token:latest`). Mint a new value with:
 ```bash
 TOKEN=$(openssl rand -hex 32)
 echo -n "$TOKEN" | gcloud secrets create canopy-e2e-auth-token \
-  --project=connect-labs --data-file=-
+  --project=canopy-494811 --data-file=-
 # or, for a new version:
 echo -n "$TOKEN" | gcloud secrets versions add canopy-e2e-auth-token \
-  --project=connect-labs --data-file=-
+  --project=canopy-494811 --data-file=-
 ```
 
 ## Use

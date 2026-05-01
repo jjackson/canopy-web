@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_ID="connect-labs"
+PROJECT_ID="canopy-494811"
 REGION="us-central1"
 REPO="us-central1-docker.pkg.dev/${PROJECT_ID}/canopy-web"
 SQL_INSTANCE="${PROJECT_ID}:${REGION}:canopy-web-db"
@@ -20,11 +20,15 @@ else
   (cd frontend && npm run build)
 fi
 
-echo "==> Building and pushing combined image..."
-# --platform linux/amd64 is required because Cloud Run only runs amd64/linux
-# and docker build on Apple Silicon defaults to arm64.
-docker build --platform linux/amd64 -t "${REPO}/${SERVICE_NAME}:${TAG}" -f Dockerfile .
-docker push "${REPO}/${SERVICE_NAME}:${TAG}"
+echo "==> Building and pushing combined image via Cloud Build..."
+# Cloud Build runs on linux/amd64 in GCP, so no local Docker required and no
+# cross-arch headache from Apple Silicon. cloudbuild.yaml drives the build and
+# tags both :${TAG} and :latest.
+gcloud builds submit \
+  --project="${PROJECT_ID}" \
+  --config=cloudbuild.yaml \
+  --substitutions="_TAG=${TAG},_REPO=${REPO},_SERVICE=${SERVICE_NAME}" \
+  .
 
 echo "==> Deploying to Cloud Run..."
 # Single service serves Django API + built React SPA (via WhiteNoise).

@@ -9,14 +9,14 @@ name: CI / Deploy
 # Workload Identity Federation (no long-lived service account keys):
 #
 #   gcloud iam service-accounts create canopy-web-deployer \
-#     --project=connect-labs
+#     --project=canopy-494811
 #
 #   gcloud iam workload-identity-pools create github \
-#     --project=connect-labs --location=global \
+#     --project=canopy-494811 --location=global \
 #     --display-name="GitHub Actions"
 #
 #   gcloud iam workload-identity-pools providers create-oidc github \
-#     --project=connect-labs --location=global \
+#     --project=canopy-494811 --location=global \
 #     --workload-identity-pool=github \
 #     --display-name="GitHub" \
 #     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" \
@@ -24,8 +24,8 @@ name: CI / Deploy
 #     --issuer-uri="https://token.actions.githubusercontent.com"
 #
 #   gcloud iam service-accounts add-iam-policy-binding \
-#     canopy-web-deployer@connect-labs.iam.gserviceaccount.com \
-#     --project=connect-labs \
+#     canopy-web-deployer@canopy-494811.iam.gserviceaccount.com \
+#     --project=canopy-494811 \
 #     --role=roles/iam.workloadIdentityUser \
 #     --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/jjackson/canopy-web"
 #
@@ -33,7 +33,7 @@ name: CI / Deploy
 # cloud sql, secret manager accessor) and add these GitHub repo secrets:
 #
 #   GCP_WIF_PROVIDER  →  projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github
-#   GCP_SERVICE_ACCOUNT  →  canopy-web-deployer@connect-labs.iam.gserviceaccount.com
+#   GCP_SERVICE_ACCOUNT  →  canopy-web-deployer@canopy-494811.iam.gserviceaccount.com
 
 on:
   push:

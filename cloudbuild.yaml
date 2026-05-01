@@ -1,43 +1,28 @@
 steps:
-  # Build backend image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/backend:$SHORT_SHA'
+      - '${_REPO}/${_SERVICE}:${_TAG}'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/backend:latest'
+      - '${_REPO}/${_SERVICE}:latest'
       - '-f'
       - 'Dockerfile'
       - '.'
-    id: 'build-backend'
+    id: 'build'
 
-  # Build frontend image
   - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/frontend:$SHORT_SHA'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/frontend:latest'
-      - '-f'
-      - 'Dockerfile.frontend'
-      - '.'
-    id: 'build-frontend'
+    args: ['push', '--all-tags', '${_REPO}/${_SERVICE}']
+    waitFor: ['build']
 
-  # Push backend image
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/backend']
-    waitFor: ['build-backend']
-
-  # Push frontend image
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/frontend']
-    waitFor: ['build-frontend']
+substitutions:
+  _TAG: latest
+  _REPO: us-central1-docker.pkg.dev/${PROJECT_ID}/canopy-web
+  _SERVICE: canopy-web
 
 images:
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/backend'
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/canopy-web/frontend'
+  - '${_REPO}/${_SERVICE}'
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
