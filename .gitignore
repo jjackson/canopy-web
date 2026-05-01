@@ -35,3 +35,4 @@ node_modules/
 # Claude Code local state (only ignore ephemeral lock files; walkthroughs are tracked)
 .claude/scheduled_tasks.lock
 .claude/tasks/
+.claude/settings.local.json
