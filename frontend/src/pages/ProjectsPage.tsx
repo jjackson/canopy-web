@@ -5,8 +5,10 @@ import { type Project, projectsApi } from '@/api/projects'
 import {
   type Insight,
   insightsApi,
+  newestInsightTimestamp,
   parseInsightBody,
   parseInsightCategory,
+  rankInsights,
 } from '@/api/insights'
 import { CategoryBadge } from '@/components/InsightChip'
 
@@ -149,6 +151,89 @@ function PrivateBadge() {
     <span className="text-[9px] text-stone-500 border border-orange-400/15 bg-orange-400/5 px-1.5 py-0.5 rounded uppercase tracking-wide">
       private
     </span>
+  )
+}
+
+// "Today's top 3" hero — top of the dashboard, above the tile grid. Answers
+// the primary user's "what should I do next?" question without scrolling. The
+// ranking lives in `rankInsights`; clicking a row defers to the parent's
+// `expand(slug)` so the relevant project tile pops open inline (same path the
+// `?expand=` deep link uses).
+function TopThreeHero({
+  insights,
+  onActivate,
+}: {
+  insights: Insight[]
+  onActivate: (slug: string) => void
+}) {
+  const top = rankInsights(insights, 3)
+  const newest = newestInsightTimestamp(insights)
+  const newestAgeHours = newest
+    ? (Date.now() - new Date(newest).getTime()) / (1000 * 60 * 60)
+    : null
+  const isStale = newestAgeHours !== null && newestAgeHours > 24
+
+  if (!top.length) {
+    // First-run / empty-feed state: still show the hero shell so the surface
+    // isn't a missing-section gap. The freshness line tells the user how to
+    // populate it.
+    return (
+      <div className="mb-6 bg-stone-900 border border-stone-800 rounded-xl p-5">
+        <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-1">
+          Today's top 3
+        </div>
+        <p className="text-sm text-stone-500">
+          No insights yet — run <code className="text-stone-300">canopy:portfolio-review</code> to populate the feed.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-6 bg-stone-900 border border-stone-800 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold">
+          Today's top 3
+        </div>
+        <div className="text-[10px] text-stone-600 flex items-center gap-2">
+          {newest && (
+            <span title={new Date(newest).toLocaleString()}>
+              Refreshed {relativeTime(newest)}
+            </span>
+          )}
+          {isStale && (
+            <span
+              className="text-amber-400/90 bg-amber-400/10 border border-amber-400/25 px-2 py-0.5 rounded"
+              title="Run `canopy:portfolio-review` locally to refresh"
+            >
+              stale · run portfolio-review
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="space-y-2">
+        {top.map((insight) => {
+          const category = parseInsightCategory(insight.content)
+          const body = parseInsightBody(insight.content)
+          return (
+            <button
+              key={insight.id}
+              onClick={() => onActivate(insight.project_slug)}
+              className="w-full flex items-center gap-3 text-left bg-stone-950/40 hover:bg-stone-950/70 border border-stone-800 hover:border-stone-700 rounded-lg px-3 py-2 transition-colors group"
+            >
+              <CategoryBadge category={category} />
+              <span className="text-[11px] text-stone-500 shrink-0 w-32 truncate">
+                {insight.project_name}
+              </span>
+              <span className="text-xs text-stone-300 truncate flex-1">{body}</span>
+              <span className="text-[11px] text-stone-600 group-hover:text-orange-400 transition-colors shrink-0">
+                Open →
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -542,6 +627,10 @@ export function ProjectsPage() {
     .map((slug) => projects.find((p) => p.slug === slug))
     .filter((p): p is Project => Boolean(p))
   const collapsedAll = projects.filter((p) => !expandedSet.has(p.slug))
+  // Flatten the per-project insight map back into a single list so the hero
+  // can rank across all projects. Cheaper than refetching since the page
+  // already loaded insights once on mount.
+  const allInsights = Object.values(insightsByProject).flat()
   // Hot grid leads; stale grid is hidden behind the toggle. Expanded cards
   // are NOT filtered — if the user expanded a stale card, it stays open.
   const collapsedHot = collapsedAll.filter((p) => !isProjectStale(p))
@@ -555,6 +644,8 @@ export function ProjectsPage() {
           {projects.length} projects
         </span>
       </div>
+
+      <TopThreeHero insights={allInsights} onActivate={expand} />
 
       <LayoutGroup>
         {/* Stack of expanded cards at the top */}
