@@ -38,6 +38,45 @@ export interface InsightListParams {
   limit?: number
 }
 
+// Category weight for the dashboard "Today's top 3" hero. Higher = more
+// urgent to surface. Tuned for the morning-triage flow: ship gaps and
+// opportunities are time-sensitive (a release, a CWS review, an upstream PR
+// is about to do something) and warrant jumping the queue. Hygiene and
+// pattern are real but rarely "do today". Stale gets the lowest weight
+// because by definition nothing is racing.
+const CATEGORY_RANK: Record<string, number> = {
+  ship_gap: 4,
+  opportunity: 3,
+  pattern: 2,
+  hygiene: 2,
+  stale: 1,
+}
+
+// Pick the top N insights for the home-dashboard hero. Sort key:
+//   1. Category weight (CATEGORY_RANK; unknown/null -> 0)
+//   2. Recency (newer first)
+export function rankInsights(insights: Insight[], limit = 3): Insight[] {
+  return [...insights]
+    .sort((a, b) => {
+      const aw = CATEGORY_RANK[parseInsightCategory(a.content) ?? ''] ?? 0
+      const bw = CATEGORY_RANK[parseInsightCategory(b.content) ?? ''] ?? 0
+      if (bw !== aw) return bw - aw
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+    .slice(0, limit)
+}
+
+// Most recent insight timestamp across the whole feed. Drives the freshness
+// chip on the hero — if this is >24h old the user is triaging stale signals
+// and we should nudge them to re-run the portfolio sweep.
+export function newestInsightTimestamp(insights: Insight[]): string | null {
+  if (!insights.length) return null
+  return insights.reduce(
+    (acc, i) => (acc && acc > i.created_at ? acc : i.created_at),
+    insights[0].created_at,
+  )
+}
+
 export const insightsApi = {
   list: (params: InsightListParams = {}) => {
     const qp = new URLSearchParams()
