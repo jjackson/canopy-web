@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background-color:#f6f7f9;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f6f7f9;">
+    <tr><td align="center" style="padding:32px 16px;">
+      <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;width:100%;background:#ffffff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1f2937;">
+
+        <tr><td style="padding:20px 32px;background:#0f172a;color:#fff;">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;">CANOPY · release notes</td>
+            <td align="right" style="font-size:13px;color:#94a3b8;">May 1, 2026</td>
+          </tr></table>
+        </td></tr>
+
+        <tr><td style="padding:36px 32px 8px;">
+          <h1 style="margin:0 0 12px;font-size:26px;line-height:1.25;color:#0f172a;font-weight:700;">Open canopy. The 3 things worth your time today are right at the top.</h1>
+          <p style="margin:0;font-size:16px;line-height:1.6;color:#475569;">The home dashboard now opens with a ranked top-3 insight strip across all your projects, plus a freshness chip that tells you when the data was last refreshed.</p>
+        </td></tr>
+
+        <tr><td style="padding:28px 32px 0;">
+          <h2 style="margin:0 0 8px;font-size:18px;font-weight:600;">
+            <a href="https://canopy-web-ujpz2cuyxq-uc.a.run.app/" style="color:#0f172a;text-decoration:none;">"Today's top 3" — your morning triage, ranked</a>
+          </h2>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">A new hero card at the top of the dashboard ranks insights across all 13 projects by category urgency (ship-gap and opportunity weighted highest, since they're time-sensitive) then recency. One click on a row expands the relevant project tile inline — same path as the existing <code style="font-size:13px;">?expand=</code> deep link from the insights feed. Today's top three are all ship-gaps: the chrome-sales CWS review, a missing Maestro run on commcare-ios after PR #436 landed, and ace 0.9.6 verification.</p>
+          <a href="https://canopy-web-ujpz2cuyxq-uc.a.run.app/" style="text-decoration:none;display:block;">
+            <img src="https://raw.githubusercontent.com/jjackson/canopy-web/pm-assets/2026-05-01-user-value-top3-dashboard/screenshots/hero-top3.png"
+                 alt="The new Today's top 3 hero card on the canopy-web home dashboard, showing three ranked ship-gap insights across chrome-sales, commcare-ios, and ace, with a Refreshed 3 days ago timestamp and a stale · run portfolio-review pill in the upper right."
+                 width="576"
+                 style="display:block;width:100%;max-width:576px;height:auto;border:1px solid #e2e8f0;border-radius:8px;margin:0 0 8px;">
+          </a>
+          <p style="margin:0 0 18px;font-size:13px;color:#64748b;font-style:italic;">After: the hero leads with the three most-actionable insights and a freshness chip in the upper right. Today's data is 3 days stale, so the pill nudges to re-run <code style="font-size:12px;">canopy:portfolio-review</code> locally.</p>
+          <p style="margin:0 0 4px;font-size:14px;">
+            <a href="https://canopy-web-ujpz2cuyxq-uc.a.run.app/" style="color:#4338ca;text-decoration:none;font-weight:500;">Try it on prod →</a>
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:28px 32px 0;"><div style="height:1px;background:#e2e8f0;"></div></td></tr>
+
+        <tr><td style="padding:36px 32px 32px;">
+          <p style="margin:0 0 12px;font-size:13px;color:#64748b;">
+            <strong style="color:#475569;">Sprint internals.</strong> 1 autonomous cycle, 1 bundled PR (<a href="https://github.com/jjackson/canopy-web/pull/38" style="color:#4338ca;text-decoration:none;">#38</a>), gates green, deploy verified on revision <code style="font-size:12px;">canopy-web-00005-h2m</code>. Lens: increasing value for me as the primary user. Pure additive frontend change — no API surface, no migrations.
+          </p>
+          <p style="margin:0 0 12px;font-size:13px;color:#64748b;">
+            <strong style="color:#475569;">Up next, optionally.</strong> Insight lifecycle (snooze for N days / mark done) so the feed stops being binary dismiss-or-ignore. Or: a one-click "open in tool" deep-link on insights that mention a PR / CWS dashboard / external surface — the data's already in the body.
+          </p>
+          <p style="margin:0 0 16px;font-size:13px;color:#475569;">— Canopy autonomous PM, on behalf of the canopy-web build loop</p>
+          <p style="margin:0;font-size:12px;color:#94a3b8;">Sent automatically by the autonomous PM cycle. Reply to opt out.</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>
