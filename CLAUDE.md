@@ -8,8 +8,7 @@ Collaborative web workspace for building reusable AI skills from conversations.
 - **Frontend:** React 19 + Vite + Tailwind CSS 4 + shadcn/ui
 - **AI:** Anthropic Claude API via SSE streaming. Dual backend — direct API key (`AI_BACKEND=api`) or Claude Code CLI subscription (`AI_BACKEND=cli`), switchable at runtime via `/api/ai/switch/`.
 - **Runtime adapters:** `apps/skills/adapters/` produces skill artifacts for `web`, `claude_code`, and `open_claw` runtimes.
-- **Canopy:** Integrated as git submodule at `./canopy/`
-- **Deployment:** GCP Cloud Run + Cloud SQL via `./deploy.sh` (see PR #3 for resources). Production settings in `config/settings/production.py`.
+- **Deployment:** GCP Cloud Run + Cloud SQL on the `canopy-494811` project. `./deploy.sh` builds via Cloud Build (`cloudbuild.yaml`) and `gcloud run deploy`s — no local Docker daemon required. Production settings in `config/settings/production.py`.
 
 ## Development
 
@@ -32,9 +31,9 @@ uv run honcho start -f Procfile.dev
 # Docker (backend + frontend + Postgres)
 docker compose up
 
-# Deploy to GCP Cloud Run (local). CI also has a manual deploy job —
-# trigger it from the Actions tab ("CI / Deploy" → Run workflow).
-./deploy.sh                  # runs tests + frontend build first
+# Deploy to GCP Cloud Run. CI also has a manual deploy job — trigger it from
+# the Actions tab ("CI / Deploy" → Run workflow).
+./deploy.sh                  # Cloud Build → push → gcloud run deploy
 SKIP_TESTS=1 ./deploy.sh     # bypass test gate (emergencies only)
 ```
 
@@ -52,25 +51,30 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 
 ## Key URLs
 
-- `/` — Project workbench (tile grid dashboard)
+- `/` — Project workbench. Tile grid dashboard with a "Today's top 3" insight hero, freshness chip, inline insights triage, and self-prioritizing tile order by insight count.
 - `/skills` — Skill discovery feed
 - `/workspaces` — Workspace session list (resume in-progress sessions)
 - `/new` — New collection / source ingestion flow
 - `/workspace/:sessionId` — Co-authoring workspace
 - `/skills/:skillId` — Skill detail + eval history
 - `/leaderboard` — Eval improvement leaderboard
-- `/guide` — Interactive walkthrough ("Try It Now" sample flow + adapter reference)
+- `/guide` — Interactive walkthrough using a "Discovery Call Debrief" sample collection (try-it / how-it-works / review / eval / deploy sections)
 - `/insights` — Cross-portfolio AI insights feed
-- `/settings` — AI backend status, switch backends, headless Claude CLI auth
+- `/settings` — AI backend status, switch backends, headless Claude CLI auth, debug-session minting
 - `/api/` — REST API
 - `/admin/` — Django admin
 - `/health/` — Health check
 
 ## API Endpoints
 
+### Auth + session (root)
+- `GET /api/me/` — Current authenticated user
+- `GET /api/csrf/` — CSRF token bootstrap
+
 ### Projects
 - `GET /api/projects/` — List projects with latest context
 - `POST /api/projects/` — Create project
+- `GET /api/projects/slugs/` — Lightweight slug list
 - `GET /api/projects/{slug}/` — Project detail with full context
 - `PATCH /api/projects/{slug}/` — Update project
 - `DELETE /api/projects/{slug}/` — Delete project
@@ -87,6 +91,7 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 ### Insights
 - `GET /api/insights/` — List all insights across projects. Filters: `?category=<slug>` (matches `[<slug>]` content prefix), `?source=<producer>` (filters by writer), `?project=<slug>`. Bearer-readable for machine producers (e.g. `canopy:portfolio-review`) so they can dedupe before re-publishing.
 - `DELETE /api/insights/{id}/` — Dismiss an insight (OAuth only — bearer is GET-only here).
+- `POST /api/insights/clear/` — Clear insights (regeneration helper).
 
 ### Collections
 - `POST /api/collections/` — Create collection
@@ -132,14 +137,22 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - Workspace flow: Ingest → AI proposes Approach + Eval → Review/Edit → Test → Publish
 - SSE streaming for AI responses (Scout pattern)
 - Overwrite-with-history versioning
-- No auth in V1 (single-tenant internal tool)
-- PostgreSQL on Cloud SQL (GCP deployment)
+- **Auth:** Google OAuth via django-allauth (allowed-domain restricted via `AUTH_ALLOWED_EMAIL_DOMAIN`, default `dimagi.com`). `LoginRequiredMiddleware` enforces auth at the app layer. Two automation bypasses: `/api/auth/e2e-login/` (token-gated, for headless tools) and `/api/debug/mint-session/` (authenticated user mints a short-lived cookie for an AI assistant). Single-tenant in V1; multi-tenant scaffolding tracked in `TODOS.md`.
+- PostgreSQL on Cloud SQL (GCP `canopy-494811`)
 - Dual AI backend lets users run either against an API key or their own Claude Code subscription
 
 ## Reference Docs
 
 - `docs/superpowers/plans/2026-03-27-canopy-web-implementation.md` — Original implementation plan and file structure
+- `docs/superpowers/plans/2026-04-10-project-workbench.md` — Project workbench dashboard plan
+- `docs/superpowers/plans/2026-04-13-portfolio-insights.md` — Cross-portfolio insights feed plan
+- `docs/superpowers/specs/2026-04-10-project-workbench-design.md` — Workbench design spec
+- `docs/superpowers/specs/2026-04-14-google-oauth-auth-gate-design.md` — OAuth gate design spec
 - `docs/designs/canopy-web-design.md` — Product design + glossary (open claw, skill, collection, eval suite, workspace session)
 - `docs/designs/ceo-plan-conversation-to-agent.md` — CEO review, scope decisions, deferred work
 - `docs/walkthroughs/canopy-web-demo.yaml` — Walkthrough QA spec (5 skills, varied scores)
+- `docs/walkthroughs/project-workbench.yaml` — Project workbench walkthrough spec
+- `docs/case-studies/workbench-self-improvement.md` — Self-improvement case study
+- `docs/personas/jonathan.md` — Primary user persona
+- `docs/e2e-login.md` — Token-gated automation login (`/api/auth/e2e-login/`) usage and contract
 - `TODOS.md` — Deferred V2 work (proactive detection, MCP layer, prompt hardening, OAuth integrations, multi-tenant auth, cowork adapter)
