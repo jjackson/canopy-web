@@ -85,8 +85,11 @@ def project_detail(request, slug):
         )
 
     if request.method == "GET":
+        from apps.walkthroughs.models import Walkthrough  # noqa: PLC0415
         serializer = ProjectDetailSerializer(project)
-        return Response(success_response(serializer.data))
+        data = dict(serializer.data)
+        data["walkthrough_count"] = Walkthrough.objects.filter(project_slug=project.slug).count()
+        return Response(success_response(data))
 
     if request.method == "PATCH":
         serializer = ProjectCreateSerializer(project, data=request.data, partial=True)

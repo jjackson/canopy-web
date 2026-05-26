@@ -363,3 +363,30 @@ def test_content_range_request_serves_partial(client, db, owner, fake_drive):
     assert b"".join(resp.streaming_content) == b"2345"
     assert resp["Content-Range"] == "bytes 2-5/10"
     assert resp["Accept-Ranges"] == "bytes"
+
+
+# ---- Project tile integration ----
+
+@override_settings(WALKTHROUGHS_ENABLED=True)
+def test_project_detail_includes_walkthrough_count(auth_client, db, owner):
+    from apps.projects.models import Project
+    p = Project.objects.create(name="Canopy", slug="canopy-web")
+    Walkthrough.objects.create(
+        title="a", kind="html", owner=owner, project_slug="canopy-web",
+        drive_file_id="f", drive_folder_id="d",
+        content_type="text/html", size_bytes=1,
+    )
+    Walkthrough.objects.create(
+        title="b", kind="html", owner=owner, project_slug="canopy-web",
+        drive_file_id="f2", drive_folder_id="d2",
+        content_type="text/html", size_bytes=1,
+    )
+    Walkthrough.objects.create(
+        title="other", kind="html", owner=owner, project_slug="ace-web",
+        drive_file_id="f3", drive_folder_id="d3",
+        content_type="text/html", size_bytes=1,
+    )
+    resp = auth_client.get(f"/api/projects/{p.slug}/")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["walkthrough_count"] == 2
