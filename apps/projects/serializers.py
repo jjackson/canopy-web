@@ -12,6 +12,7 @@ class ProjectListSerializer(serializers.ModelSerializer):
     latest_context = serializers.SerializerMethodField()
     latest_actions = serializers.SerializerMethodField()
     insight_count = serializers.SerializerMethodField()
+    walkthrough_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
@@ -19,6 +20,7 @@ class ProjectListSerializer(serializers.ModelSerializer):
             "id", "name", "slug", "repo_url", "deploy_url",
             "visibility", "status", "skills",
             "latest_context", "latest_actions", "insight_count",
+            "walkthrough_count",
             "created_at", "updated_at",
         ]
 
@@ -71,6 +73,10 @@ class ProjectListSerializer(serializers.ModelSerializer):
         else:
             contexts = obj.contexts.all()
         return sum(1 for ctx in contexts if ctx.context_type == "insight")
+
+    def get_walkthrough_count(self, obj):
+        from apps.walkthroughs.models import Walkthrough  # noqa: PLC0415
+        return Walkthrough.objects.filter(project_slug=obj.slug).count()
 
 
 class ProjectDetailSerializer(serializers.ModelSerializer):

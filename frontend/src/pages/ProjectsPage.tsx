@@ -434,6 +434,19 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDis
             </div>
           )}
 
+          {/* Walkthroughs link */}
+          {project.walkthrough_count && project.walkthrough_count > 0 ? (
+            <div className="mb-3">
+              <Link
+                to={`/walkthroughs?project=${project.slug}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-[11px] text-stone-300 hover:text-stone-100"
+              >
+                Walkthroughs · {project.walkthrough_count}
+              </Link>
+            </div>
+          ) : null}
+
           {/* Skills (collapsible) */}
           <div>
             <button
