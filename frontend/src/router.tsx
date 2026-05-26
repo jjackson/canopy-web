@@ -10,6 +10,7 @@ import { SkillDetailPage } from './pages/SkillDetailPage'
 import { LeaderboardPage } from './pages/LeaderboardPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { GuidePage } from './pages/GuidePage'
+import { WalkthroughsPage } from './pages/WalkthroughsPage'
 
 export const router = createBrowserRouter([
   {
@@ -18,6 +19,7 @@ export const router = createBrowserRouter([
       { path: '/', element: <ProjectsPage /> },
       { path: '/insights', element: <InsightsPage /> },
       { path: '/skills', element: <DiscoveryPage /> },
+      { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/new', element: <NewCollectionPage /> },
       { path: '/workspaces', element: <WorkspacesPage /> },
       { path: '/workspace/:sessionId', element: <WorkspacePage /> },
