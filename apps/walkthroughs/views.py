@@ -136,3 +136,89 @@ def _list(request):
         qs = qs.filter(owner=request.user)
     data = WalkthroughListItemSerializer(qs, many=True).data
     return Response(success_response(data))
+
+
+# ---- Detail / Patch / Delete ----
+
+def _get_or_404(wid):
+    try:
+        return Walkthrough.objects.get(pk=wid)
+    except (Walkthrough.DoesNotExist, ValueError):
+        return None
+
+
+def _serialize_detail(w, *, is_owner: bool):
+    data = WalkthroughDetailSerializer(w).data
+    data["is_owner"] = is_owner
+    if not is_owner:
+        data["share_token"] = None
+    return data
+
+
+@api_view(["GET", "PATCH", "DELETE"])
+def walkthrough_detail(request, wid):
+    _require_enabled()
+    start_timing()
+    w = _get_or_404(wid)
+    if w is None:
+        return Response(
+            error_response("NOT_FOUND", "walkthrough not found"),
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    is_owner = request.user.is_authenticated and w.owner_id == request.user.id
+
+    if request.method == "GET":
+        return Response(success_response(_serialize_detail(w, is_owner=is_owner)))
+
+    # Mutations require owner.
+    if not is_owner:
+        return Response(
+            error_response("FORBIDDEN", "owner only"),
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if request.method == "DELETE":
+        if w.drive_file_id:
+            try:
+                storage.delete_stored(file_id=w.drive_file_id, folder_id=w.drive_folder_id)
+            except DriveNotConfigured:
+                # Without Drive configured we can't clean Drive, but we
+                # should still drop the row so the UI matches reality.
+                pass
+            except Exception:
+                # Log and continue — orphan Drive files are recoverable;
+                # an orphan row would block the user from re-deleting.
+                pass
+        w.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # PATCH
+    serializer = WalkthroughUpdateSerializer(w, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    w.refresh_from_db()
+    if w.visibility == Walkthrough.VISIBILITY_LINK and not w.share_token:
+        w.ensure_share_token()
+    return Response(success_response(_serialize_detail(w, is_owner=True)))
+
+
+# ---- Rotate token ----
+
+@api_view(["POST"])
+def walkthrough_rotate_token(request, wid):
+    _require_enabled()
+    start_timing()
+    w = _get_or_404(wid)
+    if w is None:
+        return Response(
+            error_response("NOT_FOUND", "walkthrough not found"),
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    if not request.user.is_authenticated or w.owner_id != request.user.id:
+        return Response(
+            error_response("FORBIDDEN", "owner only"),
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    new_token = w.rotate_share_token()
+    return Response(success_response({"share_token": new_token}))

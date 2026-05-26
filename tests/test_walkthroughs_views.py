@@ -117,3 +117,156 @@ def test_upload_rejects_unknown_kind(auth_client, fake_drive):
 def _file_part(name, content, content_type):
     from django.core.files.uploadedfile import SimpleUploadedFile
     return SimpleUploadedFile(name, content, content_type=content_type)
+
+
+# ---- List ----
+
+@override_settings(WALKTHROUGHS_ENABLED=True)
+def test_list_returns_all(auth_client, db, owner):
+    Walkthrough.objects.create(
+        title="a", kind="html", owner=owner,
+        drive_file_id="f1", drive_folder_id="d1",
+        content_type="text/html", size_bytes=1,
+    )
+    Walkthrough.objects.create(
+        title="b", kind="video", owner=owner,
+        drive_file_id="f2", drive_folder_id="d2",
+        content_type="video/mp4", size_bytes=1,
+    )
+    resp = auth_client.get("/api/walkthroughs/")
+    assert resp.status_code == 200
+    items = resp.json()["data"]
+    assert len(items) == 2
+
+
+@override_settings(WALKTHROUGHS_ENABLED=True)
+def test_list_filters_by_project_and_kind(auth_client, db, owner):
+    Walkthrough.objects.create(
+        title="a", kind="html", owner=owner, project_slug="canopy-web",
+        drive_file_id="f1", drive_folder_id="d1",
+        content_type="text/html", size_bytes=1,
+    )
+    Walkthrough.objects.create(
+        title="b", kind="video", owner=owner, project_slug="ace-web",
+        drive_file_id="f2", drive_folder_id="d2",
+        content_type="video/mp4", size_bytes=1,
+    )
+    resp = auth_client.get("/api/walkthroughs/?project=canopy-web")
+    assert [w["title"] for w in resp.json()["data"]] == ["a"]
+    resp = auth_client.get("/api/walkthroughs/?kind=video")
+    assert [w["title"] for w in resp.json()["data"]] == ["b"]
+
+
+# ---- Detail ----
+
+@override_settings(WALKTHROUGHS_ENABLED=True)
+def test_detail_owner_sees_token_and_is_owner_true(auth_client, db, owner):
+    w = Walkthrough.objects.create(
+        title="t", kind="html", owner=owner,
+        drive_file_id="f", drive_folder_id="d",
+        content_type="text/html", size_bytes=1,
+        visibility="link",
+    )
+    w.ensure_share_token()
+    resp = auth_client.get(f"/api/walkthroughs/{w.id}/")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["is_owner"] is True
+    assert body["share_token"] == w.share_token
+
+
+@override_settings(WALKTHROUGHS_ENABLED=True)
+def test_detail_non_owner_does_not_see_token(client, db, owner, other_user):
+    w = Walkthrough.objects.create(
+        title="t", kind="html", owner=owner,
+        drive_file_id="f", drive_folder_id="d",
+        content_type="text/html", size_bytes=1,
+        visibility="link",
+    )
+    w.ensure_share_token()
+    client.force_login(other_user)
+    resp = client.get(f"/api/walkthroughs/{w.id}/")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["is_owner"] is False
+    assert body["share_token"] is None
+
+
+# ---- PATCH ----
+
+@override_settings(WALKTHROUGHS_ENABLED=True)
+def test_patch_owner_can_update(auth_client, db, owner):
+    w = Walkthrough.objects.create(
+        title="old", kind="html", owner=owner,
+        drive_file_id="f", drive_folder_id="d",
+        content_type="text/html", size_bytes=1,
+    )
+    resp = auth_client.patch(
+        f"/api/walkthroughs/{w.id}/",
+        data=json.dumps({"title": "new", "visibility": "link"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200, resp.content
+    w.refresh_from_db()
+    assert w.title == "new"
+    assert w.visibility == "link"
+    assert w.share_token is not None  # auto-minted on link switch
+
+
+@override_settings(WALKTHROUGHS_ENABLED=True)
+def test_patch_non_owner_forbidden(client, db, owner, other_user):
+    w = Walkthrough.objects.create(
+        title="t", kind="html", owner=owner,
+        drive_file_id="f", drive_folder_id="d",
+        content_type="text/html", size_bytes=1,
+    )
+    client.force_login(other_user)
+    resp = client.patch(
+        f"/api/walkthroughs/{w.id}/",
+        data=json.dumps({"title": "x"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 403
+
+
+# ---- DELETE ----
+
+@override_settings(
+    WALKTHROUGHS_ENABLED=True,
+    CANOPY_DRIVE_SA_KEY_JSON='{"x":"y"}',
+    CANOPY_DRIVE_ROOT_FOLDER_ID="root",
+)
+def test_delete_owner_drops_row_and_drive_file(auth_client, fake_drive, owner):
+    w = Walkthrough.objects.create(
+        title="t", kind="html", owner=owner,
+        drive_file_id="manual-file", drive_folder_id="manual-folder",
+        content_type="text/html", size_bytes=1,
+    )
+    fake_drive.files["manual-file"] = fake_drive.files.get(
+        "manual-file"
+    ) or type(fake_drive.files[fake_drive.root_id])(
+        file_id="manual-file", parent_id="manual-folder", name="x",
+        content_type="text/html", data=b"x", is_folder=False,
+    )
+    resp = auth_client.delete(f"/api/walkthroughs/{w.id}/")
+    assert resp.status_code == 204
+    assert not Walkthrough.objects.filter(id=w.id).exists()
+    assert "manual-file" not in fake_drive.files
+
+
+# ---- Rotate token ----
+
+@override_settings(WALKTHROUGHS_ENABLED=True)
+def test_rotate_token(auth_client, db, owner):
+    w = Walkthrough.objects.create(
+        title="t", kind="html", owner=owner,
+        drive_file_id="f", drive_folder_id="d",
+        content_type="text/html", size_bytes=1,
+        visibility="link",
+    )
+    w.ensure_share_token()
+    old = w.share_token
+    resp = auth_client.post(f"/api/walkthroughs/{w.id}/rotate-token/")
+    assert resp.status_code == 200
+    new_token = resp.json()["data"]["share_token"]
+    assert new_token and new_token != old
