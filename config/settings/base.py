@@ -160,6 +160,25 @@ AUTH_ALLOWED_EMAIL_DOMAIN = env("AUTH_ALLOWED_EMAIL_DOMAIN", default="dimagi.com
 # Whether LoginRequiredMiddleware enforces auth. Default on; toggle off during rollout.
 REQUIRE_AUTH = env.bool("REQUIRE_AUTH", default=True)
 
+# --- Walkthrough sharing (apps/walkthroughs) ---
+# When False, all /api/walkthroughs/ endpoints 404 (rollout flag).
+WALKTHROUGHS_ENABLED = env.bool("WALKTHROUGHS_ENABLED", default=True)
+
+# Google Service Account JSON for the Drive that stores walkthrough
+# files. Empty string disables uploads/downloads (returns 500 with
+# code="drive-not-configured" — same affordance as ace-web).
+CANOPY_DRIVE_SA_KEY_JSON = env("CANOPY_DRIVE_SA_KEY_JSON", default="")
+
+# ID of the shared-drive folder under which "walkthroughs/<uuid>/"
+# subfolders are created.
+CANOPY_DRIVE_ROOT_FOLDER_ID = env("CANOPY_DRIVE_ROOT_FOLDER_ID", default="")
+
+# Max upload size in bytes for a single walkthrough file. 75 MB covers
+# small videos and large HTML decks.
+WALKTHROUGH_MAX_UPLOAD_BYTES = env.int(
+    "WALKTHROUGH_MAX_UPLOAD_BYTES", default=75 * 1024 * 1024,
+)
+
 # Shared-secret Bearer token that lets machine callers (e.g. the canopy
 # post_tool_use hook) write to a narrow set of /api/projects/*/actions/
 # and /api/projects/*/context/ endpoints without Google OAuth. Empty
