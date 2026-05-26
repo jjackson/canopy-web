@@ -4,6 +4,7 @@ URL configuration for canopy-web project.
 from django.contrib import admin
 from django.urls import include, path, re_path
 
+from apps.api.api import api as api_v2
 from apps.common import views_auth_e2e
 from apps.projects import views_insights
 from apps.walkthroughs.views import walkthrough_content as views_walkthrough_content
@@ -28,6 +29,7 @@ urlpatterns = [
     path("api/debug/", include("apps.common.urls_debug")),
     path("api/walkthroughs/", include("apps.walkthroughs.urls")),
     path("w/<uuid:wid>/content", views_walkthrough_content, name="walkthrough-content"),
+    path("api/v2/", api_v2.urls),
     # Catch-all: serve the SPA for any non-API route (last).
     re_path(r"^(?!api/|admin/|accounts/|health/|static/).*$", spa_view, name="spa"),
 ]

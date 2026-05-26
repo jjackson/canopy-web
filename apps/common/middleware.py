@@ -10,6 +10,9 @@ PUBLIC_PATH_PREFIXES = (
     "/static/",              # static assets
     "/api/csrf/",            # bootstraps CSRF cookie before login
     "/api/auth/e2e-login/",  # token-gated login for automated tools
+    "/api/v2/openapi.json",  # NEW — openapi-typescript fetches the schema
+    "/api/v2/docs/",          # NEW — Scalar HTML (mounted in Task 0.4)
+    "/api/v2/redoc/",         # NEW — Redoc HTML (mounted in Task 0.4)
 )
 
 # Write endpoints callable with a Bearer token (machine writes like the
