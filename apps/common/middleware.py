@@ -33,6 +33,13 @@ def _is_public(path: str) -> bool:
     return any(path == p or path.startswith(p) for p in PUBLIC_PATH_PREFIXES)
 
 
+def _is_walkthrough_content(path: str) -> bool:
+    # /w/<uuid>/content — the view itself enforces token-or-session auth.
+    # We let it through the middleware so the per-token public link can
+    # be served without a session cookie.
+    return path.startswith("/w/") and path.endswith("/content")
+
+
 def _is_token_writable_path(path: str) -> bool:
     if not path.startswith("/api/projects/"):
         return False
@@ -68,7 +75,11 @@ class LoginRequiredMiddleware:
         if not getattr(settings, "REQUIRE_AUTH", True):
             return self.get_response(request)
 
-        if request.user.is_authenticated or _is_public(request.path):
+        if (
+            request.user.is_authenticated
+            or _is_public(request.path)
+            or _is_walkthrough_content(request.path)
+        ):
             return self.get_response(request)
 
         # Bearer-token bypass for a narrow set of machine endpoints.

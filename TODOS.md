@@ -86,4 +86,21 @@
 **Priority:** P3
 **Depends on:** Cowork API documentation available
 
+### Walkthrough sharing — deferred (V2)
+
+**What:** Items deferred from the V1 walkthrough sharing slice (spec `docs/superpowers/specs/2026-05-26-walkthrough-sharing-design.md`):
+- View analytics (who viewed, when, where from)
+- Multi-link / per-audience tokens (promote `share_token` to its own table)
+- Comments / reactions on walkthroughs
+- Embed support (oEmbed-style)
+- Video poster frames, chapter markers, thumbnails
+- Signed Drive URLs for video (approach B in the spec) — only if Cloud Run egress becomes a measurable cost
+- Auto-upload mode from `/canopy:walkthrough`
+- Browser drag-drop upload UI at `/walkthroughs` (currently CLI-only)
+- Multi-tenant scoping of walkthrough list (today: any dimagi user sees all walkthroughs)
+
+**Effort:** Each item is S-M independently.
+**Priority:** P2 (analytics, video signed URLs) / P3 (rest)
+**Depends on:** V1 backend in production, real usage feedback
+
 ## Completed

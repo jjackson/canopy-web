@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { path: '/', label: 'Projects' },
   { path: '/insights', label: 'Insights' },
   { path: '/skills', label: 'Skills' },
+  { path: '/walkthroughs', label: 'Walkthroughs' },
   { path: '/workspaces', label: 'Workspaces' },
   { path: '/leaderboard', label: 'Leaderboard' },
   { path: '/guide', label: 'Guide' },

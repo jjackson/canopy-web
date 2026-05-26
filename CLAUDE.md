@@ -60,6 +60,8 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/leaderboard` — Eval improvement leaderboard
 - `/guide` — Interactive walkthrough using a "Discovery Call Debrief" sample collection (try-it / how-it-works / review / eval / deploy sections)
 - `/insights` — Cross-portfolio AI insights feed
+- `/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
+- `/w/:id` — Single walkthrough viewer (HTML iframe or video player)
 - `/settings` — AI backend status, switch backends, headless Claude CLI auth, debug-session minting
 - `/api/` — REST API
 - `/admin/` — Django admin
@@ -127,6 +129,21 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 
 ### Automated-tool login (`apps/common/views_auth_e2e`)
 - `POST /api/auth/e2e-login/` — token-gated login for automated tools (gstack walkthroughs, autonomous PM cycles, AI-driven QA). Body: `{email, token}`. Disabled by default — returns 404 unless `CANOPY_E2E_AUTH_TOKEN` is set. Email must be in `AUTH_ALLOWED_EMAIL_DOMAIN`. Sessions carry `_canopy_e2e_session` marker for audit. See `docs/e2e-login.md`.
+
+### Walkthroughs
+- `GET /api/walkthroughs/` — List. Filters: `?project=<slug>`, `?kind=html|video`, `?mine=true`
+- `POST /api/walkthroughs/` — Upload (multipart). Fields: `file`, `title`, `kind` (html|video), optional `description`, `project_slug`, `visibility` (private|link)
+- `GET /api/walkthroughs/<uuid>/` — Detail. Returns `share_token` only to owner; `is_owner` flag tells the UI which toolbar to render
+- `PATCH /api/walkthroughs/<uuid>/` — Owner-only update of title/description/project_slug/visibility. Switching to `visibility=link` auto-mints `share_token`
+- `DELETE /api/walkthroughs/<uuid>/` — Owner-only. Deletes Drive file and the row
+- `POST /api/walkthroughs/<uuid>/rotate-token/` — Owner-only. Mints a fresh `share_token`, invalidating the old one
+- `GET /w/<uuid>/content?t=<token>` — Streams file bytes. Session-auth OR valid token. Range-aware (supports `<video>` scrubbing)
+
+Settings:
+- `WALKTHROUGHS_ENABLED` (default `True`) — `/api/walkthroughs/` and `/w/<id>/content` 404 when off
+- `CANOPY_DRIVE_SA_KEY_JSON` — Google Drive service-account key (JSON string). Empty disables uploads/streams (500 with `code=drive-not-configured`)
+- `CANOPY_DRIVE_ROOT_FOLDER_ID` — Shared-drive folder ID. `walkthroughs/<uuid>/` subfolders are created under it
+- `WALKTHROUGH_MAX_UPLOAD_BYTES` (default 75 MB)
 
 ### Debug access (`apps/common/views_debug`)
 - `POST /api/debug/mint-session/` — authenticated user mints a short-lived Django session cookie (body: `{ttl_seconds: int}`, clamped to 60s–1w). Returns cookie + curl example. Used to hand access to an AI assistant without going through OAuth. UI lives at `/settings` → "Debug access".

@@ -270,3 +270,123 @@ def test_rotate_token(auth_client, db, owner):
     assert resp.status_code == 200
     new_token = resp.json()["data"]["share_token"]
     assert new_token and new_token != old
+
+
+# ---- Content streaming ----
+
+@override_settings(
+    WALKTHROUGHS_ENABLED=True,
+    CANOPY_DRIVE_SA_KEY_JSON='{"x":"y"}',
+    CANOPY_DRIVE_ROOT_FOLDER_ID="root",
+)
+def test_content_private_requires_session(client, db, owner, fake_drive):
+    stored = storage.store_upload(
+        walkthrough_id="abc", filename="slideshow.html",
+        content_type="text/html", data=b"<html>x</html>",
+    )
+    w = Walkthrough.objects.create(
+        title="t", kind="html", owner=owner,
+        drive_file_id=stored.file_id, drive_folder_id=stored.folder_id,
+        content_type="text/html", size_bytes=12,
+    )
+    # Anonymous → middleware redirects or 401
+    resp = client.get(f"/w/{w.id}/content")
+    assert resp.status_code in (302, 401, 404)
+
+
+@override_settings(
+    WALKTHROUGHS_ENABLED=True,
+    CANOPY_DRIVE_SA_KEY_JSON='{"x":"y"}',
+    CANOPY_DRIVE_ROOT_FOLDER_ID="root",
+)
+def test_content_link_visibility_serves_with_token(client, db, owner, fake_drive):
+    stored = storage.store_upload(
+        walkthrough_id="abc", filename="slideshow.html",
+        content_type="text/html", data=b"<html>linked</html>",
+    )
+    w = Walkthrough.objects.create(
+        title="t", kind="html", owner=owner,
+        drive_file_id=stored.file_id, drive_folder_id=stored.folder_id,
+        content_type="text/html", size_bytes=17,
+        visibility="link",
+    )
+    w.ensure_share_token()
+    resp = client.get(f"/w/{w.id}/content?t={w.share_token}")
+    assert resp.status_code == 200
+    assert b"".join(resp.streaming_content) == b"<html>linked</html>"
+    assert resp["Content-Type"].startswith("text/html")
+
+
+@override_settings(
+    WALKTHROUGHS_ENABLED=True,
+    CANOPY_DRIVE_SA_KEY_JSON='{"x":"y"}',
+    CANOPY_DRIVE_ROOT_FOLDER_ID="root",
+)
+def test_content_wrong_token_returns_404_not_403(client, db, owner, fake_drive):
+    stored = storage.store_upload(
+        walkthrough_id="abc", filename="slideshow.html",
+        content_type="text/html", data=b"x",
+    )
+    w = Walkthrough.objects.create(
+        title="t", kind="html", owner=owner,
+        drive_file_id=stored.file_id, drive_folder_id=stored.folder_id,
+        content_type="text/html", size_bytes=1,
+        visibility="link",
+    )
+    w.ensure_share_token()
+    resp = client.get(f"/w/{w.id}/content?t=wrongtoken")
+    assert resp.status_code == 404
+
+
+@override_settings(
+    WALKTHROUGHS_ENABLED=True,
+    CANOPY_DRIVE_SA_KEY_JSON='{"x":"y"}',
+    CANOPY_DRIVE_ROOT_FOLDER_ID="root",
+)
+def test_content_range_request_serves_partial(client, db, owner, fake_drive):
+    stored = storage.store_upload(
+        walkthrough_id="abc", filename="video.mp4",
+        content_type="video/mp4", data=b"0123456789",
+    )
+    w = Walkthrough.objects.create(
+        title="t", kind="video", owner=owner,
+        drive_file_id=stored.file_id, drive_folder_id=stored.folder_id,
+        content_type="video/mp4", size_bytes=10,
+        visibility="link",
+    )
+    w.ensure_share_token()
+    resp = client.get(
+        f"/w/{w.id}/content?t={w.share_token}",
+        HTTP_RANGE="bytes=2-5",
+    )
+    assert resp.status_code == 206
+    assert b"".join(resp.streaming_content) == b"2345"
+    assert resp["Content-Range"] == "bytes 2-5/10"
+    assert resp["Accept-Ranges"] == "bytes"
+
+
+# ---- Project tile integration ----
+
+@override_settings(WALKTHROUGHS_ENABLED=True)
+def test_project_detail_includes_walkthrough_count(auth_client, db, owner):
+    from apps.projects.models import Project
+    p = Project.objects.create(name="Canopy", slug="canopy-web")
+    Walkthrough.objects.create(
+        title="a", kind="html", owner=owner, project_slug="canopy-web",
+        drive_file_id="f", drive_folder_id="d",
+        content_type="text/html", size_bytes=1,
+    )
+    Walkthrough.objects.create(
+        title="b", kind="html", owner=owner, project_slug="canopy-web",
+        drive_file_id="f2", drive_folder_id="d2",
+        content_type="text/html", size_bytes=1,
+    )
+    Walkthrough.objects.create(
+        title="other", kind="html", owner=owner, project_slug="ace-web",
+        drive_file_id="f3", drive_folder_id="d3",
+        content_type="text/html", size_bytes=1,
+    )
+    resp = auth_client.get(f"/api/projects/{p.slug}/")
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["walkthrough_count"] == 2
