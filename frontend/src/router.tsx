@@ -11,6 +11,7 @@ import { LeaderboardPage } from './pages/LeaderboardPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { GuidePage } from './pages/GuidePage'
 import { WalkthroughsPage } from './pages/WalkthroughsPage'
+import { WalkthroughViewerPage } from './pages/WalkthroughViewerPage'
 
 export const router = createBrowserRouter([
   {
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { path: '/insights', element: <InsightsPage /> },
       { path: '/skills', element: <DiscoveryPage /> },
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
+      { path: '/w/:id', element: <WalkthroughViewerPage /> },
       { path: '/new', element: <NewCollectionPage /> },
       { path: '/workspaces', element: <WorkspacesPage /> },
       { path: '/workspace/:sessionId', element: <WorkspacePage /> },
