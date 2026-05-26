@@ -9,7 +9,7 @@ import logging
 
 from django.http import Http404, HttpRequest, HttpResponse
 from ninja import NinjaAPI
-from ninja.errors import AuthenticationError, ValidationError
+from ninja.errors import AuthenticationError, HttpError, ValidationError
 
 from .errors import (
     TYPE_AUTH,
@@ -87,12 +87,27 @@ def _on_auth_error(request: HttpRequest, exc: AuthenticationError) -> HttpRespon
     return _problem_response(request, problem)
 
 
+@api.exception_handler(HttpError)
+def _on_http_error(request: HttpRequest, exc: HttpError) -> HttpResponse:
+    """Bare HttpError (raised from handlers using ninja's shortcut) → problem+json."""
+    problem = Problem(
+        type="about:blank",
+        title=exc.message if hasattr(exc, "message") else "HTTP error",
+        status=exc.status_code,
+        detail=str(exc) if str(exc) else None,
+        instance=request.path,
+    )
+    return _problem_response(request, problem)
+
+
 @api.exception_handler(Http404)
 def _on_http404(request: HttpRequest, exc: Http404) -> HttpResponse:
+    """Django Http404 (from get_object_or_404) → problem+json."""
     problem = Problem(
         type=TYPE_NOT_FOUND,
         title="Not found",
         status=404,
+        detail=str(exc) if str(exc) else None,
         instance=request.path,
     )
     return _problem_response(request, problem)
