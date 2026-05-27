@@ -5,6 +5,7 @@ from django.contrib import admin
 from django.urls import include, path, re_path
 
 from apps.api.api import api as api_v2
+from apps.api.views import redoc_docs, scalar_docs
 from apps.common import views_auth_e2e
 from apps.projects import views_insights
 from apps.walkthroughs.views import walkthrough_content as views_walkthrough_content
@@ -30,6 +31,8 @@ urlpatterns = [
     path("api/walkthroughs/", include("apps.walkthroughs.urls")),
     path("w/<uuid:wid>/content", views_walkthrough_content, name="walkthrough-content"),
     path("api/v2/", api_v2.urls),
+    path("api/v2/docs/", scalar_docs, name="api_docs_scalar"),
+    path("api/v2/redoc/", redoc_docs, name="api_docs_redoc"),
     # Catch-all: serve the SPA for any non-API route (last).
     re_path(r"^(?!api/|admin/|accounts/|health/|static/).*$", spa_view, name="spa"),
 ]
