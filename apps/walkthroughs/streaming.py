@@ -11,6 +11,7 @@ import re
 
 from django.conf import settings
 from django.http import Http404, HttpResponse, StreamingHttpResponse
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 
 from . import storage
 from .drive_client import DriveNotConfigured
@@ -41,12 +42,18 @@ def _get_or_404(wid):
         return None
 
 
+@xframe_options_sameorigin
 def walkthrough_content(request, wid):
     """GET /w/<id>/content — stream the file bytes from Drive.
 
     Auth: caller is the authenticated owner OR visibility=link with a
     valid ?t=<share_token>. Mismatch returns 404 (don't leak existence
     of private walkthroughs).
+
+    Django's SecurityMiddleware sets ``X-Frame-Options: DENY`` globally,
+    which breaks our own viewer page (``/w/<id>``) when it tries to embed
+    this endpoint via ``<iframe src=...>``. Override to ``SAMEORIGIN`` —
+    the viewer is the only intended embedder and lives on the same host.
     """
     if not getattr(settings, "WALKTHROUGHS_ENABLED", True):
         raise Http404("walkthroughs disabled")
