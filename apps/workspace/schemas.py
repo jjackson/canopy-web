@@ -1,9 +1,11 @@
 """Pydantic schemas for the /api/v2/workspace surface.
 
-Streaming endpoints (POST /workspace/start/<id>/ and
-POST /workspace/analyze/<id>/) produce text/event-stream and do
-NOT have a Pydantic response schema. They're declared in apps/workspace/api.py
-with `response=None` and documented inline.
+The /start/ endpoint produces text/event-stream and does NOT have a Pydantic
+response schema.  It is declared in apps/workspace/api.py with `response=None`
+and documented inline.
+
+The /analyze/ endpoint is a synchronous JSON endpoint; its response is
+described by :class:`WorkspaceAnalyzeOut`.
 """
 from __future__ import annotations
 
@@ -49,3 +51,14 @@ class EditSkillIn(StrictModel):
 class PublishSkillIn(StrictModel):
     """Optional override for the published skill name."""
     name: str | None = None
+
+
+class WorkspaceAnalyzeOut(StrictModel):
+    """Synchronous response from POST /workspace/analyze/{collection_id}/.
+
+    NOT an SSE stream — returns the parsed proposal directly.
+    """
+    session_id: int
+    status: WorkspaceStatus
+    approach: dict
+    eval_cases: list

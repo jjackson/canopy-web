@@ -6,9 +6,10 @@ Provides 6 endpoints mirroring /api/workspace/:
   - PATCH /{session_id}/edit/  edit skill draft
   - POST /{session_id}/publish/  publish skill (201)
   - POST /start/{collection_id}/   SSE stream — initial analysis
-  - POST /analyze/{collection_id}/ SSE stream — re-run analysis
+  - POST /analyze/{collection_id}/ synchronous JSON — re-run analysis (201)
 
-The two SSE endpoints return text/event-stream; all others return JSON.
+Only /start/ is SSE; /analyze/ is a synchronous JSON endpoint that blocks
+until the AI responds and returns the parsed proposal directly (DRF parity).
 """
 from __future__ import annotations
 
@@ -18,16 +19,18 @@ from ninja import Router
 from ninja import Status
 
 from apps.api.auth import session_auth
-from apps.api.errors import TYPE_NOT_FOUND, ProblemError
+from apps.api.errors import TYPE_INTERNAL, TYPE_NOT_FOUND, TYPE_VALIDATION, ProblemError
 from apps.api.pagination import Page, paginate
 from apps.collections.models import Collection
+from apps.common.anthropic_client import call_ai
 from apps.evals.models import EvalCase, EvalSuite
 from apps.skills.models import Skill
 from apps.skills.schemas import SkillOut
 
+from . import prompts
 from .engine import WorkspaceEngine
 from .models import WorkspaceSession
-from .schemas import EditSkillIn, PublishSkillIn, WorkspaceSessionListItemOut, WorkspaceSessionOut
+from .schemas import EditSkillIn, PublishSkillIn, WorkspaceAnalyzeOut, WorkspaceSessionListItemOut, WorkspaceSessionOut
 from .stream import stream_re_proposal, stream_workspace_analysis
 
 router = Router(auth=session_auth, tags=["workspace"])
@@ -264,42 +267,55 @@ def start_workspace(request: HttpRequest, collection_id: int) -> StreamingHttpRe
 
 @router.post(
     "/analyze/{collection_id}/",
-    response=None,
-    summary="Re-run workspace analysis (SSE stream)",
+    response={201: WorkspaceAnalyzeOut},
+    summary="Run workspace analysis synchronously (JSON, no streaming)",
     description=(
-        "Re-runs the AI analysis for a collection, streaming incremental "
-        "tokens and a terminal ``event: done`` frame over text/event-stream. "
-        "Equivalent to ``POST /api/workspace/analyze/<id>/`` but returns "
-        "an SSE stream instead of blocking JSON."
+        "Synchronously runs AI analysis for a collection and returns the parsed "
+        "proposal as JSON (201). NOT an SSE stream. Mirrors the DRF baseline "
+        "``POST /api/workspace/analyze/<id>/`` behaviour exactly."
     ),
 )
-def analyze_workspace(request: HttpRequest, collection_id: int) -> StreamingHttpResponse:
-    """Re-run workspace analysis for a collection; return SSE stream.
+def analyze_workspace(request: HttpRequest, collection_id: int):
+    """Re-run workspace analysis; block until done and return JSON proposal.
 
-    Creates a fresh :class:`~apps.workspace.models.WorkspaceSession` and
-    streams events in the same SSE byte format as ``/start/``.
+    DRF-parity: creates a session, calls the AI synchronously, persists the
+    parsed proposal, and returns 201 with :class:`~apps.workspace.schemas.WorkspaceAnalyzeOut`.
     """
-    collection = get_object_or_404(Collection, pk=collection_id)
+    collection = (
+        Collection.objects.prefetch_related("sources").filter(pk=collection_id).first()
+    )
+    if collection is None:
+        raise ProblemError(404, "Collection not found", type_=TYPE_NOT_FOUND)
 
     engine = WorkspaceEngine(collection)
     try:
-        engine.build_analysis_prompt()
-    except ValueError:
-        from django.http import JsonResponse
-
-        from apps.common.envelope import error_response
-
-        return JsonResponse(
-            error_response("EMPTY_COLLECTION", "Collection has no sources to analyze."),
-            status=400,
-        )
+        prompt = engine.build_analysis_prompt()
+    except ValueError as e:
+        raise ProblemError(400, "Empty collection", type_=TYPE_VALIDATION, detail=str(e))
 
     session = engine.create_session()
+    session.status = "analyzing"
+    session.save(update_fields=["status"])
 
-    response = StreamingHttpResponse(
-        stream_workspace_analysis(engine, session),
-        content_type="text/event-stream",
-    )
-    response["X-Workspace-Session-Id"] = str(session.pk)
-    response["Cache-Control"] = "no-cache"
-    return response
+    try:
+        raw_text = call_ai(prompts.SYSTEM_PROMPT, prompt)
+        result = engine.parse_ai_response(raw_text)
+        session.proposed_approach = result.get("approach", {})
+        session.proposed_eval_cases = result.get("eval_cases", [])
+        session.skill_draft = result.get("approach", {})
+        session.status = "proposed"
+        session.save(
+            update_fields=[
+                "status", "proposed_approach", "proposed_eval_cases", "skill_draft",
+            ]
+        )
+        return 201, WorkspaceAnalyzeOut(
+            session_id=session.id,
+            status="proposed",
+            approach=session.proposed_approach,
+            eval_cases=session.proposed_eval_cases,
+        )
+    except Exception as e:
+        session.status = "created"
+        session.save(update_fields=["status"])
+        raise ProblemError(500, "Analysis failed", type_=TYPE_INTERNAL, detail=str(e))

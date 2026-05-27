@@ -6,7 +6,7 @@ Covers:
 - PATCH /{id}/edit/ : updates skill_draft + appends to edit_history.
 - POST /{id}/publish/: creates Skill, EvalSuite, EvalCase (201).
 - POST /start/{collection_id}/ : SSE stream (monkeypatched).
-- POST /analyze/{collection_id}/: SSE stream (monkeypatched).
+- POST /analyze/{collection_id}/: synchronous JSON 201 (monkeypatched call_ai).
 - Anonymous → 401 for SSE and non-SSE endpoints.
 """
 from __future__ import annotations
@@ -35,6 +35,25 @@ BASE = "/api/v2/workspace"
 
 def _make_user(username="alice", email="alice@dimagi.com"):
     return User.objects.create_user(username=username, email=email, password="pw")
+
+
+# ---------------------------------------------------------------------------
+# Fixtures (used by the synchronous /analyze/ tests)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def authed_client():
+    """Authenticated Django test client."""
+    c = Client()
+    c.force_login(_make_user(username="fixture_user", email="fixture@dimagi.com"))
+    return c
+
+
+@pytest.fixture()
+def collection():
+    """A collection with NO sources (triggers empty-collection 400 by default)."""
+    return _make_collection("Fixture Collection", with_source=False)
 
 
 def _auth_client(user=None):
@@ -275,39 +294,49 @@ def test_start_workspace_404_unknown_collection(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# POST /analyze/{collection_id}/ — SSE stream
+# POST /analyze/{collection_id}/ — synchronous JSON (DRF parity)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_analyze_workspace_returns_event_stream(monkeypatch):
-    """POST /analyze/ returns text/event-stream; stream contains start + done events."""
-    c = _auth_client()
-    col = _make_collection("SSE Analyze Col", with_source=True)
+def test_analyze_workspace_returns_json_proposal(authed_client, collection, monkeypatch):
+    """Sync analysis — returns 201 + parsed proposal, NOT an SSE stream."""
 
-    def fake_stream(*args, **kwargs):
-        yield b"event: start\ndata: {}\n\n"
-        yield b"event: done\ndata: {}\n\n"
+    def fake_call_ai(system, prompt):
+        return '{"approach": {"name": "x"}, "eval_cases": [{"name": "case1"}]}'
 
-    monkeypatch.setattr("apps.workspace.api.stream_workspace_analysis", fake_stream)
+    # Give the collection a source so build_analysis_prompt() doesn't raise.
+    Source.objects.create(
+        collection=collection,
+        source_type="slack",
+        title="Sample",
+        content="Sample source content for analysis.",
+    )
 
-    resp = c.post(f"{BASE}/analyze/{col.pk}/")
-    assert resp.status_code == 200
-    assert resp["Content-Type"].startswith("text/event-stream")
-    body = b"".join(resp.streaming_content)
-    assert b"event: start" in body
-    assert b"event: done" in body
+    monkeypatch.setattr("apps.workspace.api.call_ai", fake_call_ai)
+    response = authed_client.post(f"{BASE}/analyze/{collection.pk}/")
+    assert response.status_code == 201
+    body = response.json()
+    assert body["status"] == "proposed"
+    assert body["approach"]["name"] == "x"
+    assert len(body["eval_cases"]) == 1
+    assert body["session_id"] >= 1
 
 
 @pytest.mark.django_db
-def test_analyze_workspace_404_unknown_collection(monkeypatch):
+def test_analyze_workspace_empty_collection_400(authed_client, collection):
+    """Empty collection (no sources) → 400 problem+json."""
+    response = authed_client.post(f"{BASE}/analyze/{collection.pk}/")
+    # The collection fixture has no sources, so build_analysis_prompt raises ValueError
+    assert response.status_code == 400
+    body = response.json()
+    assert body["type"].endswith("/validation")
+
+
+@pytest.mark.django_db
+def test_analyze_workspace_404_unknown_collection():
     """POST /analyze/ with unknown collection id → 404."""
     c = _auth_client()
-
-    def fake_stream(*args, **kwargs):
-        yield b""
-
-    monkeypatch.setattr("apps.workspace.api.stream_workspace_analysis", fake_stream)
     resp = c.post(f"{BASE}/analyze/999999/")
     assert resp.status_code == 404
 
