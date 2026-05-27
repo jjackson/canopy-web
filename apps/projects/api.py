@@ -229,7 +229,12 @@ def create_project(
     return Status(201, _project_to_detail_out(project))
 
 
-@router.get("/slugs/", response=list[ProjectSlugOut], summary="List project slugs")
+@router.get(
+    "/slugs/",
+    response=list[ProjectSlugOut],
+    summary="List project slugs",
+    openapi_extra={"x-mcp-expose": True},
+)
 def get_project_slugs(request: HttpRequest) -> list[ProjectSlugOut]:
     """Slim machine-readable slug list (Bearer-readable)."""
     projects = (
@@ -522,7 +527,12 @@ def get_actions_summary(
 # ---------------------------------------------------------------------------
 
 
-@insights_router.get("/", response=Page[InsightOut], summary="List insights")
+@insights_router.get(
+    "/",
+    response=Page[InsightOut],
+    summary="List insights",
+    openapi_extra={"x-mcp-expose": True},
+)
 def list_insights(
     request: HttpRequest,
     category: str | None = None,
