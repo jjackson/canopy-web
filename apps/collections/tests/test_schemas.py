@@ -5,7 +5,6 @@ from apps.collections.schemas import (
     CollectionCreateIn,
     CollectionOut,
     SourceCreateIn,
-    SourceOut,
 )
 
 

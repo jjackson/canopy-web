@@ -1,13 +1,8 @@
 import datetime as dt
 
 from apps.common.schemas import (
-    AiAuthCompleteIn,
-    AiAuthCompleteOut,
-    AiAuthPollOut,
-    AiAuthStartOut,
     AiStatusOut,
     AiSwitchIn,
-    AiSwitchOut,
     HealthOut,
     MeOut,
     StrictModel,

@@ -1,17 +1,9 @@
 import pytest
 
 from apps.projects.schemas import (
-    BatchActionsIn,
     BatchContextIn,
     InsightOut,
-    ProjectActionCreateIn,
-    ProjectActionOut,
-    ProjectActionSummaryOut,
-    ProjectContextCreateIn,
-    ProjectContextEntryOut,
-    ProjectContextLatestOut,
     ProjectCreateIn,
-    ProjectDetailOut,
     ProjectListOut,
     ProjectPatchIn,
     ProjectSlugOut,

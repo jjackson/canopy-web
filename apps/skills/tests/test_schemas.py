@@ -2,7 +2,6 @@ import pytest
 
 from apps.skills.schemas import (
     AdapterIn,
-    AdapterOut,
     SkillOut,
 )
 

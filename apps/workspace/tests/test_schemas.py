@@ -1,4 +1,3 @@
-import pytest
 
 from apps.workspace.schemas import (
     EditSkillIn,

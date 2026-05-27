@@ -2,7 +2,6 @@ import pytest
 
 from apps.evals.schemas import (
     EvalCaseCreateIn,
-    EvalCaseOut,
     EvalCasePatchIn,
     EvalRunOut,
     EvalSuiteOut,
