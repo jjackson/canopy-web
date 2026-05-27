@@ -5,6 +5,7 @@ import datetime as dt
 from typing import Optional
 
 from django.db import IntegrityError
+from django.db.models import Prefetch
 from django.http import HttpRequest
 from ninja import Body, Router, Status
 
@@ -36,7 +37,76 @@ from .schemas import (
     ProjectPatchIn,
     ProjectSlugOut,
 )
-from .views import _build_project_list_data
+
+
+def _build_project_list_data(qs):
+    """Return [ProjectListOut-shaped dicts] for the given queryset.
+
+    Pure Python replacement for the old DRF ProjectListSerializer — no
+    rest_framework dependency. Produces the same dict shape so that
+    ProjectListOut.model_validate() works unchanged.
+    """
+    qs = qs.prefetch_related(
+        Prefetch(
+            "contexts",
+            queryset=ProjectContext.objects.order_by("-created_at"),
+            to_attr="_prefetched_contexts",
+        ),
+        Prefetch(
+            "actions",
+            queryset=ProjectAction.objects.order_by("-started_at"),
+            to_attr="_prefetched_actions",
+        ),
+    )
+
+    result = []
+    for p in qs:
+        contexts = getattr(p, "_prefetched_contexts", None) or list(p.contexts.all())
+        actions = getattr(p, "_prefetched_actions", None) or list(p.actions.all())
+
+        # latest_context: first occurrence per context_type (prefetch is newest-first)
+        latest_context: dict[str, dict] = {}
+        insight_count = 0
+        for ctx in contexts:
+            if ctx.context_type == "insight":
+                insight_count += 1
+            if ctx.context_type not in latest_context:
+                latest_context[ctx.context_type] = {
+                    "content": ctx.content,
+                    "source": ctx.source,
+                    "created_at": ctx.created_at.isoformat(),
+                }
+
+        # latest_actions: most recent action per skill_name
+        latest_actions: dict[str, dict] = {}
+        for action in actions:
+            if action.skill_name not in latest_actions:
+                latest_actions[action.skill_name] = {
+                    "status": action.status,
+                    "started_at": action.started_at.isoformat(),
+                    "completed_at": action.completed_at.isoformat() if action.completed_at else None,
+                }
+
+        from apps.walkthroughs.models import Walkthrough  # noqa: PLC0415
+        walkthrough_count = Walkthrough.objects.filter(project_slug=p.slug).count()
+
+        result.append({
+            "id": p.pk,
+            "name": p.name,
+            "slug": p.slug,
+            "repo_url": p.repo_url or "",
+            "deploy_url": p.deploy_url or "",
+            "visibility": p.visibility,
+            "status": p.status,
+            "skills": p.skills or [],
+            "latest_context": latest_context,
+            "latest_actions": latest_actions,
+            "insight_count": insight_count,
+            "walkthrough_count": walkthrough_count,
+            "created_at": p.created_at.isoformat(),
+            "updated_at": p.updated_at.isoformat(),
+        })
+    return result
 
 router = Router(auth=session_auth, tags=["projects"])
 insights_router = Router(auth=session_auth, tags=["insights"])

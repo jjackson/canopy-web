@@ -31,10 +31,8 @@ export async function mintDebugSession(ttlSeconds?: number): Promise<MintDebugSe
     body: JSON.stringify(ttlSeconds ? { ttl_seconds: ttlSeconds } : {}),
   })
   if (!response.ok) {
-    throw new Error(`Mint failed: ${response.status}`)
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.detail || `Mint failed: ${response.status}`)
   }
-  const data = await response.json()
-  // The endpoint wraps its response in a success envelope: { success, data }
-  if (!data.success) throw new Error(data.error?.message || 'Request failed')
-  return data.data as MintDebugSessionResponse
+  return (await response.json()) as MintDebugSessionResponse
 }

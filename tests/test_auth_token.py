@@ -1,9 +1,10 @@
 """Tests for WORKBENCH_WRITE_TOKEN Bearer bypass.
 
 The LoginRequiredMiddleware should let machine callers POST to a narrow
-set of write endpoints (/api/projects/*/actions/ and /api/projects/*/context/)
-using ``Authorization: Bearer <WORKBENCH_WRITE_TOKEN>``. Everything else
-(read endpoints, other paths) still falls through to the OAuth gate.
+set of write endpoints (/api/v2/projects/*/actions/ and
+/api/v2/projects/*/context/) using ``Authorization: Bearer <WORKBENCH_WRITE_TOKEN>``.
+Everything else (read endpoints, other paths) still falls through to the
+OAuth gate.
 """
 import json
 
@@ -34,7 +35,7 @@ def _bearer(token: str) -> dict:
 def test_actions_post_with_valid_bearer_succeeds(project):
     client = Client()
     resp = client.post(
-        f"/api/projects/{project.slug}/actions/",
+        f"/api/v2/projects/{project.slug}/actions/",
         data=json.dumps(
             {
                 "skill_name": "commit",
@@ -52,7 +53,7 @@ def test_actions_post_with_valid_bearer_succeeds(project):
 def test_actions_post_without_bearer_is_rejected(project):
     client = Client()
     resp = client.post(
-        f"/api/projects/{project.slug}/actions/",
+        f"/api/v2/projects/{project.slug}/actions/",
         data=json.dumps(
             {
                 "skill_name": "commit",
@@ -70,7 +71,7 @@ def test_actions_post_without_bearer_is_rejected(project):
 def test_actions_post_with_wrong_bearer_is_rejected(project):
     client = Client()
     resp = client.post(
-        f"/api/projects/{project.slug}/actions/",
+        f"/api/v2/projects/{project.slug}/actions/",
         data=json.dumps(
             {
                 "skill_name": "commit",
@@ -88,7 +89,7 @@ def test_actions_post_with_wrong_bearer_is_rejected(project):
 def test_context_post_with_valid_bearer_succeeds(project):
     client = Client()
     resp = client.post(
-        f"/api/projects/{project.slug}/context/",
+        f"/api/v2/projects/{project.slug}/context/",
         data=json.dumps(
             {"context_type": "current_work", "content": "hook test", "source": "hook"}
         ),
@@ -100,30 +101,28 @@ def test_context_post_with_valid_bearer_succeeds(project):
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
 def test_read_projects_list_with_bearer_is_still_rejected(project):
-    """Bearer only covers the allowlisted endpoints. /api/projects/ (the
+    """Bearer only covers the allowlisted endpoints. /api/v2/projects/ (the
     full list with nested contexts/actions) is not in the allowlist."""
     client = Client()
-    resp = client.get("/api/projects/", **_bearer(TEST_TOKEN))
+    resp = client.get("/api/v2/projects/", **_bearer(TEST_TOKEN))
     assert resp.status_code == 401
     assert resp.json() == {"detail": "Authentication required"}
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
 def test_slugs_get_with_valid_bearer_succeeds(project):
-    """GET /api/projects/slugs/ is the slim curated list — bearer-readable."""
+    """GET /api/v2/projects/slugs/ is the slim curated list — bearer-readable."""
     client = Client()
-    resp = client.get("/api/projects/slugs/", **_bearer(TEST_TOKEN))
+    resp = client.get("/api/v2/projects/slugs/", **_bearer(TEST_TOKEN))
     assert resp.status_code == 200, resp.content
-    body = resp.json()
-    assert body["success"] is True
-    slugs = [row["slug"] for row in body["data"]]
+    slugs = [row["slug"] for row in resp.json()]
     assert project.slug in slugs
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
 def test_slugs_get_without_bearer_is_rejected(project):
     client = Client()
-    resp = client.get("/api/projects/slugs/")
+    resp = client.get("/api/v2/projects/slugs/")
     assert resp.status_code == 401
 
 
@@ -132,10 +131,8 @@ def test_insights_get_with_valid_bearer_succeeds(project):
     """Producer skills like canopy:portfolio-review can GET their own
     insights via Bearer token to dedupe before re-publishing."""
     client = Client()
-    resp = client.get("/api/insights/", **_bearer(TEST_TOKEN))
+    resp = client.get("/api/v2/insights/", **_bearer(TEST_TOKEN))
     assert resp.status_code == 200, resp.content
-    body = resp.json()
-    assert body["success"] is True
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
@@ -152,24 +149,24 @@ def test_insights_get_with_filter_via_bearer(project):
     )
     client = Client()
     resp = client.get(
-        "/api/insights/?source=canopy:portfolio-review", **_bearer(TEST_TOKEN)
+        "/api/v2/insights/?source=canopy:portfolio-review", **_bearer(TEST_TOKEN)
     )
     assert resp.status_code == 200, resp.content
-    body = resp.json()
-    assert len(body["data"]) == 1
-    assert body["data"][0]["source"] == "canopy:portfolio-review"
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["source"] == "canopy:portfolio-review"
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
 def test_insights_get_without_bearer_is_rejected(project):
     client = Client()
-    resp = client.get("/api/insights/")
+    resp = client.get("/api/v2/insights/")
     assert resp.status_code == 401
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
 def test_insight_dismiss_with_bearer_is_rejected(project):
-    """Bearer is GET-only on /api/insights/. DELETE (dismiss) still
+    """Bearer is GET-only on /api/v2/insights/. DELETE (dismiss) still
     requires OAuth — producers shouldn't be able to clear the inbox."""
     from apps.projects.models import ProjectContext
     ctx = ProjectContext.objects.create(
@@ -177,7 +174,7 @@ def test_insight_dismiss_with_bearer_is_rejected(project):
         content="x", source="t",
     )
     client = Client()
-    resp = client.delete(f"/api/insights/{ctx.id}/", **_bearer(TEST_TOKEN))
+    resp = client.delete(f"/api/v2/insights/{ctx.id}/", **_bearer(TEST_TOKEN))
     assert resp.status_code == 401
     assert ProjectContext.objects.filter(id=ctx.id).exists()
 
@@ -188,7 +185,7 @@ def test_actions_summary_with_bearer_is_rejected(project):
     nested read endpoints like /actions/summary/ should still require OAuth."""
     client = Client()
     resp = client.get(
-        f"/api/projects/{project.slug}/actions/summary/", **_bearer(TEST_TOKEN)
+        f"/api/v2/projects/{project.slug}/actions/summary/", **_bearer(TEST_TOKEN)
     )
     assert resp.status_code == 401
 
@@ -199,7 +196,7 @@ def test_bearer_bypass_disabled_when_token_unset(project):
     — even if the caller sends a Bearer header, we require OAuth."""
     client = Client()
     resp = client.post(
-        f"/api/projects/{project.slug}/actions/",
+        f"/api/v2/projects/{project.slug}/actions/",
         data=json.dumps(
             {
                 "skill_name": "commit",
@@ -215,9 +212,9 @@ def test_bearer_bypass_disabled_when_token_unset(project):
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
 def test_bearer_does_not_bypass_non_projects_api(project):
-    """Paths outside /api/projects/ do not honor the token bypass."""
+    """Paths outside /api/v2/projects/ do not honor the token bypass."""
     client = Client()
-    resp = client.get("/api/skills/", **_bearer(TEST_TOKEN))
+    resp = client.get("/api/v2/skills/", **_bearer(TEST_TOKEN))
     assert resp.status_code == 401
 
 
@@ -225,9 +222,9 @@ def test_bearer_does_not_bypass_non_projects_api(project):
 @pytest.mark.parametrize(
     "method,path",
     [
-        ("get", "/api/projects/"),
-        ("post", "/api/projects/some-slug/actions/"),
-        ("get", "/api/skills/"),
+        ("get", "/api/v2/projects/"),
+        ("post", "/api/v2/projects/some-slug/actions/"),
+        ("get", "/api/v2/skills/"),
     ],
 )
 def test_401_response_does_not_leak_debug_headers(method, path, project):

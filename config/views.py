@@ -15,25 +15,6 @@ def health_check(request):
 
 
 @require_GET
-def me_view(request):
-    """Return the current user, or 401 if unauthenticated."""
-    user = request.user
-    if not user.is_authenticated:
-        return JsonResponse({"detail": "Authentication required"}, status=401)
-
-    avatar_url = ""
-    social = user.socialaccount_set.filter(provider="google").first() if hasattr(user, "socialaccount_set") else None
-    if social:
-        avatar_url = social.extra_data.get("picture", "") or ""
-
-    return JsonResponse({
-        "email": user.email,
-        "name": (user.get_full_name() or user.username or user.email),
-        "avatar_url": avatar_url,
-    })
-
-
-@require_GET
 @ensure_csrf_cookie
 def csrf_view(request):
     """Force the CSRF cookie to be set. The SPA hits this once at boot."""

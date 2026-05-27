@@ -46,7 +46,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Third-party
-    "rest_framework",
     "corsheaders",
     "allauth",
     "allauth.account",
@@ -199,9 +198,3 @@ ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 
-# Django REST Framework
-REST_FRAMEWORK = {
-    "DEFAULT_RENDERER_CLASSES": [
-        "rest_framework.renderers.JSONRenderer",
-    ],
-}

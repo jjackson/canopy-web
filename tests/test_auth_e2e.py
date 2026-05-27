@@ -117,7 +117,7 @@ def test_session_cookie_authorizes_gated_api(db):
     )
     assert resp.status_code == 200
     # Reuse the same client (it now carries sessionid).
-    gated = client.get("/api/projects/")
+    gated = client.get("/api/v2/projects/")
     assert gated.status_code == 200
 
 

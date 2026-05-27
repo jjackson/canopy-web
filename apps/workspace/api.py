@@ -245,13 +245,11 @@ def start_workspace(request: HttpRequest, collection_id: int) -> StreamingHttpRe
     try:
         engine.build_analysis_prompt()
     except ValueError:
-        from django.http import JsonResponse
-
-        from apps.common.envelope import error_response
-
-        return JsonResponse(
-            error_response("EMPTY_COLLECTION", "Collection has no sources to analyze."),
-            status=400,
+        raise ProblemError(
+            400,
+            "Collection has no sources to analyze.",
+            type_=TYPE_VALIDATION,
+            detail="Add at least one source before starting a workspace session.",
         )
 
     session = engine.create_session()

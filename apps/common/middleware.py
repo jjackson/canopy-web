@@ -16,7 +16,7 @@ PUBLIC_PATH_PREFIXES = (
 )
 
 # Write endpoints callable with a Bearer token (machine writes like the
-# canopy post_tool_use hook). Path must start with /api/projects/ AND end
+# canopy post_tool_use hook). Path must start with /api/v2/projects/ AND end
 # with one of these suffixes.
 WORKBENCH_TOKEN_WRITE_SUFFIXES = ("/actions/", "/context/")
 
@@ -27,8 +27,8 @@ WORKBENCH_TOKEN_WRITE_SUFFIXES = ("/actions/", "/context/")
 # richer (full project list, contexts, raw context entries) still
 # requires OAuth.
 WORKBENCH_TOKEN_READABLE_PATHS = (
-    "/api/projects/slugs/",
-    "/api/insights/",
+    "/api/v2/projects/slugs/",
+    "/api/v2/insights/",
 )
 
 
@@ -44,7 +44,7 @@ def _is_walkthrough_content(path: str) -> bool:
 
 
 def _is_token_writable_path(path: str) -> bool:
-    if not path.startswith("/api/projects/"):
+    if not path.startswith("/api/v2/projects/"):
         return False
     return any(path.endswith(suffix) for suffix in WORKBENCH_TOKEN_WRITE_SUFFIXES)
 
