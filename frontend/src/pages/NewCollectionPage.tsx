@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api } from '@/api/client'
+import { analyzeWorkspace } from '@/api/workspace'
+import { createCollection, addSource } from '@/api/collections'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -71,7 +72,7 @@ export function NewCollectionPage() {
       setSubmitting(true)
 
       try {
-        const collection = (await api.createCollection(
+        const collection = (await createCollection(
           trimmedName,
           description.trim()
         )) as CollectionResult
@@ -102,7 +103,7 @@ export function NewCollectionPage() {
       setAddingSource(true)
 
       try {
-        const result = (await api.addSource(collectionId, {
+        const result = (await addSource(collectionId, {
           source_type: sourceType,
           title: sourceTitle.trim() || undefined,
           content: trimmedContent,
@@ -142,7 +143,7 @@ export function NewCollectionPage() {
 
     try {
       setAnalysisStatus('Analyzing sources (this may take 30-60 seconds)...')
-      const result = await api.analyzeWorkspace(collectionId)
+      const result = await analyzeWorkspace(collectionId)
       navigate(`/workspace/${result.session_id}${reviseSkillId ? `?revise=${reviseSkillId}` : ''}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed.')

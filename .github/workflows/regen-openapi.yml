@@ -1,0 +1,48 @@
+name: Regenerate OpenAPI types
+
+on:
+  pull_request:
+    paths:
+      - "apps/**/api.py"
+      - "apps/**/schemas.py"
+      - "apps/api/**"
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Boot Django for schema dump
+        run: |
+          $HOME/.local/bin/uv sync --extra dev
+          $HOME/.local/bin/uv run python -c "
+          import django, json, os
+          os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings.test'
+          django.setup()
+          from apps.api.api import api
+          with open('frontend/openapi.json', 'w') as f:
+              json.dump(api.get_openapi_schema(), f, indent=2)
+          print('schema dumped')
+          "
+      - name: Regenerate types
+        working-directory: frontend
+        run: |
+          npm install
+          npx openapi-typescript openapi.json --output src/api/generated.ts --immutable
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          if ! git diff --quiet frontend/src/api/generated.ts; then
+            git add frontend/src/api/generated.ts
+            git commit -m "chore(api): regenerate OpenAPI types"
+            git push
+          fi

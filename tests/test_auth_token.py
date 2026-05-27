@@ -1,9 +1,10 @@
 """Tests for WORKBENCH_WRITE_TOKEN Bearer bypass.
 
 The LoginRequiredMiddleware should let machine callers POST to a narrow
-set of write endpoints (/api/projects/*/actions/ and /api/projects/*/context/)
-using ``Authorization: Bearer <WORKBENCH_WRITE_TOKEN>``. Everything else
-(read endpoints, other paths) still falls through to the OAuth gate.
+set of write endpoints (/api/projects/*/actions/ and
+/api/projects/*/context/) using ``Authorization: Bearer <WORKBENCH_WRITE_TOKEN>``.
+Everything else (read endpoints, other paths) still falls through to the
+OAuth gate.
 """
 import json
 
@@ -114,9 +115,7 @@ def test_slugs_get_with_valid_bearer_succeeds(project):
     client = Client()
     resp = client.get("/api/projects/slugs/", **_bearer(TEST_TOKEN))
     assert resp.status_code == 200, resp.content
-    body = resp.json()
-    assert body["success"] is True
-    slugs = [row["slug"] for row in body["data"]]
+    slugs = [row["slug"] for row in resp.json()]
     assert project.slug in slugs
 
 
@@ -134,8 +133,6 @@ def test_insights_get_with_valid_bearer_succeeds(project):
     client = Client()
     resp = client.get("/api/insights/", **_bearer(TEST_TOKEN))
     assert resp.status_code == 200, resp.content
-    body = resp.json()
-    assert body["success"] is True
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)
@@ -155,9 +152,9 @@ def test_insights_get_with_filter_via_bearer(project):
         "/api/insights/?source=canopy:portfolio-review", **_bearer(TEST_TOKEN)
     )
     assert resp.status_code == 200, resp.content
-    body = resp.json()
-    assert len(body["data"]) == 1
-    assert body["data"][0]["source"] == "canopy:portfolio-review"
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["source"] == "canopy:portfolio-review"
 
 
 @override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN=TEST_TOKEN)

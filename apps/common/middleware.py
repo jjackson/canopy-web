@@ -10,6 +10,10 @@ PUBLIC_PATH_PREFIXES = (
     "/static/",              # static assets
     "/api/csrf/",            # bootstraps CSRF cookie before login
     "/api/auth/e2e-login/",  # token-gated login for automated tools
+    "/api/openapi.json",      # openapi-typescript fetches the schema
+    "/api/docs/",             # Scalar HTML
+    "/api/redoc/",            # Redoc HTML
+    "/api/mcp/",              # FastMCP server — auth via Bearer in the request
 )
 
 # Write endpoints callable with a Bearer token (machine writes like the

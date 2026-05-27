@@ -14,8 +14,6 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .envelope import error_response, start_timing, success_response
-
 DEFAULT_TTL_SECONDS = 24 * 3600  # 24 hours
 MAX_TTL_SECONDS = 7 * 24 * 3600  # 1 week
 DEBUG_SESSION_MARKER = "_canopy_debug_session"
@@ -34,13 +32,8 @@ def mint_session(request):
 
     Body (optional): {"ttl_seconds": int} — clamped to MAX_TTL_SECONDS.
     """
-    start_timing()
-
     if not request.user.is_authenticated:
-        return JsonResponse(
-            error_response("UNAUTHORIZED", "Sign in required."),
-            status=401,
-        )
+        return JsonResponse({"detail": "Sign in required."}, status=401)
 
     try:
         body = json.loads(request.body) if request.body else {}
@@ -75,7 +68,7 @@ def mint_session(request):
         f'{origin}/api/projects/'
     )
 
-    return JsonResponse(success_response({
+    return JsonResponse({
         "cookie_name": cookie_name,
         "cookie_value": session.session_key,
         "origin": origin,
@@ -85,4 +78,4 @@ def mint_session(request):
         "ttl_seconds": ttl,
         "email": user.email,
         "curl_example": curl_example,
-    }))
+    })

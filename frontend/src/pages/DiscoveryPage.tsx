@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '@/api/client'
+import { listSkills } from '@/api/skills'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -40,7 +40,7 @@ export function DiscoveryPage() {
 
     async function load() {
       try {
-        const data = (await api.getSkills('-updated_at')) as Skill[]
+        const data = (await listSkills()) as Skill[]
         if (!cancelled) setSkills(data)
       } catch (err) {
         if (!cancelled) {

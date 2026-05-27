@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { api } from '@/api/client'
+import { aiStatus, aiSwitch } from '@/api/ai'
 import { useAuth } from '@/auth/AuthProvider'
 
 const NAV_ITEMS = [
@@ -29,9 +29,9 @@ function AiStatusBadge() {
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    api.getAiStatus().then(setStatus).catch(() => {})
+    aiStatus().then(setStatus).catch(() => {})
     const interval = setInterval(() => {
-      api.getAiStatus().then((s) => {
+      aiStatus().then((s) => {
         setStatus(s)
         if (s.ready) clearInterval(interval)
       }).catch(() => {})
@@ -58,8 +58,8 @@ function AiStatusBadge() {
     }
     setSwitching(true)
     try {
-      await api.switchAiBackend(backend)
-      const newStatus = await api.getAiStatus()
+      await aiSwitch(backend)
+      const newStatus = await aiStatus()
       setStatus(newStatus)
     } catch {
       // silent

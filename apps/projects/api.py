@@ -1,0 +1,597 @@
+"""Django Ninja v2 router for the projects + insights surface."""
+from __future__ import annotations
+
+from django.db import IntegrityError
+from django.db.models import Prefetch
+from django.http import HttpRequest
+from ninja import Body, Router, Status
+
+from apps.api.auth import session_auth
+from apps.api.errors import (
+    TYPE_CONFLICT,
+    TYPE_NOT_FOUND,
+    ProblemError,
+)
+from apps.api.pagination import Page, paginate
+
+from .models import Project, ProjectAction, ProjectContext
+from .schemas import (
+    BatchActionsIn,
+    BatchContextIn,
+    InsightDismissOut,
+    InsightOut,
+    InsightsClearOut,
+    ProjectActionCreateIn,
+    ProjectActionOut,
+    ProjectActionSummaryOut,
+    ProjectContextCreateIn,
+    ProjectContextEntryOut,
+    ProjectContextLatestOut,
+    ProjectContextOut,
+    ProjectCreateIn,
+    ProjectDetailOut,
+    ProjectListOut,
+    ProjectPatchIn,
+    ProjectSlugOut,
+)
+
+
+def _build_project_list_data(qs):
+    """Return [ProjectListOut-shaped dicts] for the given queryset.
+
+    Pure Python replacement for the old DRF ProjectListSerializer — no
+    rest_framework dependency. Produces the same dict shape so that
+    ProjectListOut.model_validate() works unchanged.
+    """
+    qs = qs.prefetch_related(
+        Prefetch(
+            "contexts",
+            queryset=ProjectContext.objects.order_by("-created_at"),
+            to_attr="_prefetched_contexts",
+        ),
+        Prefetch(
+            "actions",
+            queryset=ProjectAction.objects.order_by("-started_at"),
+            to_attr="_prefetched_actions",
+        ),
+    )
+
+    result = []
+    for p in qs:
+        contexts = getattr(p, "_prefetched_contexts", None) or list(p.contexts.all())
+        actions = getattr(p, "_prefetched_actions", None) or list(p.actions.all())
+
+        # latest_context: first occurrence per context_type (prefetch is newest-first)
+        latest_context: dict[str, dict] = {}
+        insight_count = 0
+        for ctx in contexts:
+            if ctx.context_type == "insight":
+                insight_count += 1
+            if ctx.context_type not in latest_context:
+                latest_context[ctx.context_type] = {
+                    "content": ctx.content,
+                    "source": ctx.source,
+                    "created_at": ctx.created_at.isoformat(),
+                }
+
+        # latest_actions: most recent action per skill_name
+        latest_actions: dict[str, dict] = {}
+        for action in actions:
+            if action.skill_name not in latest_actions:
+                latest_actions[action.skill_name] = {
+                    "status": action.status,
+                    "started_at": action.started_at.isoformat(),
+                    "completed_at": action.completed_at.isoformat() if action.completed_at else None,
+                }
+
+        from apps.walkthroughs.models import Walkthrough  # noqa: PLC0415
+        walkthrough_count = Walkthrough.objects.filter(project_slug=p.slug).count()
+
+        result.append({
+            "id": p.pk,
+            "name": p.name,
+            "slug": p.slug,
+            "repo_url": p.repo_url or "",
+            "deploy_url": p.deploy_url or "",
+            "visibility": p.visibility,
+            "status": p.status,
+            "skills": p.skills or [],
+            "latest_context": latest_context,
+            "latest_actions": latest_actions,
+            "insight_count": insight_count,
+            "walkthrough_count": walkthrough_count,
+            "created_at": p.created_at.isoformat(),
+            "updated_at": p.updated_at.isoformat(),
+        })
+    return result
+
+router = Router(auth=session_auth, tags=["projects"])
+insights_router = Router(auth=session_auth, tags=["insights"])
+
+
+def _get_project_or_404_ninja(slug: str) -> Project:
+    try:
+        return Project.objects.get(slug=slug)
+    except Project.DoesNotExist:
+        raise ProblemError(
+            404,
+            "Project not found",
+            type_=TYPE_NOT_FOUND,
+            detail=f"No project with slug '{slug}'.",
+        )
+
+
+def _project_to_detail_out(project: Project) -> ProjectDetailOut:
+    """Build a ProjectDetailOut from a Project instance.
+
+    Mirrors the DRF ProjectListSerializer shape: latest_context,
+    latest_actions, insight_count, walkthrough_count are all computed
+    from the related rows — no prefetch assumed here (safe for single-object
+    calls; list paths use _build_project_list_data for efficiency).
+    """
+    from apps.walkthroughs.models import Walkthrough  # noqa: PLC0415
+
+    # latest_context: first entry per context_type (newest-first ordering)
+    latest_context: dict[str, ProjectContextOut] = {}
+    for ctx in project.contexts.order_by("-created_at"):
+        if ctx.context_type not in latest_context:
+            latest_context[ctx.context_type] = ProjectContextOut(
+                content=ctx.content,
+                source=ctx.source,
+                created_at=ctx.created_at,
+            )
+
+    # latest_actions: most recent action per skill_name
+    from .schemas import ProjectActionLatestOut  # noqa: PLC0415
+
+    latest_actions: dict[str, ProjectActionLatestOut] = {}
+    for action in project.actions.order_by("-started_at"):
+        if action.skill_name not in latest_actions:
+            latest_actions[action.skill_name] = ProjectActionLatestOut(
+                status=action.status,
+                started_at=action.started_at,
+                completed_at=action.completed_at,
+            )
+
+    insight_count = project.contexts.filter(context_type="insight").count()
+    walkthrough_count = Walkthrough.objects.filter(project_slug=project.slug).count()
+
+    skills_raw = project.skills or []
+    from .schemas import ProjectSkillOut  # noqa: PLC0415
+
+    skills = [
+        ProjectSkillOut(
+            name=s.get("name", ""),
+            path=s.get("path", ""),
+            description=s.get("description", ""),
+        )
+        for s in skills_raw
+        if isinstance(s, dict)
+    ]
+
+    return ProjectDetailOut(
+        id=project.pk,
+        name=project.name,
+        slug=project.slug,
+        repo_url=project.repo_url or "",
+        deploy_url=project.deploy_url or "",
+        visibility=project.visibility,
+        status=project.status,
+        skills=skills,
+        latest_context=latest_context,
+        latest_actions=latest_actions,
+        insight_count=insight_count,
+        walkthrough_count=walkthrough_count,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Projects router
+# ---------------------------------------------------------------------------
+
+
+@router.get("/", response=Page[ProjectListOut], summary="List projects")
+def list_projects(
+    request: HttpRequest,
+    offset: int = 0,
+    limit: int = 100,
+) -> Page[ProjectListOut]:
+    qs = Project.objects.all().order_by("-updated_at")
+    serialized = _build_project_list_data(qs)
+    items = [ProjectListOut.model_validate(item) for item in serialized]
+    return paginate(items, offset=offset, limit=limit)
+
+
+@router.post("/", response={201: ProjectDetailOut}, summary="Create project")
+def create_project(
+    request: HttpRequest,
+    payload: ProjectCreateIn,
+) -> Status:
+    try:
+        project = Project.objects.create(
+            name=payload.name,
+            slug=payload.slug,
+            repo_url=payload.repo_url or "",
+            deploy_url=payload.deploy_url or "",
+            visibility=payload.visibility,
+            status=payload.status,
+            skills=[s.model_dump() for s in payload.skills],
+        )
+    except IntegrityError:
+        raise ProblemError(
+            409,
+            "Slug already exists",
+            type_=TYPE_CONFLICT,
+            detail=f"A project with slug '{payload.slug}' already exists.",
+        )
+    return Status(201, _project_to_detail_out(project))
+
+
+@router.get(
+    "/slugs/",
+    response=list[ProjectSlugOut],
+    summary="List project slugs",
+    openapi_extra={"x-mcp-expose": True},
+)
+def get_project_slugs(request: HttpRequest) -> list[ProjectSlugOut]:
+    """Slim machine-readable slug list (Bearer-readable)."""
+    projects = (
+        Project.objects.filter(status="active")
+        .order_by("slug")
+        .values("slug", "name", "status", "visibility")
+    )
+    return [ProjectSlugOut.model_validate(p) for p in projects]
+
+
+@router.post("/seed/", response={201: list[ProjectDetailOut]}, summary="Seed projects")
+def seed_projects(
+    request: HttpRequest,
+    payload: list[ProjectCreateIn] = Body(...),
+) -> Status:
+    results = []
+    for item in payload:
+        project, _ = Project.objects.get_or_create(
+            slug=item.slug,
+            defaults={
+                "name": item.name,
+                "repo_url": item.repo_url or "",
+                "deploy_url": item.deploy_url or "",
+                "visibility": item.visibility,
+                "status": item.status,
+                "skills": [s.model_dump() for s in item.skills],
+            },
+        )
+        results.append(_project_to_detail_out(project))
+    return Status(201, results)
+
+
+@router.post(
+    "/batch-context/",
+    response={201: dict},
+    summary="Batch create context entries",
+)
+def batch_context(
+    request: HttpRequest,
+    payload: BatchContextIn,
+) -> Status:
+    """Create context entries across multiple projects. Bearer-writable xfail (Phase 5.4)."""
+    counts: dict[str, int] = {}
+    for slug, entries in payload.updates.items():
+        try:
+            project = Project.objects.get(slug=slug)
+        except Project.DoesNotExist:
+            counts[slug] = 0
+            continue
+        created = 0
+        for entry in entries:
+            ProjectContext.objects.create(
+                project=project,
+                context_type=entry.context_type,
+                content=entry.content,
+                source=entry.source,
+            )
+            created += 1
+        counts[slug] = created
+    return Status(201, counts)
+
+
+@router.post(
+    "/batch-actions/",
+    response={201: dict},
+    summary="Batch create action entries",
+)
+def batch_actions(
+    request: HttpRequest,
+    payload: BatchActionsIn,
+) -> Status:
+    """Create action entries across multiple projects. Bearer-writable xfail (Phase 5.4)."""
+    counts: dict[str, int] = {}
+    for slug, entries in payload.updates.items():
+        try:
+            project = Project.objects.get(slug=slug)
+        except Project.DoesNotExist:
+            counts[slug] = 0
+            continue
+        created = 0
+        for entry in entries:
+            ProjectAction.objects.create(
+                project=project,
+                skill_name=entry.skill_name,
+                session_id=entry.session_id or "",
+                status=entry.status,
+                started_at=entry.started_at,
+                completed_at=entry.completed_at,
+                duration_ms=entry.duration_ms,
+                notes=entry.notes or "",
+            )
+            created += 1
+        counts[slug] = created
+    return Status(201, counts)
+
+
+@router.get("/{slug}/", response=ProjectDetailOut, summary="Get project detail")
+def get_project(request: HttpRequest, slug: str) -> ProjectDetailOut:
+    project = _get_project_or_404_ninja(slug)
+    return _project_to_detail_out(project)
+
+
+@router.patch("/{slug}/", response=ProjectDetailOut, summary="Patch project")
+def patch_project(
+    request: HttpRequest,
+    slug: str,
+    payload: ProjectPatchIn,
+) -> ProjectDetailOut:
+    project = _get_project_or_404_ninja(slug)
+    updates = payload.model_dump(exclude_unset=True)
+    if "skills" in updates and updates["skills"] is not None:
+        updates["skills"] = [
+            s.model_dump() if hasattr(s, "model_dump") else s
+            for s in updates["skills"]
+        ]
+    for field, value in updates.items():
+        setattr(project, field, value)
+    project.save()
+    return _project_to_detail_out(project)
+
+
+@router.delete("/{slug}/", response={204: None}, summary="Delete project")
+def delete_project(
+    request: HttpRequest,
+    slug: str,
+) -> Status:
+    project = _get_project_or_404_ninja(slug)
+    project.delete()
+    return Status(204, None)
+
+
+@router.get(
+    "/{slug}/context/",
+    response=list[ProjectContextEntryOut],
+    summary="List context entries",
+)
+def list_context(request: HttpRequest, slug: str) -> list[ProjectContextEntryOut]:
+    project = _get_project_or_404_ninja(slug)
+    contexts = project.contexts.order_by("-created_at")
+    return [
+        ProjectContextEntryOut(
+            id=ctx.pk,
+            context_type=ctx.context_type,
+            content=ctx.content,
+            source=ctx.source,
+            created_at=ctx.created_at,
+        )
+        for ctx in contexts
+    ]
+
+
+@router.post(
+    "/{slug}/context/",
+    response={201: ProjectContextEntryOut},
+    summary="Create context entry",
+)
+def create_context(
+    request: HttpRequest,
+    slug: str,
+    payload: ProjectContextCreateIn,
+) -> Status:
+    """Bearer-writable xfail (Phase 5.4)."""
+    project = _get_project_or_404_ninja(slug)
+    ctx = ProjectContext.objects.create(
+        project=project,
+        context_type=payload.context_type,
+        content=payload.content,
+        source=payload.source,
+    )
+    return Status(201, ProjectContextEntryOut(
+        id=ctx.pk,
+        context_type=ctx.context_type,
+        content=ctx.content,
+        source=ctx.source,
+        created_at=ctx.created_at,
+    ))
+
+
+@router.get(
+    "/{slug}/context/latest/",
+    response=ProjectContextLatestOut,
+    summary="Latest context per type",
+)
+def get_context_latest(request: HttpRequest, slug: str) -> ProjectContextLatestOut:
+    project = _get_project_or_404_ninja(slug)
+    result: dict[str, ProjectContextOut] = {}
+    for ctx in project.contexts.order_by("-created_at"):
+        if ctx.context_type not in result:
+            result[ctx.context_type] = ProjectContextOut(
+                content=ctx.content,
+                source=ctx.source,
+                created_at=ctx.created_at,
+            )
+    return ProjectContextLatestOut(contexts=result)
+
+
+@router.get(
+    "/{slug}/actions/",
+    response=list[ProjectActionOut],
+    summary="List actions",
+)
+def list_actions(
+    request: HttpRequest,
+    slug: str,
+    skill: str | None = None,
+) -> list[ProjectActionOut]:
+    project = _get_project_or_404_ninja(slug)
+    actions = project.actions.all()
+    if skill:
+        actions = actions.filter(skill_name=skill)
+    return [
+        ProjectActionOut(
+            id=action.pk,
+            skill_name=action.skill_name,
+            session_id=action.session_id or "",
+            status=action.status,
+            started_at=action.started_at,
+            completed_at=action.completed_at,
+            duration_ms=action.duration_ms,
+            notes=action.notes or "",
+            created_at=action.created_at,
+        )
+        for action in actions[:50]
+    ]
+
+
+@router.post(
+    "/{slug}/actions/",
+    response={201: ProjectActionOut},
+    summary="Create action",
+)
+def create_action(
+    request: HttpRequest,
+    slug: str,
+    payload: ProjectActionCreateIn,
+) -> Status:
+    """Bearer-writable xfail (Phase 5.4)."""
+    project = _get_project_or_404_ninja(slug)
+    action = ProjectAction.objects.create(
+        project=project,
+        skill_name=payload.skill_name,
+        session_id=payload.session_id or "",
+        status=payload.status,
+        started_at=payload.started_at,
+        completed_at=payload.completed_at,
+        duration_ms=payload.duration_ms,
+        notes=payload.notes or "",
+    )
+    return Status(201, ProjectActionOut(
+        id=action.pk,
+        skill_name=action.skill_name,
+        session_id=action.session_id or "",
+        status=action.status,
+        started_at=action.started_at,
+        completed_at=action.completed_at,
+        duration_ms=action.duration_ms,
+        notes=action.notes or "",
+        created_at=action.created_at,
+    ))
+
+
+@router.get(
+    "/{slug}/actions/summary/",
+    response=list[ProjectActionSummaryOut],
+    summary="Latest action per skill",
+)
+def get_actions_summary(
+    request: HttpRequest,
+    slug: str,
+) -> list[ProjectActionSummaryOut]:
+    project = _get_project_or_404_ninja(slug)
+    seen: set[str] = set()
+    result = []
+    for action in project.actions.order_by("-started_at"):
+        if action.skill_name not in seen:
+            seen.add(action.skill_name)
+            result.append(
+                ProjectActionSummaryOut(
+                    skill_name=action.skill_name,
+                    status=action.status,
+                    started_at=action.started_at,
+                    completed_at=action.completed_at,
+                )
+            )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Insights router
+# ---------------------------------------------------------------------------
+
+
+@insights_router.get(
+    "/",
+    response=Page[InsightOut],
+    summary="List insights",
+    openapi_extra={"x-mcp-expose": True},
+)
+def list_insights(
+    request: HttpRequest,
+    category: str | None = None,
+    source: str | None = None,
+    project: str | None = None,
+    limit: int = 20,
+) -> Page[InsightOut]:
+    """Bearer-readable xfail (Phase 5.4)."""
+    limit = min(limit, 100)
+    qs = (
+        ProjectContext.objects.filter(context_type="insight")
+        .select_related("project")
+        .order_by("-created_at")
+    )
+    if category:
+        qs = qs.filter(content__startswith=f"[{category}]")
+    if source:
+        qs = qs.filter(source=source)
+    if project:
+        qs = qs.filter(project__slug=project)
+
+    items = [
+        InsightOut(
+            id=ins.pk,
+            project_slug=ins.project.slug,
+            project_name=ins.project.name,
+            content=ins.content,
+            source=ins.source,
+            created_at=ins.created_at,
+        )
+        for ins in qs[:limit]
+    ]
+    return paginate(items, offset=0, limit=limit)
+
+
+@insights_router.post("/clear/", response=InsightsClearOut, summary="Clear insights")
+def clear_insights(
+    request: HttpRequest,
+    source: str | None = None,
+) -> InsightsClearOut:
+    """Clear all insights (optionally filtered by source)."""
+    qs = ProjectContext.objects.filter(context_type="insight")
+    if source:
+        qs = qs.filter(source=source)
+    count = qs.count()
+    qs.delete()
+    return InsightsClearOut(cleared=count)
+
+
+@insights_router.delete("/{pk}/", response=InsightDismissOut, summary="Dismiss insight")
+def dismiss_insight(request: HttpRequest, pk: int) -> InsightDismissOut:
+    try:
+        insight = ProjectContext.objects.get(pk=pk, context_type="insight")
+    except ProjectContext.DoesNotExist:
+        raise ProblemError(
+            404,
+            "Insight not found",
+            type_=TYPE_NOT_FOUND,
+            detail=f"No insight with pk={pk}.",
+        )
+    insight.delete()
+    return InsightDismissOut(dismissed=pk)
