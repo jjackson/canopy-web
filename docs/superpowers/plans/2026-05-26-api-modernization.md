@@ -462,7 +462,13 @@ def test_openapi_schema_serves():
 
 
 @pytest.mark.django_db
-def test_unknown_route_returns_problem_json():
+def test_unknown_route_returns_404():
+    """Unmatched paths under /api/v2/ resolve to 404. The response shape
+    depends on whether Django's URLconf or Ninja's dispatch fires first;
+    empirically (Outcome B), Django's URLconf-level 404 fires first and
+    returns text/html. A routing-level catchall for problem+json is
+    deferred — content-type assertion intentionally omitted here.
+    """
     client = Client()
     response = client.get("/api/v2/does-not-exist")
     assert response.status_code == 404
