@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { api } from '@/api/client'
+import { mintDebugSession, type MintDebugSessionResponse } from '@/api/debug'
 import { aiStatus as fetchAiStatus, aiAuthStart, aiAuthComplete, aiAuthPoll } from '@/api/ai'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -195,7 +195,7 @@ export function SettingsPage() {
   )
 }
 
-type Mint = Awaited<ReturnType<typeof api.mintDebugSession>>
+type Mint = MintDebugSessionResponse
 
 const TTL_OPTIONS: Array<{ label: string; seconds: number }> = [
   { label: '1 hour', seconds: 60 * 60 },
@@ -215,7 +215,7 @@ function DebugAccessPanel() {
     setError(null)
     setCopied(null)
     try {
-      const result = await api.mintDebugSession(ttl)
+      const result = await mintDebugSession(ttl)
       setMint(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to mint session')
