@@ -25,7 +25,7 @@ from apps.workspace.schemas import WorkspaceSessionListItemOut, WorkspaceSession
 
 User = get_user_model()
 
-BASE = "/api/v2/workspace"
+BASE = "/api/workspace"
 
 
 # ---------------------------------------------------------------------------

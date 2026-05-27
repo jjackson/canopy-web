@@ -1,4 +1,4 @@
-"""Single NinjaAPI instance for the /api/v2/ namespace.
+"""Single NinjaAPI instance for the /api/ namespace.
 
 All v2 routers register against this. Routers live in
 `apps/<app>/api.py` and are imported below.

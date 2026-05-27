@@ -1,4 +1,4 @@
-"""Contract tests for the v2 walkthroughs Ninja surface (/api/v2/walkthroughs/).
+"""Contract tests for the walkthroughs Ninja surface (/api/walkthroughs/).
 
 Covers all 6 endpoints:
   POST   /  (multipart upload)
@@ -27,7 +27,7 @@ from tests.fixtures.fake_drive import FakeDriveClient
 
 User = get_user_model()
 
-BASE = "/api/v2/walkthroughs"
+BASE = "/api/walkthroughs"
 
 
 # ---------------------------------------------------------------------------

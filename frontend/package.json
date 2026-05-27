@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "gen:api": "openapi-typescript http://localhost:8000/api/v2/openapi.json --output src/api/generated.ts --immutable",
+    "gen:api": "openapi-typescript http://localhost:8000/api/openapi.json --output src/api/generated.ts --immutable",
     "gen:api:local": "openapi-typescript openapi.json --output src/api/generated.ts --immutable",
     "lint": "eslint .",
     "preview": "vite preview"

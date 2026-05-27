@@ -1,4 +1,4 @@
-"""Pydantic schemas for the /api/v2/workspace surface.
+"""Pydantic schemas for the /api/workspace surface.
 
 The /start/ endpoint produces text/event-stream and does NOT have a Pydantic
 response schema.  It is declared in apps/workspace/api.py with `response=None`

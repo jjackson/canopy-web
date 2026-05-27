@@ -45,7 +45,7 @@ def authed_client(client, user):
 
 @pytest.mark.django_db
 def test_health_public_no_auth(client):
-    resp = client.get("/api/v2/health/")
+    resp = client.get("/api/health/")
     assert resp.status_code == 200
     body = json.loads(resp.content)
     assert body == {"status": "ok"}
@@ -58,7 +58,7 @@ def test_health_public_no_auth(client):
 
 @pytest.mark.django_db
 def test_me_authed(authed_client):
-    resp = authed_client.get("/api/v2/me/")
+    resp = authed_client.get("/api/me/")
     assert resp.status_code == 200
     body = json.loads(resp.content)
     parsed = MeOut.model_validate(body)
@@ -73,7 +73,7 @@ def test_me_authed(authed_client):
 
 @pytest.mark.django_db
 def test_me_anonymous_401(client):
-    resp = client.get("/api/v2/me/")
+    resp = client.get("/api/me/")
     assert resp.status_code == 401
     ct = resp.get("Content-Type", "")
     assert "problem+json" in ct or "json" in ct
@@ -91,7 +91,7 @@ def test_me_anonymous_401(client):
 def test_ai_status(authed_client, settings):
     settings.AI_BACKEND = "api"
     settings.ANTHROPIC_API_KEY = "sk-test-key"
-    resp = authed_client.get("/api/v2/ai/status/")
+    resp = authed_client.get("/api/ai/status/")
     assert resp.status_code == 200
     body = json.loads(resp.content)
     parsed = AiStatusOut.model_validate(body)
@@ -107,7 +107,7 @@ def test_ai_status(authed_client, settings):
 @pytest.mark.django_db
 def test_ai_switch_validates_backend(authed_client):
     resp = authed_client.post(
-        "/api/v2/ai/switch/",
+        "/api/ai/switch/",
         data=json.dumps({"backend": "bogus"}),
         content_type="application/json",
     )
@@ -127,7 +127,7 @@ def test_ai_switch_validates_backend(authed_client):
 def test_ai_auth_poll_idle(authed_client):
     # auth_flow.poll() returns {active: False, authenticated: False} when idle
     with patch("apps.common.auth_flow.poll", return_value={"active": False, "authenticated": False}):
-        resp = authed_client.get("/api/v2/ai/auth/poll/")
+        resp = authed_client.get("/api/ai/auth/poll/")
     assert resp.status_code == 200
     body = json.loads(resp.content)
     parsed = AiAuthPollOut.model_validate(body)
@@ -142,7 +142,7 @@ def test_ai_auth_poll_idle(authed_client):
 @pytest.mark.django_db
 def test_ai_auth_poll_ok(authed_client):
     with patch("apps.common.auth_flow.poll", return_value={"active": False, "authenticated": True}):
-        resp = authed_client.get("/api/v2/ai/auth/poll/")
+        resp = authed_client.get("/api/ai/auth/poll/")
     assert resp.status_code == 200
     body = json.loads(resp.content)
     parsed = AiAuthPollOut.model_validate(body)
@@ -160,7 +160,7 @@ def test_ai_auth_poll_pending(authed_client):
         "apps.common.auth_flow.poll",
         return_value={"active": True, "authenticated": False, "elapsed_seconds": 5},
     ):
-        resp = authed_client.get("/api/v2/ai/auth/poll/")
+        resp = authed_client.get("/api/ai/auth/poll/")
     assert resp.status_code == 200
     body = json.loads(resp.content)
     parsed = AiAuthPollOut.model_validate(body)
@@ -182,7 +182,7 @@ def test_ai_auth_start_smoke(authed_client):
             "status": "awaiting_code",
         },
     ):
-        resp = authed_client.post("/api/v2/ai/auth/start/")
+        resp = authed_client.post("/api/ai/auth/start/")
     assert resp.status_code == 200
     body = json.loads(resp.content)
     assert body["auth_url"].startswith("https://")
@@ -199,7 +199,7 @@ def test_ai_auth_complete_smoke(authed_client):
     fake_token = "sk-ant-oat01-" + "x" * 40
     with patch("apps.common.auth_flow.complete", return_value=fake_token):
         resp = authed_client.post(
-            "/api/v2/ai/auth/complete/",
+            "/api/ai/auth/complete/",
             data=json.dumps({"code": "some-oauth-code"}),
             content_type="application/json",
         )
@@ -218,7 +218,7 @@ def test_ai_auth_complete_smoke(authed_client):
 def test_ai_switch_valid(authed_client, settings):
     settings.AI_BACKEND = "api"
     resp = authed_client.post(
-        "/api/v2/ai/switch/",
+        "/api/ai/switch/",
         data=json.dumps({"backend": "cli"}),
         content_type="application/json",
     )

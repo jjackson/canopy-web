@@ -65,7 +65,7 @@ def mint_session(request):
     origin = f"{request.scheme}://{request.get_host()}"
     curl_example = (
         f'curl -H "Cookie: {cookie_name}={session.session_key}" '
-        f'{origin}/api/v2/projects/'
+        f'{origin}/api/projects/'
     )
 
     return JsonResponse({

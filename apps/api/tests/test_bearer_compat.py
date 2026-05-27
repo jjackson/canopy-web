@@ -6,7 +6,7 @@ projects/slugs/, insights/). It sets `_workbench_token_auth = True`
 and `_dont_enforce_csrf_checks = True` before handing off; Ninja's
 CSRF + session_auth must honor both.
 
-These tests use the smoke route under /api/v2/_auth_smoke/ — it's
+These tests use the smoke route under /api/_auth_smoke/ — it's
 NOT on the bypass allowlist, so we can't test the real flow here.
 Real Bearer compatibility is covered by per-app contract tests in
 Phase 2 (Task 2.3 — projects bearer-readable endpoints).
@@ -25,7 +25,7 @@ from apps.api.auth import session_auth
 
 def test_session_auth_accepts_anonymous_when_bearer_authed():
     rf = RequestFactory()
-    request = rf.get("/api/v2/_anything")
+    request = rf.get("/api/_anything")
     request.user = AnonymousUser()
     request._workbench_token_auth = True
     # Should not raise; should return whatever request.user is.
@@ -37,7 +37,7 @@ def test_session_auth_rejects_anonymous_without_bearer_marker():
     from apps.api.errors import ProblemError
 
     rf = RequestFactory()
-    request = rf.get("/api/v2/_anything")
+    request = rf.get("/api/_anything")
     request.user = AnonymousUser()
     with pytest.raises(ProblemError) as exc_info:
         session_auth.authenticate(request, None)

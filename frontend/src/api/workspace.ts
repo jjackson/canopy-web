@@ -33,7 +33,7 @@ function getCsrfToken(): string {
 export async function listWorkspaces(
   filters: WorkspaceFilters = {}
 ): Promise<WorkspaceSessionListItem[]> {
-  const { data, error } = await apiV2.GET("/api/v2/workspace/", {
+  const { data, error } = await apiV2.GET("/api/workspace/", {
     params: {
       query: {
         ...(filters.status !== undefined && { status: filters.status }),
@@ -47,7 +47,7 @@ export async function listWorkspaces(
 }
 
 export async function getWorkspace(sessionId: number): Promise<WorkspaceSession> {
-  const { data, error } = await apiV2.GET("/api/v2/workspace/{session_id}/", {
+  const { data, error } = await apiV2.GET("/api/workspace/{session_id}/", {
     params: { path: { session_id: sessionId } },
   });
   if (error) throw new Error("Workspace session not found");
@@ -58,7 +58,7 @@ export async function editSkill(
   sessionId: number,
   payload: EditSkillIn
 ): Promise<WorkspaceSession> {
-  const { data, error } = await apiV2.PATCH("/api/v2/workspace/{session_id}/edit/", {
+  const { data, error } = await apiV2.PATCH("/api/workspace/{session_id}/edit/", {
     params: { path: { session_id: sessionId } },
     body: payload,
   });
@@ -70,7 +70,7 @@ export async function publishSkill(
   sessionId: number,
   payload: PublishSkillIn = {}
 ): Promise<Skill> {
-  const { data, error } = await apiV2.POST("/api/v2/workspace/{session_id}/publish/", {
+  const { data, error } = await apiV2.POST("/api/workspace/{session_id}/publish/", {
     params: { path: { session_id: sessionId } },
     body: payload,
   });
@@ -79,7 +79,7 @@ export async function publishSkill(
 }
 
 export async function analyzeWorkspace(collectionId: number): Promise<WorkspaceAnalyze> {
-  const { data, error } = await apiV2.POST("/api/v2/workspace/analyze/{collection_id}/", {
+  const { data, error } = await apiV2.POST("/api/workspace/analyze/{collection_id}/", {
     params: { path: { collection_id: collectionId } },
   });
   if (error) throw new Error("Workspace analysis failed");
@@ -95,7 +95,7 @@ export async function analyzeWorkspace(collectionId: number): Promise<WorkspaceA
  */
 export async function startWorkspaceStream(collectionId: number): Promise<Response> {
   const csrf = getCsrfToken();
-  return fetch(`/api/v2/workspace/start/${collectionId}/`, {
+  return fetch(`/api/workspace/start/${collectionId}/`, {
     method: "POST",
     headers: {
       "X-CSRFToken": csrf,

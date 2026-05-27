@@ -10,13 +10,13 @@ PUBLIC_PATH_PREFIXES = (
     "/static/",              # static assets
     "/api/csrf/",            # bootstraps CSRF cookie before login
     "/api/auth/e2e-login/",  # token-gated login for automated tools
-    "/api/v2/openapi.json",  # NEW — openapi-typescript fetches the schema
-    "/api/v2/docs/",          # NEW — Scalar HTML (mounted in Task 0.4)
-    "/api/v2/redoc/",         # NEW — Redoc HTML (mounted in Task 0.4)
+    "/api/openapi.json",      # openapi-typescript fetches the schema
+    "/api/docs/",             # Scalar HTML
+    "/api/redoc/",            # Redoc HTML
 )
 
 # Write endpoints callable with a Bearer token (machine writes like the
-# canopy post_tool_use hook). Path must start with /api/v2/projects/ AND end
+# canopy post_tool_use hook). Path must start with /api/projects/ AND end
 # with one of these suffixes.
 WORKBENCH_TOKEN_WRITE_SUFFIXES = ("/actions/", "/context/")
 
@@ -27,8 +27,8 @@ WORKBENCH_TOKEN_WRITE_SUFFIXES = ("/actions/", "/context/")
 # richer (full project list, contexts, raw context entries) still
 # requires OAuth.
 WORKBENCH_TOKEN_READABLE_PATHS = (
-    "/api/v2/projects/slugs/",
-    "/api/v2/insights/",
+    "/api/projects/slugs/",
+    "/api/insights/",
 )
 
 
@@ -44,7 +44,7 @@ def _is_walkthrough_content(path: str) -> bool:
 
 
 def _is_token_writable_path(path: str) -> bool:
-    if not path.startswith("/api/v2/projects/"):
+    if not path.startswith("/api/projects/"):
         return False
     return any(path.endswith(suffix) for suffix in WORKBENCH_TOKEN_WRITE_SUFFIXES)
 

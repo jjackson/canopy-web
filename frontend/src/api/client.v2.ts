@@ -13,7 +13,7 @@ function redirectToLogin(): never {
 }
 
 export const apiV2 = createClient<paths>({
-  baseUrl: "/api/v2",
+  baseUrl: "",
   credentials: "same-origin",
 });
 

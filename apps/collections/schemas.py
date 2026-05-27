@@ -1,4 +1,4 @@
-"""Pydantic schemas for the /api/v2/collections surface."""
+"""Pydantic schemas for the /api/collections surface."""
 from __future__ import annotations
 
 import datetime as dt

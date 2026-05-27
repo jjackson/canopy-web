@@ -19,7 +19,7 @@ from apps.collections.schemas import CollectionOut, SourceOut
 
 User = get_user_model()
 
-BASE = "/api/v2/collections"
+BASE = "/api/collections"
 
 
 # ---------------------------------------------------------------------------

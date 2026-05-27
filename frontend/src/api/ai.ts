@@ -1,5 +1,5 @@
 /**
- * AI backend API — typed wrapper around /api/v2/ai/* endpoints.
+ * AI backend API — typed wrapper around /api/ai/* endpoints.
  *
  * Shape-adaptation note: the v2 schemas diverge from the legacy DRF responses
  * that page components were written against. Rather than rewrite every consumer
@@ -30,7 +30,7 @@ export interface AiStatusLegacy {
 }
 
 export async function aiStatus(): Promise<AiStatusLegacy> {
-  const { data, error } = await apiV2.GET("/api/v2/ai/status/");
+  const { data, error } = await apiV2.GET("/api/ai/status/");
   if (error) throw new Error("Failed to load AI status");
   return {
     backend: data.backend,
@@ -43,7 +43,7 @@ export async function aiStatus(): Promise<AiStatusLegacy> {
 export async function aiSwitch(
   backend: "api" | "cli",
 ): Promise<{ backend: string }> {
-  const { data, error } = await apiV2.POST("/api/v2/ai/switch/", {
+  const { data, error } = await apiV2.POST("/api/ai/switch/", {
     body: { backend },
   });
   if (error) throw new Error("Failed to switch AI backend");
@@ -58,7 +58,7 @@ export interface AiAuthStartLegacy {
 }
 
 export async function aiAuthStart(): Promise<AiAuthStartLegacy> {
-  const { data, error } = await apiV2.POST("/api/v2/ai/auth/start/");
+  const { data, error } = await apiV2.POST("/api/ai/auth/start/");
   if (error) throw new Error("Failed to start auth");
   return {
     auth_url: data.auth_url,
@@ -74,7 +74,7 @@ export interface AiAuthCompleteLegacy {
 }
 
 export async function aiAuthComplete(code: string): Promise<AiAuthCompleteLegacy> {
-  const { data, error } = await apiV2.POST("/api/v2/ai/auth/complete/", {
+  const { data, error } = await apiV2.POST("/api/ai/auth/complete/", {
     body: { code },
   });
   if (error) throw new Error("Failed to complete auth");
@@ -92,7 +92,7 @@ export interface AiAuthPollLegacy {
 }
 
 export async function aiAuthPoll(): Promise<AiAuthPollLegacy> {
-  const { data, error } = await apiV2.GET("/api/v2/ai/auth/poll/");
+  const { data, error } = await apiV2.GET("/api/ai/auth/poll/");
   if (error) throw new Error("Failed to poll auth");
   return {
     active: data.state === "pending",

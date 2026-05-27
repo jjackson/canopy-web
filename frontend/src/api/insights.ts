@@ -62,7 +62,7 @@ export function newestInsightTimestamp(insights: Insight[]): string | null {
 
 export const insightsApi = {
   list: async (params: InsightListParams = {}): Promise<Insight[]> => {
-    const { data, error } = await apiV2.GET("/api/v2/insights/", {
+    const { data, error } = await apiV2.GET("/api/insights/", {
       params: {
         query: {
           ...(params.category ? { category: params.category } : {}),
@@ -75,7 +75,7 @@ export const insightsApi = {
     return data.items as Insight[];
   },
   dismiss: async (id: number): Promise<{ dismissed: number }> => {
-    const { data, error } = await apiV2.DELETE("/api/v2/insights/{pk}/", {
+    const { data, error } = await apiV2.DELETE("/api/insights/{pk}/", {
       params: { path: { pk: id } },
     });
     if (error) throw new Error("Failed to dismiss insight");

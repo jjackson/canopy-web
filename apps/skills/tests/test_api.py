@@ -21,7 +21,7 @@ from apps.skills.schemas import AdapterOut, SkillOut
 
 User = get_user_model()
 
-BASE = "/api/v2/skills"
+BASE = "/api/skills"
 
 
 # ---------------------------------------------------------------------------

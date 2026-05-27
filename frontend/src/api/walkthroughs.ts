@@ -23,7 +23,7 @@ export interface PatchWalkthroughInput {
 export async function listWalkthroughs(
   filters: WalkthroughListFilters = {},
 ): Promise<WalkthroughListItem[]> {
-  const { data, error } = await apiV2.GET("/api/v2/walkthroughs/", {
+  const { data, error } = await apiV2.GET("/api/walkthroughs/", {
     params: {
       query: {
         ...(filters.project ? { project: filters.project } : {}),
@@ -37,7 +37,7 @@ export async function listWalkthroughs(
 }
 
 export async function getWalkthrough(id: string): Promise<WalkthroughDetail> {
-  const { data, error } = await apiV2.GET("/api/v2/walkthroughs/{wid}/", {
+  const { data, error } = await apiV2.GET("/api/walkthroughs/{wid}/", {
     params: { path: { wid: id } },
   });
   if (error) throw new Error("Failed to load walkthrough");
@@ -48,7 +48,7 @@ export async function patchWalkthrough(
   id: string,
   patch: PatchWalkthroughInput,
 ): Promise<WalkthroughDetail> {
-  const { data, error } = await apiV2.PATCH("/api/v2/walkthroughs/{wid}/", {
+  const { data, error } = await apiV2.PATCH("/api/walkthroughs/{wid}/", {
     params: { path: { wid: id } },
     body: {
       title: patch.title ?? null,
@@ -62,7 +62,7 @@ export async function patchWalkthrough(
 }
 
 export async function deleteWalkthrough(id: string): Promise<void> {
-  const { error } = await apiV2.DELETE("/api/v2/walkthroughs/{wid}/", {
+  const { error } = await apiV2.DELETE("/api/walkthroughs/{wid}/", {
     params: { path: { wid: id } },
   });
   if (error) throw new Error("Failed to delete walkthrough");
@@ -72,7 +72,7 @@ export async function rotateWalkthroughToken(
   id: string,
 ): Promise<{ share_token: string }> {
   const { data, error } = await apiV2.POST(
-    "/api/v2/walkthroughs/{wid}/rotate-token/",
+    "/api/walkthroughs/{wid}/rotate-token/",
     {
       params: { path: { wid: id } },
     },
@@ -88,7 +88,7 @@ export async function rotateWalkthroughToken(
 export async function uploadWalkthrough(
   form: FormData,
 ): Promise<WalkthroughDetail> {
-  const { data, error } = await apiV2.POST("/api/v2/walkthroughs/", {
+  const { data, error } = await apiV2.POST("/api/walkthroughs/", {
     // openapi-fetch defaults to JSON; override for multipart so the browser
     // sets the Content-Type boundary automatically.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

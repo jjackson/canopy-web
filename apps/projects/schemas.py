@@ -1,4 +1,4 @@
-"""Pydantic schemas for the /api/v2/projects + /api/v2/insights surface."""
+"""Pydantic schemas for the /api/projects + /api/insights surface."""
 from __future__ import annotations
 
 import datetime as dt
@@ -121,7 +121,7 @@ class ProjectPatchIn(StrictModel):
 
 
 class ProjectSlugOut(StrictModel):
-    """Slim machine-readable shape from /api/v2/projects/slugs/."""
+    """Slim machine-readable shape from /api/projects/slugs/."""
     slug: str
     name: str
     status: ProjectStatus
@@ -133,7 +133,7 @@ class ProjectContextLatestOut(StrictModel):
 
 
 class BatchContextIn(StrictModel):
-    """Body of POST /api/v2/projects/batch-context/.
+    """Body of POST /api/projects/batch-context/.
 
     Each value is a list of ProjectContextCreateIn shapes.
     """
@@ -141,7 +141,7 @@ class BatchContextIn(StrictModel):
 
 
 class BatchActionsIn(StrictModel):
-    """Body of POST /api/v2/projects/batch-actions/."""
+    """Body of POST /api/projects/batch-actions/."""
     updates: dict[str, list[ProjectActionCreateIn]]
 
 

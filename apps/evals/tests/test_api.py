@@ -24,7 +24,7 @@ from apps.skills.models import Skill
 
 User = get_user_model()
 
-BASE = "/api/v2/evals"
+BASE = "/api/evals"
 
 
 # ---------------------------------------------------------------------------

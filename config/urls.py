@@ -18,9 +18,9 @@ urlpatterns = [
     path("api/auth/e2e-login/", views_auth_e2e.e2e_login, name="auth-e2e-login"),
     path("api/debug/", include("apps.common.urls_debug")),
     path("w/<uuid:wid>/content", views_walkthrough_content, name="walkthrough-content"),
-    path("api/v2/", api_v2.urls),
-    path("api/v2/docs/", scalar_docs, name="api_docs_scalar"),
-    path("api/v2/redoc/", redoc_docs, name="api_docs_redoc"),
+    path("api/", api_v2.urls),
+    path("api/docs/", scalar_docs, name="api_docs_scalar"),
+    path("api/redoc/", redoc_docs, name="api_docs_redoc"),
     # Catch-all: serve the SPA for any non-API route (last).
     re_path(r"^(?!api/|admin/|accounts/|health/|static/).*$", spa_view, name="spa"),
 ]

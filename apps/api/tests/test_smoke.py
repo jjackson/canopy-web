@@ -8,7 +8,7 @@ User = get_user_model()
 @pytest.mark.django_db
 def test_openapi_schema_serves():
     client = Client()
-    response = client.get("/api/v2/openapi.json")
+    response = client.get("/api/openapi.json")
     assert response.status_code == 200
     payload = response.json()
     assert payload["info"]["title"] == "canopy-web API"
@@ -17,20 +17,20 @@ def test_openapi_schema_serves():
 
 @pytest.mark.django_db
 def test_unknown_route_returns_404():
-    """Unmatched paths under /api/v2/ resolve to 404. The response shape
+    """Unmatched paths under /api/ resolve to 404. The response shape
     depends on whether Django's URLconf or Ninja's dispatch fires first.
     A content-type assertion is intentionally omitted; a routing-level
     catchall for problem+json is deferred to Phase 0.4 or later.
     """
     client = Client()
-    response = client.get("/api/v2/does-not-exist")
+    response = client.get("/api/does-not-exist")
     assert response.status_code == 404
 
 
 @pytest.mark.django_db
 def test_scalar_docs_serves_html():
     client = Client()
-    response = client.get("/api/v2/docs/")
+    response = client.get("/api/docs/")
     assert response.status_code == 200
     assert response["Content-Type"].startswith("text/html")
     assert b"api-reference" in response.content
@@ -39,7 +39,7 @@ def test_scalar_docs_serves_html():
 @pytest.mark.django_db
 def test_redoc_docs_serves_html():
     client = Client()
-    response = client.get("/api/v2/redoc/")
+    response = client.get("/api/redoc/")
     assert response.status_code == 200
     assert response["Content-Type"].startswith("text/html")
     assert b"redoc" in response.content
@@ -47,7 +47,7 @@ def test_redoc_docs_serves_html():
 
 @pytest.mark.django_db
 def test_session_auth_rejects_anonymous(client):
-    response = client.get("/api/v2/_auth_smoke/")
+    response = client.get("/api/_auth_smoke/")
     assert response.status_code == 401
     body = response.json()
     assert body["status"] == 401
@@ -60,6 +60,6 @@ def test_session_auth_accepts_logged_in_user(client):
         username="alice", email="alice@dimagi.com", password="pw"
     )
     client.force_login(user)
-    response = client.get("/api/v2/_auth_smoke/")
+    response = client.get("/api/_auth_smoke/")
     assert response.status_code == 200
     assert response.json() == {"email": "alice@dimagi.com"}

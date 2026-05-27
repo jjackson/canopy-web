@@ -6,7 +6,7 @@ export type EvalRunOut = components["schemas"]["EvalRunOut"];
 export type EvalCaseOut = components["schemas"]["EvalCaseOut"];
 
 export async function getEvalSuite(skillId: number): Promise<EvalSuiteOut> {
-  const { data, error } = await apiV2.GET("/api/v2/evals/{skill_id}/", {
+  const { data, error } = await apiV2.GET("/api/evals/{skill_id}/", {
     params: { path: { skill_id: skillId } },
   });
   if (error) throw new Error("Failed to load eval suite");
@@ -14,7 +14,7 @@ export async function getEvalSuite(skillId: number): Promise<EvalSuiteOut> {
 }
 
 export async function runEval(skillId: number): Promise<EvalRunOut> {
-  const { data, error } = await apiV2.POST("/api/v2/evals/{skill_id}/run/", {
+  const { data, error } = await apiV2.POST("/api/evals/{skill_id}/run/", {
     params: { path: { skill_id: skillId } },
     body: { runtime: "web" },
   });
@@ -23,7 +23,7 @@ export async function runEval(skillId: number): Promise<EvalRunOut> {
 }
 
 export async function getEvalHistory(skillId: number): Promise<EvalRunOut[]> {
-  const { data, error } = await apiV2.GET("/api/v2/evals/{skill_id}/history/", {
+  const { data, error } = await apiV2.GET("/api/evals/{skill_id}/history/", {
     params: { path: { skill_id: skillId } },
   });
   if (error) throw new Error("Failed to load eval history");
@@ -39,7 +39,7 @@ export async function addEvalCase(
     source_excerpt?: string;
   },
 ): Promise<EvalCaseOut> {
-  const { data, error } = await apiV2.POST("/api/v2/evals/{skill_id}/cases/", {
+  const { data, error } = await apiV2.POST("/api/evals/{skill_id}/cases/", {
     params: { path: { skill_id: skillId } },
     body: {
       name: evalCase.name,
@@ -63,7 +63,7 @@ export async function editEvalCase(
   },
 ): Promise<EvalCaseOut> {
   const { data, error } = await apiV2.PATCH(
-    "/api/v2/evals/{skill_id}/cases/{case_id}/",
+    "/api/evals/{skill_id}/cases/{case_id}/",
     {
       params: { path: { skill_id: skillId, case_id: caseId } },
       body: patch,
@@ -78,7 +78,7 @@ export async function deleteEvalCase(
   caseId: number,
 ): Promise<void> {
   const { error } = await apiV2.DELETE(
-    "/api/v2/evals/{skill_id}/cases/{case_id}/",
+    "/api/evals/{skill_id}/cases/{case_id}/",
     {
       params: { path: { skill_id: skillId, case_id: caseId } },
     },

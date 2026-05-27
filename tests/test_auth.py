@@ -32,7 +32,7 @@ def auth_client(db):
 @override_settings(REQUIRE_AUTH=True)
 def test_api_requires_auth_returns_401(db):
     client = Client()
-    resp = client.get("/api/v2/projects/")
+    resp = client.get("/api/projects/")
     assert resp.status_code == 401
     assert resp.json() == {"detail": "Authentication required"}
 
@@ -71,13 +71,13 @@ def test_accounts_paths_are_public(db):
 @override_settings(REQUIRE_AUTH=True)
 def test_me_returns_401_when_unauthenticated(db):
     client = Client()
-    resp = client.get("/api/v2/me/")
+    resp = client.get("/api/me/")
     assert resp.status_code == 401
 
 
 @override_settings(REQUIRE_AUTH=True)
 def test_me_returns_user_when_authenticated(auth_client):
-    resp = auth_client.get("/api/v2/me/")
+    resp = auth_client.get("/api/me/")
     assert resp.status_code == 200
     body = resp.json()
     assert body["email"] == "tester@dimagi.com"
@@ -85,7 +85,7 @@ def test_me_returns_user_when_authenticated(auth_client):
 
 @override_settings(REQUIRE_AUTH=True)
 def test_authenticated_user_can_hit_api(auth_client):
-    resp = auth_client.get("/api/v2/projects/")
+    resp = auth_client.get("/api/projects/")
     assert resp.status_code == 200
 
 
@@ -201,5 +201,5 @@ def test_post_without_csrf_rejected(db):
     user = User.objects.create_user(username="tester", email="tester@dimagi.com")
     client = Client(enforce_csrf_checks=True)
     client.force_login(user)
-    resp = client.post("/api/v2/projects/", data={}, content_type="application/json")
+    resp = client.post("/api/projects/", data={}, content_type="application/json")
     assert resp.status_code == 403

@@ -5,13 +5,13 @@ export type SkillOut = components["schemas"]["SkillOut"];
 export type AdapterOut = components["schemas"]["AdapterOut"];
 
 export async function listSkills(): Promise<SkillOut[]> {
-  const { data, error } = await apiV2.GET("/api/v2/skills/");
+  const { data, error } = await apiV2.GET("/api/skills/");
   if (error) throw new Error("Failed to load skills");
   return data.items as SkillOut[];
 }
 
 export async function getSkill(id: number): Promise<SkillOut> {
-  const { data, error } = await apiV2.GET("/api/v2/skills/{pk}/", {
+  const { data, error } = await apiV2.GET("/api/skills/{pk}/", {
     params: { path: { pk: id } },
   });
   if (error) throw new Error("Failed to load skill");
@@ -22,7 +22,7 @@ export async function generateAdapter(
   skillId: number,
   runtime: string,
 ): Promise<AdapterOut> {
-  const { data, error } = await apiV2.POST("/api/v2/skills/{pk}/adapter/", {
+  const { data, error } = await apiV2.POST("/api/skills/{pk}/adapter/", {
     params: { path: { pk: skillId } },
     body: { runtime: runtime as "web" | "claude_code" | "open_claw" },
   });

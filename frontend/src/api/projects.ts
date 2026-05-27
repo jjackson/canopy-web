@@ -8,12 +8,12 @@ export type ProjectContext = components["schemas"]["ProjectContextOut"];
 
 export const projectsApi = {
   list: async (): Promise<Project[]> => {
-    const { data, error } = await apiV2.GET("/api/v2/projects/");
+    const { data, error } = await apiV2.GET("/api/projects/");
     if (error) throw new Error("Failed to load projects");
     return data.items as Project[];
   },
   get: async (slug: string): Promise<ProjectDetail> => {
-    const { data, error } = await apiV2.GET("/api/v2/projects/{slug}/", {
+    const { data, error } = await apiV2.GET("/api/projects/{slug}/", {
       params: { path: { slug } },
     });
     if (error) throw new Error("Failed to load project");
@@ -27,7 +27,7 @@ export const projectsApi = {
     visibility?: string;
     status?: string;
   }): Promise<ProjectDetail> => {
-    const { data, error } = await apiV2.POST("/api/v2/projects/", {
+    const { data, error } = await apiV2.POST("/api/projects/", {
       body: {
         name: input.name,
         slug: input.slug,
@@ -50,7 +50,7 @@ export const projectsApi = {
       visibility: string;
     }>,
   ): Promise<ProjectDetail> => {
-    const { data, error } = await apiV2.PATCH("/api/v2/projects/{slug}/", {
+    const { data, error } = await apiV2.PATCH("/api/projects/{slug}/", {
       params: { path: { slug } },
       body: {
         name: input.name ?? null,
@@ -64,7 +64,7 @@ export const projectsApi = {
     return data as unknown as ProjectDetail;
   },
   delete: async (slug: string): Promise<void> => {
-    const { error } = await apiV2.DELETE("/api/v2/projects/{slug}/", {
+    const { error } = await apiV2.DELETE("/api/projects/{slug}/", {
       params: { path: { slug } },
     });
     if (error) throw new Error("Failed to delete project");
@@ -73,7 +73,7 @@ export const projectsApi = {
     slug: string,
     input: { context_type: string; content: string; source: string },
   ): Promise<ProjectContextEntry> => {
-    const { data, error } = await apiV2.POST("/api/v2/projects/{slug}/context/", {
+    const { data, error } = await apiV2.POST("/api/projects/{slug}/context/", {
       params: { path: { slug } },
       body: {
         context_type: input.context_type as
@@ -90,7 +90,7 @@ export const projectsApi = {
     return data;
   },
   getContext: async (slug: string): Promise<ProjectContextEntry[]> => {
-    const { data, error } = await apiV2.GET("/api/v2/projects/{slug}/context/", {
+    const { data, error } = await apiV2.GET("/api/projects/{slug}/context/", {
       params: { path: { slug } },
     });
     if (error) throw new Error("Failed to load context");
@@ -100,7 +100,7 @@ export const projectsApi = {
     slug: string,
   ): Promise<Record<string, ProjectContext>> => {
     const { data, error } = await apiV2.GET(
-      "/api/v2/projects/{slug}/context/latest/",
+      "/api/projects/{slug}/context/latest/",
       {
         params: { path: { slug } },
       },

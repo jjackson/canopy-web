@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    readonly "/api/v2/_auth_smoke/": {
+    readonly "/api/_auth_smoke/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -24,7 +24,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/": {
+    readonly "/api/projects/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -42,7 +42,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/slugs/": {
+    readonly "/api/projects/slugs/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -62,7 +62,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/seed/": {
+    readonly "/api/projects/seed/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -79,7 +79,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/batch-context/": {
+    readonly "/api/projects/batch-context/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -99,7 +99,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/batch-actions/": {
+    readonly "/api/projects/batch-actions/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -119,7 +119,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/{slug}/": {
+    readonly "/api/projects/{slug}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -138,7 +138,7 @@ export interface paths {
         readonly patch: operations["apps_projects_api_patch_project"];
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/{slug}/context/": {
+    readonly "/api/projects/{slug}/context/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -159,7 +159,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/{slug}/context/latest/": {
+    readonly "/api/projects/{slug}/context/latest/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -176,7 +176,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/{slug}/actions/": {
+    readonly "/api/projects/{slug}/actions/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -197,7 +197,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/projects/{slug}/actions/summary/": {
+    readonly "/api/projects/{slug}/actions/summary/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -214,7 +214,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/insights/": {
+    readonly "/api/insights/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -234,7 +234,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/insights/clear/": {
+    readonly "/api/insights/clear/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -254,7 +254,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/insights/{pk}/": {
+    readonly "/api/insights/{pk}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -271,7 +271,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/collections/": {
+    readonly "/api/collections/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -288,7 +288,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/collections/{pk}/": {
+    readonly "/api/collections/{pk}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -305,7 +305,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/collections/{pk}/sources/": {
+    readonly "/api/collections/{pk}/sources/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -322,7 +322,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/skills/": {
+    readonly "/api/skills/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -339,7 +339,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/skills/{pk}/": {
+    readonly "/api/skills/{pk}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -356,7 +356,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/skills/{pk}/adapter/": {
+    readonly "/api/skills/{pk}/adapter/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -373,7 +373,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/evals/{skill_id}/": {
+    readonly "/api/evals/{skill_id}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -393,7 +393,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/evals/{skill_id}/run/": {
+    readonly "/api/evals/{skill_id}/run/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -413,7 +413,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/evals/{skill_id}/history/": {
+    readonly "/api/evals/{skill_id}/history/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -433,7 +433,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/evals/{skill_id}/cases/": {
+    readonly "/api/evals/{skill_id}/cases/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -453,7 +453,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/evals/{skill_id}/cases/{case_id}/": {
+    readonly "/api/evals/{skill_id}/cases/{case_id}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -477,7 +477,7 @@ export interface paths {
         readonly patch: operations["apps_evals_api_patch_eval_case"];
         readonly trace?: never;
     };
-    readonly "/api/v2/workspace/": {
+    readonly "/api/workspace/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -502,7 +502,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/workspace/{session_id}/": {
+    readonly "/api/workspace/{session_id}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -522,7 +522,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/workspace/{session_id}/edit/": {
+    readonly "/api/workspace/{session_id}/edit/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -544,7 +544,7 @@ export interface paths {
         readonly patch: operations["apps_workspace_api_edit_skill"];
         readonly trace?: never;
     };
-    readonly "/api/v2/workspace/{session_id}/publish/": {
+    readonly "/api/workspace/{session_id}/publish/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -570,7 +570,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/workspace/start/{collection_id}/": {
+    readonly "/api/workspace/start/{collection_id}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -590,7 +590,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/workspace/analyze/{collection_id}/": {
+    readonly "/api/workspace/analyze/{collection_id}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -610,7 +610,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/ai/status/": {
+    readonly "/api/ai/status/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -627,7 +627,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/ai/switch/": {
+    readonly "/api/ai/switch/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -644,7 +644,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/ai/auth/start/": {
+    readonly "/api/ai/auth/start/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -661,7 +661,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/ai/auth/complete/": {
+    readonly "/api/ai/auth/complete/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -678,7 +678,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/ai/auth/poll/": {
+    readonly "/api/ai/auth/poll/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -695,7 +695,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/me/": {
+    readonly "/api/me/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -712,7 +712,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/health/": {
+    readonly "/api/health/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -729,7 +729,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/walkthroughs/": {
+    readonly "/api/walkthroughs/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -747,7 +747,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/v2/walkthroughs/{wid}/": {
+    readonly "/api/walkthroughs/{wid}/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -766,7 +766,7 @@ export interface paths {
         readonly patch: operations["apps_walkthroughs_api_patch_walkthrough"];
         readonly trace?: never;
     };
-    readonly "/api/v2/walkthroughs/{wid}/rotate-token/": {
+    readonly "/api/walkthroughs/{wid}/rotate-token/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
