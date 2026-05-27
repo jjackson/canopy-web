@@ -11,6 +11,7 @@ from django.http import Http404, HttpRequest, HttpResponse
 from ninja import NinjaAPI
 from ninja.errors import AuthenticationError, HttpError, ValidationError
 
+from .auth import session_auth
 from .errors import (
     TYPE_AUTH,
     TYPE_INTERNAL,
@@ -126,10 +127,7 @@ def _on_unhandled(request: HttpRequest, exc: Exception) -> HttpResponse:
     return _problem_response(request, problem)
 
 
-from .auth import session_auth  # noqa: E402
-
-
 @api.get("/_auth_smoke/", auth=session_auth, response={200: dict})
 def _auth_smoke(request: HttpRequest) -> dict:
     """Internal smoke route — verifies session auth works."""
-    return {"email": request.user.email}
+    return {"email": getattr(request.user, "email", "")}
