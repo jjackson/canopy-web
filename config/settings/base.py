@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "apps.evals",
     "apps.projects",
     "apps.walkthroughs",
+    "apps.tokens",
 ]
 
 MIDDLEWARE = [
@@ -69,6 +70,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.tokens.middleware.BearerTokenAuthMiddleware",  # PAT bearer auth (after AuthenticationMiddleware, before LoginRequired)
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
@@ -178,17 +180,12 @@ WALKTHROUGH_MAX_UPLOAD_BYTES = env.int(
     "WALKTHROUGH_MAX_UPLOAD_BYTES", default=75 * 1024 * 1024,
 )
 
-# Shared-secret Bearer token that lets machine callers (e.g. the canopy
-# post_tool_use hook) write to a narrow set of /api/projects/*/actions/
-# and /api/projects/*/context/ endpoints without Google OAuth. Empty
-# disables the bypass entirely.
-WORKBENCH_WRITE_TOKEN = os.environ.get("WORKBENCH_WRITE_TOKEN", "")
-
-# Pre-shared secret for /api/auth/e2e-login/ — token-gated login for
-# automated tools (gstack walkthroughs, autonomous PM cycles, AI-driven
-# QA) so they can drive OAuth-gated UI surfaces without a human in the
-# loop. Empty disables the endpoint (404).
-CANOPY_E2E_AUTH_TOKEN = os.environ.get("CANOPY_E2E_AUTH_TOKEN", "")
+# Machine-caller authentication: see apps/tokens/ for Personal Access
+# Tokens. Mint with `manage.py create_token --email X --label Y`; the
+# raw value goes in the `Authorization: Bearer <raw>` header and
+# `apps.tokens.middleware.BearerTokenAuthMiddleware` resolves it to a
+# real Django user. The legacy shared-secret WORKBENCH_WRITE_TOKEN +
+# CANOPY_E2E_AUTH_TOKEN env vars were retired by the PAT refactor.
 
 # AI Backend: "api" (direct Anthropic SDK) or "cli" (claude code CLI)
 AI_BACKEND = env("AI_BACKEND", default="api")

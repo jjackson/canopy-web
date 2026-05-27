@@ -1,77 +1,49 @@
 """End-to-end smoke test against the deployed canopy-web.
 
-Logs in via /api/auth/e2e-login/ as ace@dimagi-ai.com, injects the session
-cookie into Playwright, then visits each primary page and screenshots it.
-Asserts key UI markers per page; fails loud on any missing element or HTTP
-4xx/5xx response.
+Authenticates by attaching a Personal Access Token (PAT) as a
+Bearer header on every page fetch — Playwright's `extra_http_headers`
+makes this trivial. The token is resolved upstream by
+`apps.tokens.middleware.BearerTokenAuthMiddleware` into a real Django
+user; the rest of the request stack treats it identically to a
+session-cookie login.
 
 Run:
-    uv run python scripts/qa/smoke_deployed.py
+    CANOPY_PAT=<raw-token> uv run python scripts/qa/smoke_deployed.py
 
 Env:
-    CANOPY_E2E_AUTH_TOKEN  required — shared secret for the e2e-login endpoint
-    CANOPY_URL             default https://canopy-web-ujpz2cuyxq-uc.a.run.app
+    CANOPY_PAT   required — raw Personal Access Token. Mint one with
+                 `uv run python manage.py create_token --email X --label Y`
+                 (or via POST /api/tokens/ once you have a session).
+    CANOPY_URL   default https://canopy-web-ujpz2cuyxq-uc.a.run.app
 
-Output: screenshots/ directory + a printed pass/fail summary.
+Output: screenshots/ directory + printed pass/fail summary.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
 
-import requests
 from playwright.sync_api import Browser, Page, sync_playwright
 
 URL = os.environ.get("CANOPY_URL", "https://canopy-web-ujpz2cuyxq-uc.a.run.app")
-TOKEN = os.environ.get("CANOPY_E2E_AUTH_TOKEN", "")
-EMAIL = os.environ.get("CANOPY_E2E_EMAIL", "ace@dimagi-ai.com")
+PAT = os.environ.get("CANOPY_PAT", "")
 SCREENSHOTS = Path(__file__).parent / "screenshots"
-
-
-def e2e_login_session_cookie() -> dict:
-    """POST to /api/auth/e2e-login/ and return the sessionid cookie dict."""
-    if not TOKEN:
-        raise SystemExit("CANOPY_E2E_AUTH_TOKEN must be set")
-    resp = requests.post(
-        f"{URL}/api/auth/e2e-login/",
-        json={"email": EMAIL, "token": TOKEN},
-        timeout=20,
-    )
-    if resp.status_code != 200:
-        raise SystemExit(f"e2e-login failed: {resp.status_code} {resp.text[:200]}")
-    cookies = resp.cookies
-    sessionid = cookies.get("sessionid")
-    if not sessionid:
-        raise SystemExit(f"e2e-login returned no sessionid cookie: {dict(cookies)}")
-    host = urlparse(URL).hostname or "localhost"
-    return {
-        "name": "sessionid",
-        "value": sessionid,
-        "domain": host,
-        "path": "/",
-        "httpOnly": True,
-        "secure": True,
-        "sameSite": "Lax",
-    }
 
 
 def check_page(
     browser: Browser,
-    cookie: dict,
+    pat: str,
     path: str,
     *,
     expect_text: list[str] | None = None,
     forbid_text: list[str] | None = None,
     name: str,
 ) -> tuple[bool, str]:
-    """Navigate to URL+path, assert expect_text substrings appear and
-    forbid_text substrings do NOT appear, screenshot, capture console errors.
-    """
-    context = browser.new_context()
-    context.add_cookies([cookie])
+    """Navigate to URL+path with Bearer PAT, assert text expectations, screenshot."""
+    context = browser.new_context(
+        extra_http_headers={"Authorization": f"Bearer {pat}"},
+    )
     page: Page = context.new_page()
     console_errors: list[str] = []
     page.on(
@@ -124,10 +96,13 @@ PAGES = [
 
 
 def main() -> int:
+    if not PAT:
+        raise SystemExit(
+            "CANOPY_PAT must be set. Mint one with:\n"
+            "  uv run python manage.py create_token --email ace@dimagi-ai.com --label smoke-script"
+        )
     print(f"Smoke target: {URL}")
-    print(f"Login as: {EMAIL}")
-    cookie = e2e_login_session_cookie()
-    print(f"  sessionid={cookie['value'][:12]}…")
+    print(f"Auth: PAT ({PAT[:12]}…)")
     print()
 
     results = []
@@ -135,7 +110,7 @@ def main() -> int:
         browser = p.chromium.launch(headless=True)
         for path, name, expects, forbidden in PAGES:
             ok, msg = check_page(
-                browser, cookie, path,
+                browser, PAT, path,
                 expect_text=expects, forbid_text=forbidden, name=name,
             )
             mark = "PASS" if ok else "FAIL"

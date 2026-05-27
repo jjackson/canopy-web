@@ -21,16 +21,14 @@ from .errors import TYPE_AUTH, ProblemError
 class DjangoSessionAuth(SessionAuth):
     """Session auth that raises problem+json instead of returning None.
 
-    Special-case: requests pre-authorized by the Bearer-token bypass
-    in `apps/common/middleware.py` (writes to /api/projects/*/actions/
-    + /api/projects/*/context/, reads of /api/projects/slugs/ +
-    /api/insights/) carry `_workbench_token_auth = True`. We accept
-    those even without an authenticated user.
+    Accepts EITHER a session cookie OR a Personal Access Token (PAT).
+    `apps.tokens.middleware.BearerTokenAuthMiddleware` resolves
+    `Authorization: Bearer <raw>` into a real `request.user` upstream,
+    so by the time this auth class runs the only check is
+    `request.user.is_authenticated`.
     """
 
     def authenticate(self, request: HttpRequest, key: str | None) -> object | None:
-        if getattr(request, "_workbench_token_auth", False):
-            return getattr(request, "user", None)  # may be AnonymousUser — that's fine
         user = getattr(request, "user", None)
         if user is None or not user.is_authenticated:
             raise ProblemError(

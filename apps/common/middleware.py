@@ -1,4 +1,9 @@
-"""Authentication middleware: default-deny with an allowlist."""
+"""Authentication middleware: default-deny with an allowlist.
+
+Authenticated callers (via session cookie OR Personal Access Token via
+`apps.tokens.middleware.BearerTokenAuthMiddleware`) bypass this gate
+automatically — `request.user.is_authenticated` becomes True for both.
+"""
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import redirect
@@ -9,27 +14,10 @@ PUBLIC_PATH_PREFIXES = (
     "/health/",              # health check for Cloud Run
     "/static/",              # static assets
     "/api/csrf/",            # bootstraps CSRF cookie before login
-    "/api/auth/e2e-login/",  # token-gated login for automated tools
     "/api/openapi.json",      # openapi-typescript fetches the schema
     "/api/docs/",             # Scalar HTML
     "/api/redoc/",            # Redoc HTML
     "/api/mcp/",              # FastMCP server — auth via Bearer in the request
-)
-
-# Write endpoints callable with a Bearer token (machine writes like the
-# canopy post_tool_use hook). Path must start with /api/projects/ AND end
-# with one of these suffixes.
-WORKBENCH_TOKEN_WRITE_SUFFIXES = ("/actions/", "/context/")
-
-# Read endpoints callable with a Bearer token. Exact-match paths only —
-# scoped tightly to slim machine lookups (what projects exist?, what
-# insights have I already published?) so producer skills like
-# canopy:portfolio-review can iterate without a session cookie. Anything
-# richer (full project list, contexts, raw context entries) still
-# requires OAuth.
-WORKBENCH_TOKEN_READABLE_PATHS = (
-    "/api/projects/slugs/",
-    "/api/insights/",
 )
 
 
@@ -44,32 +32,18 @@ def _is_walkthrough_content(path: str) -> bool:
     return path.startswith("/w/") and path.endswith("/content")
 
 
-def _is_token_writable_path(path: str) -> bool:
-    if not path.startswith("/api/projects/"):
-        return False
-    return any(path.endswith(suffix) for suffix in WORKBENCH_TOKEN_WRITE_SUFFIXES)
-
-
-def _is_token_readable_path(method: str, path: str) -> bool:
-    return method == "GET" and path in WORKBENCH_TOKEN_READABLE_PATHS
-
-
-def _extract_bearer_token(request) -> str | None:
-    header = request.META.get("HTTP_AUTHORIZATION", "")
-    if not header.startswith("Bearer "):
-        return None
-    return header[len("Bearer "):].strip() or None
-
-
 class LoginRequiredMiddleware:
     """Require authentication for every request except the allowlist.
 
     API routes (anything under /api/) get a 401 JSON response.
     Everything else is redirected to the login URL.
 
-    Machine callers can bypass OAuth on specific write endpoints
-    (action tracking, context posting) by presenting
-    ``Authorization: Bearer <WORKBENCH_WRITE_TOKEN>``.
+    Personal Access Tokens authenticate via
+    `apps.tokens.middleware.BearerTokenAuthMiddleware`, which runs
+    *before* this middleware in the chain. A valid PAT promotes
+    `request.user` to a real authenticated user, so this gate admits
+    the request through the standard `is_authenticated` branch — no
+    special-case Bearer handling required here anymore.
     """
 
     def __init__(self, get_response):
@@ -85,17 +59,6 @@ class LoginRequiredMiddleware:
             or _is_walkthrough_content(request.path)
         ):
             return self.get_response(request)
-
-        # Bearer-token bypass for a narrow set of machine endpoints.
-        expected_token = getattr(settings, "WORKBENCH_WRITE_TOKEN", "")
-        writable = _is_token_writable_path(request.path)
-        readable = _is_token_readable_path(request.method, request.path)
-        provided = _extract_bearer_token(request)
-        if expected_token and (writable or readable):
-            if provided and provided == expected_token:
-                request._workbench_token_auth = True
-                request._dont_enforce_csrf_checks = True
-                return self.get_response(request)
 
         if request.path.startswith("/api/"):
             return JsonResponse({"detail": "Authentication required"}, status=401)
