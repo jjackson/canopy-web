@@ -12,7 +12,11 @@
 
 **Reference:** This plan is modeled on ace-web's `docs/plans/2026-05-14-api-modernization.md` and its shipped `apps/api/` package (`/Users/acedimagi/emdash/repositories/ace-web/apps/api/`). When in doubt, mirror ace-web's structure.
 
-> **⚠ Walkthrough work is ongoing — Tasks 8-14 are still committing to `main`:** PR #40 (the foundation — model, Drive client, 6 REST endpoints) is merged, but the walkthrough author continues to ship Tasks 8-14 (per `docs/superpowers/plans/2026-05-26-walkthrough-sharing.md`): streaming `/w/<id>/content` endpoint with HTTP Range, `walkthrough_count` on project detail, `frontend/src/api/walkthroughs.ts`, `WalkthroughsPage.tsx`, `WalkthroughViewerPage.tsx`, project-tile integration, docs sweep. **Each phase of this plan starts with a Rebase Checkpoint** — `git fetch && git rebase origin/main` then `gh pr list --state merged --search "walkthroughs"` since the last checkpoint. Address any newly landed surface in the relevant phase's task list:
+> **⚠ Walkthrough work has fully landed (PR #40 + PR #41, both merged 2026-05-26):** PR #40 = backend foundation (model, Drive client, 6 REST endpoints under `/api/walkthroughs/`). PR #41 = Tasks 8-13 (streaming `/w/<uuid>/content` endpoint with HTTP Range, `walkthrough_count` on project list+detail, `frontend/src/api/walkthroughs.ts`, `WalkthroughsPage.tsx`, `WalkthroughViewerPage.tsx`, project-tile link, docs).
+>
+> **⚠ End-state contract: one API only.** The user has directed us NOT to retain v1 (DRF). The end state has Ninja-only `/api/`. The parallel-mount at `/api/v2/` during Phases 0-4 is purely an integration-window concession — Phase 5 deletes DRF, deletes the envelope module, removes the dep, and renames `/api/v2/` → `/api/`. **No long-lived v2 alias.**
+>
+> **⚠ Canopy plugin sync.** The canopy plugin (separate repo at `~/.claude/plugins/marketplaces/canopy/`) calls `/api/projects/slugs/`, `/api/insights/`, `/api/projects/<slug>/actions/`, `/api/projects/<slug>/context/`, and the new walkthrough-upload skill calls `/api/walkthroughs/`. After Phase 5 rename, URL paths are unchanged — the plugin's HTTP calls keep working — but the response shape changes (envelope removed, problem+json for errors). Task 5.7 verifies the plugin against the new contract and opens a PR if any of its callers need updating. **Each phase of this plan starts with a Rebase Checkpoint** — `git fetch && git rebase origin/main` then `gh pr list --state merged --search "walkthroughs"` since the last checkpoint. Address any newly landed surface in the relevant phase's task list:
 >
 > - **New endpoints** under `apps/walkthroughs/` or `/w/<id>/...` → add Task 2.7.X with the Task 2.1.2 worked-example pattern. Streaming endpoints (Task 8 of the walkthrough plan) need `response=None` and the SSE preservation treatment from Task 2.5.2.
 > - **New fields on existing models** (e.g. Task 9 adds `walkthrough_count` to project responses) → add the field to the relevant `Out` schema in Phase 1, regenerate frontend types, update the contract test fixtures.
@@ -1780,8 +1784,7 @@ class ProjectListOut(StrictModel):
     latest_context: dict[str, ProjectContextOut]
     latest_actions: dict[str, ProjectActionLatestOut]
     insight_count: int = Field(ge=0)
-    # walkthrough_count: int = Field(ge=0, default=0)  # add this when Task 9
-    # of docs/superpowers/plans/2026-05-26-walkthrough-sharing.md lands.
+    walkthrough_count: int = Field(ge=0, default=0)  # added by PR #41 (walkthroughs Task 9)
     created_at: dt.datetime
     updated_at: dt.datetime
 
@@ -3281,6 +3284,12 @@ Follow the Task 2.7.2 pattern.
 
 - [ ] **2.7.7** `POST /walkthroughs/<uuid:wid>/rotate-token/` — owner-only. Response: `WalkthroughRotateTokenOut`.
 
+- [ ] **2.7.7a** `GET /w/<uuid:wid>/content` — **public streaming endpoint** (mounted at `/w/`, NOT under `/api/`). PR #41 ships this as a Django view at `apps/walkthroughs/views.py::walkthrough_content`. Migration shape:
+   - **DO NOT port to Ninja.** Streaming + HTTP Range + token-based public-link access don't fit cleanly under the API singleton. Keep this as a bare Django view; reference it in OpenAPI documentation but do not declare a schema for it.
+   - In Phase 5.1.6a, when deleting `apps/walkthroughs/views.py`, **preserve** the `walkthrough_content` function — move it to a new module `apps/walkthroughs/streaming.py` (or keep `views.py` and only delete the DRF parts). The `urls.py` entry stays.
+   - Add a contract test covering: 200 with Range header → 206 partial content + `Content-Range`; bad range → 416; missing token on visibility=link → 404 (not 403 — don't leak existence); session-authed owner → 200.
+   - Update `apps/common/middleware.py` allowlist if needed (PR #41 already added `/w/.../content` paths to the allowlist).
+
 - [ ] **2.7.8** **Disabled-flag contract test**
 
 The DRF view raises `Http404` via `_require_enabled()` when `WALKTHROUGHS_ENABLED=False`. Add a contract test that flips the setting and asserts all six v2 endpoints return 404 problem+json:
@@ -3960,7 +3969,75 @@ git add -A
 git commit -m "chore(api): rename /api/v2/ to /api/ now that legacy DRF surface is gone"
 ```
 
-### Task 5.5: Update CLAUDE.md
+### Task 5.5: Canopy plugin coordination
+
+The canopy plugin (separate repo at `~/.claude/plugins/marketplaces/canopy/` and at `~/emdash/repositories/canopy/`) makes HTTP calls to canopy-web. After Phase 5 rename, the URL paths are unchanged, but the response shape changes (envelope removed; problem+json for errors).
+
+- [ ] **Step 1: Audit plugin call sites**
+
+```bash
+cd ~/emdash/repositories/canopy
+rg -n "/api/projects/|/api/insights/|/api/walkthroughs/|/api/me/|/api/auth/e2e-login/" -t py -t sh
+```
+
+Note every call site that consumes a canopy-web response. For each:
+- Does the caller parse `data.success` / `data.data`? (DRF envelope — will break.)
+- Does the caller branch on `data.error.code`? (DRF error code — will break; replace with `problem.type`.)
+- Does the caller expect specific status codes? (Status codes are unchanged.)
+
+- [ ] **Step 2: Open a PR on the canopy plugin repo**
+
+For each affected call site, replace the envelope unwrap with bare-JSON parsing. Example:
+
+```python
+# Before (envelope):
+resp = requests.get(f"{base}/api/projects/slugs/", headers={"Authorization": f"Bearer {token}"})
+data = resp.json()
+if not data["success"]:
+    raise RuntimeError(data["error"]["message"])
+slugs = data["data"]
+
+# After (bare):
+resp = requests.get(f"{base}/api/projects/slugs/", headers={"Authorization": f"Bearer {token}"})
+resp.raise_for_status()
+slugs = resp.json()  # bare list, no envelope
+```
+
+For error handling:
+
+```python
+# Before:
+if not resp.ok:
+    err = data.get("error", {})
+    raise RuntimeError(err.get("message", "unknown"))
+
+# After:
+if not resp.ok:
+    problem = resp.json()  # application/problem+json
+    raise RuntimeError(problem.get("detail") or problem.get("title", "unknown"))
+```
+
+- [ ] **Step 3: Branch, test, PR**
+
+```bash
+cd ~/emdash/repositories/canopy
+git checkout -b feat/canopy-web-api-v2-cutover
+# Apply the changes
+# Run any plugin self-tests
+gh pr create --title "feat: align with canopy-web Ninja-based API (bare responses + problem+json)" \
+  --body "..."
+```
+
+- [ ] **Step 4: Commit on canopy-web side documenting the coordination**
+
+```bash
+cd ~/emdash/worktrees/canopy-web/emdash/ace-746jo
+git commit --allow-empty -m "docs(api): canopy plugin PR <num> aligns plugin with bare-response contract"
+```
+
+(Reference the canopy plugin PR number in this empty commit message so the dependency is searchable.)
+
+### Task 5.6: Update CLAUDE.md
 
 **Files:**
 - Modify: `CLAUDE.md`
@@ -3991,7 +4068,7 @@ git add CLAUDE.md
 git commit -m "docs: update CLAUDE.md to reflect Ninja + Pydantic + OpenAPI architecture"
 ```
 
-### Task 5.6: Phase 5 gate
+### Task 5.7: Phase 5 gate
 
 - [ ] **Step 1: Final regression**
 
