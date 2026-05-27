@@ -38,4 +38,5 @@ def test_redoc_docs_serves_html():
     client = Client()
     response = client.get("/api/v2/redoc/")
     assert response.status_code == 200
+    assert response["Content-Type"].startswith("text/html")
     assert b"redoc" in response.content
