@@ -37,3 +37,4 @@ frontend/openapi.json
 .claude/scheduled_tasks.lock
 .claude/tasks/
 .claude/settings.local.json
+scripts/qa/screenshots/
