@@ -18,6 +18,7 @@ PUBLIC_PATH_PREFIXES = (
     "/api/docs/",             # Scalar HTML
     "/api/redoc/",            # Redoc HTML
     "/api/mcp/",              # FastMCP server — auth via Bearer in the request
+    "/auth/cli/authorize/",   # @login_required handles its own OAuth bounce + preserves ?cb/?state/?label
 )
 
 
