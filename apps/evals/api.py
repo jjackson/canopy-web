@@ -47,16 +47,12 @@ def _suite_to_out(suite: EvalSuite) -> EvalSuiteOut:
 
 
 def _run_to_out(run: EvalRun) -> EvalRunOut:
-    # EvalRunOut.runtime is Literal["web","claude_code","open_claw"]; runner stores
-    # elapsed string like "1.23s" in the runtime field (legacy). Coerce unknowns to "web".
-    valid_runtimes = {"web", "claude_code", "open_claw"}
-    runtime = run.runtime if run.runtime in valid_runtimes else "web"
     return EvalRunOut(
         id=run.pk,
         status=run.status,
         results=run.results,
         overall_score=run.overall_score,
-        runtime=runtime,
+        runtime=run.runtime,
         created_at=run.created_at,
     )
 

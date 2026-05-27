@@ -40,7 +40,10 @@ class EvalRunOut(StrictModel):
     status: EvalRunStatus
     results: dict
     overall_score: float | None = None
-    runtime: RuntimeName = "web"
+    # `runtime` is a free-form CharField on EvalRun — historical rows have
+    # stored elapsed-time strings (e.g. "1.23s") alongside the conventional
+    # runtime names. Schema is permissive on the response side.
+    runtime: str = "web"
     created_at: dt.datetime
 
 
