@@ -699,9 +699,9 @@ class DjangoSessionAuth(SessionAuth):
 session_auth = DjangoSessionAuth()
 ```
 
-- [ ] **Step 4: Add the smoke route + enable CSRF**
+- [ ] **Step 4: Add the smoke route**
 
-Edit `apps/api/api.py`. Change the `NinjaAPI(...)` constructor to add `csrf=True`. Then below the exception handlers, add:
+Edit `apps/api/api.py`. **Do NOT add `csrf=True` to the `NinjaAPI()` constructor** — that kwarg does not exist in django-ninja 1.6.2 and would raise `TypeError` (valid params: title, version, description, openapi_url, docs, docs_url, docs_decorator, servers, urls_namespace, auth, throttle, renderer, parser, default_router, openapi_extra). CSRF on session-cookie unsafe-method requests is handled per-auth-class instead — Ninja's `SessionAuth` defaults `csrf=True` via its `APIKeyCookie` base, so any auth via `DjangoSessionAuth` is automatically CSRF-protected. Bearer-token callers carry `request._dont_enforce_csrf_checks = True` from the upstream middleware and bypass cleanly. Below the exception handlers, add:
 
 ```python
 from .auth import session_auth
