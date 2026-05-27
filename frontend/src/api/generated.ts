@@ -991,7 +991,7 @@ export interface components {
         };
         /**
          * ProjectSlugOut
-         * @description Slim machine-readable shape from /api/v2/projects/slugs/.
+         * @description Slim machine-readable shape from /api/projects/slugs/.
          */
         readonly ProjectSlugOut: {
             /** Slug */
@@ -1011,7 +1011,7 @@ export interface components {
         };
         /**
          * BatchContextIn
-         * @description Body of POST /api/v2/projects/batch-context/.
+         * @description Body of POST /api/projects/batch-context/.
          *
          *     Each value is a list of ProjectContextCreateIn shapes.
          */
@@ -1035,7 +1035,7 @@ export interface components {
         };
         /**
          * BatchActionsIn
-         * @description Body of POST /api/v2/projects/batch-actions/.
+         * @description Body of POST /api/projects/batch-actions/.
          */
         readonly BatchActionsIn: {
             /** Updates */
