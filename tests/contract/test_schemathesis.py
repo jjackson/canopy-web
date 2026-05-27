@@ -34,7 +34,11 @@ except Exception:
     schema = None
     _schema_available = False
 
-_parametrize = schema.parametrize() if _schema_available else pytest.mark.skip(reason="No live backend — set SCHEMATHESIS_SCHEMA_URL")
+_parametrize = (
+    schema.parametrize()
+    if _schema_available
+    else pytest.mark.skip(reason="No live backend — set SCHEMATHESIS_SCHEMA_URL")
+)
 
 
 @_parametrize
