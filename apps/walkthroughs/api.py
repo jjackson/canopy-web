@@ -1,10 +1,13 @@
 """Django Ninja v2 router for the walkthroughs surface."""
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from django.conf import settings
 from django.http import Http404, HttpRequest
+
+log = logging.getLogger(__name__)
 from ninja import File, Form, Router, Status
 from ninja.files import UploadedFile
 
@@ -270,9 +273,20 @@ def delete_walkthrough(request: HttpRequest, wid: UUID) -> Status:
         try:
             storage.delete_stored(file_id=w.drive_file_id, folder_id=w.drive_folder_id)
         except DriveNotConfigured:
-            pass
+            # No Drive client means no orphan to clean up — still drop the
+            # row so the UI matches reality.
+            log.warning(
+                "delete_walkthrough: drive not configured; row dropped without "
+                "Drive cleanup (walkthrough_id=%s)", w.id,
+            )
         except Exception:
-            pass
+            # Don't block the row delete on a Drive hiccup — recovering an
+            # orphan Drive file is cheap; an orphan DB row blocks the user
+            # from re-deleting. But log loudly so we can sweep later.
+            log.exception(
+                "delete_walkthrough: drive cleanup failed (walkthrough_id=%s, "
+                "drive_file_id=%s)", w.id, w.drive_file_id,
+            )
 
     w.delete()
     return Status(204, None)
