@@ -24,6 +24,27 @@ def _get_project_or_404(slug):
         return None
 
 
+def _build_project_list_data(qs):
+    """Return [ProjectListOut-shaped dicts] for the given queryset.
+
+    Extracted so the v2 Ninja handler can reuse the exact shape the DRF
+    view returns, without duplicating prefetch + serialization logic.
+    """
+    qs = qs.prefetch_related(
+        Prefetch(
+            "contexts",
+            queryset=ProjectContext.objects.order_by("-created_at"),
+            to_attr="_prefetched_contexts",
+        ),
+        Prefetch(
+            "actions",
+            queryset=ProjectAction.objects.order_by("-started_at"),
+            to_attr="_prefetched_actions",
+        ),
+    )
+    return ProjectListSerializer(qs, many=True).data
+
+
 @api_view(["GET"])
 def project_slugs(request):
     """Slim list of curated project slugs, intended for machine callers.
@@ -46,20 +67,9 @@ def project_list(request):
     start_timing()
 
     if request.method == "GET":
-        projects = Project.objects.prefetch_related(
-            Prefetch(
-                "contexts",
-                queryset=ProjectContext.objects.order_by("-created_at"),
-                to_attr="_prefetched_contexts",
-            ),
-            Prefetch(
-                "actions",
-                queryset=ProjectAction.objects.order_by("-started_at"),
-                to_attr="_prefetched_actions",
-            ),
-        ).all()
-        serializer = ProjectListSerializer(projects, many=True)
-        return Response(success_response(serializer.data))
+        projects = Project.objects.all()
+        data = _build_project_list_data(projects)
+        return Response(success_response(data))
 
     serializer = ProjectCreateSerializer(data=request.data)
     if serializer.is_valid():
