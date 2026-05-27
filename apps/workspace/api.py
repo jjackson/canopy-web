@@ -15,8 +15,7 @@ from __future__ import annotations
 
 from django.http import HttpRequest, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
-from ninja import Router
-from ninja import Status
+from ninja import Router, Status
 
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_INTERNAL, TYPE_NOT_FOUND, TYPE_VALIDATION, ProblemError
@@ -31,7 +30,7 @@ from . import prompts
 from .engine import WorkspaceEngine
 from .models import WorkspaceSession
 from .schemas import EditSkillIn, PublishSkillIn, WorkspaceAnalyzeOut, WorkspaceSessionListItemOut, WorkspaceSessionOut
-from .stream import stream_re_proposal, stream_workspace_analysis
+from .stream import stream_workspace_analysis
 
 router = Router(auth=session_auth, tags=["workspace"])
 

@@ -1,9 +1,6 @@
 """Django Ninja v2 router for the projects + insights surface."""
 from __future__ import annotations
 
-import datetime as dt
-from typing import Optional
-
 from django.db import IntegrityError
 from django.db.models import Prefetch
 from django.http import HttpRequest
@@ -437,7 +434,7 @@ def get_context_latest(request: HttpRequest, slug: str) -> ProjectContextLatestO
 def list_actions(
     request: HttpRequest,
     slug: str,
-    skill: Optional[str] = None,
+    skill: str | None = None,
 ) -> list[ProjectActionOut]:
     project = _get_project_or_404_ninja(slug)
     actions = project.actions.all()
@@ -528,9 +525,9 @@ def get_actions_summary(
 @insights_router.get("/", response=Page[InsightOut], summary="List insights")
 def list_insights(
     request: HttpRequest,
-    category: Optional[str] = None,
-    source: Optional[str] = None,
-    project: Optional[str] = None,
+    category: str | None = None,
+    source: str | None = None,
+    project: str | None = None,
     limit: int = 20,
 ) -> Page[InsightOut]:
     """Bearer-readable xfail (Phase 5.4)."""
@@ -564,7 +561,7 @@ def list_insights(
 @insights_router.post("/clear/", response=InsightsClearOut, summary="Clear insights")
 def clear_insights(
     request: HttpRequest,
-    source: Optional[str] = None,
+    source: str | None = None,
 ) -> InsightsClearOut:
     """Clear all insights (optionally filtered by source)."""
     qs = ProjectContext.objects.filter(context_type="insight")

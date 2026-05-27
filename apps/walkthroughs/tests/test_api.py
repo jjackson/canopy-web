@@ -450,7 +450,6 @@ def test_rotate_token_owner_only(auth_client, owner):
 @pytest.mark.django_db
 @override_settings(WALKTHROUGHS_ENABLED=False)
 def test_endpoints_404_when_disabled(auth_client, owner):
-    bogus = uuid.uuid4()
     w = _make_walkthrough(owner)
 
     # POST /

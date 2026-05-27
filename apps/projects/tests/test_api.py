@@ -314,7 +314,7 @@ def test_list_actions_200():
         project=p,
         skill_name="session-review",
         status="completed",
-        started_at=dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc),
+        started_at=dt.datetime(2026, 5, 1, tzinfo=dt.UTC),
     )
     c = _auth_client()
     resp = c.get("/api/projects/act-proj/actions/")
@@ -331,13 +331,13 @@ def test_list_actions_skill_filter():
         project=p,
         skill_name="session-review",
         status="completed",
-        started_at=dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc),
+        started_at=dt.datetime(2026, 5, 1, tzinfo=dt.UTC),
     )
     ProjectAction.objects.create(
         project=p,
         skill_name="qa",
         status="started",
-        started_at=dt.datetime(2026, 5, 2, tzinfo=dt.timezone.utc),
+        started_at=dt.datetime(2026, 5, 2, tzinfo=dt.UTC),
     )
     c = _auth_client()
     resp = c.get("/api/projects/act-filter/actions/?skill=qa")
@@ -391,13 +391,13 @@ def test_get_actions_summary_200():
         project=p,
         skill_name="session-review",
         status="completed",
-        started_at=dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc),
+        started_at=dt.datetime(2026, 5, 1, tzinfo=dt.UTC),
     )
     ProjectAction.objects.create(
         project=p,
         skill_name="session-review",
         status="started",
-        started_at=dt.datetime(2026, 5, 2, tzinfo=dt.timezone.utc),
+        started_at=dt.datetime(2026, 5, 2, tzinfo=dt.UTC),
     )
     c = _auth_client()
     resp = c.get("/api/projects/act-summary/actions/summary/")

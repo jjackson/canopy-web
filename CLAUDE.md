@@ -4,7 +4,11 @@ Collaborative web workspace for building reusable AI skills from conversations.
 
 ## Architecture
 
-- **Backend:** Django 5 ASGI + uvicorn, PostgreSQL
+- **Backend:** Django 5 ASGI + uvicorn, Django Ninja 1.x + Pydantic v2, PostgreSQL.
+  OpenAPI 3.1 schema auto-generated at `/api/openapi.json`; Scalar UI at
+  `/api/docs/`; Redoc at `/api/redoc/`. All errors return RFC 7807
+  `application/problem+json`. Frontend TypeScript types are generated from the
+  schema (`frontend/src/api/generated.ts`) and consumed via `openapi-fetch`.
 - **Frontend:** React 19 + Vite + Tailwind CSS 4 + shadcn/ui
 - **AI:** Anthropic Claude API via SSE streaming. Dual backend — direct API key (`AI_BACKEND=api`) or Claude Code CLI subscription (`AI_BACKEND=cli`), switchable at runtime via `/api/ai/switch/`.
 - **Runtime adapters:** `apps/skills/adapters/` produces skill artifacts for `web`, `claude_code`, and `open_claw` runtimes.
@@ -45,6 +49,7 @@ When `AI_BACKEND=cli`, the `claude` binary must be on PATH and authenticated. In
 uv run pytest                                    # All backend tests
 uv run pytest tests/test_workspace_engine.py -v  # Specific
 cd frontend && npm run build                     # Frontend type check + build
+cd frontend && npm run gen:api                   # Regenerate TypeScript types from OpenAPI schema
 ```
 
 CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deploy is a separate manual job in the same workflow — trigger it from the Actions tab via "Run workflow"; the deploy step waits for the test jobs to pass before shipping. Walkthrough QA spec at `docs/walkthroughs/canopy-web-demo.yaml` (run via `/walkthrough canopy-web-demo`).
@@ -68,6 +73,8 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/health/` — Health check
 
 ## API Endpoints
+
+All endpoints are served by Django Ninja (Pydantic v2 typed) under `/api/`. Errors use RFC 7807 `application/problem+json`. The machine-readable schema lives at `/api/openapi.json`; browse at `/api/docs/` (Scalar) or `/api/redoc/`.
 
 ### Auth + session (root)
 - `GET /api/me/` — Current authenticated user
@@ -150,6 +157,9 @@ Settings:
 
 ## Design Decisions
 
+- **API is Pydantic-first via Django Ninja**: every request/response is a Pydantic v2 model declared in `apps/<app>/schemas.py`. Routes live in `apps/<app>/api.py`, registered on the single `NinjaAPI` instance in `apps/api/api.py`. Errors are RFC 7807 `application/problem+json`. Frontend types are generated from the OpenAPI 3.1 schema by `openapi-typescript` into `frontend/src/api/generated.ts` and consumed via `openapi-fetch`. The `regen-openapi.yml` GitHub workflow auto-commits regenerated types on PRs touching `apps/**/api.py` or `apps/**/schemas.py`.
+- **Streaming endpoints stay on Django**: `POST /api/workspace/start/<id>/` returns `StreamingHttpResponse` directly from a Ninja handler (declared as `response=None`); the SSE event format is the contract. `GET /w/<uuid>/content` (the walkthrough viewer) stays as a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range + token-based public-link auth don't fit the Ninja contract.
+- **Bare Django views**: `/api/csrf/`, `/api/auth/e2e-login/`, `/api/debug/mint-session/`, and `/health/` remain bare Django views (not Ninja) — they manipulate sessions/cookies directly. Their paths are matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
 - APP UI: dense, readable, tables not cards
 - Workspace flow: Ingest → AI proposes Approach + Eval → Review/Edit → Test → Publish
 - SSE streaming for AI responses (Scout pattern)
