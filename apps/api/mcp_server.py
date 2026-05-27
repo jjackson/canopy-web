@@ -9,9 +9,12 @@ Each tool invokes the same endpoint via an HTTP loopback call with a
 Bearer token for authentication — reuses every middleware (auth,
 CSRF, throttling) and behaves identically to a frontend caller.
 
-Auth model: machine callers present `Authorization: Bearer <WORKBENCH_WRITE_TOKEN>`
-(the existing canopy-web Bearer-bypass mechanism). MCP tools include
-this header automatically via env-var `CANOPY_MCP_BEARER`.
+Auth model: machine callers present `Authorization: Bearer <PAT>` where
+PAT is a Personal Access Token minted via apps.tokens (manage.py
+create_token, or the /canopy:canopy-web-pat-mint flow on the client
+side). `apps.tokens.middleware.BearerTokenAuthMiddleware` resolves it to
+a Django user. MCP tools include this header automatically via env-var
+`CANOPY_MCP_BEARER`.
 
 Mounting: This module exposes `mcp_starlette_app`, a Starlette ASGI app
 (SSE transport) that is mounted at /api/mcp/ in config/asgi.py via a
