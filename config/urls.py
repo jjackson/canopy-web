@@ -16,7 +16,6 @@ urlpatterns = [
     path("health/", health_check, name="health-check"),
     path("api/csrf/", csrf_view, name="csrf"),
     path("api/auth/e2e-login/", views_auth_e2e.e2e_login, name="auth-e2e-login"),
-    path("api/ai/", include("apps.common.urls_ai")),
     path("api/debug/", include("apps.common.urls_debug")),
     path("w/<uuid:wid>/content", views_walkthrough_content, name="walkthrough-content"),
     path("api/v2/", api_v2.urls),
