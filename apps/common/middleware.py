@@ -13,6 +13,7 @@ PUBLIC_PATH_PREFIXES = (
     "/api/openapi.json",      # openapi-typescript fetches the schema
     "/api/docs/",             # Scalar HTML
     "/api/redoc/",            # Redoc HTML
+    "/api/mcp/",              # FastMCP server — auth via Bearer in the request
 )
 
 # Write endpoints callable with a Bearer token (machine writes like the
