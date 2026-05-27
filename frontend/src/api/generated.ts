@@ -783,6 +783,41 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/tokens/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List my tokens */
+        readonly get: operations["apps_tokens_api_list_tokens"];
+        readonly put?: never;
+        /** Mint a token */
+        readonly post: operations["apps_tokens_api_create_token"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/tokens/{pk}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /** Revoke a token (mine only) */
+        readonly delete: operations["apps_tokens_api_revoke_token"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1783,6 +1818,51 @@ export interface components {
         readonly WalkthroughRotateTokenOut: {
             /** Share Token */
             readonly share_token: string;
+        };
+        /**
+         * PersonalTokenOut
+         * @description A token as listed to its owner. Never contains the raw value.
+         */
+        readonly PersonalTokenOut: {
+            /** Id */
+            readonly id: number;
+            /** Label */
+            readonly label: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Last Used At */
+            readonly last_used_at?: string | null;
+            /** Revoked At */
+            readonly revoked_at?: string | null;
+        };
+        /**
+         * PersonalTokenCreatedOut
+         * @description Returned exactly once at creation — includes the raw token.
+         */
+        readonly PersonalTokenCreatedOut: {
+            /** Id */
+            readonly id: number;
+            /** Label */
+            readonly label: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Last Used At */
+            readonly last_used_at?: string | null;
+            /** Revoked At */
+            readonly revoked_at?: string | null;
+            /** Raw */
+            readonly raw: string;
+        };
+        /** PersonalTokenCreateIn */
+        readonly PersonalTokenCreateIn: {
+            /** Label */
+            readonly label: string;
         };
     };
     responses: never;
@@ -2993,6 +3073,70 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["WalkthroughRotateTokenOut"];
                 };
+            };
+        };
+    };
+    readonly apps_tokens_api_list_tokens: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["PersonalTokenOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_tokens_api_create_token: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PersonalTokenCreateIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PersonalTokenCreatedOut"];
+                };
+            };
+        };
+    };
+    readonly apps_tokens_api_revoke_token: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly pk: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
