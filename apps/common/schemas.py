@@ -9,8 +9,9 @@ Conventions:
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class StrictModel(BaseModel):
@@ -40,3 +41,49 @@ class MeOut(StrictModel):
     email: EmailStr
     name: str
     avatar_url: str
+
+
+# --- Health ------------------------------------------------------------
+
+
+class HealthOut(StrictModel):
+    status: str
+
+
+# --- AI backend (/api/ai/) --------------------------------------------
+
+AiBackend = Literal["api", "cli"]
+
+
+class AiStatusOut(StrictModel):
+    backend: AiBackend
+    authenticated: bool
+    detail: str | None = None
+
+
+class AiSwitchIn(StrictModel):
+    backend: AiBackend
+
+
+class AiSwitchOut(StrictModel):
+    backend: AiBackend
+    detail: str | None = None
+
+
+class AiAuthStartOut(StrictModel):
+    auth_url: str
+    state: str
+
+
+class AiAuthCompleteIn(StrictModel):
+    code: str = Field(min_length=1)
+
+
+class AiAuthCompleteOut(StrictModel):
+    ok: bool
+    detail: str | None = None
+
+
+class AiAuthPollOut(StrictModel):
+    state: Literal["idle", "pending", "ok", "error"]
+    detail: str | None = None

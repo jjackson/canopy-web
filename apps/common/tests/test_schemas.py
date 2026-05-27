@@ -1,6 +1,19 @@
 import datetime as dt
 
-from apps.common.schemas import StrictModel, TimestampMixin, UserRefOut
+from apps.common.schemas import (
+    AiAuthCompleteIn,
+    AiAuthCompleteOut,
+    AiAuthPollOut,
+    AiAuthStartOut,
+    AiStatusOut,
+    AiSwitchIn,
+    AiSwitchOut,
+    HealthOut,
+    MeOut,
+    StrictModel,
+    TimestampMixin,
+    UserRefOut,
+)
 
 
 def test_user_ref_round_trip():
@@ -36,3 +49,35 @@ def test_strict_model_rejects_extra_fields():
 
     with pytest.raises(ValidationError):
         _S.model_validate({"a": 1, "rogue": 2})
+
+
+def test_health_out():
+    parsed = HealthOut.model_validate({"status": "ok"})
+    assert parsed.status == "ok"
+
+
+def test_ai_status_out_round_trip():
+    raw = {
+        "backend": "api",
+        "authenticated": True,
+        "detail": "OK",
+    }
+    parsed = AiStatusOut.model_validate(raw)
+    assert parsed.backend == "api"
+
+
+def test_ai_switch_in_literal():
+    AiSwitchIn(backend="api")
+    AiSwitchIn(backend="cli")
+    import pytest
+    with pytest.raises(ValueError):
+        AiSwitchIn(backend="bogus")
+
+
+def test_me_out_round_trip():
+    parsed = MeOut.model_validate({
+        "email": "alice@dimagi.com",
+        "name": "Alice",
+        "avatar_url": "https://x.com/y.png",
+    })
+    assert parsed.email == "alice@dimagi.com"
