@@ -63,8 +63,14 @@ def download(
 
 
 def delete_stored(*, file_id: str, folder_id: str) -> None:
-    """Delete the file. Folder is left in place (Drive trash collects it
-    eventually; cheap and avoids races if two walkthroughs ever share a
-    folder, which they shouldn't but the cost is zero)."""
+    """Trash the file AND its per-walkthrough subfolder.
+
+    Each walkthrough lives in its own subfolder so trashing both makes the
+    Drive listing actually look empty after the user deletes a walkthrough.
+    (Previously we left the folder in place; in practice it accumulated
+    empty UUID-named dirs that an operator had to sweep by hand.)
+    """
     client = get_drive_client()
     client.delete(file_id)
+    if folder_id:
+        client.delete(folder_id)

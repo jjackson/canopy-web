@@ -189,6 +189,14 @@ class GoogleDriveClient(DriveClient):
         return data, start, end, total
 
     def delete(self, file_id) -> None:
-        self._service.files().delete(
-            fileId=file_id, supportsAllDrives=True
+        # Trash (set trashed=True), not permanent delete. Permanent deletion
+        # in a Shared Drive requires the Manager role; Content Manager — the
+        # role our spec asks operators to grant — can only trash. We
+        # discovered this the hard way when /api/walkthroughs/<id>/ DELETE
+        # left orphan files in Drive. Trash is also safer: items are
+        # recoverable for 30 days.
+        self._service.files().update(
+            fileId=file_id,
+            body={"trashed": True},
+            supportsAllDrives=True,
         ).execute()
