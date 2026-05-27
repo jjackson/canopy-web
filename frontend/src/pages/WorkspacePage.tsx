@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api } from '@/api/client'
+import { getWorkspace, publishSkill } from '@/api/workspace'
 import { getCollection } from '@/api/collections'
 import { useWorkspaceStore } from '@/store/workspaceSlice'
 import { StepIndicator } from '@/components/Workspace/StepIndicator'
@@ -82,7 +82,7 @@ export function WorkspacePage() {
 
     async function load() {
       try {
-        const workspace = (await api.getWorkspace(sessionId!)) as WorkspaceData
+        const workspace = (await getWorkspace(sessionId!)) as unknown as WorkspaceData
 
         if (cancelled) return
 
@@ -132,7 +132,7 @@ export function WorkspacePage() {
     if (sessionId == null) return
     setPublishing(true)
     try {
-      const result = (await api.publishSkill(sessionId)) as { skill_id?: number }
+      const result = (await publishSkill(sessionId)) as unknown as { skill_id?: number }
       if (result.skill_id) {
         navigate(`/skills/${result.skill_id}`)
       }

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api } from '@/api/client'
+import { analyzeWorkspace } from '@/api/workspace'
 import { createCollection, addSource } from '@/api/collections'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -143,7 +143,7 @@ export function NewCollectionPage() {
 
     try {
       setAnalysisStatus('Analyzing sources (this may take 30-60 seconds)...')
-      const result = await api.analyzeWorkspace(collectionId)
+      const result = await analyzeWorkspace(collectionId)
       navigate(`/workspace/${result.session_id}${reviseSkillId ? `?revise=${reviseSkillId}` : ''}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed.')

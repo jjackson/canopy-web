@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '@/api/client'
+import { listWorkspaces } from '@/api/workspace'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -14,15 +14,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-interface WorkspaceSession {
-  id: number
-  collection_id: number
-  collection_name: string | null
-  status: string
-  skill_name: string | null
-  created_at: string
-  updated_at: string
-}
+import type { WorkspaceSessionListItem as WorkspaceSession } from '@/api/workspace'
 
 const STATUS_FILTERS = [
   { value: '', label: 'All' },
@@ -70,7 +62,7 @@ export function WorkspacesPage() {
       setLoading(true)
       try {
         const params = statusFilter ? { status: statusFilter } : undefined
-        const data = await api.listWorkspaces(params)
+        const data = await listWorkspaces(params)
         if (!cancelled) setSessions(data)
       } catch (err) {
         if (!cancelled) {
