@@ -131,3 +131,9 @@ def _on_unhandled(request: HttpRequest, exc: Exception) -> HttpResponse:
 def _auth_smoke(request: HttpRequest) -> dict:
     """Internal smoke route — verifies session auth works."""
     return {"email": getattr(request.user, "email", "")}
+
+
+from apps.projects.api import insights_router, router as projects_router  # noqa: E402
+
+api.add_router("/projects", projects_router)
+api.add_router("/insights", insights_router)
