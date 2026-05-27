@@ -701,17 +701,16 @@ session_auth = DjangoSessionAuth()
 
 - [ ] **Step 4: Add the smoke route**
 
-Edit `apps/api/api.py`. **Do NOT add `csrf=True` to the `NinjaAPI()` constructor** — that kwarg does not exist in django-ninja 1.6.2 and would raise `TypeError` (valid params: title, version, description, openapi_url, docs, docs_url, docs_decorator, servers, urls_namespace, auth, throttle, renderer, parser, default_router, openapi_extra). CSRF on session-cookie unsafe-method requests is handled per-auth-class instead — Ninja's `SessionAuth` defaults `csrf=True` via its `APIKeyCookie` base, so any auth via `DjangoSessionAuth` is automatically CSRF-protected. Bearer-token callers carry `request._dont_enforce_csrf_checks = True` from the upstream middleware and bypass cleanly. Below the exception handlers, add:
+Edit `apps/api/api.py`. **Do NOT add `csrf=True` to the `NinjaAPI()` constructor** — that kwarg does not exist in django-ninja 1.6.2 and would raise `TypeError` (valid params: title, version, description, openapi_url, docs, docs_url, docs_decorator, servers, urls_namespace, auth, throttle, renderer, parser, default_router, openapi_extra). CSRF on session-cookie unsafe-method requests is handled per-auth-class instead — Ninja's `SessionAuth` defaults `csrf=True` via its `APIKeyCookie` base, so any auth via `DjangoSessionAuth` is automatically CSRF-protected. Bearer-token callers carry `request._dont_enforce_csrf_checks = True` from the upstream middleware and bypass cleanly. Add `from .auth import session_auth` to the top-level imports of `apps/api/api.py` alongside `from .errors import ...` and `from .renderers import ...` (NOT mid-module — there's no circular dependency, and a late import with `# noqa: E402` is a code smell). Then below the exception handlers, add:
 
 ```python
-from .auth import session_auth
-
-
 @api.get("/_auth_smoke/", auth=session_auth, response={200: dict})
 def _auth_smoke(request: HttpRequest) -> dict:
     """Internal smoke route — verifies session auth works."""
-    return {"email": request.user.email}
+    return {"email": getattr(request.user, "email", "")}
 ```
+
+The `getattr(..., "email", "")` guards against `AnonymousUser` (no `.email` attribute) on the Bearer-bypass path, even though `_auth_smoke` is not Bearer-allowlisted today.
 
 - [ ] **Step 5: Run tests**
 
