@@ -32,11 +32,8 @@ E2E_SESSION_MARKER = "_canopy_e2e_session"
 
 
 def _is_allowed_domain(email: str) -> bool:
-    allowed = (getattr(settings, "AUTH_ALLOWED_EMAIL_DOMAIN", "") or "").lower()
-    if not allowed:
-        return True
-    _, _, domain = email.rpartition("@")
-    return domain.lower() == allowed
+    from .auth_domains import email_in_allowlist
+    return email_in_allowlist(email)
 
 
 @csrf_exempt
@@ -68,9 +65,11 @@ def e2e_login(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"error": "email is required"}, status=400)
 
     if not _is_allowed_domain(email):
-        allowed = getattr(settings, "AUTH_ALLOWED_EMAIL_DOMAIN", "")
+        from .auth_domains import allowed_email_domains
+
+        allowed = ", ".join(f"@{d}" for d in allowed_email_domains())
         return JsonResponse(
-            {"error": f"email must be from: @{allowed}"},
+            {"error": f"email must be from: {allowed}"},
             status=400,
         )
 
