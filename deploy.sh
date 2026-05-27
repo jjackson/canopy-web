@@ -49,7 +49,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --set-env-vars="^|^AUTH_ALLOWED_EMAIL_DOMAIN=dimagi.com,dimagi-ai.com" \
   --set-env-vars="REQUIRE_AUTH=${REQUIRE_AUTH_FLAG}" \
   --set-env-vars="CANOPY_DRIVE_ROOT_FOLDER_ID=1cUv7wQXOvVwuZ86PdhkxpFcuB4Lm9fPz" \
-  --set-secrets="SECRET_KEY=django-secret-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=canopy-db-url:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,WORKBENCH_WRITE_TOKEN=workbench-write-token:latest,CANOPY_E2E_AUTH_TOKEN=canopy-e2e-auth-token:latest,CANOPY_DRIVE_SA_KEY_JSON=canopy-web-drive-sa:latest" \
+  --set-secrets="SECRET_KEY=django-secret-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=canopy-db-url:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CANOPY_DRIVE_SA_KEY_JSON=canopy-web-drive-sa:latest" \
   --allow-unauthenticated \
   --quiet
 
