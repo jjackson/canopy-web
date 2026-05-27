@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '@/api/client'
+import { listSkills } from '@/api/skills'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -135,7 +135,7 @@ export function LeaderboardPage() {
 
     async function load() {
       try {
-        const data = (await api.getSkills()) as Skill[]
+        const data = (await listSkills()) as Skill[]
         if (!cancelled) setSkills(data)
       } catch (err) {
         if (!cancelled) {

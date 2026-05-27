@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '@/api/client'
+import { getCollection } from '@/api/collections'
 import { useWorkspaceStore } from '@/store/workspaceSlice'
 import { StepIndicator } from '@/components/Workspace/StepIndicator'
 import { SourcePanel } from '@/components/Workspace/SourcePanel'
@@ -93,9 +94,9 @@ export function WorkspacePage() {
         // Load sources from collection
         if (workspace.collection_id) {
           try {
-            const collection = (await api.getCollection(
+            const collection = (await getCollection(
               workspace.collection_id
-            )) as CollectionData
+            )) as unknown as CollectionData
             if (!cancelled && collection.sources) {
               setSources(collection.sources)
             }

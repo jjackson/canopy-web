@@ -1,24 +1,7 @@
-const BASE = '/api'
+import { apiV2 } from "./client.v2";
+import type { components } from "./generated";
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const resp = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  })
-  const data = await resp.json()
-  if (!data.success) throw new Error(data.error?.message || 'Request failed')
-  return data.data
-}
-
-export interface Insight {
-  id: number
-  project_slug: string
-  project_name: string
-  context_type: string
-  content: string
-  source: string
-  created_at: string
-}
+export type Insight = components["schemas"]["InsightOut"];
 
 export type InsightCategory = 'ship_gap' | 'hygiene' | 'pattern' | 'stale' | 'opportunity'
 
@@ -78,14 +61,24 @@ export function newestInsightTimestamp(insights: Insight[]): string | null {
 }
 
 export const insightsApi = {
-  list: (params: InsightListParams = {}) => {
-    const qp = new URLSearchParams()
-    if (params.category) qp.set('category', params.category)
-    if (params.project) qp.set('project', params.project)
-    if (params.limit) qp.set('limit', String(params.limit))
-    const qs = qp.toString()
-    return request<Insight[]>(`/insights/${qs ? `?${qs}` : ''}`)
+  list: async (params: InsightListParams = {}): Promise<Insight[]> => {
+    const { data, error } = await apiV2.GET("/api/v2/insights/", {
+      params: {
+        query: {
+          ...(params.category ? { category: params.category } : {}),
+          ...(params.project ? { project: params.project } : {}),
+          ...(params.limit !== undefined ? { limit: params.limit } : {}),
+        },
+      },
+    });
+    if (error) throw new Error("Failed to load insights");
+    return data.items as Insight[];
   },
-  dismiss: (id: number) =>
-    request<{ dismissed: number }>(`/insights/${id}/`, { method: 'DELETE' }),
+  dismiss: async (id: number): Promise<{ dismissed: number }> => {
+    const { data, error } = await apiV2.DELETE("/api/v2/insights/{pk}/", {
+      params: { path: { pk: id } },
+    });
+    if (error) throw new Error("Failed to dismiss insight");
+    return data as { dismissed: number };
+  },
 }

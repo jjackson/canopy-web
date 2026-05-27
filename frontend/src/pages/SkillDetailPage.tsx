@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api } from '@/api/client'
+import { getSkill, generateAdapter } from '@/api/skills'
+import { getEvalSuite, runEval, getEvalHistory, editEvalCase, deleteEvalCase } from '@/api/evals'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -166,7 +167,7 @@ function EvalCaseEditor({
     setSaving(true)
     try {
       const currentTerms = (c.expected_output?.contains ?? []).filter((t) => t !== term)
-      await api.updateEvalCase(skillId, c.id, {
+      await editEvalCase(skillId, c.id, {
         expected_output: { contains: currentTerms },
       })
       onUpdate()
@@ -183,7 +184,7 @@ function EvalCaseEditor({
     setSaving(true)
     try {
       const currentTerms = [...(c.expected_output?.contains ?? []), term]
-      await api.updateEvalCase(skillId, c.id, {
+      await editEvalCase(skillId, c.id, {
         expected_output: { contains: currentTerms },
       })
       setNewTerm('')
@@ -198,7 +199,7 @@ function EvalCaseEditor({
   async function handleDelete(caseId: number) {
     setSaving(true)
     try {
-      await api.deleteEvalCase(skillId, caseId)
+      await deleteEvalCase(skillId, caseId)
       if (expandedId === caseId) setExpandedId(null)
       onUpdate()
     } catch {
@@ -392,9 +393,9 @@ export function SkillDetailPage() {
 
     try {
       const [skillData, suiteData, historyData] = await Promise.allSettled([
-        api.getSkill(skillId),
-        api.getEvalSuite(skillId),
-        api.getEvalHistory(skillId),
+        getSkill(skillId),
+        getEvalSuite(skillId),
+        getEvalHistory(skillId),
       ])
 
       if (skillData.status === 'fulfilled') {
@@ -405,7 +406,7 @@ export function SkillDetailPage() {
       }
 
       if (suiteData.status === 'fulfilled') {
-        setEvalSuite(suiteData.value as EvalSuite)
+        setEvalSuite(suiteData.value as unknown as EvalSuite)
       }
 
       if (historyData.status === 'fulfilled') {
@@ -451,10 +452,10 @@ export function SkillDetailPage() {
     if (skillId == null) return
     setRunningEval(true)
     try {
-      await api.runEval(skillId)
+      await runEval(skillId)
       const [historyData, skillData] = await Promise.all([
-        api.getEvalHistory(skillId) as Promise<EvalRun[]>,
-        api.getSkill(skillId) as Promise<Skill>,
+        getEvalHistory(skillId) as Promise<EvalRun[]>,
+        getSkill(skillId) as Promise<Skill>,
       ])
       setEvalRuns(historyData)
       setSkill(skillData)
@@ -473,7 +474,7 @@ export function SkillDetailPage() {
     setGeneratingAdapter(runtime)
     setAdapterOutput(null)
     try {
-      const result = (await api.generateAdapter(skillId, runtime)) as { output?: string }
+      const result = (await generateAdapter(skillId, runtime)) as { output?: string }
       setAdapterOutput(result.output ?? JSON.stringify(result, null, 2))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Adapter generation failed')
@@ -485,7 +486,7 @@ export function SkillDetailPage() {
   async function handleReloadSuite() {
     if (skillId == null) return
     try {
-      const suiteData = (await api.getEvalSuite(skillId)) as EvalSuite
+      const suiteData = (await getEvalSuite(skillId)) as unknown as EvalSuite
       setEvalSuite(suiteData)
     } catch {
       // silent

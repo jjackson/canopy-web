@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { api } from '@/api/client'
+import { aiStatus as fetchAiStatus, aiAuthStart, aiAuthComplete, aiAuthPoll } from '@/api/ai'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -17,7 +18,7 @@ export function SettingsPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const refreshStatus = useCallback(() => {
-    api.getAiStatus().then(setAiStatus).catch(() => {})
+    fetchAiStatus().then(setAiStatus).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -29,7 +30,7 @@ export function SettingsPage() {
     if (step !== 'awaiting_code') return
     pollRef.current = setInterval(async () => {
       try {
-        const result = await api.authPoll()
+        const result = await aiAuthPoll()
         if (result.authenticated) {
           setStep('complete')
           refreshStatus()
@@ -46,7 +47,7 @@ export function SettingsPage() {
     setCode('')
     setTokenPreview(null)
     try {
-      const result = await api.authStart()
+      const result = await aiAuthStart()
       if (result.status === 'complete') {
         setStep('complete')
         refreshStatus()
@@ -65,7 +66,7 @@ export function SettingsPage() {
     setStep('submitting')
     setError(null)
     try {
-      const result = await api.authComplete(code.trim())
+      const result = await aiAuthComplete(code.trim())
       setTokenPreview(result.token_preview)
       setStep('complete')
       refreshStatus()

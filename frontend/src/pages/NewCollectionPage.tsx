@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '@/api/client'
+import { createCollection, addSource } from '@/api/collections'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -71,7 +72,7 @@ export function NewCollectionPage() {
       setSubmitting(true)
 
       try {
-        const collection = (await api.createCollection(
+        const collection = (await createCollection(
           trimmedName,
           description.trim()
         )) as CollectionResult
@@ -102,7 +103,7 @@ export function NewCollectionPage() {
       setAddingSource(true)
 
       try {
-        const result = (await api.addSource(collectionId, {
+        const result = (await addSource(collectionId, {
           source_type: sourceType,
           title: sourceTitle.trim() || undefined,
           content: trimmedContent,

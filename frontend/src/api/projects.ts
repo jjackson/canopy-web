@@ -1,73 +1,111 @@
-const BASE = '/api'
+import { apiV2 } from "./client.v2";
+import type { components } from "./generated";
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const resp = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  })
-  const data = await resp.json()
-  if (!data.success) throw new Error(data.error?.message || 'Request failed')
-  return data.data
-}
-
-export interface ProjectContext {
-  content: string
-  source: string
-  created_at: string
-}
-
-export interface ProjectContextEntry {
-  id: number
-  context_type: string
-  content: string
-  source: string
-  created_at: string
-}
-
-export interface Project {
-  id: number
-  name: string
-  slug: string
-  repo_url: string
-  deploy_url: string
-  visibility: string
-  status: string
-  latest_context: Record<string, ProjectContext>
-  skills: Array<{ name: string; path?: string; description?: string }>
-  latest_actions: Record<string, { status: string; started_at: string; completed_at: string | null }>
-  insight_count: number
-  walkthrough_count?: number
-  created_at: string
-  updated_at: string
-}
-
-export interface ProjectDetail {
-  id: number
-  name: string
-  slug: string
-  repo_url: string
-  deploy_url: string
-  visibility: string
-  status: string
-  contexts: ProjectContextEntry[]
-  skills: Array<{ name: string; path?: string; description?: string }>
-  created_at: string
-  updated_at: string
-}
+export type Project = components["schemas"]["ProjectListOut"];
+export type ProjectDetail = components["schemas"]["ProjectDetailOut"];
+export type ProjectContextEntry = components["schemas"]["ProjectContextEntryOut"];
+export type ProjectContext = components["schemas"]["ProjectContextOut"];
 
 export const projectsApi = {
-  list: () => request<Project[]>('/projects/'),
-  get: (slug: string) => request<ProjectDetail>(`/projects/${slug}/`),
-  create: (data: { name: string; slug: string; repo_url?: string; deploy_url?: string; visibility?: string; status?: string }) =>
-    request<Project>('/projects/', { method: 'POST', body: JSON.stringify(data) }),
-  update: (slug: string, data: Partial<{ name: string; repo_url: string; deploy_url: string; status: string; visibility: string }>) =>
-    request<Project>(`/projects/${slug}/`, { method: 'PATCH', body: JSON.stringify(data) }),
-  delete: (slug: string) =>
-    request<{ deleted: string }>(`/projects/${slug}/`, { method: 'DELETE' }),
-  postContext: (slug: string, data: { context_type: string; content: string; source: string }) =>
-    request<ProjectContextEntry>(`/projects/${slug}/context/`, { method: 'POST', body: JSON.stringify(data) }),
-  getContext: (slug: string, type?: string) =>
-    request<ProjectContextEntry[]>(`/projects/${slug}/context/${type ? `?type=${type}` : ''}`),
-  getLatestContext: (slug: string) =>
-    request<Record<string, ProjectContext>>(`/projects/${slug}/context/latest/`),
+  list: async (): Promise<Project[]> => {
+    const { data, error } = await apiV2.GET("/api/v2/projects/");
+    if (error) throw new Error("Failed to load projects");
+    return data.items as Project[];
+  },
+  get: async (slug: string): Promise<ProjectDetail> => {
+    const { data, error } = await apiV2.GET("/api/v2/projects/{slug}/", {
+      params: { path: { slug } },
+    });
+    if (error) throw new Error("Failed to load project");
+    return data as unknown as ProjectDetail;
+  },
+  create: async (input: {
+    name: string;
+    slug: string;
+    repo_url?: string;
+    deploy_url?: string;
+    visibility?: string;
+    status?: string;
+  }): Promise<ProjectDetail> => {
+    const { data, error } = await apiV2.POST("/api/v2/projects/", {
+      body: {
+        name: input.name,
+        slug: input.slug,
+        repo_url: input.repo_url ?? "",
+        deploy_url: input.deploy_url ?? "",
+        visibility: (input.visibility as "public" | "private") ?? "public",
+        status: (input.status as "active" | "stale" | "archived") ?? "active",
+      },
+    });
+    if (error) throw new Error("Failed to create project");
+    return data as unknown as ProjectDetail;
+  },
+  update: async (
+    slug: string,
+    input: Partial<{
+      name: string;
+      repo_url: string;
+      deploy_url: string;
+      status: string;
+      visibility: string;
+    }>,
+  ): Promise<ProjectDetail> => {
+    const { data, error } = await apiV2.PATCH("/api/v2/projects/{slug}/", {
+      params: { path: { slug } },
+      body: {
+        name: input.name ?? null,
+        repo_url: input.repo_url ?? null,
+        deploy_url: input.deploy_url ?? null,
+        visibility: (input.visibility as "public" | "private" | null) ?? null,
+        status: (input.status as "active" | "stale" | "archived" | null) ?? null,
+      },
+    });
+    if (error) throw new Error("Failed to update project");
+    return data as unknown as ProjectDetail;
+  },
+  delete: async (slug: string): Promise<void> => {
+    const { error } = await apiV2.DELETE("/api/v2/projects/{slug}/", {
+      params: { path: { slug } },
+    });
+    if (error) throw new Error("Failed to delete project");
+  },
+  postContext: async (
+    slug: string,
+    input: { context_type: string; content: string; source: string },
+  ): Promise<ProjectContextEntry> => {
+    const { data, error } = await apiV2.POST("/api/v2/projects/{slug}/context/", {
+      params: { path: { slug } },
+      body: {
+        context_type: input.context_type as
+          | "current_work"
+          | "next_step"
+          | "summary"
+          | "note"
+          | "insight",
+        content: input.content,
+        source: input.source,
+      },
+    });
+    if (error) throw new Error("Failed to create context entry");
+    return data;
+  },
+  getContext: async (slug: string): Promise<ProjectContextEntry[]> => {
+    const { data, error } = await apiV2.GET("/api/v2/projects/{slug}/context/", {
+      params: { path: { slug } },
+    });
+    if (error) throw new Error("Failed to load context");
+    return data as unknown as ProjectContextEntry[];
+  },
+  getLatestContext: async (
+    slug: string,
+  ): Promise<Record<string, ProjectContext>> => {
+    const { data, error } = await apiV2.GET(
+      "/api/v2/projects/{slug}/context/latest/",
+      {
+        params: { path: { slug } },
+      },
+    );
+    if (error) throw new Error("Failed to load latest context");
+    return data.contexts as Record<string, ProjectContext>;
+  },
 }

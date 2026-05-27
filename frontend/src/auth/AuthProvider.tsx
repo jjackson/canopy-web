@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { api, type MeResponse } from '@/api/client'
+import { api } from '@/api/client'
+import { getMe, type MeOut as MeResponse } from '@/api/me'
 
 type AuthState =
   | { status: 'loading'; user: null }
@@ -20,7 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function boot() {
       try {
         await api.bootstrapCsrf()
-        const me = await api.me()
+        const me = await getMe()
         if (cancelled) return
         if (me) setState({ status: 'authenticated', user: me })
         else setState({ status: 'anonymous', user: null })
