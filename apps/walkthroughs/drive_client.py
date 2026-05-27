@@ -178,16 +178,15 @@ class GoogleDriveClient(DriveClient):
         if end is None:
             end = total - 1
         end = min(end, total - 1)
-        # alt=media + Range header
+        # alt=media + Range header. MediaIoBaseDownload was tempting but
+        # rewrites Range per chunk for progressive downloads, clobbering
+        # our bounds and returning the whole file. req.execute() runs a
+        # single GET that honors the Range we set. 75 MB upper bound on
+        # uploads keeps memory pressure reasonable.
         req = self._service.files().get_media(fileId=file_id)
         req.headers["Range"] = f"bytes={start}-{end}"
-        buf = io.BytesIO()
-        from googleapiclient.http import MediaIoBaseDownload  # noqa: PLC0415
-        downloader = MediaIoBaseDownload(buf, req, chunksize=1024 * 1024)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        return buf.getvalue(), start, end, total
+        data = req.execute()
+        return data, start, end, total
 
     def delete(self, file_id) -> None:
         self._service.files().delete(
