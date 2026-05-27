@@ -1,5 +1,8 @@
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import Client
+
+User = get_user_model()
 
 
 @pytest.mark.django_db
@@ -40,3 +43,23 @@ def test_redoc_docs_serves_html():
     assert response.status_code == 200
     assert response["Content-Type"].startswith("text/html")
     assert b"redoc" in response.content
+
+
+@pytest.mark.django_db
+def test_session_auth_rejects_anonymous(client):
+    response = client.get("/api/v2/_auth_smoke/")
+    assert response.status_code == 401
+    body = response.json()
+    assert body["status"] == 401
+    assert body["type"].endswith("/auth")
+
+
+@pytest.mark.django_db
+def test_session_auth_accepts_logged_in_user(client):
+    user = User.objects.create_user(
+        username="alice", email="alice@dimagi.com", password="pw"
+    )
+    client.force_login(user)
+    response = client.get("/api/v2/_auth_smoke/")
+    assert response.status_code == 200
+    assert response.json() == {"email": "alice@dimagi.com"}

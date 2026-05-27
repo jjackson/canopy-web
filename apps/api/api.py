@@ -124,3 +124,12 @@ def _on_unhandled(request: HttpRequest, exc: Exception) -> HttpResponse:
         instance=request.path,
     )
     return _problem_response(request, problem)
+
+
+from .auth import session_auth  # noqa: E402
+
+
+@api.get("/_auth_smoke/", auth=session_auth, response={200: dict})
+def _auth_smoke(request: HttpRequest) -> dict:
+    """Internal smoke route — verifies session auth works."""
+    return {"email": request.user.email}
