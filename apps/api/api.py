@@ -139,6 +139,7 @@ from apps.evals.api import router as evals_router  # noqa: E402
 from apps.projects.api import insights_router  # noqa: E402
 from apps.projects.api import router as projects_router  # noqa: E402
 from apps.skills.api import router as skills_router  # noqa: E402
+from apps.tokens.api import router as tokens_router  # noqa: E402
 from apps.walkthroughs.api import router as walkthroughs_router  # noqa: E402
 from apps.workspace.api import router as workspace_router  # noqa: E402
 
@@ -152,3 +153,4 @@ api.add_router("/ai", ai_router)
 api.add_router("", common_router)
 api.add_router("", public_router)
 api.add_router("/walkthroughs", walkthroughs_router)
+api.add_router("/tokens", tokens_router)

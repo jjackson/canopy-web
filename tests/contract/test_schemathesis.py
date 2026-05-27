@@ -6,12 +6,15 @@ endpoint, and asserts:
 - response body matches the declared response schema
 - response content-type matches the spec
 
-Auth-protected routes are skipped unless `SCHEMATHESIS_AUTH_COOKIE` is set
-(populate via the e2e-login flow before running).
+Auth-protected routes need `SCHEMATHESIS_AUTH_BEARER` (a raw Personal
+Access Token). Mint one with:
+
+    uv run python manage.py create_token --email ace@dimagi-ai.com \\
+        --label schemathesis --create-user
 
 Run against a live backend:
     SCHEMATHESIS_SCHEMA_URL=http://localhost:8000/api/openapi.json \\
-    SCHEMATHESIS_AUTH_COOKIE=<session-id> \\
+    SCHEMATHESIS_AUTH_BEARER=<raw-pat> \\
     pytest tests/contract/
 """
 from __future__ import annotations
@@ -24,7 +27,7 @@ import schemathesis
 SCHEMA_URL = os.environ.get(
     "SCHEMATHESIS_SCHEMA_URL", "http://localhost:8000/api/openapi.json"
 )
-AUTH_COOKIE = os.environ.get("SCHEMATHESIS_AUTH_COOKIE")
+AUTH_BEARER = os.environ.get("SCHEMATHESIS_AUTH_BEARER")
 
 # Load schema lazily so collection passes when no server is running.
 try:
@@ -44,8 +47,7 @@ _parametrize = (
 @_parametrize
 def test_api_conforms_to_schema(case):
     headers: dict[str, str] = {}
-    cookies: dict[str, str] = {}
-    if AUTH_COOKIE:
-        cookies["sessionid"] = AUTH_COOKIE
-    response = case.call(headers=headers, cookies=cookies)
+    if AUTH_BEARER:
+        headers["Authorization"] = f"Bearer {AUTH_BEARER}"
+    response = case.call(headers=headers)
     case.validate_response(response)

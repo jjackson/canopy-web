@@ -118,9 +118,23 @@ jobs:
           DJANGO_SETTINGS_MODULE: config.settings.production
           SECRET_KEY: ci-secret
           ALLOWED_HOSTS: localhost,127.0.0.1
-          CANOPY_E2E_AUTH_TOKEN: ci-fake-token
           AUTH_ALLOWED_EMAIL_DOMAIN: dimagi-ai.com
           REQUIRE_AUTH: "False"
+
+      - name: Mint PAT for schemathesis
+        id: pat
+        run: |
+          RAW=$(uv run python manage.py create_token \
+            --email ace@dimagi-ai.com --label schemathesis-ci --create-user \
+            | tail -1)
+          echo "::add-mask::$RAW"
+          echo "raw=$RAW" >> $GITHUB_OUTPUT
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/canopy_web
+          DJANGO_SETTINGS_MODULE: config.settings.production
+          SECRET_KEY: ci-secret
+          ALLOWED_HOSTS: localhost,127.0.0.1
+          AUTH_ALLOWED_EMAIL_DOMAIN: dimagi-ai.com
 
       - name: Start backend
         run: |
@@ -137,22 +151,14 @@ jobs:
           DJANGO_SETTINGS_MODULE: config.settings.production
           SECRET_KEY: ci-secret
           ALLOWED_HOSTS: localhost,127.0.0.1
-          CANOPY_E2E_AUTH_TOKEN: ci-fake-token
           AUTH_ALLOWED_EMAIL_DOMAIN: dimagi-ai.com
           REQUIRE_AUTH: "True"
-
-      - name: Bootstrap test session
-        run: |
-          curl -c cookies.txt -X POST http://localhost:8000/api/auth/e2e-login/ \
-            -H "Content-Type: application/json" \
-            -d '{"email": "ace@dimagi-ai.com", "token": "ci-fake-token"}'
-          SESSIONID=$(grep -E "^[^#].*sessionid" cookies.txt | awk '{print $NF}')
-          echo "SCHEMATHESIS_AUTH_COOKIE=${SESSIONID}" >> $GITHUB_ENV
 
       - name: Run schemathesis
         run: uv run pytest tests/contract/ -v
         env:
           SCHEMATHESIS_SCHEMA_URL: http://localhost:8000/api/openapi.json
+          SCHEMATHESIS_AUTH_BEARER: ${{ steps.pat.outputs.raw }}
 
   deploy:
     name: Deploy to Cloud Run

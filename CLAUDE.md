@@ -134,8 +134,18 @@ All endpoints are served by Django Ninja (Pydantic v2 typed) under `/api/`. Erro
 - `POST /api/ai/auth/complete/` — Submit OAuth code
 - `GET /api/ai/auth/poll/` — Poll auth status
 
-### Automated-tool login (`apps/common/views_auth_e2e`)
-- `POST /api/auth/e2e-login/` — token-gated login for automated tools (gstack walkthroughs, autonomous PM cycles, AI-driven QA). Body: `{email, token}`. Disabled by default — returns 404 unless `CANOPY_E2E_AUTH_TOKEN` is set. Email must be in `AUTH_ALLOWED_EMAIL_DOMAIN`. Sessions carry `_canopy_e2e_session` marker for audit. See `docs/e2e-login.md`.
+### Personal Access Tokens (`apps/tokens`)
+- `GET /api/tokens/` — list my tokens (no raw values)
+- `POST /api/tokens/` — mint a token (raw returned once)
+- `DELETE /api/tokens/{id}/` — revoke a token (owner-only; 404 hides other users' tokens)
+
+Tokens are long-lived bearer credentials per Django user. The raw value is sha256-hashed at creation and never persisted. Pass `Authorization: Bearer <raw>` on any request; `apps.tokens.middleware.BearerTokenAuthMiddleware` resolves it to `request.user`. Replaces the retired `WORKBENCH_WRITE_TOKEN` shared-secret + `/api/auth/e2e-login/` flow.
+
+Bootstrap a token via the management command:
+
+```bash
+uv run python manage.py create_token --email ace@dimagi-ai.com --label "canopy plugin" --create-user
+```
 
 ### Walkthroughs
 - `GET /api/walkthroughs/` — List. Filters: `?project=<slug>`, `?kind=html|video`, `?mine=true`
@@ -159,12 +169,12 @@ Settings:
 
 - **API is Pydantic-first via Django Ninja**: every request/response is a Pydantic v2 model declared in `apps/<app>/schemas.py`. Routes live in `apps/<app>/api.py`, registered on the single `NinjaAPI` instance in `apps/api/api.py`. Errors are RFC 7807 `application/problem+json`. Frontend types are generated from the OpenAPI 3.1 schema by `openapi-typescript` into `frontend/src/api/generated.ts` and consumed via `openapi-fetch`. The `regen-openapi.yml` GitHub workflow auto-commits regenerated types on PRs touching `apps/**/api.py` or `apps/**/schemas.py`.
 - **Streaming endpoints stay on Django**: `POST /api/workspace/start/<id>/` returns `StreamingHttpResponse` directly from a Ninja handler (declared as `response=None`); the SSE event format is the contract. `GET /w/<uuid>/content` (the walkthrough viewer) stays as a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range + token-based public-link auth don't fit the Ninja contract.
-- **Bare Django views**: `/api/csrf/`, `/api/auth/e2e-login/`, `/api/debug/mint-session/`, and `/health/` remain bare Django views (not Ninja) — they manipulate sessions/cookies directly. Their paths are matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
+- **Bare Django views**: `/api/csrf/`, `/api/debug/mint-session/`, and `/health/` (the last is also Ninja-mountable via `public_router`) — they manipulate sessions/cookies directly. Matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
 - APP UI: dense, readable, tables not cards
 - Workspace flow: Ingest → AI proposes Approach + Eval → Review/Edit → Test → Publish
 - SSE streaming for AI responses (Scout pattern)
 - Overwrite-with-history versioning
-- **Auth:** Google OAuth via django-allauth (allowed-domain restricted via `AUTH_ALLOWED_EMAIL_DOMAIN`, default `dimagi.com`). `LoginRequiredMiddleware` enforces auth at the app layer. Two automation bypasses: `/api/auth/e2e-login/` (token-gated, for headless tools) and `/api/debug/mint-session/` (authenticated user mints a short-lived cookie for an AI assistant). Single-tenant in V1; multi-tenant scaffolding tracked in `TODOS.md`.
+- **Auth:** Google OAuth via django-allauth (allowed-domain restricted via `AUTH_ALLOWED_EMAIL_DOMAIN` — comma-separated list, default `dimagi.com`). Personal Access Tokens (`apps/tokens/`) authenticate machine callers via `Authorization: Bearer <raw>` — `BearerTokenAuthMiddleware` resolves them upstream of `LoginRequiredMiddleware`. `/api/debug/mint-session/` lets an authenticated user mint a short-lived session cookie to hand to an AI assistant. Single-tenant in V1; multi-tenant scaffolding tracked in `TODOS.md`.
 - PostgreSQL on Cloud SQL (GCP `canopy-494811`)
 - Dual AI backend lets users run either against an API key or their own Claude Code subscription
 
@@ -181,5 +191,4 @@ Settings:
 - `docs/walkthroughs/project-workbench.yaml` — Project workbench walkthrough spec
 - `docs/case-studies/workbench-self-improvement.md` — Self-improvement case study
 - `docs/personas/jonathan.md` — Primary user persona
-- `docs/e2e-login.md` — Token-gated automation login (`/api/auth/e2e-login/`) usage and contract
 - `TODOS.md` — Deferred V2 work (proactive detection, MCP layer, prompt hardening, OAuth integrations, multi-tenant auth, cowork adapter)

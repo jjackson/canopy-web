@@ -128,14 +128,18 @@ def test_get_project_slugs_200_happy_path():
 
 
 @pytest.mark.django_db
-@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN="some-workbench-token")
-def test_get_project_slugs_bearer_readable():
-    """Anonymous Bearer token request to /api/projects/slugs/ should return 200."""
+@override_settings(REQUIRE_AUTH=True)
+def test_get_project_slugs_pat_readable():
+    """Anonymous request carrying a valid PAT should authenticate and 200."""
+    from apps.tokens.models import PersonalToken
+
+    user = User.objects.create_user(username="bot", email="bot@dimagi-ai.com")
+    raw, _ = PersonalToken.create_for_user(user=user, label="slug-reader")
     _make_project()
     anon_client = Client()
     resp = anon_client.get(
         "/api/projects/slugs/",
-        HTTP_AUTHORIZATION="Bearer some-workbench-token",
+        HTTP_AUTHORIZATION=f"Bearer {raw}",
     )
     assert resp.status_code == 200
 
@@ -274,16 +278,20 @@ def test_create_context_201():
 
 
 @pytest.mark.django_db
-@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN="some-workbench-token")
-def test_create_context_bearer_writable():
-    """Anonymous Bearer token request to /api/projects/{slug}/context/ should return 201."""
+@override_settings(REQUIRE_AUTH=True)
+def test_create_context_pat_writable():
+    """Anonymous request with a valid PAT should be allowed to POST /context/."""
+    from apps.tokens.models import PersonalToken
+
+    user = User.objects.create_user(username="bot-ctx", email="ctx@dimagi-ai.com")
+    raw, _ = PersonalToken.create_for_user(user=user, label="ctx-writer")
     _make_project(slug="bearer-ctx-test")
     anon_client = Client()
     resp = anon_client.post(
         "/api/projects/bearer-ctx-test/context/",
         data=json.dumps({"context_type": "note", "content": "Bearer note", "source": "machine-caller"}),
         content_type="application/json",
-        HTTP_AUTHORIZATION="Bearer some-workbench-token",
+        HTTP_AUTHORIZATION=f"Bearer {raw}",
     )
     assert resp.status_code == 201
 
@@ -361,9 +369,13 @@ def test_create_action_201():
 
 
 @pytest.mark.django_db
-@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN="some-workbench-token")
-def test_create_action_bearer_writable():
-    """POST /actions/ should accept Bearer token now that middleware matches /api/projects/."""
+@override_settings(REQUIRE_AUTH=True)
+def test_create_action_pat_writable():
+    """POST /actions/ should accept a PAT bearer (anonymous + no PAT = 401)."""
+    from apps.tokens.models import PersonalToken
+
+    user = User.objects.create_user(username="bot-act", email="act@dimagi-ai.com")
+    raw, _ = PersonalToken.create_for_user(user=user, label="action-writer")
     _make_project(slug="bearer-act-test")
     anon_client = Client()
     resp = _post_json(
@@ -374,12 +386,12 @@ def test_create_action_bearer_writable():
     # Without bearer: 401
     assert resp.status_code == 401
 
-    # With bearer: 201
+    # With PAT: 201
     resp2 = anon_client.post(
         "/api/projects/bearer-act-test/actions/",
         data=json.dumps({"skill_name": "commit", "status": "completed", "started_at": "2026-05-26T10:00:00Z"}),
         content_type="application/json",
-        HTTP_AUTHORIZATION="Bearer some-workbench-token",
+        HTTP_AUTHORIZATION=f"Bearer {raw}",
     )
     assert resp2.status_code == 201
 
@@ -489,15 +501,19 @@ def test_list_insights_category_filter():
 
 
 @pytest.mark.django_db
-@override_settings(REQUIRE_AUTH=True, WORKBENCH_WRITE_TOKEN="some-workbench-token")
-def test_list_insights_bearer_readable():
-    """GET /insights/ should accept Bearer tokens."""
+@override_settings(REQUIRE_AUTH=True)
+def test_list_insights_pat_readable():
+    """GET /insights/ should accept a valid PAT."""
+    from apps.tokens.models import PersonalToken
+
+    user = User.objects.create_user(username="bot-ins", email="ins@dimagi-ai.com")
+    raw, _ = PersonalToken.create_for_user(user=user, label="insights-reader")
     p = _make_project(slug="ins-bearer")
     ProjectContext.objects.create(
         project=p, context_type="insight", content="[test] hi", source="test"
     )
     anon_client = Client()
-    resp = anon_client.get("/api/insights/", HTTP_AUTHORIZATION="Bearer some-workbench-token")
+    resp = anon_client.get("/api/insights/", HTTP_AUTHORIZATION=f"Bearer {raw}")
     assert resp.status_code == 200
 
 

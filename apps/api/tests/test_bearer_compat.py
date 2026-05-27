@@ -1,44 +1,51 @@
-"""Smoke tests: Bearer-token bypass continues to work for Ninja routes.
+"""Smoke tests: DjangoSessionAuth post-PAT-refactor.
 
-LoginRequiredMiddleware admits machine callers presenting a Bearer
-token on a narrow allowlist (projects/*/actions/, projects/*/context/,
-projects/slugs/, insights/). It sets `_workbench_token_auth = True`
-and `_dont_enforce_csrf_checks = True` before handing off; Ninja's
-CSRF + session_auth must honor both.
+The previous `_workbench_token_auth` shortcut was retired when
+`apps.tokens.middleware.BearerTokenAuthMiddleware` started resolving
+`Authorization: Bearer <raw>` into a real `request.user` upstream.
+DjangoSessionAuth no longer has a Bearer branch — it just checks
+`request.user.is_authenticated`. These tests pin that contract.
 
-These tests use the smoke route under /api/_auth_smoke/ — it's
-NOT on the bypass allowlist, so we can't test the real flow here.
-Real Bearer compatibility is covered by per-app contract tests in
-Phase 2 (Task 2.3 — projects bearer-readable endpoints).
-
-Instead we test the auth class directly: a request carrying
-_workbench_token_auth=True bypasses the is_authenticated check.
+Real end-to-end PAT-via-Bearer coverage lives in
+`apps/tokens/tests/test_middleware.py` and the per-app
+`tests/test_api.py::test_*_pat_*` cases.
 """
 from __future__ import annotations
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
 
 from apps.api.auth import session_auth
+from apps.api.errors import ProblemError
+
+User = get_user_model()
 
 
-def test_session_auth_accepts_anonymous_when_bearer_authed():
+@pytest.mark.django_db
+def test_session_auth_accepts_authenticated_user():
+    user = User.objects.create_user(username="alice", email="alice@dimagi.com")
     rf = RequestFactory()
     request = rf.get("/api/_anything")
-    request.user = AnonymousUser()
-    request._workbench_token_auth = True
-    # Should not raise; should return whatever request.user is.
+    request.user = user
     result = session_auth.authenticate(request, None)
-    assert result is request.user
+    assert result.pk == user.pk
 
 
-def test_session_auth_rejects_anonymous_without_bearer_marker():
-    from apps.api.errors import ProblemError
-
+def test_session_auth_rejects_anonymous():
     rf = RequestFactory()
     request = rf.get("/api/_anything")
     request.user = AnonymousUser()
+    with pytest.raises(ProblemError) as exc_info:
+        session_auth.authenticate(request, None)
+    assert exc_info.value.status_code == 401
+
+
+def test_session_auth_rejects_request_without_user_attribute():
+    rf = RequestFactory()
+    request = rf.get("/api/_anything")
+    # No request.user — pre-AuthenticationMiddleware state.
     with pytest.raises(ProblemError) as exc_info:
         session_auth.authenticate(request, None)
     assert exc_info.value.status_code == 401
