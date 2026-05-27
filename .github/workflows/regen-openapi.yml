@@ -10,6 +10,8 @@ on:
 jobs:
   regen:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # push the regenerated generated.ts back to the PR branch
     steps:
       - uses: actions/checkout@v4
         with:
