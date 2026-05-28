@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "apps.projects",
     "apps.walkthroughs",
     "apps.tokens",
+    "apps.reviews",
 ]
 
 MIDDLEWARE = [
