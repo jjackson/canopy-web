@@ -9,6 +9,12 @@ type AuthState =
 
 const AuthContext = createContext<AuthState>({ status: 'loading', user: null })
 
+// Routes that are reachable via a per-token share link without a Dimagi session.
+// The page itself enforces access via its ?t= token against the API.
+function isPublicLinkRoute(): boolean {
+  return window.location.pathname.startsWith('/review/')
+}
+
 export function useAuth(): AuthState {
   return useContext(AuthContext)
 }
@@ -43,10 +49,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
   }
 
-  if (state.status === 'anonymous') {
+  if (state.status === 'anonymous' && !isPublicLinkRoute()) {
     return <LoginPrompt />
   }
 
+  // Authenticated, OR anonymous on a public token-link route (e.g. /review/<id>?t=…).
+  // Public-link pages self-gate on their ?t= share token via the API, so they must
+  // render without a Dimagi session.
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>
 }
 
