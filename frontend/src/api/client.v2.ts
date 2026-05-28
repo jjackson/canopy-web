@@ -12,6 +12,13 @@ function redirectToLogin(): never {
   throw new Error("Redirecting to login");
 }
 
+// Per-token public-link routes (e.g. /review/<id>?t=…) self-gate on their share
+// token, so a 401 from an incidental authenticated call (e.g. /api/me) must NOT
+// bounce an anonymous visitor to login. Keep in sync with AuthProvider.
+function isPublicLinkRoute(): boolean {
+  return window.location.pathname.startsWith("/review/");
+}
+
 export const apiV2 = createClient<paths>({
   baseUrl: "",
   credentials: "same-origin",
@@ -27,7 +34,7 @@ apiV2.use({
     return request;
   },
   async onResponse({ response }) {
-    if (response.status === 401) {
+    if (response.status === 401 && !isPublicLinkRoute()) {
       redirectToLogin();
     }
     return response;
