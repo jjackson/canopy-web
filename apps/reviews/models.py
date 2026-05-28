@@ -20,6 +20,13 @@ class ReviewRequest(models.Model):
         (VISIBILITY_PRIVATE, "Private (dimagi only)"),
         (VISIBILITY_LINK, "Link (anyone with token)"),
     ]
+    # Visibility semantics:
+    #   private — readable by any dimagi-authenticated user (the whole app is dimagi-OAuth
+    #             gated), but write/submit is owner-or-link-token only.  Non-owners can
+    #             inspect the review but cannot resolve it.
+    #   link    — readable AND submittable by anyone holding the ?t= share token, even
+    #             without a session.  This is how the canopy orchestrator URL is shared
+    #             externally (e.g. posted to Slack so non-owners can act on it).
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     run_id = models.CharField(max_length=255, db_index=True)

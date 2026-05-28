@@ -338,3 +338,37 @@ def test_non_owner_authenticated_can_read(other_client, owner):
     assert body["is_owner"] is False
     # Non-owner does not see share_token
     assert body["share_token"] is None
+
+
+# ---------------------------------------------------------------------------
+# 11. submit on a private review by an authenticated NON-owner is blocked
+#
+#     Write gate semantics: private visibility means the review is readable
+#     by any dimagi-authenticated user, but submit (write) requires being the
+#     owner OR holding a valid ?t= share token.  A non-owner authenticated
+#     session without a token must not be able to resolve the review.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_submit_private_review_by_non_owner_is_blocked(other_client, owner):
+    """Authenticated non-owner without ?t= cannot submit a private review."""
+    review = _make_review(owner, visibility="private")
+    review.ensure_share_token()
+
+    resp = other_client.post(
+        f"{BASE}/{review.id}/submit/",
+        data={"response_json": SAMPLE_RESPONSE_JSON},
+        content_type="application/json",
+    )
+    # Must be blocked — 403 or 404 (endpoint returns 404 to avoid leaking existence)
+    assert resp.status_code in (403, 404), (
+        f"Expected 403 or 404 but got {resp.status_code}: {resp.content}"
+    )
+
+    # Review must NOT have been resolved in the database
+    review.refresh_from_db()
+    assert review.status == ReviewRequest.STATUS_PENDING, (
+        "Review should still be pending after blocked submit attempt"
+    )
+    assert review.response_json is None
