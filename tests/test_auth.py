@@ -203,3 +203,66 @@ def test_post_without_csrf_rejected(db):
     client.force_login(user)
     resp = client.post("/api/projects/", data={}, content_type="application/json")
     assert resp.status_code == 403
+
+
+# ──────────────────────────────────────────────────────────────────────
+# _is_review_link: per-token review public links bypass the middleware
+# ──────────────────────────────────────────────────────────────────────
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_review_spa_page_is_accessible_unauthenticated(db):
+    """Unauthenticated request to /review/<uuid>/ passes through the middleware
+    (the SPA shell is served; the endpoint itself handles ?t= token auth)."""
+    import uuid
+
+    rid = uuid.uuid4()
+    client = Client()
+    resp = client.get(f"/review/{rid}/")
+    # Must NOT redirect to login — the middleware must let it through.
+    # The SPA catch-all returns 200; any non-302/non-401 confirms the gate is open.
+    assert resp.status_code != 302
+    assert resp.status_code != 401
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_review_api_detail_is_accessible_unauthenticated(db):
+    """Unauthenticated GET /api/reviews/<uuid>/ passes through the middleware
+    and reaches the endpoint (which does its own token/auth check)."""
+    import uuid
+
+    rid = uuid.uuid4()
+    client = Client()
+    resp = client.get(f"/api/reviews/{rid}/")
+    # The endpoint returns 404 (review not found), not 401 from middleware.
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_review_api_submit_is_accessible_unauthenticated(db):
+    """Unauthenticated POST /api/reviews/<uuid>/submit/ passes through the middleware
+    and reaches the endpoint (which does its own token/auth check)."""
+    import uuid
+
+    rid = uuid.uuid4()
+    client = Client()
+    resp = client.post(
+        f"/api/reviews/{rid}/submit/",
+        data={"response_json": {}},
+        content_type="application/json",
+    )
+    # The endpoint returns 404 (review not found), not 401 from middleware.
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_review_api_create_still_requires_auth(db):
+    """Unauthenticated POST /api/reviews/ (bare create) is still blocked by
+    the middleware — creating a review requires a session or PAT."""
+    client = Client()
+    resp = client.post(
+        "/api/reviews/",
+        data={"request_json": {}, "visibility": "link"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 401

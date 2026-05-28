@@ -33,6 +33,16 @@ def _is_walkthrough_content(path: str) -> bool:
     return path.startswith("/w/") and path.endswith("/content")
 
 
+def _is_review_link(path: str) -> bool:
+    # /review/<uuid>/  (SPA shell) and the per-review API read/submit endpoints
+    # self-enforce token-or-session auth, so let the per-token public link
+    # through the middleware without a session. The bare collection POST
+    # (/api/reviews/) is NOT included — creating a review still requires auth.
+    if path.startswith("/review/"):
+        return True
+    return path.startswith("/api/reviews/") and path != "/api/reviews/"
+
+
 class LoginRequiredMiddleware:
     """Require authentication for every request except the allowlist.
 
@@ -58,6 +68,7 @@ class LoginRequiredMiddleware:
             request.user.is_authenticated
             or _is_public(request.path)
             or _is_walkthrough_content(request.path)
+            or _is_review_link(request.path)
         ):
             return self.get_response(request)
 
