@@ -6,6 +6,8 @@ import {
   type ReviewDetail,
   type ReviewDecision,
   type ReviewNarrationItem,
+  type ReviewFeature,
+  type ReviewSceneActionability,
   type ReviewSubmitPayload,
 } from '../api/reviews'
 import { walkthroughContentUrl } from '../api/walkthroughs'
@@ -14,6 +16,219 @@ import { walkthroughContentUrl } from '../api/walkthroughs'
 // Sub-components
 // ---------------------------------------------------------------------------
 
+/** Small badge for numeric scores (e.g. "4.2 / 5") */
+function ScoreBadge({
+  score,
+  total = 5,
+  tooltip,
+}: {
+  score: number
+  total?: number
+  tooltip?: string
+}) {
+  const formatted = Number.isInteger(score) ? String(score) : score.toFixed(1)
+  return (
+    <span
+      title={tooltip}
+      className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30 cursor-default select-none"
+    >
+      {formatted}
+      <span className="text-violet-500 font-normal">/ {total}</span>
+    </span>
+  )
+}
+
+/** List of features for one narration chunk */
+function FeatureList({
+  features,
+  sceneActionability,
+}: {
+  features: ReviewFeature[]
+  sceneActionability?: ReviewSceneActionability
+}) {
+  if (features.length === 0) return null
+
+  const missedIds = new Set(sceneActionability?.missed ?? [])
+
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+        Features this scene commits to
+      </p>
+      <ul className="space-y-2">
+        {features.map((f) => {
+          const isMissed = missedIds.has(f.id)
+          return (
+            <li
+              key={f.id}
+              className={[
+                'rounded border px-3 py-2 text-sm',
+                isMissed
+                  ? 'border-amber-500/30 bg-amber-500/5'
+                  : 'border-stone-800 bg-stone-900/60',
+              ].join(' ')}
+            >
+              <p className="text-stone-200 leading-snug">{f.description}</p>
+              {f.verify && (
+                <p className="mt-1 font-mono text-[11px] text-stone-500 leading-snug">
+                  verify: {f.verify}
+                </p>
+              )}
+              {isMissed && (
+                <p className="mt-1.5 text-[11px] text-amber-400/80">
+                  ⚠ eval flagged as under-specified
+                </p>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/** One narration chunk: editable textarea + features list + optional scene score */
+interface NarrationCardProps {
+  item: ReviewNarrationItem
+  value: string
+  onChange: (value: string) => void
+  readOnly: boolean
+  sceneActionability?: ReviewSceneActionability
+}
+
+function NarrationCard({
+  item,
+  value,
+  onChange,
+  readOnly,
+  sceneActionability,
+}: NarrationCardProps) {
+  const features: ReviewFeature[] = item.features ?? []
+
+  return (
+    <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
+      {/* Scene header row */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">
+          Scene {item.scene}
+        </span>
+        {sceneActionability != null && (
+          <ScoreBadge score={sceneActionability.score} tooltip="Scene actionability score (AI buildability estimate)" />
+        )}
+      </div>
+
+      {/* Editable narration text */}
+      <textarea
+        className={[
+          'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[4rem]',
+          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+          readOnly ? 'opacity-70 cursor-default' : '',
+        ].join(' ')}
+        value={value}
+        onChange={(e) => !readOnly && onChange(e.target.value)}
+        readOnly={readOnly}
+        rows={3}
+      />
+
+      {/* Features */}
+      {features.length > 0 && (
+        <FeatureList
+          features={features}
+          sceneActionability={sceneActionability}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * The approve / redraft decision block.
+ *
+ * Replaces the old generic DecisionGroup for the "narrative-verdict" decision.
+ * Two clearly-labeled action buttons, each with a one-line explanation.
+ */
+interface NarrativeVerdictProps {
+  decision: ReviewDecision
+  chosen: string
+  onChange: (value: string) => void
+  readOnly: boolean
+}
+
+function NarrativeVerdictControl({
+  decision,
+  chosen,
+  onChange,
+  readOnly,
+}: NarrativeVerdictProps) {
+  const LABELS: Record<string, { label: string; explanation: string; accent: string }> = {
+    approve: {
+      label: 'Approve & continue',
+      explanation:
+        'Lock this narrative as the build plan (including any edits I made); proceed to build the features.',
+      accent: 'emerald',
+    },
+    redraft: {
+      label: 'Send back to re-draft',
+      explanation:
+        'The framing/approach is wrong — re-author the narrative from scratch.',
+      accent: 'amber',
+    },
+  }
+
+  return (
+    <div className="rounded-lg border border-stone-700 bg-stone-900 p-4 space-y-3">
+      <p className="text-sm text-stone-200 leading-snug">{decision.prompt}</p>
+      <div className="flex flex-col sm:flex-row gap-3">
+        {decision.options.map((opt) => {
+          const meta = LABELS[opt] ?? { label: opt, explanation: '', accent: 'stone' }
+          const isSelected = chosen === opt
+          const accent = meta.accent
+
+          const selectedStyles: Record<string, string> = {
+            emerald:
+              'border-emerald-500/60 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30',
+            amber:
+              'border-amber-500/60 bg-amber-500/15 text-amber-200 ring-1 ring-amber-500/30',
+            stone:
+              'border-stone-500 bg-stone-700 text-stone-100 ring-1 ring-stone-500/30',
+          }
+          const unselectedStyles =
+            'border-stone-700 text-stone-400 hover:border-stone-500 hover:text-stone-200 hover:bg-stone-800/50'
+
+          return (
+            <button
+              key={opt}
+              type="button"
+              disabled={readOnly}
+              onClick={() => !readOnly && onChange(opt)}
+              className={[
+                'flex-1 text-left rounded-lg border px-4 py-3 transition-all',
+                isSelected
+                  ? (selectedStyles[accent] ?? selectedStyles.stone)
+                  : unselectedStyles,
+                readOnly ? 'pointer-events-none opacity-80' : 'cursor-pointer',
+              ].join(' ')}
+            >
+              <p className="font-semibold text-sm leading-tight">{meta.label}</p>
+              {meta.explanation && (
+                <p
+                  className={[
+                    'mt-1 text-xs leading-snug',
+                    isSelected ? 'opacity-80' : 'text-stone-500',
+                  ].join(' ')}
+                >
+                  {meta.explanation}
+                </p>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/** Generic radio-button decision group for non-narrative-verdict decisions */
 interface DecisionGroupProps {
   decision: ReviewDecision
   chosen: string
@@ -22,9 +237,7 @@ interface DecisionGroupProps {
 }
 
 function DecisionGroup({ decision, chosen, onChange, readOnly }: DecisionGroupProps) {
-  const classLabel = decision.class
-    ? decision.class.replace(/_/g, ' ')
-    : ''
+  const classLabel = decision.class ? decision.class.replace(/_/g, ' ') : ''
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-900 p-4">
@@ -71,34 +284,6 @@ function DecisionGroup({ decision, chosen, onChange, readOnly }: DecisionGroupPr
           )
         })}
       </div>
-    </div>
-  )
-}
-
-interface NarrationFieldProps {
-  item: ReviewNarrationItem
-  value: string
-  onChange: (value: string) => void
-  readOnly: boolean
-}
-
-function NarrationField({ item, value, onChange, readOnly }: NarrationFieldProps) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-xs text-stone-500">
-        Scene {item.scene}
-      </label>
-      <textarea
-        className={[
-          'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[4rem]',
-          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-          readOnly ? 'opacity-70 cursor-default' : '',
-        ].join(' ')}
-        value={value}
-        onChange={(e) => !readOnly && onChange(e.target.value)}
-        readOnly={readOnly}
-        rows={3}
-      />
     </div>
   )
 }
@@ -198,6 +383,13 @@ export function ReviewPage() {
   const decisions: ReviewDecision[] = req.decisions ?? []
   const narration: ReviewNarrationItem[] = req.narration ?? []
   const autonomousAudit: string[] = req.autonomous_audit ?? []
+  const actionability = req.actionability ?? null
+  const overallScore = actionability?.overall_score ?? null
+  const perScene = actionability?.per_scene ?? {}
+
+  // Separate narrative-verdict decision from other decisions
+  const narrativeVerdictDecision = decisions.find((d) => d.id === 'narrative-verdict') ?? null
+  const otherDecisions = decisions.filter((d) => d.id !== 'narrative-verdict')
 
   // -------------------------------------------------------------------
   // Video / iframe embed — mirrors WalkthroughViewerPage mechanism
@@ -205,11 +397,7 @@ export function ReviewPage() {
 
   let videoElement: React.ReactNode = null
   if (req.video?.walkthrough_id) {
-    // Use the same /w/<id>/content URL as WalkthroughViewerPage
     const contentSrc = walkthroughContentUrl(req.video.walkthrough_id, shareToken)
-    // We don't know if it's video or html — treat as iframe (slideshow-first)
-    // If the walkthrough is a video type the backend serves the raw video file,
-    // so an iframe will display it natively in modern browsers.
     videoElement = (
       <iframe
         src={contentSrc}
@@ -219,7 +407,6 @@ export function ReviewPage() {
       />
     )
   } else if (req.video?.url) {
-    // Direct URL — try as video, fallback gracefully
     videoElement = (
       <video
         src={req.video.url}
@@ -235,6 +422,14 @@ export function ReviewPage() {
     )
   }
 
+  // Helper to get the resolved decision value for a decision id
+  function resolvedChoice(decId: string): string {
+    if (isResolved && review?.response_json?.decisions) {
+      return review.response_json.decisions[decId] ?? choices[decId] ?? ''
+    }
+    return choices[decId] ?? ''
+  }
+
   // -------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------
@@ -242,10 +437,21 @@ export function ReviewPage() {
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-8">
       {/* Header */}
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-stone-100">Review gate: {req.gate}</h1>
-          <p className="text-sm text-stone-500 mt-0.5">Run {req.run_id}</p>
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3 flex-wrap">
+          <div>
+            <h1 className="text-xl font-semibold text-stone-100">Review gate: {req.gate}</h1>
+            <p className="text-sm text-stone-500 mt-0.5">Run {req.run_id}</p>
+          </div>
+          {overallScore != null && (
+            <div className="mt-0.5">
+              <ScoreBadge
+                score={overallScore}
+                tooltip="Actionability score — how confidently an AI could build this narrative as written (out of 5)"
+              />
+              <p className="text-[10px] text-stone-600 mt-0.5 text-center">Actionability</p>
+            </div>
+          )}
         </div>
         <span
           className={[
@@ -269,22 +475,33 @@ export function ReviewPage() {
         </div>
       </section>
 
-      {/* Decisions */}
-      {decisions.length > 0 && (
+      {/* Narrative verdict — the primary decision, shown before narration */}
+      {narrativeVerdictDecision && (
         <section>
           <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
-            {isResolved ? 'Decisions (submitted)' : 'Needs you — decisions'}
+            {isResolved ? 'Decision (submitted)' : 'Your decision'}
+          </h2>
+          <NarrativeVerdictControl
+            decision={narrativeVerdictDecision}
+            chosen={resolvedChoice('narrative-verdict')}
+            onChange={(val) => setChoices((prev) => ({ ...prev, 'narrative-verdict': val }))}
+            readOnly={isResolved}
+          />
+        </section>
+      )}
+
+      {/* Other decisions (non-narrative-verdict) */}
+      {otherDecisions.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
+            {isResolved ? 'Additional decisions (submitted)' : 'Additional decisions'}
           </h2>
           <div className="space-y-3">
-            {decisions.map((dec) => (
+            {otherDecisions.map((dec) => (
               <DecisionGroup
                 key={dec.id}
                 decision={dec}
-                chosen={
-                  isResolved && review.response_json?.decisions
-                    ? (review.response_json.decisions[dec.id] ?? choices[dec.id] ?? dec.recommended)
-                    : (choices[dec.id] ?? dec.recommended)
-                }
+                chosen={resolvedChoice(dec.id)}
                 onChange={(val) => setChoices((prev) => ({ ...prev, [dec.id]: val }))}
                 readOnly={isResolved}
               />
@@ -293,28 +510,31 @@ export function ReviewPage() {
         </section>
       )}
 
-      {/* Narration edits */}
+      {/* Narration cards — editable text + features + per-scene scores */}
       {narration.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
             {isResolved ? 'Narration (submitted)' : 'Narration — edit inline'}
           </h2>
           <div className="space-y-4">
-            {narration.map((item) => (
-              <NarrationField
-                key={item.id}
-                item={item}
-                value={
-                  isResolved && review.response_json?.narration_edits
-                    ? (review.response_json.narration_edits[item.id] ?? narrationEdits[item.id] ?? item.text)
-                    : (narrationEdits[item.id] ?? item.text)
-                }
-                onChange={(val) =>
-                  setNarrationEdits((prev) => ({ ...prev, [item.id]: val }))
-                }
-                readOnly={isResolved}
-              />
-            ))}
+            {narration.map((item) => {
+              const editedValue = isResolved && review.response_json?.narration_edits
+                ? (review.response_json.narration_edits[item.id] ?? narrationEdits[item.id] ?? item.text)
+                : (narrationEdits[item.id] ?? item.text)
+              const sceneScore = perScene[item.id] ?? undefined
+              return (
+                <NarrationCard
+                  key={item.id}
+                  item={item}
+                  value={editedValue}
+                  onChange={(val) =>
+                    setNarrationEdits((prev) => ({ ...prev, [item.id]: val }))
+                  }
+                  readOnly={isResolved}
+                  sceneActionability={sceneScore}
+                />
+              )
+            })}
           </div>
         </section>
       )}
@@ -389,7 +609,7 @@ export function ReviewPage() {
                 : 'bg-orange-500 hover:bg-orange-400 text-white',
             ].join(' ')}
           >
-            {busy ? 'Submitting…' : 'Approve & continue'}
+            {busy ? 'Submitting…' : 'Submit review'}
           </button>
         </div>
       )}
