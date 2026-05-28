@@ -30,15 +30,32 @@ export interface ReviewDecision {
   class: string
 }
 
+export interface ReviewFeature {
+  id: string
+  description: string
+  verify: string
+}
+
 export interface ReviewNarrationItem {
   scene: number
   id: string
   text: string
+  features?: ReviewFeature[]
 }
 
 export interface ReviewVideo {
   walkthrough_id?: string
   url?: string
+}
+
+export interface ReviewSceneActionability {
+  score: number
+  missed: string[]
+}
+
+export interface ReviewActionability {
+  overall_score: number
+  per_scene: Record<string, ReviewSceneActionability>
 }
 
 export interface ReviewRequestJson {
@@ -49,6 +66,7 @@ export interface ReviewRequestJson {
   decisions: ReviewDecision[]
   narration: ReviewNarrationItem[]
   autonomous_audit: string[]
+  actionability?: ReviewActionability | null
 }
 
 export interface ReviewSubmitPayload {
