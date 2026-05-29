@@ -288,16 +288,16 @@ function FeatureRow({
       {/* verify */}
       <div>
         <FieldLabel>Verify — how we'll confirm it's built</FieldLabel>
-        <input
-          type="text"
+        <textarea
           className={[
-            'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-400',
+            'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-300 resize-y min-h-[2.25rem] whitespace-pre-wrap break-words',
             'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
             readOnly ? 'opacity-70 cursor-default' : '',
           ].join(' ')}
           value={feature.verify}
           onChange={(e) => !readOnly && onEdit('verify', e.target.value)}
           readOnly={readOnly}
+          rows={2}
           placeholder="A runnable check — API assertion, UI state, or test command"
         />
       </div>
@@ -991,7 +991,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 score={overallScore}
                 tooltip="Actionability score — how confidently an AI could build this narrative as written (out of 5)"
               />
-              <p className="text-[10px] text-stone-600 mt-0.5 text-center">Actionability</p>
+              <p className="text-[10px] text-stone-600 mt-0.5 text-center">Actionability · AI eval</p>
             </div>
           )}
         </div>
@@ -1159,9 +1159,13 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Scene cards — driven by op-buffer projection */}
       {(effectiveScenes.length > 0 || !readOnly) && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
-            {readOnly ? 'Narration (submitted)' : 'Narration — edit inline'}
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-1">
+            {readOnly ? 'Scenes (submitted)' : 'Scenes — the story, beat by beat'}
           </h2>
+          <p className="text-xs text-stone-600 mb-3">
+            <span className="text-emerald-300">Built</span> = backed by shipped code ·{' '}
+            <span className="text-amber-300">Frontier</span> = intended, not built yet. Each scene = one beat of the demo.
+          </p>
           <div className="space-y-4">
             {effectiveScenes.map((scene) => (
               <SceneCard
