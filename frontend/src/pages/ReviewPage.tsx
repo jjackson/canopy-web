@@ -369,7 +369,7 @@ function StatusBadge({ status }: { status?: string }) {
   const frontier = status !== 'grounded'
   return (
     <span
-      title={frontier ? 'Frontier — not yet built; this scene shows intended behavior' : 'Built — backed by shipped code/evidence'}
+      title={frontier ? 'Frontier — not yet built; this scene shows intended behavior' : 'Grounded — backed by shipped code/evidence (not re-verified live)'}
       className={[
         'shrink-0 rounded px-2 py-0.5 text-[11px] font-medium select-none',
         frontier
@@ -377,7 +377,7 @@ function StatusBadge({ status }: { status?: string }) {
           : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
       ].join(' ')}
     >
-      {frontier ? 'Frontier' : 'Built'}
+      {frontier ? 'Frontier' : 'Grounded'}
     </span>
   )
 }
@@ -405,6 +405,9 @@ function SceneCard({
   const missedIds = new Set(sceneActionability?.missed ?? [])
   const activeFeatures = scene.features.filter((f) => !f.deleted)
   const hasGrounding = grounding != null || (gaps != null && gaps.length > 0)
+  // Collapsed by default: header + narration stay visible (the skimmable arc);
+  // features + grounding hide behind a toggle so the page isn't a wall.
+  const [open, setOpen] = useState(false)
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
@@ -457,6 +460,20 @@ function SceneCard({
         />
       </div>
 
+      {/* Details toggle — collapsed by default so the arc (titles + narration) stays skimmable */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-stone-500 hover:text-stone-300 transition-colors flex items-center gap-1.5"
+      >
+        <span className="text-stone-600">{open ? '▾' : '▸'}</span>
+        {open
+          ? 'Hide details'
+          : `Show ${activeFeatures.length} feature${activeFeatures.length === 1 ? '' : 's'}${hasGrounding ? ' + why' : ''}`}
+      </button>
+
+      {open && (
+        <>
       {/* Features list */}
       {(activeFeatures.length > 0 || !readOnly) && (
         <div className="space-y-2">
@@ -543,6 +560,8 @@ function SceneCard({
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
 
       {/* Per-scene feedback */}
@@ -982,8 +1001,14 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-start gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-semibold text-stone-100">Review gate: {req.gate}</h1>
-            <p className="text-sm text-stone-500 mt-0.5">Run {req.run_id}</p>
+            <h1 className="text-xl font-semibold text-stone-100">
+              {req.gate === 'concept_change'
+                ? 'Approve the story before we build it'
+                : req.gate === 'external_release'
+                  ? 'Approve for release'
+                  : `Review: ${req.gate}`}
+            </h1>
+            <p className="text-sm text-stone-500 mt-0.5">{req.run_id}</p>
           </div>
           {overallScore != null && (
             <div className="mt-0.5">
@@ -1163,7 +1188,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             {readOnly ? 'Scenes (submitted)' : 'Scenes — the story, beat by beat'}
           </h2>
           <p className="text-xs text-stone-600 mb-3">
-            <span className="text-emerald-300">Built</span> = backed by shipped code ·{' '}
+            <span className="text-emerald-300">Grounded</span> = backed by shipped code ·{' '}
             <span className="text-amber-300">Frontier</span> = intended, not built yet. Each scene = one beat of the demo.
           </p>
           <div className="space-y-4">
