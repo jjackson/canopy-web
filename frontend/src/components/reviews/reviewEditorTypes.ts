@@ -24,6 +24,11 @@ export type PendingReviewOp =
   | { op: 'delete-scene'; sceneId: string }
   | { op: 'set-scene-feedback'; sceneId: string; text: string }
   | { op: 'set-overall-feedback'; text: string }
+  /**
+   * Replaces the entire build order with the given sequence of scene ids.
+   * last-write-wins: the reducer coalesces all set-build-order ops into one.
+   */
+  | { op: 'set-build-order'; orderedSceneIds: string[] }
 
 /** Coalescing key: same key → last op wins (in-place replacement in buffer). */
 export function opCoalesceKey(op: PendingReviewOp): string {
@@ -47,6 +52,9 @@ export function opCoalesceKey(op: PendingReviewOp): string {
       return `set-scene-feedback:${op.sceneId}`
     case 'set-overall-feedback':
       return 'set-overall-feedback'
+    case 'set-build-order':
+      // All set-build-order ops coalesce into one slot — last write wins.
+      return 'set-build-order'
   }
 }
 
@@ -57,6 +65,12 @@ export function opCoalesceKey(op: PendingReviewOp): string {
 export interface ReviewEditorState {
   /** The original review request narration (never mutated). */
   original: ReviewNarrationItem[]
+  /**
+   * The initial build order from request_json.build_order, if provided.
+   * When absent, the reducer falls back to the narration order.
+   * Never mutated — the op-buffer projection produces the effective order.
+   */
+  initialBuildOrder: string[] | null
   /** Buffer of pending ops — applied in order by applyReviewOps(). */
   buffer: PendingReviewOp[]
   saveState:

@@ -67,6 +67,12 @@ export interface ReviewRequestJson {
   narration: ReviewNarrationItem[]
   autonomous_audit: string[]
   actionability?: ReviewActionability | null
+  /**
+   * Optional pre-set build order — a sequence of scene ids indicating the
+   * tackle order the reviewer should start from. When absent, the editor
+   * defaults to the narration order.
+   */
+  build_order?: string[] | null
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +101,12 @@ export interface ReviewSubmitPayload {
   narration_edits?: Record<string, string>
   edited_scenes?: ReviewSubmittedScene[]
   overall_feedback?: string
+  /**
+   * The reviewer's chosen build sequence — an ordered list of scene ids
+   * indicating the order they intend to tackle the scenes when building.
+   * Independent of the video/narration order.
+   */
+  build_order?: string[]
 }
 
 export interface ReviewDetail {

@@ -437,6 +437,132 @@ function SceneCard({
 }
 
 // ---------------------------------------------------------------------------
+// Build Sequence Section — reorder the tackle sequence independent of video order
+// ---------------------------------------------------------------------------
+
+interface BuildSequenceSectionProps {
+  effectiveScenes: Array<{ id: string; title: string; deleted: boolean }>
+  /** Effective build order — ordered list of scene ids from the op-buffer projection. */
+  buildOrder: string[]
+  readOnly: boolean
+  onReorder: (orderedIds: string[]) => void
+  /** Submitted build order (readOnly mode). */
+  resolvedBuildOrder: string[] | null
+}
+
+function BuildSequenceSection({
+  effectiveScenes,
+  buildOrder,
+  readOnly,
+  onReorder,
+  resolvedBuildOrder,
+}: BuildSequenceSectionProps) {
+  // Build a lookup from scene id → title (only active scenes)
+  const sceneById = new Map(
+    effectiveScenes
+      .filter((s) => !s.deleted)
+      .map((s) => [s.id, s.title]),
+  )
+
+  // The order to display — in readOnly mode prefer the submitted order.
+  const displayOrder = readOnly && resolvedBuildOrder ? resolvedBuildOrder : buildOrder
+
+  // Filter to only scenes that still exist (guard against stale ids in stored data).
+  const orderedScenes = displayOrder
+    .filter((id) => sceneById.has(id))
+    .map((id) => ({ id, title: sceneById.get(id) ?? id }))
+
+  function move(index: number, direction: 'up' | 'down') {
+    const next = orderedScenes.map((s) => s.id)
+    const target = direction === 'up' ? index - 1 : index + 1
+    if (target < 0 || target >= next.length) return
+    // Swap
+    ;[next[index], next[target]] = [next[target], next[index]]
+    onReorder(next)
+  }
+
+  if (orderedScenes.length === 0) return null
+
+  return (
+    <section>
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider">
+          Build sequence
+        </h2>
+        {!readOnly && (
+          <p className="text-xs text-stone-500 mt-0.5">
+            Order you'll tackle these when building — independent of the video order. Drag or use
+            the arrows to rearrange.
+          </p>
+        )}
+      </div>
+
+      <ol className="space-y-2">
+        {orderedScenes.map((scene, idx) => {
+          // Also look up this scene's video (narrative) position for context.
+          const narrativePos = effectiveScenes.filter((s) => !s.deleted).findIndex((s) => s.id === scene.id)
+          return (
+            <li
+              key={scene.id}
+              className="flex items-center gap-3 rounded-lg border border-stone-700 bg-stone-900 px-3 py-2"
+            >
+              {/* Build # badge */}
+              <span className="shrink-0 w-6 h-6 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30 flex items-center justify-center text-xs font-semibold select-none">
+                {idx + 1}
+              </span>
+
+              {/* Title + narrative position hint */}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-stone-200 truncate">{scene.title}</p>
+                {narrativePos !== idx && (
+                  <p className="text-[10px] text-stone-600">
+                    video position: {narrativePos + 1}
+                  </p>
+                )}
+              </div>
+
+              {/* Up / Down controls — edit mode only */}
+              {!readOnly && (
+                <div className="shrink-0 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => move(idx, 'up')}
+                    disabled={idx === 0}
+                    title="Move earlier in build sequence"
+                    className={[
+                      'rounded border px-1.5 py-0.5 text-xs transition-colors',
+                      idx === 0
+                        ? 'border-stone-800 text-stone-700 cursor-default'
+                        : 'border-stone-700 text-stone-400 hover:border-stone-500 hover:text-stone-200',
+                    ].join(' ')}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => move(idx, 'down')}
+                    disabled={idx === orderedScenes.length - 1}
+                    title="Move later in build sequence"
+                    className={[
+                      'rounded border px-1.5 py-0.5 text-xs transition-colors',
+                      idx === orderedScenes.length - 1
+                        ? 'border-stone-800 text-stone-700 cursor-default'
+                        : 'border-stone-700 text-stone-400 hover:border-stone-500 hover:text-stone-200',
+                    ].join(' ')}
+                  >
+                    ↓
+                  </button>
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ol>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Inner editor — has access to the ReviewEditor context
 // Owns all user interaction + submit logic.
 // ---------------------------------------------------------------------------
@@ -449,7 +575,7 @@ interface ReviewEditorInnerProps {
 }
 
 function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerProps) {
-  const { effectiveScenes, overallFeedback, isDirty, dispatch } = useReviewEditor()
+  const { effectiveScenes, overallFeedback, buildOrder, isDirty, dispatch } = useReviewEditor()
 
   const shareToken = useRef(new URLSearchParams(window.location.search).get('t')).current
 
@@ -509,6 +635,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         decisions: choices,
         edited_scenes: editedScenes,
         overall_feedback: overallFeedback,
+        build_order: buildOrder,
       }
 
       const updated = await submitReview(review.id, payload, shareToken)
@@ -518,7 +645,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
     } finally {
       setBusy(false)
     }
-  }, [effectiveScenes, overallFeedback, choices, review.id, shareToken, onResolved])
+  }, [effectiveScenes, overallFeedback, buildOrder, choices, review.id, shareToken, onResolved])
 
   const canSubmit = !busy && decisions.every((d) => !!choices[d.id])
 
@@ -704,6 +831,23 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         </section>
       )}
 
+      {/* Build sequence — independent of the video order */}
+      {effectiveScenes.filter((s) => !s.deleted).length > 0 && (
+        <BuildSequenceSection
+          effectiveScenes={effectiveScenes}
+          buildOrder={buildOrder}
+          readOnly={readOnly}
+          onReorder={(orderedIds) =>
+            dispatch({ type: 'APPEND_OP', op: { op: 'set-build-order', orderedSceneIds: orderedIds } })
+          }
+          resolvedBuildOrder={
+            readOnly && review.response_json?.build_order
+              ? review.response_json.build_order
+              : null
+          }
+        />
+      )}
+
       {/* Overall feedback */}
       {!readOnly && (
         <section>
@@ -848,7 +992,10 @@ export function ReviewPage() {
   const isResolved = review.status === 'resolved'
 
   return (
-    <ReviewEditorProvider original={review.request_json.narration ?? []}>
+    <ReviewEditorProvider
+      original={review.request_json.narration ?? []}
+      initialBuildOrder={review.request_json.build_order ?? null}
+    >
       <ReviewEditorInner
         review={review}
         readOnly={isResolved}

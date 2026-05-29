@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { applyReviewOps } from './reviewApplyOps'
+import { applyReviewOps, projectBuildOrder } from './reviewApplyOps'
 import type { ReviewNarrationItem } from '../../api/reviews'
 import type { PendingReviewOp } from './reviewEditorTypes'
 
@@ -140,6 +140,17 @@ describe('applyReviewOps', () => {
     expect(scenes[0].deleted).toBe(true)
   })
 
+  it('set-build-order is a noop in applyReviewOps (handled by projectBuildOrder)', () => {
+    const ops: PendingReviewOp[] = [
+      { op: 'set-build-order', orderedSceneIds: ['scene-2', 'scene-1'] },
+    ]
+    const scenes = applyReviewOps(ORIGINAL, ops)
+    // Scenes unchanged — build order is projected separately.
+    expect(scenes).toHaveLength(2)
+    expect(scenes[0].id).toBe('scene-1')
+    expect(scenes[1].id).toBe('scene-2')
+  })
+
   it('does not mutate the original items', () => {
     const orig = JSON.parse(JSON.stringify(ORIGINAL)) as ReviewNarrationItem[]
     const ops: PendingReviewOp[] = [
@@ -150,5 +161,81 @@ describe('applyReviewOps', () => {
     // original should be unchanged
     expect(orig[0].text).toBe('Original narration one')
     expect(orig).toHaveLength(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// projectBuildOrder tests
+// ---------------------------------------------------------------------------
+
+describe('projectBuildOrder', () => {
+  // Helper: build effective scenes from original + ops.
+  function effectiveFor(ops: PendingReviewOp[]) {
+    return applyReviewOps(ORIGINAL, ops)
+  }
+
+  it('defaults to narration order when no op and no initialBuildOrder', () => {
+    const effective = effectiveFor([])
+    const order = projectBuildOrder(ORIGINAL, [], null, effective)
+    expect(order).toEqual(['scene-1', 'scene-2'])
+  })
+
+  it('uses initialBuildOrder when no set-build-order op', () => {
+    const effective = effectiveFor([])
+    const order = projectBuildOrder(ORIGINAL, [], ['scene-2', 'scene-1'], effective)
+    expect(order).toEqual(['scene-2', 'scene-1'])
+  })
+
+  it('set-build-order op overrides initialBuildOrder', () => {
+    const ops: PendingReviewOp[] = [
+      { op: 'set-build-order', orderedSceneIds: ['scene-2', 'scene-1'] },
+    ]
+    const effective = effectiveFor(ops)
+    // initialBuildOrder would be ['scene-1', 'scene-2'] but the op wins.
+    const order = projectBuildOrder(ORIGINAL, ops, ['scene-1', 'scene-2'], effective)
+    expect(order).toEqual(['scene-2', 'scene-1'])
+  })
+
+  it('last set-build-order op wins (coalescing: only one in buffer)', () => {
+    // The reducer coalesces to one, but simulate the last-one-wins logic.
+    const ops: PendingReviewOp[] = [
+      { op: 'set-build-order', orderedSceneIds: ['scene-2', 'scene-1'] },
+    ]
+    const effective = effectiveFor(ops)
+    const order = projectBuildOrder(ORIGINAL, ops, null, effective)
+    expect(order).toEqual(['scene-2', 'scene-1'])
+  })
+
+  it('newly added scene is appended to the end of the build order', () => {
+    const ops: PendingReviewOp[] = [
+      { op: 'set-build-order', orderedSceneIds: ['scene-2', 'scene-1'] },
+      { op: 'add-scene', sceneId: 'new-1', title: 'Brand New' },
+    ]
+    const effective = effectiveFor(ops)
+    const order = projectBuildOrder(ORIGINAL, ops, null, effective)
+    // new-1 is not in the set-build-order list, so it appends.
+    expect(order).toEqual(['scene-2', 'scene-1', 'new-1'])
+  })
+
+  it('deleted scene is dropped from the build order', () => {
+    const ops: PendingReviewOp[] = [
+      { op: 'set-build-order', orderedSceneIds: ['scene-2', 'scene-1'] },
+      { op: 'delete-scene', sceneId: 'scene-1' },
+    ]
+    const effective = effectiveFor(ops)
+    const order = projectBuildOrder(ORIGINAL, ops, null, effective)
+    expect(order).toEqual(['scene-2'])
+  })
+
+  it('defaulting to narration order: added scene appends, deleted drops', () => {
+    const ops: PendingReviewOp[] = [
+      { op: 'add-scene', sceneId: 'new-42', title: 'Extra Scene' },
+      { op: 'delete-scene', sceneId: 'scene-2' },
+    ]
+    const effective = effectiveFor(ops)
+    // No set-build-order op, no initialBuildOrder → falls back to narration order
+    // then reconciles: scene-2 deleted → drop it; new-42 added → append.
+    const order = projectBuildOrder(ORIGINAL, ops, null, effective)
+    expect(order).toEqual(['scene-1', 'new-42'])
   })
 })

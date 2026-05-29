@@ -27,8 +27,9 @@ export type ReviewEditorAction =
 
 export function initialReviewEditorState(
   original: ReviewNarrationItem[],
+  initialBuildOrder: string[] | null = null,
 ): ReviewEditorState {
-  return { original, buffer: [], saveState: { status: 'idle' } }
+  return { original, initialBuildOrder, buffer: [], saveState: { status: 'idle' } }
 }
 
 // ---------------------------------------------------------------------------
