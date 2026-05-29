@@ -460,7 +460,17 @@ function SceneCard({
         />
       </div>
 
-      {/* Details toggle — collapsed by default so the arc (titles + narration) stays skimmable */}
+      {/* Collapsed-by-default details. A one-line buildability summary stays visible
+          so a reviewer can judge what they're approving without expanding all scenes. */}
+      {!open && activeFeatures.length > 0 && (
+        <p className="text-xs text-stone-500">
+          <span className="text-stone-600">Builds: </span>
+          {activeFeatures[0].description.length > 90
+            ? activeFeatures[0].description.slice(0, 90) + '…'
+            : activeFeatures[0].description}
+          {activeFeatures.length > 1 ? ` +${activeFeatures.length - 1} more` : ''}
+        </p>
+      )}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -469,7 +479,7 @@ function SceneCard({
         <span className="text-stone-600">{open ? '▾' : '▸'}</span>
         {open
           ? 'Hide details'
-          : `Show ${activeFeatures.length} feature${activeFeatures.length === 1 ? '' : 's'}${hasGrounding ? ' + why' : ''}`}
+          : `Show ${activeFeatures.length} feature${activeFeatures.length === 1 ? '' : 's'} + verify${hasGrounding ? ' + why' : ''}`}
       </button>
 
       {open && (
@@ -1190,6 +1200,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           <p className="text-xs text-stone-600 mb-3">
             <span className="text-emerald-300">Grounded</span> = backed by shipped code ·{' '}
             <span className="text-amber-300">Frontier</span> = intended, not built yet. Each scene = one beat of the demo.
+            Per-scene numbers are AI actionability estimates (1–5; passes at ≥4).
           </p>
           <div className="space-y-4">
             {effectiveScenes.map((scene) => (
@@ -1402,7 +1413,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           )}
         </div>
       ) : (
-        <div className="flex justify-end">
+        <div className="flex flex-col items-end gap-1">
           <button
             type="button"
             onClick={() => void handleSubmit()}
@@ -1414,8 +1425,15 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 : 'bg-orange-500 hover:bg-orange-400 text-white',
             ].join(' ')}
           >
-            {busy ? 'Submitting…' : 'Submit review'}
+            {busy
+              ? 'Submitting…'
+              : resolvedChoice('narrative-verdict') === 'redraft'
+                ? 'Submit — send back to re-draft'
+                : 'Submit — approve & build'}
           </button>
+          <span className="text-[11px] text-stone-600">
+            Commits your decision above (with any edits you made).
+          </span>
         </div>
       )}
         </>
