@@ -730,7 +730,8 @@ function PersonasSection({
                   className="inline-block h-3 w-3 rounded-full shrink-0"
                   style={{ backgroundColor: p.color || '#78716c' }}
                 />
-                <span className="text-xs text-stone-600">persona: {key}</span>
+                <span className="text-sm font-medium text-stone-100">{p.name || key}</span>
+                {p.org && <span className="text-xs text-stone-500">· {p.org}</span>}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -1059,6 +1060,12 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Narrative tab — the story, personas, why-brief, scenes, decision */}
       {tab === 'narrative' && (
         <>
+      {!readOnly && (
+        <p className="text-xs text-stone-400 rounded border border-stone-700 bg-stone-900/60 px-3 py-2">
+          Every field on this page is editable — click any text to change it, drag the build
+          sequence to reorder, then approve or send back at the bottom.
+        </p>
+      )}
       {/* The demo — the cohesive story + the one problem it all serves */}
       {(req.narrative?.trim() || effectiveWhyBrief.problem || Object.keys(personas).length > 0) && (
         <section className="rounded-lg border border-stone-700 bg-stone-900/60 p-5 space-y-3">
@@ -1066,9 +1073,18 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             The demo
           </h2>
           {req.narrative?.trim() && (
-            <p className="text-[15px] leading-relaxed text-stone-200 whitespace-pre-line">
-              {req.narrative}
-            </p>
+            <div className="space-y-1.5">
+              {req.narrative
+                .trim()
+                .split(/(?<=\.)\s+/)
+                .filter((s) => s.trim())
+                .map((sentence, i) => (
+                  <p key={i} className="text-[15px] leading-relaxed text-stone-200 flex gap-2">
+                    <span className="text-stone-600 tabular-nums shrink-0 select-none">{i + 1}.</span>
+                    <span>{sentence.trim()}</span>
+                  </p>
+                ))}
+            </div>
           )}
           {(effectiveWhyBrief.problem || !readOnly) && (
             <div className="pt-1">
