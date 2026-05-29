@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   getReview,
@@ -17,6 +17,47 @@ import {
   ReviewEditorProvider,
   useReviewEditor,
 } from '../components/reviews/ReviewEditorContext'
+
+// ---------------------------------------------------------------------------
+// AutoTextarea — a textarea that grows to fit its content (never internally
+// scrolls). Re-fits on value changes and window resize; honors any min-height
+// supplied via className.
+// ---------------------------------------------------------------------------
+
+const AutoTextarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function AutoTextarea(props, fwdRef) {
+    const innerRef = useRef<HTMLTextAreaElement | null>(null)
+    const setRef = (el: HTMLTextAreaElement | null) => {
+      innerRef.current = el
+      if (typeof fwdRef === 'function') fwdRef(el)
+      else if (fwdRef) (fwdRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el
+    }
+    const resize = useCallback(() => {
+      const el = innerRef.current
+      if (!el) return
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight}px`
+    }, [])
+    useLayoutEffect(() => {
+      resize()
+    }, [resize, props.value])
+    useEffect(() => {
+      window.addEventListener('resize', resize)
+      return () => window.removeEventListener('resize', resize)
+    }, [resize])
+    const userOnInput = props.onInput
+    return (
+      <textarea
+        {...props}
+        ref={setRef}
+        onInput={(e) => {
+          resize()
+          userOnInput?.(e)
+        }}
+      />
+    )
+  },
+)
 
 // ---------------------------------------------------------------------------
 // Small utility components
@@ -271,9 +312,9 @@ function FeatureRow({
       {/* description */}
       <div>
         <FieldLabel>What to build</FieldLabel>
-        <textarea
+        <AutoTextarea
           className={[
-            'w-full rounded border bg-stone-900 px-2 py-1.5 text-sm text-stone-200 resize-y min-h-[2.5rem]',
+            'w-full rounded border bg-stone-900 px-2 py-1.5 text-sm text-stone-200 resize-none min-h-[2.5rem]',
             'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
             readOnly ? 'opacity-70 cursor-default' : '',
           ].join(' ')}
@@ -288,9 +329,9 @@ function FeatureRow({
       {/* verify */}
       <div>
         <FieldLabel>Verify — how we'll confirm it's built</FieldLabel>
-        <textarea
+        <AutoTextarea
           className={[
-            'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-300 resize-y min-h-[2.25rem] whitespace-pre-wrap break-words',
+            'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-300 resize-none min-h-[2.25rem] whitespace-pre-wrap break-words',
             'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
             readOnly ? 'opacity-70 cursor-default' : '',
           ].join(' ')}
@@ -371,7 +412,7 @@ function StatusBadge({ status }: { status?: string }) {
   const frontier = status !== 'grounded'
   return (
     <span
-      title={frontier ? 'Frontier — not yet built; this scene shows intended behavior' : 'Grounded — backed by shipped code/evidence (not re-verified live)'}
+      title={frontier ? 'New feature — not yet built; this scene shows intended behavior' : 'Grounded — backed by shipped code/evidence (not re-verified live)'}
       className={[
         'shrink-0 rounded px-2 py-0.5 text-[11px] font-medium select-none',
         frontier
@@ -379,7 +420,7 @@ function StatusBadge({ status }: { status?: string }) {
           : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
       ].join(' ')}
     >
-      {frontier ? 'Frontier' : 'Grounded'}
+      {frontier ? 'New feature' : 'Grounded'}
     </span>
   )
 }
@@ -463,9 +504,9 @@ function SceneCard({
       {/* Editable narration */}
       <div>
         <FieldLabel>What plays in the demo</FieldLabel>
-        <textarea
+        <AutoTextarea
           className={[
-            'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[4rem]',
+            'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-none min-h-[4rem]',
             'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
             readOnly ? 'opacity-70 cursor-default' : '',
           ].join(' ')}
@@ -545,8 +586,8 @@ function SceneCard({
           {grounding != null && (
             <div>
               <FieldLabel>Why it matters (rationale)</FieldLabel>
-              <textarea
-                className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+              <AutoTextarea
+                className={inputCls(readOnly) + ' resize-none min-h-[3rem]'}
                 value={grounding.rationale ?? ''}
                 readOnly={readOnly || !onEditRationale}
                 rows={2}
@@ -577,8 +618,8 @@ function SceneCard({
                 )}
                 <span className="text-stone-500">what's missing for this scene</span>
               </div>
-              <textarea
-                className={inputCls(readOnly) + ' resize-y min-h-[2.5rem]'}
+              <AutoTextarea
+                className={inputCls(readOnly) + ' resize-none min-h-[2.5rem]'}
                 value={gap.detail}
                 readOnly={readOnly || !onEditGap}
                 rows={2}
@@ -587,8 +628,8 @@ function SceneCard({
               />
               <div>
                 <FieldLabel>Proposed action</FieldLabel>
-                <textarea
-                  className={inputCls(readOnly) + ' resize-y min-h-[2.5rem]'}
+                <AutoTextarea
+                  className={inputCls(readOnly) + ' resize-none min-h-[2.5rem]'}
                   value={gap.proposed_action}
                   readOnly={readOnly || !onEditGap}
                   rows={2}
@@ -823,8 +864,8 @@ function PersonasSection({
               </div>
               <div>
                 <FieldLabel>Intro</FieldLabel>
-                <textarea
-                  className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+                <AutoTextarea
+                  className={inputCls(readOnly) + ' resize-none min-h-[3rem]'}
                   value={p.intro}
                   readOnly={readOnly}
                   rows={2}
@@ -925,7 +966,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
     (g) => !g.claim_ref || !usedProvenance.has(g.claim_ref),
   )
 
-  // Honesty flag before approval: how many scenes are Frontier (not built) or below the ≥4 bar.
+  // Honesty flag before approval: how many scenes are New features (not built) or below the ≥4 bar.
   const liveScenes = effectiveScenes.filter((s) => !s.deleted)
   const frontierCount = liveScenes.filter(
     (s) => s.provenance && (spineById.get(s.provenance)?.status ?? 'grounded') !== 'grounded',
@@ -1154,8 +1195,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           {(effectiveWhyBrief.problem || !readOnly) && (
             <div className="pt-1">
               <FieldLabel>The problem we're solving</FieldLabel>
-              <textarea
-                className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+              <AutoTextarea
+                className={inputCls(readOnly) + ' resize-none min-h-[3rem]'}
                 value={effectiveWhyBrief.problem ?? ''}
                 readOnly={readOnly}
                 rows={3}
@@ -1216,7 +1257,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           </h2>
           <p className="text-xs text-stone-600 mb-3">
             <span className="text-emerald-300">Grounded</span> = backed by shipped code ·{' '}
-            <span className="text-amber-300">Frontier</span> = intended, not built yet. Each scene = one beat of the demo.
+            <span className="text-amber-300">New feature</span> = intended, not built yet. Each scene = one beat of the demo.
             Per-scene numbers are AI actionability estimates (1–5; passes at ≥4).
           </p>
           <div className="space-y-4">
@@ -1361,8 +1402,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
             Overall feedback
           </h2>
-          <textarea
-            className="w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[3rem] border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
+          <AutoTextarea
+            className="w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-none min-h-[3rem] border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
             value={overallFeedback}
             onChange={(e) =>
               dispatch({ type: 'APPEND_OP', op: { op: 'set-overall-feedback', text: e.target.value } })
@@ -1455,7 +1496,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         <div className="flex flex-col items-end gap-1">
           {(frontierCount > 0 || belowBarCount > 0) && resolvedChoice('narrative-verdict') !== 'redraft' && (
             <p className="text-[11px] text-amber-300/90 max-w-md text-right mb-1">
-              ⚠ {frontierCount > 0 && `${frontierCount} scene${frontierCount === 1 ? ' is' : 's are'} Frontier (not built yet)`}
+              ⚠ {frontierCount > 0 && `${frontierCount} scene${frontierCount === 1 ? ' shows a new feature' : 's show new features'} (not built yet)`}
               {frontierCount > 0 && belowBarCount > 0 && '; '}
               {belowBarCount > 0 && `${belowBarCount} below the ≥4 actionability bar`}
               . Approving commits to building these as intended — they are not yet verified.
