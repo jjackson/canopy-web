@@ -3,7 +3,7 @@ import type { components } from "./generated";
 
 export type Insight = components["schemas"]["InsightOut"];
 
-export type InsightCategory = 'ship_gap' | 'hygiene' | 'pattern' | 'stale' | 'opportunity'
+export type InsightCategory = 'ship_gap' | 'hygiene' | 'pattern' | 'stale' | 'opportunity' | 'alignment'
 
 export function parseInsightCategory(content: string): InsightCategory | null {
   const match = content.match(/^\[(\w+)\]/)
@@ -30,6 +30,7 @@ export interface InsightListParams {
 const CATEGORY_RANK: Record<string, number> = {
   ship_gap: 4,
   opportunity: 3,
+  alignment: 3,
   pattern: 2,
   hygiene: 2,
   stale: 1,

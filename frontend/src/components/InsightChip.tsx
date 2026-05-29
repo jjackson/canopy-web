@@ -6,6 +6,7 @@ export const CATEGORY_STYLES: Record<string, { bg: string; border: string; text:
   pattern: { bg: 'bg-violet-400/5', border: 'border-violet-400/20', text: 'text-violet-400', label: 'Pattern' },
   stale: { bg: 'bg-stone-400/5', border: 'border-stone-400/20', text: 'text-stone-500', label: 'Stale' },
   opportunity: { bg: 'bg-emerald-400/5', border: 'border-emerald-400/20', text: 'text-emerald-400', label: 'Opportunity' },
+  alignment: { bg: 'bg-sky-400/5', border: 'border-sky-400/20', text: 'text-sky-400', label: 'Alignment' },
 }
 
 export function CategoryBadge({ category }: { category: InsightCategory | null }) {
