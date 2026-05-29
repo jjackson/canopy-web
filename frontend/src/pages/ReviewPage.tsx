@@ -412,6 +412,11 @@ function SceneCard({
   // features + grounding hide behind a toggle so the page isn't a wall.
   // defaultOpen (?expand=1) starts expanded so the full substance is captured for judging/print.
   const [open, setOpen] = useState(defaultOpen ?? false)
+  // Top-level trust signal: did this scene's verify actually run green? (kept visible
+  // in the collapsed view so the proof isn't buried behind the details toggle.)
+  const verifiedGreen = (grounding?.evidence ?? []).some((e) =>
+    /verify ran green/i.test(e.ref),
+  )
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
@@ -426,6 +431,14 @@ function SceneCard({
           {persona && <PersonaChip persona={persona} />}
           <span className="text-sm font-medium text-stone-100">{scene.title}</span>
           {grounding?.status && <StatusBadge status={grounding.status} />}
+          {verifiedGreen && (
+            <span
+              title="This scene's verify actually ran and passed"
+              className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 select-none"
+            >
+              ✓ verify passed
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {sceneActionability != null && (
@@ -469,9 +482,7 @@ function SceneCard({
       {!open && activeFeatures.length > 0 && (
         <p className="text-xs text-stone-500">
           <span className="text-stone-600">Builds: </span>
-          {activeFeatures[0].description.length > 90
-            ? activeFeatures[0].description.slice(0, 90).replace(/\s+\S*$/, '') + '…'
-            : activeFeatures[0].description}
+          {activeFeatures[0].description}
           {activeFeatures.length > 1 ? ` +${activeFeatures.length - 1} more` : ''}
         </p>
       )}
@@ -1236,7 +1247,13 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 key={scene.id}
                 scene={scene}
                 sceneNumber={sceneNumberById.get(scene.id)}
-                defaultOpen={expandAll}
+                defaultOpen={
+                  expandAll ||
+                  (scene.provenance
+                    ? (spineById.get(scene.provenance)?.status ?? 'grounded') !== 'grounded'
+                    : false) ||
+                  (perScene[scene.id]?.score ?? 5) < 4
+                }
                 persona={scene.persona ? personas[scene.persona] : undefined}
                 grounding={scene.provenance ? spineById.get(scene.provenance) : undefined}
                 gaps={scene.provenance ? gapsByRef.get(scene.provenance) : undefined}
