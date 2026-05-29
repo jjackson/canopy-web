@@ -1,22 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   getReview,
   submitReview,
   type ReviewDetail,
   type ReviewDecision,
-  type ReviewNarrationItem,
-  type ReviewFeature,
   type ReviewSceneActionability,
   type ReviewSubmitPayload,
+  type ReviewSubmittedScene,
 } from '../api/reviews'
 import { walkthroughContentUrl } from '../api/walkthroughs'
+import {
+  ReviewEditorProvider,
+  useReviewEditor,
+} from '../components/reviews/ReviewEditorContext'
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// Small utility components
 // ---------------------------------------------------------------------------
 
-/** Small badge for numeric scores (e.g. "4.2 / 5") */
 function ScoreBadge({
   score,
   total = 5,
@@ -38,115 +40,19 @@ function ScoreBadge({
   )
 }
 
-/** List of features for one narration chunk */
-function FeatureList({
-  features,
-  sceneActionability,
-}: {
-  features: ReviewFeature[]
-  sceneActionability?: ReviewSceneActionability
-}) {
-  if (features.length === 0) return null
-
-  const missedIds = new Set(sceneActionability?.missed ?? [])
-
+function DirtyBadge({ isDirty }: { isDirty: boolean }) {
+  if (!isDirty) return null
   return (
-    <div className="mt-3 space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-        Features this scene commits to
-      </p>
-      <ul className="space-y-2">
-        {features.map((f) => {
-          const isMissed = missedIds.has(f.id)
-          return (
-            <li
-              key={f.id}
-              className={[
-                'rounded border px-3 py-2 text-sm',
-                isMissed
-                  ? 'border-amber-500/30 bg-amber-500/5'
-                  : 'border-stone-800 bg-stone-900/60',
-              ].join(' ')}
-            >
-              <p className="text-stone-200 leading-snug">{f.description}</p>
-              {f.verify && (
-                <p className="mt-1 font-mono text-[11px] text-stone-500 leading-snug">
-                  verify: {f.verify}
-                </p>
-              )}
-              {isMissed && (
-                <p className="mt-1.5 text-[11px] text-amber-400/80">
-                  ⚠ eval flagged as under-specified
-                </p>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-    </div>
+    <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+      Edited
+    </span>
   )
 }
 
-/** One narration chunk: editable textarea + features list + optional scene score */
-interface NarrationCardProps {
-  item: ReviewNarrationItem
-  value: string
-  onChange: (value: string) => void
-  readOnly: boolean
-  sceneActionability?: ReviewSceneActionability
-}
+// ---------------------------------------------------------------------------
+// Decision tiles
+// ---------------------------------------------------------------------------
 
-function NarrationCard({
-  item,
-  value,
-  onChange,
-  readOnly,
-  sceneActionability,
-}: NarrationCardProps) {
-  const features: ReviewFeature[] = item.features ?? []
-
-  return (
-    <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
-      {/* Scene header row */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">
-          Scene {item.scene}
-        </span>
-        {sceneActionability != null && (
-          <ScoreBadge score={sceneActionability.score} tooltip="Scene actionability score (AI buildability estimate)" />
-        )}
-      </div>
-
-      {/* Editable narration text */}
-      <textarea
-        className={[
-          'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[4rem]',
-          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-          readOnly ? 'opacity-70 cursor-default' : '',
-        ].join(' ')}
-        value={value}
-        onChange={(e) => !readOnly && onChange(e.target.value)}
-        readOnly={readOnly}
-        rows={3}
-      />
-
-      {/* Features */}
-      {features.length > 0 && (
-        <FeatureList
-          features={features}
-          sceneActionability={sceneActionability}
-        />
-      )}
-    </div>
-  )
-}
-
-/**
- * The approve / redraft decision block.
- *
- * Replaces the old generic DecisionGroup for the "narrative-verdict" decision.
- * Two clearly-labeled action buttons, each with a one-line explanation.
- */
 interface NarrativeVerdictProps {
   decision: ReviewDecision
   chosen: string
@@ -228,7 +134,6 @@ function NarrativeVerdictControl({
   )
 }
 
-/** Generic radio-button decision group for non-narrative-verdict decisions */
 interface DecisionGroupProps {
   decision: ReviewDecision
   chosen: string
@@ -289,112 +194,335 @@ function DecisionGroup({ decision, chosen, onChange, readOnly }: DecisionGroupPr
 }
 
 // ---------------------------------------------------------------------------
-// Main page
+// Feature row — editable description + verify + optional feedback
 // ---------------------------------------------------------------------------
 
-export function ReviewPage() {
-  const { id } = useParams<{ id: string }>()
+interface FeatureRowProps {
+  feature: {
+    id: string
+    description: string
+    verify: string
+    feedback: string
+    deleted: boolean
+  }
+  readOnly: boolean
+  isMissed: boolean
+  onEdit: (field: 'description' | 'verify', value: string) => void
+  onFeedback: (text: string) => void
+  onDelete: () => void
+}
 
-  // Read ?t= from query string — same pattern as WalkthroughViewerPage
-  const params = new URLSearchParams(window.location.search)
-  const shareToken = params.get('t') ?? null
+function FeatureRow({
+  feature,
+  readOnly,
+  isMissed,
+  onEdit,
+  onFeedback,
+  onDelete,
+}: FeatureRowProps) {
+  if (feature.deleted) return null
 
-  const [review, setReview] = useState<ReviewDetail | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  return (
+    <li
+      className={[
+        'rounded border px-3 py-2 space-y-2',
+        isMissed
+          ? 'border-amber-500/30 bg-amber-500/5'
+          : 'border-stone-800 bg-stone-900/60',
+      ].join(' ')}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+          Feature
+        </p>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onDelete}
+            title="Delete feature"
+            className="text-stone-600 hover:text-red-400 transition-colors text-xs"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {/* description */}
+      <textarea
+        className={[
+          'w-full rounded border bg-stone-900 px-2 py-1.5 text-sm text-stone-200 resize-y min-h-[2.5rem]',
+          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+          readOnly ? 'opacity-70 cursor-default' : '',
+        ].join(' ')}
+        value={feature.description}
+        onChange={(e) => !readOnly && onEdit('description', e.target.value)}
+        readOnly={readOnly}
+        placeholder="Description"
+        rows={2}
+      />
+
+      {/* verify */}
+      <input
+        type="text"
+        className={[
+          'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-400',
+          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+          readOnly ? 'opacity-70 cursor-default' : '',
+        ].join(' ')}
+        value={feature.verify}
+        onChange={(e) => !readOnly && onEdit('verify', e.target.value)}
+        readOnly={readOnly}
+        placeholder="verify: how to confirm"
+      />
+
+      {isMissed && (
+        <p className="text-[11px] text-amber-400/80">⚠ eval flagged as under-specified</p>
+      )}
+
+      {/* optional feedback */}
+      {!readOnly && (
+        <input
+          type="text"
+          className="w-full rounded border bg-stone-900 px-2 py-1.5 text-[11px] text-stone-400 border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
+          value={feature.feedback}
+          onChange={(e) => onFeedback(e.target.value)}
+          placeholder="Feedback on this feature (optional)"
+        />
+      )}
+      {readOnly && feature.feedback && (
+        <p className="text-[11px] text-stone-500 italic">Feedback: {feature.feedback}</p>
+      )}
+    </li>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Scene card — narration + features + add-feature + delete-scene + per-scene feedback
+// ---------------------------------------------------------------------------
+
+interface SceneCardProps {
+  scene: {
+    id: string
+    title: string
+    narration: string
+    deleted: boolean
+    features: Array<{
+      id: string
+      description: string
+      verify: string
+      feedback: string
+      deleted: boolean
+    }>
+    feedback: string
+  }
+  readOnly: boolean
+  sceneActionability?: ReviewSceneActionability
+  onEditNarration: (text: string) => void
+  onEditFeature: (featureId: string, field: 'description' | 'verify', value: string) => void
+  onFeatureFeedback: (featureId: string, text: string) => void
+  onDeleteFeature: (featureId: string) => void
+  onAddFeature: () => void
+  onDeleteScene: () => void
+  onSceneFeedback: (text: string) => void
+}
+
+function SceneCard({
+  scene,
+  readOnly,
+  sceneActionability,
+  onEditNarration,
+  onEditFeature,
+  onFeatureFeedback,
+  onDeleteFeature,
+  onAddFeature,
+  onDeleteScene,
+  onSceneFeedback,
+}: SceneCardProps) {
+  if (scene.deleted) return null
+
+  const missedIds = new Set(sceneActionability?.missed ?? [])
+  const activeFeatures = scene.features.filter((f) => !f.deleted)
+
+  return (
+    <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
+      {/* Scene header */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">
+          {scene.title}
+        </span>
+        <div className="flex items-center gap-2">
+          {sceneActionability != null && (
+            <ScoreBadge
+              score={sceneActionability.score}
+              tooltip="Scene actionability score (AI buildability estimate)"
+            />
+          )}
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={onDeleteScene}
+              title="Delete scene"
+              className="text-stone-600 hover:text-red-400 transition-colors text-xs px-2 py-0.5 rounded border border-stone-700 hover:border-red-500/40"
+            >
+              Delete scene
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Editable narration */}
+      <textarea
+        className={[
+          'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[4rem]',
+          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+          readOnly ? 'opacity-70 cursor-default' : '',
+        ].join(' ')}
+        value={scene.narration}
+        onChange={(e) => !readOnly && onEditNarration(e.target.value)}
+        readOnly={readOnly}
+        rows={3}
+        placeholder="Scene narration…"
+      />
+
+      {/* Features list */}
+      {(activeFeatures.length > 0 || !readOnly) && (
+        <div className="space-y-2">
+          {activeFeatures.length > 0 && (
+            <>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+                Features this scene commits to
+              </p>
+              <ul className="space-y-2">
+                {scene.features.map((f) => (
+                  <FeatureRow
+                    key={f.id}
+                    feature={f}
+                    readOnly={readOnly}
+                    isMissed={missedIds.has(f.id)}
+                    onEdit={(field, value) => onEditFeature(f.id, field, value)}
+                    onFeedback={(text) => onFeatureFeedback(f.id, text)}
+                    onDelete={() => onDeleteFeature(f.id)}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={onAddFeature}
+              className="mt-1 text-xs text-stone-500 hover:text-stone-300 border border-dashed border-stone-700 hover:border-stone-500 rounded px-3 py-1.5 transition-colors"
+            >
+              + Add feature
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Per-scene feedback */}
+      {!readOnly && (
+        <input
+          type="text"
+          className="w-full rounded border bg-stone-900 px-3 py-1.5 text-xs text-stone-400 border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
+          value={scene.feedback}
+          onChange={(e) => onSceneFeedback(e.target.value)}
+          placeholder="Scene-level feedback (optional)"
+        />
+      )}
+      {readOnly && scene.feedback && (
+        <p className="text-xs text-stone-500 italic">Feedback: {scene.feedback}</p>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Inner editor — has access to the ReviewEditor context
+// Owns all user interaction + submit logic.
+// ---------------------------------------------------------------------------
+
+interface ReviewEditorInnerProps {
+  review: ReviewDetail
+  readOnly: boolean
+  /** Called after a successful submit with the updated review */
+  onResolved: (updated: ReviewDetail) => void
+}
+
+function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerProps) {
+  const { effectiveScenes, overallFeedback, isDirty, dispatch } = useReviewEditor()
+
+  const shareToken = useRef(new URLSearchParams(window.location.search).get('t')).current
+
+  const newFeatureCounterRef = useRef(0)
+  const newSceneCounterRef = useRef(0)
+
+  const [choices, setChoices] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {}
+    for (const dec of review.request_json.decisions ?? []) {
+      initial[dec.id] = dec.recommended ?? dec.options[0] ?? ''
+    }
+    return initial
+  })
   const [busy, setBusy] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-
-  // Local state for decision choices (keyed by decision.id)
-  const [choices, setChoices] = useState<Record<string, string>>({})
-  // Local state for narration edits (keyed by narration item id)
-  const [narrationEdits, setNarrationEdits] = useState<Record<string, string>>({})
-
-  // Collapsed/expanded state for the autonomous audit section
+  const [error, setError] = useState<string | null>(null)
   const [auditOpen, setAuditOpen] = useState(false)
 
-  useEffect(() => {
-    if (!id) return
-    let cancelled = false
-    getReview(id, shareToken)
-      .then((d) => {
-        if (cancelled) return
-        setReview(d)
-        // Initialise local decision choices from recommended values
-        const initialChoices: Record<string, string> = {}
-        for (const dec of d.request_json.decisions ?? []) {
-          initialChoices[dec.id] = dec.recommended ?? dec.options[0] ?? ''
-        }
-        setChoices(initialChoices)
-        // Initialise narration edits from existing text
-        const initialNarration: Record<string, string> = {}
-        for (const n of d.request_json.narration ?? []) {
-          initialNarration[n.id] = n.text
-        }
-        setNarrationEdits(initialNarration)
-        // If already resolved, show the read-only resolved state immediately
-        if (d.status === 'resolved') setSubmitted(true)
-      })
-      .catch((e) => !cancelled && setError(String(e?.message ?? e)))
-    return () => {
-      cancelled = true
-    }
-  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
-  // (shareToken is stable for the page lifetime — intentionally omitted from deps)
-
-  async function handleSubmit() {
-    if (!id || !review) return
-    setBusy(true)
-    setError(null)
-    try {
-      const payload: ReviewSubmitPayload = {
-        decisions: choices,
-        narration_edits: narrationEdits,
-      }
-      const updated = await submitReview(id, payload, shareToken)
-      setReview(updated)
-      setSubmitted(true)
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setError(msg)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  // -------------------------------------------------------------------
-  // Loading / error states
-  // -------------------------------------------------------------------
-
-  if (error && !review) {
-    return (
-      <div className="max-w-4xl mx-auto p-6 text-red-500">
-        <p className="font-semibold">Error loading review</p>
-        <p className="text-sm mt-1 text-red-400">{error}</p>
-      </div>
-    )
-  }
-
-  if (!review) {
-    return <div className="max-w-4xl mx-auto p-6 text-stone-500">Loading…</div>
-  }
-
   const req = review.request_json
-  const isResolved = review.status === 'resolved' || submitted
   const decisions: ReviewDecision[] = req.decisions ?? []
-  const narration: ReviewNarrationItem[] = req.narration ?? []
   const autonomousAudit: string[] = req.autonomous_audit ?? []
   const actionability = req.actionability ?? null
   const overallScore = actionability?.overall_score ?? null
   const perScene = actionability?.per_scene ?? {}
 
-  // Separate narrative-verdict decision from other decisions
   const narrativeVerdictDecision = decisions.find((d) => d.id === 'narrative-verdict') ?? null
   const otherDecisions = decisions.filter((d) => d.id !== 'narrative-verdict')
 
-  // -------------------------------------------------------------------
-  // Video / iframe embed — mirrors WalkthroughViewerPage mechanism
-  // -------------------------------------------------------------------
+  // Resolved display: prefer submitted response_json values over local choices
+  function resolvedChoice(decId: string): string {
+    if (readOnly && review.response_json?.decisions) {
+      return review.response_json.decisions[decId] ?? choices[decId] ?? ''
+    }
+    return choices[decId] ?? ''
+  }
 
+  // Submit — builds payload from op-buffer projection
+  const handleSubmit = useCallback(async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      // Build edited_scenes from effectiveScenes (op-buffer projection)
+      const editedScenes: ReviewSubmittedScene[] = effectiveScenes.map((scene) => ({
+        id: scene.id,
+        title: scene.title,
+        narration: scene.narration,
+        deleted: scene.deleted,
+        features: scene.features.map((f) => ({
+          id: f.id,
+          description: f.description,
+          verify: f.verify,
+          feedback: f.feedback,
+        })),
+        feedback: scene.feedback,
+      }))
+
+      const payload: ReviewSubmitPayload = {
+        decisions: choices,
+        edited_scenes: editedScenes,
+        overall_feedback: overallFeedback,
+      }
+
+      const updated = await submitReview(review.id, payload, shareToken)
+      onResolved(updated)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }, [effectiveScenes, overallFeedback, choices, review.id, shareToken, onResolved])
+
+  const canSubmit = !busy && decisions.every((d) => !!choices[d.id])
+
+  // Video embed
   let videoElement: React.ReactNode = null
   if (req.video?.walkthrough_id) {
     const contentSrc = walkthroughContentUrl(req.video.walkthrough_id, shareToken)
@@ -408,11 +536,7 @@ export function ReviewPage() {
     )
   } else if (req.video?.url) {
     videoElement = (
-      <video
-        src={req.video.url}
-        controls
-        className="w-full max-h-[60vh] bg-black"
-      />
+      <video src={req.video.url} controls className="w-full max-h-[60vh] bg-black" />
     )
   } else {
     videoElement = (
@@ -421,18 +545,6 @@ export function ReviewPage() {
       </div>
     )
   }
-
-  // Helper to get the resolved decision value for a decision id
-  function resolvedChoice(decId: string): string {
-    if (isResolved && review?.response_json?.decisions) {
-      return review.response_json.decisions[decId] ?? choices[decId] ?? ''
-    }
-    return choices[decId] ?? ''
-  }
-
-  // -------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-8">
@@ -453,17 +565,33 @@ export function ReviewPage() {
             </div>
           )}
         </div>
-        <span
-          className={[
-            'shrink-0 rounded px-2 py-0.5 text-xs font-medium',
-            isResolved
-              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
-          ].join(' ')}
-        >
-          {isResolved ? 'Resolved' : 'Needs your input'}
-        </span>
+        <div className="flex items-center gap-2">
+          <DirtyBadge isDirty={isDirty} />
+          <span
+            className={[
+              'shrink-0 rounded px-2 py-0.5 text-xs font-medium',
+              readOnly
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+            ].join(' ')}
+          >
+            {readOnly ? 'Resolved' : 'Needs your input'}
+          </span>
+        </div>
       </header>
+
+      {/* Undo bar */}
+      {isDirty && !readOnly && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'UNDO_LAST_OP' })}
+            className="text-xs text-stone-400 hover:text-stone-200 border border-stone-700 hover:border-stone-500 rounded px-3 py-1 transition-colors"
+          >
+            ↩ Undo last edit
+          </button>
+        </div>
+      )}
 
       {/* Current cut */}
       <section>
@@ -475,26 +603,26 @@ export function ReviewPage() {
         </div>
       </section>
 
-      {/* Narrative verdict — the primary decision, shown before narration */}
+      {/* Narrative verdict decision tile */}
       {narrativeVerdictDecision && (
         <section>
           <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
-            {isResolved ? 'Decision (submitted)' : 'Your decision'}
+            {readOnly ? 'Decision (submitted)' : 'Your decision'}
           </h2>
           <NarrativeVerdictControl
             decision={narrativeVerdictDecision}
             chosen={resolvedChoice('narrative-verdict')}
             onChange={(val) => setChoices((prev) => ({ ...prev, 'narrative-verdict': val }))}
-            readOnly={isResolved}
+            readOnly={readOnly}
           />
         </section>
       )}
 
-      {/* Other decisions (non-narrative-verdict) */}
+      {/* Other decisions */}
       {otherDecisions.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
-            {isResolved ? 'Additional decisions (submitted)' : 'Additional decisions'}
+            {readOnly ? 'Additional decisions (submitted)' : 'Additional decisions'}
           </h2>
           <div className="space-y-3">
             {otherDecisions.map((dec) => (
@@ -503,39 +631,102 @@ export function ReviewPage() {
                 decision={dec}
                 chosen={resolvedChoice(dec.id)}
                 onChange={(val) => setChoices((prev) => ({ ...prev, [dec.id]: val }))}
-                readOnly={isResolved}
+                readOnly={readOnly}
               />
             ))}
           </div>
         </section>
       )}
 
-      {/* Narration cards — editable text + features + per-scene scores */}
-      {narration.length > 0 && (
+      {/* Scene cards — driven by op-buffer projection */}
+      {(effectiveScenes.length > 0 || !readOnly) && (
         <section>
           <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
-            {isResolved ? 'Narration (submitted)' : 'Narration — edit inline'}
+            {readOnly ? 'Narration (submitted)' : 'Narration — edit inline'}
           </h2>
           <div className="space-y-4">
-            {narration.map((item) => {
-              const editedValue = isResolved && review.response_json?.narration_edits
-                ? (review.response_json.narration_edits[item.id] ?? narrationEdits[item.id] ?? item.text)
-                : (narrationEdits[item.id] ?? item.text)
-              const sceneScore = perScene[item.id] ?? undefined
-              return (
-                <NarrationCard
-                  key={item.id}
-                  item={item}
-                  value={editedValue}
-                  onChange={(val) =>
-                    setNarrationEdits((prev) => ({ ...prev, [item.id]: val }))
-                  }
-                  readOnly={isResolved}
-                  sceneActionability={sceneScore}
-                />
-              )
-            })}
+            {effectiveScenes.map((scene) => (
+              <SceneCard
+                key={scene.id}
+                scene={scene}
+                readOnly={readOnly}
+                sceneActionability={perScene[scene.id] ?? undefined}
+                onEditNarration={(text) =>
+                  dispatch({ type: 'APPEND_OP', op: { op: 'edit-narration', sceneId: scene.id, text } })
+                }
+                onEditFeature={(featureId, field, value) =>
+                  dispatch({
+                    type: 'APPEND_OP',
+                    op: { op: 'edit-feature', sceneId: scene.id, featureId, field, value },
+                  })
+                }
+                onFeatureFeedback={(featureId, text) =>
+                  dispatch({
+                    type: 'APPEND_OP',
+                    op: { op: 'set-feature-feedback', sceneId: scene.id, featureId, text },
+                  })
+                }
+                onDeleteFeature={(featureId) =>
+                  dispatch({ type: 'APPEND_OP', op: { op: 'delete-feature', sceneId: scene.id, featureId } })
+                }
+                onAddFeature={() => {
+                  newFeatureCounterRef.current += 1
+                  const featureId = `new-${newFeatureCounterRef.current}`
+                  dispatch({ type: 'APPEND_OP', op: { op: 'add-feature', sceneId: scene.id, featureId } })
+                }}
+                onDeleteScene={() =>
+                  dispatch({ type: 'APPEND_OP', op: { op: 'delete-scene', sceneId: scene.id } })
+                }
+                onSceneFeedback={(text) =>
+                  dispatch({ type: 'APPEND_OP', op: { op: 'set-scene-feedback', sceneId: scene.id, text } })
+                }
+              />
+            ))}
+
+            {/* Add scene */}
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => {
+                  newSceneCounterRef.current += 1
+                  const sceneId = `new-${newSceneCounterRef.current}`
+                  dispatch({
+                    type: 'APPEND_OP',
+                    op: { op: 'add-scene', sceneId, title: `New Scene ${newSceneCounterRef.current}` },
+                  })
+                }}
+                className="w-full rounded-lg border border-dashed border-stone-700 hover:border-stone-500 text-stone-500 hover:text-stone-300 py-3 text-sm transition-colors"
+              >
+                + Add scene
+              </button>
+            )}
           </div>
+        </section>
+      )}
+
+      {/* Overall feedback */}
+      {!readOnly && (
+        <section>
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
+            Overall feedback
+          </h2>
+          <textarea
+            className="w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[3rem] border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
+            value={overallFeedback}
+            onChange={(e) =>
+              dispatch({ type: 'APPEND_OP', op: { op: 'set-overall-feedback', text: e.target.value } })
+            }
+            rows={2}
+            placeholder="Any overall feedback for the re-draft (optional)"
+          />
+        </section>
+      )}
+      {readOnly && review.response_json?.overall_feedback && (
+        <section>
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
+            Overall feedback (submitted)
+          </h2>
+          <p className="text-sm text-stone-400 italic">{review.response_json.overall_feedback}</p>
         </section>
       )}
 
@@ -548,10 +739,7 @@ export function ReviewPage() {
             className="flex items-center gap-2 text-sm text-stone-500 hover:text-stone-300 transition-colors"
           >
             <svg
-              className={[
-                'h-4 w-4 transition-transform',
-                auditOpen ? 'rotate-90' : '',
-              ].join(' ')}
+              className={['h-4 w-4 transition-transform', auditOpen ? 'rotate-90' : ''].join(' ')}
               viewBox="0 0 12 12"
               fill="none"
             >
@@ -578,14 +766,15 @@ export function ReviewPage() {
         </section>
       )}
 
-      {/* Action / resolved state */}
+      {/* Error */}
       {error && (
         <p className="text-sm text-red-400 rounded border border-red-500/30 bg-red-500/10 px-3 py-2">
           {error}
         </p>
       )}
 
-      {isResolved ? (
+      {/* Submit / resolved state */}
+      {readOnly ? (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
           <p className="text-sm text-emerald-300 font-medium">
             Review resolved — the loop will continue.
@@ -601,10 +790,10 @@ export function ReviewPage() {
           <button
             type="button"
             onClick={() => void handleSubmit()}
-            disabled={busy || decisions.some((d) => !choices[d.id])}
+            disabled={!canSubmit}
             className={[
               'px-6 py-2 rounded font-medium text-sm transition-colors',
-              busy
+              !canSubmit
                 ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
                 : 'bg-orange-500 hover:bg-orange-400 text-white',
             ].join(' ')}
@@ -614,5 +803,57 @@ export function ReviewPage() {
         </div>
       )}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Outer page shell — fetches data, owns resolved state, wraps provider
+// ---------------------------------------------------------------------------
+
+export function ReviewPage() {
+  const { id } = useParams<{ id: string }>()
+
+  // ?t= share-token (stable for page lifetime — intentionally not in deps)
+  const shareToken = useRef(new URLSearchParams(window.location.search).get('t')).current
+
+  const [review, setReview] = useState<ReviewDetail | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    getReview(id, shareToken)
+      .then((d) => { if (!cancelled) setReview(d) })
+      .catch((e) => { if (!cancelled) setError(String(e?.message ?? e)) })
+    return () => { cancelled = true }
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // -------------------------------------------------------------------
+  // Loading / error states
+  // -------------------------------------------------------------------
+
+  if (error && !review) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 text-red-500">
+        <p className="font-semibold">Error loading review</p>
+        <p className="text-sm mt-1 text-red-400">{error}</p>
+      </div>
+    )
+  }
+
+  if (!review) {
+    return <div className="max-w-4xl mx-auto p-6 text-stone-500">Loading…</div>
+  }
+
+  const isResolved = review.status === 'resolved'
+
+  return (
+    <ReviewEditorProvider original={review.request_json.narration ?? []}>
+      <ReviewEditorInner
+        review={review}
+        readOnly={isResolved}
+        onResolved={(updated) => setReview(updated)}
+      />
+    </ReviewEditorProvider>
   )
 }

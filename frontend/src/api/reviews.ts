@@ -69,9 +69,32 @@ export interface ReviewRequestJson {
   actionability?: ReviewActionability | null
 }
 
+// ---------------------------------------------------------------------------
+// Submit payload — new "edited_scenes" contract
+// ---------------------------------------------------------------------------
+
+export interface ReviewSubmittedFeature {
+  id: string
+  description: string
+  verify: string
+  feedback: string
+}
+
+export interface ReviewSubmittedScene {
+  id: string
+  title: string
+  narration: string
+  deleted: boolean
+  features: ReviewSubmittedFeature[]
+  feedback: string
+}
+
 export interface ReviewSubmitPayload {
   decisions: Record<string, string>
-  narration_edits: Record<string, string>
+  /** Legacy field — kept for backwards-compat read; send is now edited_scenes */
+  narration_edits?: Record<string, string>
+  edited_scenes?: ReviewSubmittedScene[]
+  overall_feedback?: string
 }
 
 export interface ReviewDetail {
