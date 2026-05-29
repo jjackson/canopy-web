@@ -466,7 +466,7 @@ function SceneCard({
         <p className="text-xs text-stone-500">
           <span className="text-stone-600">Builds: </span>
           {activeFeatures[0].description.length > 90
-            ? activeFeatures[0].description.slice(0, 90) + '…'
+            ? activeFeatures[0].description.slice(0, 90).replace(/\s+\S*$/, '') + '…'
             : activeFeatures[0].description}
           {activeFeatures.length > 1 ? ` +${activeFeatures.length - 1} more` : ''}
         </p>
@@ -538,6 +538,20 @@ function SceneCard({
                 placeholder="The reason this capability earns its place in the demo"
                 onChange={(e) => !readOnly && onEditRationale?.(e.target.value)}
               />
+            </div>
+          )}
+          {grounding?.evidence && grounding.evidence.length > 0 && (
+            <div>
+              <FieldLabel>
+                {grounding.status === 'grounded' ? 'Backed by (shipped code/docs)' : 'Evidence'}
+              </FieldLabel>
+              <ul className="space-y-0.5">
+                {grounding.evidence.map((ev, i) => (
+                  <li key={i} className="text-[11px] text-stone-400 font-mono break-words">
+                    <span className="text-stone-600">{ev.kind ?? 'ref'}:</span> {ev.ref}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           {(gaps ?? []).map((gap) => (
@@ -892,6 +906,13 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
   const orphanGaps = (effectiveWhyBrief.gaps ?? []).filter(
     (g) => !g.claim_ref || !usedProvenance.has(g.claim_ref),
   )
+
+  // Honesty flag before approval: how many scenes are Frontier (not built) or below the ≥4 bar.
+  const liveScenes = effectiveScenes.filter((s) => !s.deleted)
+  const frontierCount = liveScenes.filter(
+    (s) => s.provenance && (spineById.get(s.provenance)?.status ?? 'grounded') !== 'grounded',
+  ).length
+  const belowBarCount = liveScenes.filter((s) => (perScene[s.id]?.score ?? 5) < 4).length
 
   const narrativeVerdictDecision = decisions.find((d) => d.id === 'narrative-verdict') ?? null
   const otherDecisions = decisions.filter((d) => d.id !== 'narrative-verdict')
@@ -1414,6 +1435,14 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         </div>
       ) : (
         <div className="flex flex-col items-end gap-1">
+          {(frontierCount > 0 || belowBarCount > 0) && resolvedChoice('narrative-verdict') !== 'redraft' && (
+            <p className="text-[11px] text-amber-300/90 max-w-md text-right mb-1">
+              ⚠ {frontierCount > 0 && `${frontierCount} scene${frontierCount === 1 ? ' is' : 's are'} Frontier (not built yet)`}
+              {frontierCount > 0 && belowBarCount > 0 && '; '}
+              {belowBarCount > 0 && `${belowBarCount} below the ≥4 actionability bar`}
+              . Approving commits to building these as intended — they are not yet verified.
+            </p>
+          )}
           <button
             type="button"
             onClick={() => void handleSubmit()}

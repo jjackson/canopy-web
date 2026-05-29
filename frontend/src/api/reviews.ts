@@ -59,11 +59,17 @@ export interface ReviewPersona {
 }
 
 // Why-brief (the grounding doc), shown + edited alongside the narrative.
+export interface ReviewWhyEvidence {
+  kind?: string
+  ref: string
+}
+
 export interface ReviewWhySpineItem {
   id: string
   claim: string
   rationale?: string
   status?: string
+  evidence?: ReviewWhyEvidence[]
 }
 
 export interface ReviewWhyGap {
