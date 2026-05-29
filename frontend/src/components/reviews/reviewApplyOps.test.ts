@@ -39,6 +39,22 @@ describe('applyReviewOps', () => {
     expect(scenes[0].features[0].feedback).toBe('')
   })
 
+  it('carries the real story-beat title and persona when present', () => {
+    const withTitles: ReviewNarrationItem[] = [
+      { scene: 1, id: 'scene-1', title: 'Maya picks the district', persona: 'lead', text: 'one', features: [] },
+    ]
+    const scenes = applyReviewOps(withTitles, [])
+    expect(scenes[0].title).toBe('Maya picks the district')
+    expect(scenes[0].persona).toBe('lead')
+  })
+
+  it('falls back to "Scene N" when no title is provided', () => {
+    const scenes = applyReviewOps(ORIGINAL, [])
+    expect(scenes[0].title).toBe('Scene 1')
+    expect(scenes[1].title).toBe('Scene 2')
+    expect(scenes[0].persona).toBe('')
+  })
+
   it('edit-narration updates the narration text', () => {
     const ops: PendingReviewOp[] = [
       { op: 'edit-narration', sceneId: 'scene-1', text: 'Edited narration' },

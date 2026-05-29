@@ -29,8 +29,12 @@ export interface EffectiveFeature {
 
 export interface EffectiveScene {
   id: string
-  /** 'new' scenes carry a user-editable title; original scenes use "Scene N". */
+  /** Story-beat title. Original scenes carry the spec title; falls back to
+   * "Scene N" only when the backend sent no title. New scenes carry the
+   * user-entered title. */
   title: string
+  /** Persona key on screen this beat (DDD v3). Empty for new/unassigned scenes. */
+  persona: string
   narration: string
   deleted: boolean
   features: EffectiveFeature[]
@@ -111,6 +115,7 @@ export function applyReviewOps(
           const newScene: EffectiveScene = {
             id: op.sceneId,
             title: op.title,
+            persona: '',
             narration: '',
             deleted: false,
             features: [],
@@ -212,7 +217,8 @@ export function projectBuildOrder(
 function originalToEffective(items: ReviewNarrationItem[]): EffectiveScene[] {
   return items.map((item) => ({
     id: item.id,
-    title: `Scene ${item.scene}`,
+    title: item.title && item.title.trim() ? item.title : `Scene ${item.scene}`,
+    persona: item.persona ?? '',
     narration: item.text,
     deleted: false,
     features: (item.features ?? []).map((f: ReviewFeature) => ({

@@ -8,6 +8,7 @@ import {
   type ReviewSceneActionability,
   type ReviewSubmitPayload,
   type ReviewSubmittedScene,
+  type ReviewPersona,
 } from '../api/reviews'
 import { walkthroughContentUrl } from '../api/walkthroughs'
 import {
@@ -45,6 +46,24 @@ function DirtyBadge({ isDirty }: { isDirty: boolean }) {
   return (
     <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
       Edited
+    </span>
+  )
+}
+
+function PersonaChip({ persona, dim = false }: { persona: ReviewPersona; dim?: boolean }) {
+  return (
+    <span
+      title={`${persona.name} — ${persona.role}`}
+      className={[
+        'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium select-none',
+        dim ? 'border-stone-700 text-stone-400' : 'border-stone-600 text-stone-200',
+      ].join(' ')}
+    >
+      <span
+        className="inline-block h-2 w-2 rounded-full shrink-0"
+        style={{ backgroundColor: persona.color || '#78716c' }}
+      />
+      {persona.name}
     </span>
   )
 }
@@ -304,6 +323,7 @@ interface SceneCardProps {
   scene: {
     id: string
     title: string
+    persona: string
     narration: string
     deleted: boolean
     features: Array<{
@@ -315,6 +335,8 @@ interface SceneCardProps {
     }>
     feedback: string
   }
+  sceneNumber?: number
+  persona?: ReviewPersona
   readOnly: boolean
   sceneActionability?: ReviewSceneActionability
   onEditNarration: (text: string) => void
@@ -328,6 +350,8 @@ interface SceneCardProps {
 
 function SceneCard({
   scene,
+  sceneNumber,
+  persona,
   readOnly,
   sceneActionability,
   onEditNarration,
@@ -346,11 +370,17 @@ function SceneCard({
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
       {/* Scene header */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">
-          {scene.title}
-        </span>
-        <div className="flex items-center gap-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          {sceneNumber != null && (
+            <span className="text-[11px] font-semibold text-stone-500 tabular-nums shrink-0">
+              Scene {sceneNumber}
+            </span>
+          )}
+          {persona && <PersonaChip persona={persona} />}
+          <span className="text-sm font-medium text-stone-100">{scene.title}</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           {sceneActionability != null && (
             <ScoreBadge
               score={sceneActionability.score}
@@ -599,6 +629,13 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
   const actionability = req.actionability ?? null
   const overallScore = actionability?.overall_score ?? null
   const perScene = actionability?.per_scene ?? {}
+  const personas = req.personas ?? {}
+
+  // 1-based scene numbers among non-deleted scenes (renumbers as scenes are added/deleted).
+  const sceneNumberById = new Map<string, number>()
+  effectiveScenes
+    .filter((s) => !s.deleted)
+    .forEach((s, i) => sceneNumberById.set(s.id, i + 1))
 
   const narrativeVerdictDecision = decisions.find((d) => d.id === 'narrative-verdict') ?? null
   const otherDecisions = decisions.filter((d) => d.id !== 'narrative-verdict')
@@ -720,6 +757,26 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         </div>
       )}
 
+      {/* The demo narrative — the cohesive story the scenes decompose */}
+      {req.narrative && req.narrative.trim() && (
+        <section className="rounded-lg border border-stone-700 bg-stone-900/60 p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider">
+            The demo
+          </h2>
+          <p className="text-[15px] leading-relaxed text-stone-200 whitespace-pre-line">
+            {req.narrative}
+          </p>
+          {Object.keys(personas).length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <span className="text-[11px] uppercase tracking-wider text-stone-600">Cast</span>
+              {Object.values(personas).map((p) => (
+                <PersonaChip key={p.name} persona={p} dim />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Current cut */}
       <section>
         <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
@@ -776,6 +833,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
               <SceneCard
                 key={scene.id}
                 scene={scene}
+                sceneNumber={sceneNumberById.get(scene.id)}
+                persona={scene.persona ? personas[scene.persona] : undefined}
                 readOnly={readOnly}
                 sceneActionability={perScene[scene.id] ?? undefined}
                 onEditNarration={(text) =>

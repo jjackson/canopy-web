@@ -39,8 +39,19 @@ export interface ReviewFeature {
 export interface ReviewNarrationItem {
   scene: number
   id: string
+  /** Story-beat title (DDD v3). Falls back to "Scene N" when absent. */
+  title?: string
+  /** Persona key on screen for this beat (DDD v3). Maps into request_json.personas. */
+  persona?: string
   text: string
   features?: ReviewFeature[]
+}
+
+export interface ReviewPersona {
+  name: string
+  role: string
+  color: string
+  intro: string
 }
 
 export interface ReviewVideo {
@@ -65,6 +76,10 @@ export interface ReviewRequestJson {
   video?: ReviewVideo
   decisions: ReviewDecision[]
   narration: ReviewNarrationItem[]
+  /** The cohesive demo narrative — the whole story the scenes decompose (DDD v3). */
+  narrative?: string
+  /** Persona key -> details, so the surface can show who is on screen each beat. */
+  personas?: Record<string, ReviewPersona>
   autonomous_audit: string[]
   actionability?: ReviewActionability | null
   /**
