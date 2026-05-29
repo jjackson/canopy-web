@@ -43,6 +43,8 @@ export interface ReviewNarrationItem {
   title?: string
   /** Persona key on screen for this beat (DDD v3). Maps into request_json.personas. */
   persona?: string
+  /** Spine id this beat grounds — joins the scene to its why-brief grounding. */
+  provenance?: string
   text: string
   features?: ReviewFeature[]
 }

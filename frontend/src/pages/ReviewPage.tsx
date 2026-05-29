@@ -9,7 +9,8 @@ import {
   type ReviewSubmitPayload,
   type ReviewSubmittedScene,
   type ReviewPersona,
-  type ReviewWhyBrief,
+  type ReviewWhySpineItem,
+  type ReviewWhyGap,
 } from '../api/reviews'
 import { walkthroughContentUrl } from '../api/walkthroughs'
 import {
@@ -268,32 +269,38 @@ function FeatureRow({
       </div>
 
       {/* description */}
-      <textarea
-        className={[
-          'w-full rounded border bg-stone-900 px-2 py-1.5 text-sm text-stone-200 resize-y min-h-[2.5rem]',
-          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-          readOnly ? 'opacity-70 cursor-default' : '',
-        ].join(' ')}
-        value={feature.description}
-        onChange={(e) => !readOnly && onEdit('description', e.target.value)}
-        readOnly={readOnly}
-        placeholder="Description"
-        rows={2}
-      />
+      <div>
+        <FieldLabel>What to build</FieldLabel>
+        <textarea
+          className={[
+            'w-full rounded border bg-stone-900 px-2 py-1.5 text-sm text-stone-200 resize-y min-h-[2.5rem]',
+            'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+            readOnly ? 'opacity-70 cursor-default' : '',
+          ].join(' ')}
+          value={feature.description}
+          onChange={(e) => !readOnly && onEdit('description', e.target.value)}
+          readOnly={readOnly}
+          placeholder="The buildable unit — what an engineer implements"
+          rows={2}
+        />
+      </div>
 
       {/* verify */}
-      <input
-        type="text"
-        className={[
-          'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-400',
-          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-          readOnly ? 'opacity-70 cursor-default' : '',
-        ].join(' ')}
-        value={feature.verify}
-        onChange={(e) => !readOnly && onEdit('verify', e.target.value)}
-        readOnly={readOnly}
-        placeholder="verify: how to confirm"
-      />
+      <div>
+        <FieldLabel>Verify — how we'll confirm it's built</FieldLabel>
+        <input
+          type="text"
+          className={[
+            'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-400',
+            'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+            readOnly ? 'opacity-70 cursor-default' : '',
+          ].join(' ')}
+          value={feature.verify}
+          onChange={(e) => !readOnly && onEdit('verify', e.target.value)}
+          readOnly={readOnly}
+          placeholder="A runnable check — API assertion, UI state, or test command"
+        />
+      </div>
 
       {isMissed && (
         <p className="text-[11px] text-amber-400/80">⚠ eval flagged as under-specified</p>
@@ -338,6 +345,10 @@ interface SceneCardProps {
   }
   sceneNumber?: number
   persona?: ReviewPersona
+  /** The spine item this scene grounds (resolved by provenance), if any. */
+  grounding?: ReviewWhySpineItem
+  /** Gaps whose claim_ref points at this scene's spine item. */
+  gaps?: ReviewWhyGap[]
   readOnly: boolean
   sceneActionability?: ReviewSceneActionability
   onEditNarration: (text: string) => void
@@ -347,12 +358,36 @@ interface SceneCardProps {
   onAddFeature: () => void
   onDeleteScene: () => void
   onSceneFeedback: (text: string) => void
+  /** Edit the grounding rationale (persists to the why-brief spine item). */
+  onEditRationale?: (value: string) => void
+  /** Edit a gap field (persists to the why-brief gap). */
+  onEditGap?: (gapId: string, field: 'detail' | 'proposed_action', value: string) => void
+}
+
+function StatusBadge({ status }: { status?: string }) {
+  if (!status) return null
+  const frontier = status !== 'grounded'
+  return (
+    <span
+      title={frontier ? 'Frontier — not yet built; this scene shows intended behavior' : 'Built — backed by shipped code/evidence'}
+      className={[
+        'shrink-0 rounded px-2 py-0.5 text-[11px] font-medium select-none',
+        frontier
+          ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+          : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
+      ].join(' ')}
+    >
+      {frontier ? 'Frontier' : 'Built'}
+    </span>
+  )
 }
 
 function SceneCard({
   scene,
   sceneNumber,
   persona,
+  grounding,
+  gaps,
   readOnly,
   sceneActionability,
   onEditNarration,
@@ -362,11 +397,14 @@ function SceneCard({
   onAddFeature,
   onDeleteScene,
   onSceneFeedback,
+  onEditRationale,
+  onEditGap,
 }: SceneCardProps) {
   if (scene.deleted) return null
 
   const missedIds = new Set(sceneActionability?.missed ?? [])
   const activeFeatures = scene.features.filter((f) => !f.deleted)
+  const hasGrounding = grounding != null || (gaps != null && gaps.length > 0)
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
@@ -380,6 +418,7 @@ function SceneCard({
           )}
           {persona && <PersonaChip persona={persona} />}
           <span className="text-sm font-medium text-stone-100">{scene.title}</span>
+          {grounding?.status && <StatusBadge status={grounding.status} />}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {sceneActionability != null && (
@@ -402,18 +441,21 @@ function SceneCard({
       </div>
 
       {/* Editable narration */}
-      <textarea
-        className={[
-          'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[4rem]',
-          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-          readOnly ? 'opacity-70 cursor-default' : '',
-        ].join(' ')}
-        value={scene.narration}
-        onChange={(e) => !readOnly && onEditNarration(e.target.value)}
-        readOnly={readOnly}
-        rows={3}
-        placeholder="Scene narration…"
-      />
+      <div>
+        <FieldLabel>What plays in the demo</FieldLabel>
+        <textarea
+          className={[
+            'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[4rem]',
+            'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+            readOnly ? 'opacity-70 cursor-default' : '',
+          ].join(' ')}
+          value={scene.narration}
+          onChange={(e) => !readOnly && onEditNarration(e.target.value)}
+          readOnly={readOnly}
+          rows={3}
+          placeholder="The beat the viewer watches in this scene…"
+        />
+      </div>
 
       {/* Features list */}
       {(activeFeatures.length > 0 || !readOnly) && (
@@ -421,7 +463,7 @@ function SceneCard({
           {activeFeatures.length > 0 && (
             <>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-                Features this scene commits to
+                Features to build
               </p>
               <ul className="space-y-2">
                 {scene.features.map((f) => (
@@ -447,6 +489,59 @@ function SceneCard({
               + Add feature
             </button>
           )}
+        </div>
+      )}
+
+      {/* Grounding — why this scene matters, co-located with the scene it grounds.
+          Muted + below the demo/features because the narration is what's most
+          important to get right; this is the supporting "why" + build status. */}
+      {hasGrounding && (
+        <div className="rounded border border-stone-800 bg-stone-900/40 p-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-600">
+            Why this matters {grounding?.id ? `· ${grounding.id}` : ''}
+          </p>
+          {grounding != null && (
+            <div>
+              <FieldLabel>Why it matters (rationale)</FieldLabel>
+              <textarea
+                className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+                value={grounding.rationale ?? ''}
+                readOnly={readOnly || !onEditRationale}
+                rows={2}
+                placeholder="The reason this capability earns its place in the demo"
+                onChange={(e) => !readOnly && onEditRationale?.(e.target.value)}
+              />
+            </div>
+          )}
+          {(gaps ?? []).map((gap) => (
+            <div key={gap.id} className="rounded border border-amber-500/20 bg-amber-500/5 p-2 space-y-2">
+              <div className="flex items-center gap-2 text-[11px]">
+                {gap.type && (
+                  <span className="rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">{gap.type}</span>
+                )}
+                <span className="text-stone-500">what's missing for this scene</span>
+              </div>
+              <textarea
+                className={inputCls(readOnly) + ' resize-y min-h-[2.5rem]'}
+                value={gap.detail}
+                readOnly={readOnly || !onEditGap}
+                rows={2}
+                placeholder="The gap"
+                onChange={(e) => !readOnly && onEditGap?.(gap.id, 'detail', e.target.value)}
+              />
+              <div>
+                <FieldLabel>Proposed action</FieldLabel>
+                <textarea
+                  className={inputCls(readOnly) + ' resize-y min-h-[2.5rem]'}
+                  value={gap.proposed_action}
+                  readOnly={readOnly || !onEditGap}
+                  rows={2}
+                  placeholder="What to do to close it"
+                  onChange={(e) => !readOnly && onEditGap?.(gap.id, 'proposed_action', e.target.value)}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -686,123 +781,6 @@ function PersonasSection({
 }
 
 // ---------------------------------------------------------------------------
-// Why-brief section — the grounding doc, visible + editable
-// ---------------------------------------------------------------------------
-
-function WhyBriefSection({
-  whyBrief,
-  readOnly,
-  onEditProblem,
-  onEditSpine,
-  onEditGap,
-}: {
-  whyBrief: ReviewWhyBrief
-  readOnly: boolean
-  onEditProblem: (value: string) => void
-  onEditSpine: (id: string, field: 'claim' | 'rationale', value: string) => void
-  onEditGap: (id: string, field: 'detail' | 'proposed_action', value: string) => void
-}) {
-  const spine = whyBrief.spine ?? []
-  const gaps = whyBrief.gaps ?? []
-  if (!whyBrief.problem && spine.length === 0 && gaps.length === 0) return null
-  return (
-    <section>
-      <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-1">
-        Why this matters (grounding)
-      </h2>
-      <p className="text-xs text-stone-600 mb-3">
-        The why-brief grounds the demo. Editable here; ids / status / type are structural and fixed.
-      </p>
-      <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-4">
-        <div>
-          <FieldLabel>Problem</FieldLabel>
-          <textarea
-            className={inputCls(readOnly) + ' resize-y min-h-[4rem]'}
-            value={whyBrief.problem ?? ''}
-            readOnly={readOnly}
-            rows={3}
-            onChange={(e) => !readOnly && onEditProblem(e.target.value)}
-          />
-        </div>
-
-        {spine.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">Spine</p>
-            {spine.map((item) => (
-              <div key={item.id} className="rounded border border-stone-800 p-3 space-y-2">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="font-mono text-stone-400">{item.id}</span>
-                  {item.status && (
-                    <span className="rounded bg-stone-800 px-1.5 py-0.5 text-stone-400">{item.status}</span>
-                  )}
-                </div>
-                <div>
-                  <FieldLabel>Claim</FieldLabel>
-                  <textarea
-                    className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
-                    value={item.claim}
-                    readOnly={readOnly}
-                    rows={2}
-                    onChange={(e) => !readOnly && onEditSpine(item.id, 'claim', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Rationale</FieldLabel>
-                  <textarea
-                    className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
-                    value={item.rationale ?? ''}
-                    readOnly={readOnly}
-                    rows={2}
-                    onChange={(e) => !readOnly && onEditSpine(item.id, 'rationale', e.target.value)}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {gaps.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">Gaps</p>
-            {gaps.map((gap) => (
-              <div key={gap.id} className="rounded border border-stone-800 p-3 space-y-2">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="font-mono text-stone-400">{gap.id}</span>
-                  {gap.type && (
-                    <span className="rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">{gap.type}</span>
-                  )}
-                  {gap.claim_ref && <span className="text-stone-600">→ {gap.claim_ref}</span>}
-                </div>
-                <div>
-                  <FieldLabel>Detail</FieldLabel>
-                  <textarea
-                    className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
-                    value={gap.detail}
-                    readOnly={readOnly}
-                    rows={2}
-                    onChange={(e) => !readOnly && onEditGap(gap.id, 'detail', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Proposed action</FieldLabel>
-                  <textarea
-                    className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
-                    value={gap.proposed_action}
-                    readOnly={readOnly}
-                    rows={2}
-                    onChange={(e) => !readOnly && onEditGap(gap.id, 'proposed_action', e.target.value)}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Inner editor — has access to the ReviewEditor context
 // Owns all user interaction + submit logic.
 // ---------------------------------------------------------------------------
@@ -866,6 +844,24 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
   effectiveScenes
     .filter((s) => !s.deleted)
     .forEach((s, i) => sceneNumberById.set(s.id, i + 1))
+
+  // Join each scene to its why-brief grounding (spine item by provenance) + gaps
+  // (by claim_ref), so the "why" lives inside the scene it grounds instead of a
+  // parallel section. Anything not tied to a scene falls through to "other grounding".
+  const spineById = new Map((effectiveWhyBrief.spine ?? []).map((s) => [s.id, s]))
+  const gapsByRef = new Map<string, ReviewWhyGap[]>()
+  for (const g of effectiveWhyBrief.gaps ?? []) {
+    const ref = g.claim_ref ?? ''
+    if (!gapsByRef.has(ref)) gapsByRef.set(ref, [])
+    gapsByRef.get(ref)!.push(g)
+  }
+  const usedProvenance = new Set(
+    effectiveScenes.filter((s) => !s.deleted).map((s) => s.provenance).filter(Boolean),
+  )
+  const orphanSpine = (effectiveWhyBrief.spine ?? []).filter((s) => !usedProvenance.has(s.id))
+  const orphanGaps = (effectiveWhyBrief.gaps ?? []).filter(
+    (g) => !g.claim_ref || !usedProvenance.has(g.claim_ref),
+  )
 
   const narrativeVerdictDecision = decisions.find((d) => d.id === 'narrative-verdict') ?? null
   const otherDecisions = decisions.filter((d) => d.id !== 'narrative-verdict')
@@ -1063,15 +1059,32 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Narrative tab — the story, personas, why-brief, scenes, decision */}
       {tab === 'narrative' && (
         <>
-      {/* The demo narrative — the cohesive story the scenes decompose */}
-      {req.narrative && req.narrative.trim() && (
+      {/* The demo — the cohesive story + the one problem it all serves */}
+      {(req.narrative?.trim() || effectiveWhyBrief.problem || Object.keys(personas).length > 0) && (
         <section className="rounded-lg border border-stone-700 bg-stone-900/60 p-5 space-y-3">
           <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider">
             The demo
           </h2>
-          <p className="text-[15px] leading-relaxed text-stone-200 whitespace-pre-line">
-            {req.narrative}
-          </p>
+          {req.narrative?.trim() && (
+            <p className="text-[15px] leading-relaxed text-stone-200 whitespace-pre-line">
+              {req.narrative}
+            </p>
+          )}
+          {(effectiveWhyBrief.problem || !readOnly) && (
+            <div className="pt-1">
+              <FieldLabel>The problem we're solving</FieldLabel>
+              <textarea
+                className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+                value={effectiveWhyBrief.problem ?? ''}
+                readOnly={readOnly}
+                rows={3}
+                placeholder="The core problem this whole demo exists to solve"
+                onChange={(e) =>
+                  !readOnly && dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-problem', value: e.target.value } })
+                }
+              />
+            </div>
+          )}
           {Object.keys(personas).length > 0 && (
             <div className="flex items-center gap-2 flex-wrap pt-1">
               <span className="text-[11px] uppercase tracking-wider text-stone-600">Cast</span>
@@ -1089,21 +1102,6 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         readOnly={readOnly}
         onEdit={(key, field, value) =>
           dispatch({ type: 'APPEND_OP', op: { op: 'edit-persona', key, field, value } })
-        }
-      />
-
-      {/* Why-brief — visible + editable */}
-      <WhyBriefSection
-        whyBrief={effectiveWhyBrief}
-        readOnly={readOnly}
-        onEditProblem={(value) =>
-          dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-problem', value } })
-        }
-        onEditSpine={(id, field, value) =>
-          dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-spine', id, field, value } })
-        }
-        onEditGap={(id, field, value) =>
-          dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-gap', id, field, value } })
         }
       />
 
@@ -1155,8 +1153,20 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 scene={scene}
                 sceneNumber={sceneNumberById.get(scene.id)}
                 persona={scene.persona ? personas[scene.persona] : undefined}
+                grounding={scene.provenance ? spineById.get(scene.provenance) : undefined}
+                gaps={scene.provenance ? gapsByRef.get(scene.provenance) : undefined}
                 readOnly={readOnly}
                 sceneActionability={perScene[scene.id] ?? undefined}
+                onEditRationale={(value) =>
+                  scene.provenance &&
+                  dispatch({
+                    type: 'APPEND_OP',
+                    op: { op: 'edit-why-spine', id: scene.provenance, field: 'rationale', value },
+                  })
+                }
+                onEditGap={(gapId, field, value) =>
+                  dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-gap', id: gapId, field, value } })
+                }
                 onEditNarration={(text) =>
                   dispatch({ type: 'APPEND_OP', op: { op: 'edit-narration', sceneId: scene.id, text } })
                 }
@@ -1206,6 +1216,44 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 + Add scene
               </button>
             )}
+          </div>
+        </section>
+      )}
+
+      {/* Other grounding — spine claims / gaps not tied to any scene (kept so nothing is lost) */}
+      {(orphanSpine.length > 0 || orphanGaps.length > 0) && (
+        <section>
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-1">
+            Other grounding
+          </h2>
+          <p className="text-xs text-stone-600 mb-3">
+            Why-brief items not tied to any scene above. Tie one to a scene by setting that scene's provenance.
+          </p>
+          <div className="rounded-lg border border-stone-800 bg-stone-900/40 p-4 space-y-3">
+            {orphanSpine.map((item) => (
+              <div key={item.id} className="text-sm">
+                <div className="flex items-center gap-2 text-xs mb-1">
+                  <span className="font-mono text-stone-400">{item.id}</span>
+                  <StatusBadge status={item.status} />
+                </div>
+                <p className="text-stone-300">{item.claim}</p>
+                {item.rationale && <p className="text-stone-500 text-xs mt-0.5">{item.rationale}</p>}
+              </div>
+            ))}
+            {orphanGaps.map((gap) => (
+              <div key={gap.id} className="text-sm">
+                <div className="flex items-center gap-2 text-xs mb-1">
+                  <span className="font-mono text-stone-400">{gap.id}</span>
+                  {gap.type && (
+                    <span className="rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">{gap.type}</span>
+                  )}
+                </div>
+                <p className="text-stone-300">{gap.detail}</p>
+                {gap.proposed_action && (
+                  <p className="text-stone-500 text-xs mt-0.5">→ {gap.proposed_action}</p>
+                )}
+              </div>
+            ))}
           </div>
         </section>
       )}

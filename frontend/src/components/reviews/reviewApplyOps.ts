@@ -40,6 +40,8 @@ export interface EffectiveScene {
   title: string
   /** Persona key on screen this beat (DDD v3). Empty for new/unassigned scenes. */
   persona: string
+  /** Spine id this beat grounds — joins to the why-brief grounding. Empty for new scenes. */
+  provenance: string
   narration: string
   deleted: boolean
   features: EffectiveFeature[]
@@ -121,6 +123,7 @@ export function applyReviewOps(
             id: op.sceneId,
             title: op.title,
             persona: '',
+            provenance: '',
             narration: '',
             deleted: false,
             features: [],
@@ -224,6 +227,7 @@ function originalToEffective(items: ReviewNarrationItem[]): EffectiveScene[] {
     id: item.id,
     title: item.title && item.title.trim() ? item.title : `Scene ${item.scene}`,
     persona: item.persona ?? '',
+    provenance: item.provenance ?? '',
     narration: item.text,
     deleted: false,
     features: (item.features ?? []).map((f: ReviewFeature) => ({
