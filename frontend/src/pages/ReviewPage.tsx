@@ -362,6 +362,8 @@ interface SceneCardProps {
   onEditRationale?: (value: string) => void
   /** Edit a gap field (persists to the why-brief gap). */
   onEditGap?: (gapId: string, field: 'detail' | 'proposed_action', value: string) => void
+  /** When true, the scene's details start expanded (e.g. ?expand=1 / print/judge view). */
+  defaultOpen?: boolean
 }
 
 function StatusBadge({ status }: { status?: string }) {
@@ -399,6 +401,7 @@ function SceneCard({
   onSceneFeedback,
   onEditRationale,
   onEditGap,
+  defaultOpen,
 }: SceneCardProps) {
   if (scene.deleted) return null
 
@@ -407,7 +410,8 @@ function SceneCard({
   const hasGrounding = grounding != null || (gaps != null && gaps.length > 0)
   // Collapsed by default: header + narration stay visible (the skimmable arc);
   // features + grounding hide behind a toggle so the page isn't a wall.
-  const [open, setOpen] = useState(false)
+  // defaultOpen (?expand=1) starts expanded so the full substance is captured for judging/print.
+  const [open, setOpen] = useState(defaultOpen ?? false)
 
   return (
     <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
@@ -854,6 +858,9 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
 
   // Active tab — reflected in the URL (?tab=cuts) so it's shareable/linkable.
   const initialTab = new URLSearchParams(window.location.search).get('tab') === 'cuts' ? 'cuts' : 'narrative'
+  // ?expand=1 starts every scene expanded — so the full build substance + evidence is visible
+  // (the default collapsed view is for fast human skimming; expand is for judging/print/audit).
+  const expandAll = new URLSearchParams(window.location.search).get('expand') === '1'
   const [tab, setTab] = useState<'narrative' | 'cuts'>(initialTab)
   const selectTab = useCallback((t: 'narrative' | 'cuts') => {
     setTab(t)
@@ -1229,6 +1236,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 key={scene.id}
                 scene={scene}
                 sceneNumber={sceneNumberById.get(scene.id)}
+                defaultOpen={expandAll}
                 persona={scene.persona ? personas[scene.persona] : undefined}
                 grounding={scene.provenance ? spineById.get(scene.provenance) : undefined}
                 gaps={scene.provenance ? gapsByRef.get(scene.provenance) : undefined}
