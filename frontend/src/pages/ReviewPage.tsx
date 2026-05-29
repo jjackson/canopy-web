@@ -754,7 +754,7 @@ function inputCls(readOnly: boolean): string {
   return [
     'w-full rounded border bg-stone-900 px-2.5 py-1.5 text-sm text-stone-200',
     'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-    readOnly ? 'opacity-70 cursor-default' : '',
+    readOnly ? 'opacity-70 cursor-default' : 'hover:border-stone-500 cursor-text',
   ].join(' ')
 }
 
@@ -1147,18 +1147,9 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             The demo
           </h2>
           {req.narrative?.trim() && (
-            <div className="space-y-1.5">
-              {req.narrative
-                .trim()
-                .split(/(?<=\.)\s+/)
-                .filter((s) => s.trim())
-                .map((sentence, i) => (
-                  <p key={i} className="text-[15px] leading-relaxed text-stone-200 flex gap-2">
-                    <span className="text-stone-600 tabular-nums shrink-0 select-none">{i + 1}.</span>
-                    <span>{sentence.trim()}</span>
-                  </p>
-                ))}
-            </div>
+            <p className="text-[15px] leading-relaxed text-stone-200">
+              {req.narrative.trim()}
+            </p>
           )}
           {(effectiveWhyBrief.problem || !readOnly) && (
             <div className="pt-1">
@@ -1195,20 +1186,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         }
       />
 
-      {/* Narrative verdict decision tile */}
-      {narrativeVerdictDecision && (
-        <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
-            {readOnly ? 'Decision (submitted)' : 'Your decision'}
-          </h2>
-          <NarrativeVerdictControl
-            decision={narrativeVerdictDecision}
-            chosen={resolvedChoice('narrative-verdict')}
-            onChange={(val) => setChoices((prev) => ({ ...prev, 'narrative-verdict': val }))}
-            readOnly={readOnly}
-          />
-        </section>
-      )}
+      {/* Narrative verdict decision now lives at the bottom, next to Submit (single decision zone). */}
 
       {/* Other decisions */}
       {otherDecisions.length > 0 && (
@@ -1444,6 +1422,21 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         <p className="text-sm text-red-400 rounded border border-red-500/30 bg-red-500/10 px-3 py-2">
           {error}
         </p>
+      )}
+
+      {/* Your decision — single decision zone, immediately above Submit */}
+      {narrativeVerdictDecision && (
+        <section>
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
+            {readOnly ? 'Decision (submitted)' : 'Your decision'}
+          </h2>
+          <NarrativeVerdictControl
+            decision={narrativeVerdictDecision}
+            chosen={resolvedChoice('narrative-verdict')}
+            onChange={(val) => setChoices((prev) => ({ ...prev, 'narrative-verdict': val }))}
+            readOnly={readOnly}
+          />
+        </section>
       )}
 
       {/* Submit / resolved state */}
