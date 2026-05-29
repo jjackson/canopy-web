@@ -2,6 +2,10 @@
  * Pure projection: given the original narration items + a buffer of ops,
  * returns a new array of EffectiveScene objects.
  *
+ * Also exports projectBuildOrder() which derives the effective tackle sequence
+ * from the op-buffer, falling back to the supplied initial order (or the
+ * narration order when neither is available).
+ *
  * - Deep-clones via JSON.parse/stringify (scenes are small).
  * - Never mutates the original.
  * - Ops are applied in buffer order; same-key ops already coalesced by
@@ -130,6 +134,9 @@ export function applyReviewOps(
       case 'set-overall-feedback':
         // overall_feedback is handled separately by the caller; noop here.
         break
+      case 'set-build-order':
+        // build_order is handled separately by projectBuildOrder(); noop here.
+        break
     }
   }
 
@@ -137,6 +144,65 @@ export function applyReviewOps(
   void newSceneCounter
 
   return scenes
+}
+
+// ---------------------------------------------------------------------------
+// Build-order projection
+// ---------------------------------------------------------------------------
+
+/**
+ * Derives the effective build order (a list of scene ids in tackle sequence).
+ *
+ * Rules:
+ *  1. If the op-buffer contains a `set-build-order` op, its orderedSceneIds
+ *     wins (last-write-wins via coalescing).
+ *  2. Else fall back to `initialBuildOrder` (from request_json.build_order).
+ *  3. Else fall back to the narration order (scene id array from `original`).
+ *
+ * After determining the base order, the result is reconciled against the
+ * current effective scenes so that:
+ *  - newly added scenes are appended to the end,
+ *  - deleted scenes are dropped.
+ *
+ * @param original      The original narration items (never mutated).
+ * @param ops           The pending op buffer.
+ * @param initialBuildOrder  From request_json.build_order (null = absent).
+ * @param effectiveScenes   The applyReviewOps() projection (used for reconcile).
+ */
+export function projectBuildOrder(
+  original: ReviewNarrationItem[],
+  ops: PendingReviewOp[],
+  initialBuildOrder: string[] | null,
+  effectiveScenes: EffectiveScene[],
+): string[] {
+  // Step 1 — find last set-build-order op in buffer (already coalesced to 1).
+  let baseOrder: string[] | null = null
+  for (let i = ops.length - 1; i >= 0; i--) {
+    const op = ops[i]
+    if (op.op === 'set-build-order') {
+      baseOrder = op.orderedSceneIds
+      break
+    }
+  }
+
+  // Step 2 — fall back to initialBuildOrder.
+  if (baseOrder === null) {
+    baseOrder = initialBuildOrder ?? original.map((item) => item.id)
+  }
+
+  // Step 3 — reconcile: keep only ids that still exist (non-deleted) in
+  // effectiveScenes, then append any new scenes not yet in the order.
+  const activeIds = new Set(
+    effectiveScenes.filter((s) => !s.deleted).map((s) => s.id),
+  )
+  const reconciled = baseOrder.filter((id) => activeIds.has(id))
+  const alreadyOrdered = new Set(reconciled)
+  for (const scene of effectiveScenes) {
+    if (!scene.deleted && !alreadyOrdered.has(scene.id)) {
+      reconciled.push(scene.id)
+    }
+  }
+  return reconciled
 }
 
 // ---------------------------------------------------------------------------

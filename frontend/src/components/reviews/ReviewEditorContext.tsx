@@ -17,7 +17,7 @@ import {
   useReducer,
   type ReactNode,
 } from 'react'
-import { applyReviewOps, type EffectiveScene } from './reviewApplyOps'
+import { applyReviewOps, projectBuildOrder, type EffectiveScene } from './reviewApplyOps'
 import {
   reviewEditorReducer,
   initialReviewEditorState,
@@ -35,6 +35,13 @@ interface ReviewEditorContextValue {
   effectiveScenes: EffectiveScene[]
   /** Current value of the overall_feedback field (from buffer or ''). */
   overallFeedback: string
+  /**
+   * Effective build order — ordered list of scene ids in the reviewer's chosen
+   * tackle sequence. Derived from set-build-order ops, falling back to
+   * initialBuildOrder from the request, then to narration order.
+   * Already reconciled: added scenes are appended, deleted scenes are dropped.
+   */
+  buildOrder: string[]
   isDirty: boolean
   dispatch: (a: ReviewEditorAction) => void
 }
@@ -47,14 +54,16 @@ const Ctx = createContext<ReviewEditorContextValue | null>(null)
 
 interface Props {
   original: ReviewNarrationItem[]
+  /** From request_json.build_order — null/undefined = absent, fall back to narration order. */
+  initialBuildOrder?: string[] | null
   children: ReactNode
 }
 
-export function ReviewEditorProvider({ original, children }: Props) {
+export function ReviewEditorProvider({ original, initialBuildOrder, children }: Props) {
   const [state, dispatch] = useReducer(
     reviewEditorReducer,
-    original,
-    initialReviewEditorState,
+    undefined,
+    () => initialReviewEditorState(original, initialBuildOrder ?? null),
   )
 
   const effectiveScenes = useMemo(
@@ -71,12 +80,18 @@ export function ReviewEditorProvider({ original, children }: Props) {
     return ''
   }, [state.buffer])
 
+  const buildOrder = useMemo(
+    () => projectBuildOrder(state.original, state.buffer, state.initialBuildOrder, effectiveScenes),
+    [state.original, state.buffer, state.initialBuildOrder, effectiveScenes],
+  )
+
   const isDirty = state.buffer.length > 0
 
   const value: ReviewEditorContextValue = {
     state,
     effectiveScenes,
     overallFeedback,
+    buildOrder,
     isDirty,
     dispatch,
   }
