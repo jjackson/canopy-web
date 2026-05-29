@@ -12,7 +12,12 @@
  *   the reducer, so each key appears at most once.
  */
 
-import type { ReviewNarrationItem, ReviewFeature } from '../../api/reviews'
+import type {
+  ReviewNarrationItem,
+  ReviewFeature,
+  ReviewPersona,
+  ReviewWhyBrief,
+} from '../../api/reviews'
 import type { PendingReviewOp } from './reviewEditorTypes'
 
 // ---------------------------------------------------------------------------
@@ -230,4 +235,49 @@ function originalToEffective(items: ReviewNarrationItem[]): EffectiveScene[] {
     })),
     feedback: '',
   }))
+}
+
+// ---------------------------------------------------------------------------
+// Persona projection — apply edit-persona ops over the original personas dict.
+// ---------------------------------------------------------------------------
+
+export type EffectivePersonas = Record<string, ReviewPersona>
+
+export function projectPersonas(
+  original: Record<string, ReviewPersona> | undefined,
+  ops: PendingReviewOp[],
+): EffectivePersonas {
+  const personas: EffectivePersonas = JSON.parse(JSON.stringify(original ?? {}))
+  for (const op of ops) {
+    if (op.op !== 'edit-persona') continue
+    const p = personas[op.key]
+    if (!p) continue
+    p[op.field] = op.value
+  }
+  return personas
+}
+
+// ---------------------------------------------------------------------------
+// Why-brief projection — apply edit-why-* ops over the original why-brief.
+// ---------------------------------------------------------------------------
+
+export function projectWhyBrief(
+  original: ReviewWhyBrief | undefined | null,
+  ops: PendingReviewOp[],
+): ReviewWhyBrief {
+  const wb: ReviewWhyBrief = JSON.parse(
+    JSON.stringify(original ?? { problem: '', spine: [], gaps: [] }),
+  )
+  for (const op of ops) {
+    if (op.op === 'edit-why-problem') {
+      wb.problem = op.value
+    } else if (op.op === 'edit-why-spine') {
+      const item = (wb.spine ?? []).find((s) => s.id === op.id)
+      if (item) item[op.field] = op.value
+    } else if (op.op === 'edit-why-gap') {
+      const gap = (wb.gaps ?? []).find((g) => g.id === op.id)
+      if (gap) gap[op.field] = op.value
+    }
+  }
+  return wb
 }

@@ -9,6 +9,7 @@ import {
   type ReviewSubmitPayload,
   type ReviewSubmittedScene,
   type ReviewPersona,
+  type ReviewWhyBrief,
 } from '../api/reviews'
 import { walkthroughContentUrl } from '../api/walkthroughs'
 import {
@@ -593,6 +594,215 @@ function BuildSequenceSection({
 }
 
 // ---------------------------------------------------------------------------
+// Personas section — the cast, visible + editable
+// ---------------------------------------------------------------------------
+
+function inputCls(readOnly: boolean): string {
+  return [
+    'w-full rounded border bg-stone-900 px-2.5 py-1.5 text-sm text-stone-200',
+    'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+    readOnly ? 'opacity-70 cursor-default' : '',
+  ].join(' ')
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <span className="block text-[10px] uppercase tracking-wider text-stone-600 mb-0.5">{children}</span>
+}
+
+function PersonasSection({
+  personas,
+  readOnly,
+  onEdit,
+}: {
+  personas: Record<string, ReviewPersona>
+  readOnly: boolean
+  onEdit: (key: string, field: 'name' | 'org' | 'role' | 'intro', value: string) => void
+}) {
+  const keys = Object.keys(personas)
+  if (keys.length === 0) return null
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
+        Personas
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {keys.map((key) => {
+          const p = personas[key]
+          return (
+            <div key={key} className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block h-3 w-3 rounded-full shrink-0"
+                  style={{ backgroundColor: p.color || '#78716c' }}
+                />
+                <span className="text-xs text-stone-600">persona: {key}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel>Name</FieldLabel>
+                  <input
+                    className={inputCls(readOnly)}
+                    value={p.name}
+                    readOnly={readOnly}
+                    onChange={(e) => !readOnly && onEdit(key, 'name', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Org</FieldLabel>
+                  <input
+                    className={inputCls(readOnly)}
+                    value={p.org ?? ''}
+                    readOnly={readOnly}
+                    placeholder="e.g. Dimagi"
+                    onChange={(e) => !readOnly && onEdit(key, 'org', e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <FieldLabel>Role</FieldLabel>
+                <input
+                  className={inputCls(readOnly)}
+                  value={p.role}
+                  readOnly={readOnly}
+                  onChange={(e) => !readOnly && onEdit(key, 'role', e.target.value)}
+                />
+              </div>
+              <div>
+                <FieldLabel>Intro</FieldLabel>
+                <textarea
+                  className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+                  value={p.intro}
+                  readOnly={readOnly}
+                  rows={2}
+                  onChange={(e) => !readOnly && onEdit(key, 'intro', e.target.value)}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Why-brief section — the grounding doc, visible + editable
+// ---------------------------------------------------------------------------
+
+function WhyBriefSection({
+  whyBrief,
+  readOnly,
+  onEditProblem,
+  onEditSpine,
+  onEditGap,
+}: {
+  whyBrief: ReviewWhyBrief
+  readOnly: boolean
+  onEditProblem: (value: string) => void
+  onEditSpine: (id: string, field: 'claim' | 'rationale', value: string) => void
+  onEditGap: (id: string, field: 'detail' | 'proposed_action', value: string) => void
+}) {
+  const spine = whyBrief.spine ?? []
+  const gaps = whyBrief.gaps ?? []
+  if (!whyBrief.problem && spine.length === 0 && gaps.length === 0) return null
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-1">
+        Why this matters (grounding)
+      </h2>
+      <p className="text-xs text-stone-600 mb-3">
+        The why-brief grounds the demo. Editable here; ids / status / type are structural and fixed.
+      </p>
+      <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-4">
+        <div>
+          <FieldLabel>Problem</FieldLabel>
+          <textarea
+            className={inputCls(readOnly) + ' resize-y min-h-[4rem]'}
+            value={whyBrief.problem ?? ''}
+            readOnly={readOnly}
+            rows={3}
+            onChange={(e) => !readOnly && onEditProblem(e.target.value)}
+          />
+        </div>
+
+        {spine.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">Spine</p>
+            {spine.map((item) => (
+              <div key={item.id} className="rounded border border-stone-800 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-mono text-stone-400">{item.id}</span>
+                  {item.status && (
+                    <span className="rounded bg-stone-800 px-1.5 py-0.5 text-stone-400">{item.status}</span>
+                  )}
+                </div>
+                <div>
+                  <FieldLabel>Claim</FieldLabel>
+                  <textarea
+                    className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+                    value={item.claim}
+                    readOnly={readOnly}
+                    rows={2}
+                    onChange={(e) => !readOnly && onEditSpine(item.id, 'claim', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Rationale</FieldLabel>
+                  <textarea
+                    className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+                    value={item.rationale ?? ''}
+                    readOnly={readOnly}
+                    rows={2}
+                    onChange={(e) => !readOnly && onEditSpine(item.id, 'rationale', e.target.value)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {gaps.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">Gaps</p>
+            {gaps.map((gap) => (
+              <div key={gap.id} className="rounded border border-stone-800 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-mono text-stone-400">{gap.id}</span>
+                  {gap.type && (
+                    <span className="rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">{gap.type}</span>
+                  )}
+                  {gap.claim_ref && <span className="text-stone-600">→ {gap.claim_ref}</span>}
+                </div>
+                <div>
+                  <FieldLabel>Detail</FieldLabel>
+                  <textarea
+                    className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+                    value={gap.detail}
+                    readOnly={readOnly}
+                    rows={2}
+                    onChange={(e) => !readOnly && onEditGap(gap.id, 'detail', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Proposed action</FieldLabel>
+                  <textarea
+                    className={inputCls(readOnly) + ' resize-y min-h-[3rem]'}
+                    value={gap.proposed_action}
+                    readOnly={readOnly}
+                    rows={2}
+                    onChange={(e) => !readOnly && onEditGap(gap.id, 'proposed_action', e.target.value)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Inner editor — has access to the ReviewEditor context
 // Owns all user interaction + submit logic.
 // ---------------------------------------------------------------------------
@@ -605,12 +815,31 @@ interface ReviewEditorInnerProps {
 }
 
 function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerProps) {
-  const { effectiveScenes, overallFeedback, buildOrder, isDirty, dispatch } = useReviewEditor()
+  const {
+    effectiveScenes,
+    effectivePersonas,
+    effectiveWhyBrief,
+    overallFeedback,
+    buildOrder,
+    isDirty,
+    dispatch,
+  } = useReviewEditor()
 
   const shareToken = useRef(new URLSearchParams(window.location.search).get('t')).current
 
   const newFeatureCounterRef = useRef(0)
   const newSceneCounterRef = useRef(0)
+
+  // Active tab — reflected in the URL (?tab=cuts) so it's shareable/linkable.
+  const initialTab = new URLSearchParams(window.location.search).get('tab') === 'cuts' ? 'cuts' : 'narrative'
+  const [tab, setTab] = useState<'narrative' | 'cuts'>(initialTab)
+  const selectTab = useCallback((t: 'narrative' | 'cuts') => {
+    setTab(t)
+    const url = new URL(window.location.href)
+    if (t === 'cuts') url.searchParams.set('tab', 'cuts')
+    else url.searchParams.delete('tab')
+    window.history.replaceState({}, '', url)
+  }, [])
 
   const [choices, setChoices] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
@@ -629,7 +858,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
   const actionability = req.actionability ?? null
   const overallScore = actionability?.overall_score ?? null
   const perScene = actionability?.per_scene ?? {}
-  const personas = req.personas ?? {}
+  // Use the projected personas so chips + cards reflect in-flight edits.
+  const personas = effectivePersonas
 
   // 1-based scene numbers among non-deleted scenes (renumbers as scenes are added/deleted).
   const sceneNumberById = new Map<string, number>()
@@ -668,12 +898,51 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         feedback: scene.feedback,
       }))
 
+      // Diff personas: send only changed fields per persona key.
+      const origPersonas = review.request_json.personas ?? {}
+      const editedPersonas: ReviewSubmitPayload['edited_personas'] = {}
+      for (const [key, p] of Object.entries(effectivePersonas)) {
+        const o = origPersonas[key]
+        const delta: Record<string, string> = {}
+        for (const f of ['name', 'org', 'role', 'intro'] as const) {
+          if ((p[f] ?? '') !== (o?.[f] ?? '')) delta[f] = p[f] ?? ''
+        }
+        if (Object.keys(delta).length > 0) editedPersonas![key] = delta
+      }
+
+      // Diff why-brief prose fields.
+      const origWb = review.request_json.why_brief ?? {}
+      const wbDelta: ReviewSubmitPayload['edited_why_brief'] = {}
+      if ((effectiveWhyBrief.problem ?? '') !== (origWb.problem ?? '')) {
+        wbDelta!.problem = effectiveWhyBrief.problem ?? ''
+      }
+      const spineDelta: Record<string, { claim?: string; rationale?: string }> = {}
+      for (const item of effectiveWhyBrief.spine ?? []) {
+        const o = (origWb.spine ?? []).find((s) => s.id === item.id)
+        const d: { claim?: string; rationale?: string } = {}
+        if ((item.claim ?? '') !== (o?.claim ?? '')) d.claim = item.claim ?? ''
+        if ((item.rationale ?? '') !== (o?.rationale ?? '')) d.rationale = item.rationale ?? ''
+        if (Object.keys(d).length > 0) spineDelta[item.id] = d
+      }
+      if (Object.keys(spineDelta).length > 0) wbDelta!.spine = spineDelta
+      const gapDelta: Record<string, { detail?: string; proposed_action?: string }> = {}
+      for (const gap of effectiveWhyBrief.gaps ?? []) {
+        const o = (origWb.gaps ?? []).find((g) => g.id === gap.id)
+        const d: { detail?: string; proposed_action?: string } = {}
+        if ((gap.detail ?? '') !== (o?.detail ?? '')) d.detail = gap.detail ?? ''
+        if ((gap.proposed_action ?? '') !== (o?.proposed_action ?? '')) d.proposed_action = gap.proposed_action ?? ''
+        if (Object.keys(d).length > 0) gapDelta[gap.id] = d
+      }
+      if (Object.keys(gapDelta).length > 0) wbDelta!.gaps = gapDelta
+
       const payload: ReviewSubmitPayload = {
         decisions: choices,
         edited_scenes: editedScenes,
         overall_feedback: overallFeedback,
         build_order: buildOrder,
       }
+      if (Object.keys(editedPersonas!).length > 0) payload.edited_personas = editedPersonas
+      if (Object.keys(wbDelta!).length > 0) payload.edited_why_brief = wbDelta
 
       const updated = await submitReview(review.id, payload, shareToken)
       onResolved(updated)
@@ -682,7 +951,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
     } finally {
       setBusy(false)
     }
-  }, [effectiveScenes, overallFeedback, buildOrder, choices, review.id, shareToken, onResolved])
+  }, [effectiveScenes, effectivePersonas, effectiveWhyBrief, overallFeedback, buildOrder, choices, review.id, review.request_json, shareToken, onResolved])
 
   const canSubmit = !busy && decisions.every((d) => !!choices[d.id])
 
@@ -757,6 +1026,43 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         </div>
       )}
 
+      {/* Tabs — narrative review vs the rendered cut(s) */}
+      <div className="flex items-center gap-1 border-b border-stone-800">
+        {(['narrative', 'cuts'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => selectTab(t)}
+            className={[
+              'px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors',
+              tab === t
+                ? 'border-orange-500 text-stone-100'
+                : 'border-transparent text-stone-500 hover:text-stone-300',
+            ].join(' ')}
+          >
+            {t === 'narrative' ? 'Narrative' : 'Cuts'}
+          </button>
+        ))}
+      </div>
+
+      {/* Cuts tab — the rendered demo cut; kept off the main view so it isn't distracting */}
+      {tab === 'cuts' && (
+        <section>
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
+            Current cut
+          </h2>
+          <div className="rounded-lg border border-stone-700 bg-black overflow-hidden">
+            {videoElement}
+          </div>
+          <p className="text-xs text-stone-600 mt-2">
+            This tab shows the rendered demo cut. Spec/yaml history lives in git — not version-controlled here.
+          </p>
+        </section>
+      )}
+
+      {/* Narrative tab — the story, personas, why-brief, scenes, decision */}
+      {tab === 'narrative' && (
+        <>
       {/* The demo narrative — the cohesive story the scenes decompose */}
       {req.narrative && req.narrative.trim() && (
         <section className="rounded-lg border border-stone-700 bg-stone-900/60 p-5 space-y-3">
@@ -777,15 +1083,29 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         </section>
       )}
 
-      {/* Current cut */}
-      <section>
-        <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
-          Current cut
-        </h2>
-        <div className="rounded-lg border border-stone-700 bg-black overflow-hidden">
-          {videoElement}
-        </div>
-      </section>
+      {/* Personas — visible + editable */}
+      <PersonasSection
+        personas={personas}
+        readOnly={readOnly}
+        onEdit={(key, field, value) =>
+          dispatch({ type: 'APPEND_OP', op: { op: 'edit-persona', key, field, value } })
+        }
+      />
+
+      {/* Why-brief — visible + editable */}
+      <WhyBriefSection
+        whyBrief={effectiveWhyBrief}
+        readOnly={readOnly}
+        onEditProblem={(value) =>
+          dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-problem', value } })
+        }
+        onEditSpine={(id, field, value) =>
+          dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-spine', id, field, value } })
+        }
+        onEditGap={(id, field, value) =>
+          dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-gap', id, field, value } })
+        }
+      />
 
       {/* Narrative verdict decision tile */}
       {narrativeVerdictDecision && (
@@ -1005,6 +1325,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           </button>
         </div>
       )}
+        </>
+      )}
     </div>
   )
 }
@@ -1054,6 +1376,8 @@ export function ReviewPage() {
     <ReviewEditorProvider
       original={review.request_json.narration ?? []}
       initialBuildOrder={review.request_json.build_order ?? null}
+      personas={review.request_json.personas ?? {}}
+      whyBrief={review.request_json.why_brief ?? null}
     >
       <ReviewEditorInner
         review={review}

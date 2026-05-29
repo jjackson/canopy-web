@@ -4,7 +4,7 @@
  * Pattern mirrors ace-web's videos/editorReducer.ts.
  */
 
-import type { ReviewNarrationItem } from '../../api/reviews'
+import type { ReviewNarrationItem, ReviewPersona, ReviewWhyBrief } from '../../api/reviews'
 import type { PendingReviewOp, ReviewEditorState } from './reviewEditorTypes'
 import { opCoalesceKey } from './reviewEditorTypes'
 
@@ -28,8 +28,17 @@ export type ReviewEditorAction =
 export function initialReviewEditorState(
   original: ReviewNarrationItem[],
   initialBuildOrder: string[] | null = null,
+  originalPersonas: Record<string, ReviewPersona> = {},
+  originalWhyBrief: ReviewWhyBrief | null = null,
 ): ReviewEditorState {
-  return { original, initialBuildOrder, buffer: [], saveState: { status: 'idle' } }
+  return {
+    original,
+    originalPersonas,
+    originalWhyBrief,
+    initialBuildOrder,
+    buffer: [],
+    saveState: { status: 'idle' },
+  }
 }
 
 // ---------------------------------------------------------------------------

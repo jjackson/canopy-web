@@ -52,6 +52,30 @@ export interface ReviewPersona {
   role: string
   color: string
   intro: string
+  /** The organization this individual belongs to (e.g. "Dimagi", "LLO"). */
+  org?: string
+}
+
+// Why-brief (the grounding doc), shown + edited alongside the narrative.
+export interface ReviewWhySpineItem {
+  id: string
+  claim: string
+  rationale?: string
+  status?: string
+}
+
+export interface ReviewWhyGap {
+  id: string
+  type?: string
+  claim_ref?: string
+  detail: string
+  proposed_action: string
+}
+
+export interface ReviewWhyBrief {
+  problem?: string
+  spine?: ReviewWhySpineItem[]
+  gaps?: ReviewWhyGap[]
 }
 
 export interface ReviewVideo {
@@ -80,6 +104,8 @@ export interface ReviewRequestJson {
   narrative?: string
   /** Persona key -> details, so the surface can show who is on screen each beat. */
   personas?: Record<string, ReviewPersona>
+  /** The resolved why-brief (problem/spine/gaps), shown + edited on the surface. */
+  why_brief?: ReviewWhyBrief
   autonomous_audit: string[]
   actionability?: ReviewActionability | null
   /**
@@ -110,11 +136,23 @@ export interface ReviewSubmittedScene {
   feedback: string
 }
 
+/** Partial persona edit — only changed fields are sent, keyed by persona key. */
+export type ReviewSubmittedPersonas = Record<string, Partial<Omit<ReviewPersona, 'color'>>>
+
+/** Why-brief edits — prose fields only, keyed by spine/gap id. */
+export interface ReviewSubmittedWhyBrief {
+  problem?: string
+  spine?: Record<string, { claim?: string; rationale?: string }>
+  gaps?: Record<string, { detail?: string; proposed_action?: string }>
+}
+
 export interface ReviewSubmitPayload {
   decisions: Record<string, string>
   /** Legacy field — kept for backwards-compat read; send is now edited_scenes */
   narration_edits?: Record<string, string>
   edited_scenes?: ReviewSubmittedScene[]
+  edited_personas?: ReviewSubmittedPersonas
+  edited_why_brief?: ReviewSubmittedWhyBrief
   overall_feedback?: string
   /**
    * The reviewer's chosen build sequence — an ordered list of scene ids
