@@ -1,9 +1,11 @@
 """Django Ninja v2 router for the reviews surface.
 
-Three endpoints:
+Endpoints:
+  GET    /api/reviews/            — list all review requests (DDD-plans dashboard)
   POST   /api/reviews/            — create a review_request (orchestrator → server)
   GET    /api/reviews/<id>/       — poll for status (orchestrator) / show to human
   POST   /api/reviews/<id>/submit/ — human submits decisions + narration edits
+  DELETE /api/reviews/<id>/       — delete a review request (dashboard cleanup)
 
 Auth strategy: the same PAT Bearer flow used everywhere else in canopy-web.
 The canopy-side orchestrator mints a Personal Access Token (via manage.py
@@ -16,6 +18,7 @@ logged in via Google OAuth) or, if visibility=="link", the ?t= query token.
 from __future__ import annotations
 
 import logging
+import re
 from uuid import UUID
 
 from django.http import HttpRequest
@@ -26,11 +29,21 @@ from apps.api.auth import session_auth
 from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, ProblemError
 
 from .models import ReviewRequest
-from .schemas import ReviewCreateIn, ReviewCreateOut, ReviewRequestOut, ReviewSubmitIn
+from .schemas import (
+    ReviewCreateIn,
+    ReviewCreateOut,
+    ReviewListItemOut,
+    ReviewRequestOut,
+    ReviewSubmitIn,
+)
 
 log = logging.getLogger(__name__)
 
 router = Router(auth=session_auth, tags=["reviews"])
+
+# A run_id looks like "<feature>-YYYY-MM-DD-NNN"; the feature is everything before
+# the trailing date+sequence stamp. Strip it for a clean dashboard label.
+_RUN_ID_STAMP = re.compile(r"-\d{4}-\d{2}-\d{2}-\d+$")
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +106,107 @@ def _detail_payload(review: ReviewRequest, *, is_owner: bool, expose_token: bool
         "created_at": review.created_at,
         "resolved_at": review.resolved_at,
     }
+
+
+def _feature_from_run_id(run_id: str) -> str:
+    """'microplans-study-design-2026-05-29-001' -> 'microplans-study-design'."""
+    base = _RUN_ID_STAMP.sub("", run_id).strip("-")
+    return base or run_id or "(untitled)"
+
+
+def _list_title(request_json: dict) -> str | None:
+    """A short human label: the narrative's first line, else the first scene title."""
+    narrative = (request_json.get("narrative") or "").strip()
+    if narrative:
+        first = narrative.splitlines()[0].strip()
+        return first[:140] if first else None
+    narration = request_json.get("narration") or []
+    if narration and isinstance(narration[0], dict):
+        t = (narration[0].get("title") or "").strip()
+        return t or None
+    return None
+
+
+def _list_item_payload(request: HttpRequest, review: ReviewRequest) -> dict:
+    rj = review.request_json if isinstance(review.request_json, dict) else {}
+    narration = rj.get("narration") or []
+    is_own = _is_owner(request, review)
+    return {
+        "id": review.id,
+        "run_id": review.run_id,
+        "gate": review.gate,
+        "status": review.status,
+        "visibility": review.visibility,
+        "feature": _feature_from_run_id(review.run_id),
+        "title": _list_title(rj),
+        "scene_count": len(narration) if isinstance(narration, list) else 0,
+        "created_at": review.created_at,
+        "resolved_at": review.resolved_at,
+        "last_activity_at": review.resolved_at or review.created_at,
+        # Owners and link-visibility reviews expose the token so the dashboard can
+        # build a working /review/<id>?t= link without a second round-trip.
+        "share_token": review.share_token
+        if (is_own or review.visibility == ReviewRequest.VISIBILITY_LINK)
+        else None,
+        "is_owner": is_own,
+    }
+
+
+# ---------------------------------------------------------------------------
+# List (DDD-plans dashboard)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/",
+    response=list[ReviewListItemOut],
+    summary="List review requests (DDD-plans dashboard)",
+)
+def list_reviews(
+    request: HttpRequest,
+    q: str = "",
+    status: str = "",
+    order: str = "-last_activity",
+) -> list[ReviewListItemOut]:
+    """
+    List every review request for the DDD-plans dashboard.
+
+    Team-internal: any authenticated user (session or PAT) sees all reviews —
+    same read rule as GET /<id>/. Supports a free-text `q` (matches feature,
+    run_id, gate, or title), an optional `status` filter (pending|resolved),
+    and `order` ∈ {-last_activity, last_activity, -created, created, feature}.
+    Default sort is most-recently-edited first.
+    """
+    qs = ReviewRequest.objects.all()
+    if status in (ReviewRequest.STATUS_PENDING, ReviewRequest.STATUS_RESOLVED):
+        qs = qs.filter(status=status)
+
+    # Build derived rows once, then filter/sort in Python — the review set is
+    # team-internal and small, and feature/title live inside the JSON payload.
+    items = [_list_item_payload(request, r) for r in qs.iterator()]
+
+    needle = q.strip().lower()
+    if needle:
+        items = [
+            it
+            for it in items
+            if needle in it["feature"].lower()
+            or needle in it["run_id"].lower()
+            or needle in it["gate"].lower()
+            or needle in (it["title"] or "").lower()
+        ]
+
+    sort_keys = {
+        "-last_activity": (lambda it: it["last_activity_at"], True),
+        "last_activity": (lambda it: it["last_activity_at"], False),
+        "-created": (lambda it: it["created_at"], True),
+        "created": (lambda it: it["created_at"], False),
+        "feature": (lambda it: it["feature"].lower(), False),
+    }
+    key_fn, reverse = sort_keys.get(order, sort_keys["-last_activity"])
+    items.sort(key=key_fn, reverse=reverse)
+
+    return [ReviewListItemOut.model_validate(it) for it in items]
 
 
 # ---------------------------------------------------------------------------
@@ -215,3 +329,27 @@ def submit_review(request: HttpRequest, rid: UUID, payload: ReviewSubmitIn) -> R
     return ReviewRequestOut.model_validate(
         _detail_payload(review, is_owner=is_own, expose_token=expose_token)
     )
+
+
+# ---------------------------------------------------------------------------
+# Delete (dashboard cleanup)
+# ---------------------------------------------------------------------------
+
+
+@router.delete(
+    "/{rid}/",
+    response={204: None},
+    summary="Delete a review request (dashboard cleanup)",
+)
+def delete_review(request: HttpRequest, rid: UUID):
+    """
+    Delete a review request.
+
+    Team-internal cleanup: any authenticated user (session or PAT) may delete —
+    reviews are owned by whichever identity posted them (often the orchestrator's
+    PAT, not the human browsing), so restricting to owner would make the human
+    unable to tidy up. The router's session_auth already blocks anonymous callers.
+    """
+    review = _get_or_404(rid)
+    review.delete()
+    return Status(204, None)

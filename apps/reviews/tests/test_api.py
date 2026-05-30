@@ -372,3 +372,133 @@ def test_submit_private_review_by_non_owner_is_blocked(other_client, owner):
         "Review should still be pending after blocked submit attempt"
     )
     assert review.response_json is None
+
+
+# ---------------------------------------------------------------------------
+# 12. dashboard LIST — auth required, derived fields, search, status, order
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_list_requires_auth():
+    c = Client()  # unauthenticated
+    resp = c.get(f"{BASE}/")
+    assert resp.status_code == 401, resp.content
+
+
+@pytest.mark.django_db
+def test_list_returns_all_with_derived_fields(auth_client, owner):
+    _make_review(
+        owner,
+        run_id="microplans-study-design-2026-05-29-001",
+        gate="concept_change",
+        request_json={
+            "schema_version": 1,
+            "run_id": "microplans-study-design-2026-05-29-001",
+            "gate": "concept_change",
+            "narrative": "Maya turns delivery into a defensible study.\nSecond line.",
+            "narration": [
+                {"scene": 1, "id": "s1", "title": "Open designer", "text": "x"},
+                {"scene": 2, "id": "s2", "title": "See delivery", "text": "y"},
+            ],
+            "decisions": [],
+            "autonomous_audit": [],
+        },
+    )
+
+    resp = auth_client.get(f"{BASE}/")
+    assert resp.status_code == 200, resp.content
+    rows = resp.json()
+    assert len(rows) == 1
+    row = rows[0]
+    # run_id stamp stripped → clean feature label
+    assert row["feature"] == "microplans-study-design"
+    # title is the narrative's first line
+    assert row["title"] == "Maya turns delivery into a defensible study."
+    assert row["scene_count"] == 2
+    assert row["gate"] == "concept_change"
+    assert row["status"] == "pending"
+    # last_activity_at falls back to created_at while pending
+    assert row["last_activity_at"] == row["created_at"]
+
+
+@pytest.mark.django_db
+def test_list_search_filters_by_feature(auth_client, owner):
+    _make_review(owner, run_id="alpha-feature-2026-05-01-001")
+    _make_review(owner, run_id="beta-thing-2026-05-01-001")
+
+    resp = auth_client.get(f"{BASE}/?q=beta")
+    assert resp.status_code == 200, resp.content
+    rows = resp.json()
+    assert len(rows) == 1
+    assert rows[0]["feature"] == "beta-thing"
+
+
+@pytest.mark.django_db
+def test_list_status_filter(auth_client, owner):
+    _make_review(owner, run_id="p-2026-05-01-001")  # pending
+    resolved = _make_review(owner, run_id="r-2026-05-01-001")
+    resolved.status = ReviewRequest.STATUS_RESOLVED
+    resolved.resolved_at = timezone.now()
+    resolved.save()
+
+    resp = auth_client.get(f"{BASE}/?status=resolved")
+    assert resp.status_code == 200, resp.content
+    rows = resp.json()
+    assert len(rows) == 1
+    assert rows[0]["status"] == "resolved"
+    # resolved row reports its resolved_at as last activity
+    assert rows[0]["last_activity_at"] == rows[0]["resolved_at"]
+
+
+@pytest.mark.django_db
+def test_list_orders_by_last_activity_desc_by_default(auth_client, owner):
+    older = _make_review(owner, run_id="older-2026-05-01-001")
+    newer = _make_review(owner, run_id="newer-2026-05-01-001")
+    # Resolve the older one *now* so its last_activity jumps ahead of newer's.
+    older.status = ReviewRequest.STATUS_RESOLVED
+    older.resolved_at = timezone.now()
+    older.save()
+
+    resp = auth_client.get(f"{BASE}/")
+    assert resp.status_code == 200, resp.content
+    features = [r["feature"] for r in resp.json()]
+    assert features[0] == "older"  # most-recently-edited first
+
+
+# ---------------------------------------------------------------------------
+# 13. dashboard DELETE — auth required, removes record, 404 on missing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_delete_requires_auth(owner):
+    review = _make_review(owner)
+    c = Client()  # unauthenticated
+    resp = c.delete(f"{BASE}/{review.id}/")
+    assert resp.status_code == 401, resp.content
+    assert ReviewRequest.objects.filter(pk=review.id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_removes_record(auth_client, owner):
+    review = _make_review(owner)
+    resp = auth_client.delete(f"{BASE}/{review.id}/")
+    assert resp.status_code == 204, resp.content
+    assert not ReviewRequest.objects.filter(pk=review.id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_by_non_owner_authenticated_allowed(other_client, owner):
+    """Team-internal cleanup: any authenticated user may delete (reviews are often
+    owned by the orchestrator PAT, not the human tidying up)."""
+    review = _make_review(owner)
+    resp = other_client.delete(f"{BASE}/{review.id}/")
+    assert resp.status_code == 204, resp.content
+    assert not ReviewRequest.objects.filter(pk=review.id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_nonexistent_returns_404(auth_client):
+    resp = auth_client.delete(f"{BASE}/{uuid.uuid4()}/")
+    assert resp.status_code == 404, resp.content

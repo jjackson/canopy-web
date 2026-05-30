@@ -182,3 +182,69 @@ export async function submitReview(
   })
   return parseResponse<ReviewDetail>(resp)
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard: list + delete
+// ---------------------------------------------------------------------------
+
+/** One row in the DDD-plans dashboard (mirrors apps/reviews/schemas.ReviewListItemOut). */
+export interface ReviewListItem {
+  id: string
+  run_id: string
+  gate: string
+  status: ReviewStatus
+  visibility: ReviewVisibility
+  feature: string
+  title: string | null
+  scene_count: number
+  created_at: string
+  resolved_at: string | null
+  last_activity_at: string
+  share_token: string | null
+  is_owner: boolean
+}
+
+export type ReviewListOrder =
+  | '-last_activity'
+  | 'last_activity'
+  | '-created'
+  | 'created'
+  | 'feature'
+
+export interface ListReviewsParams {
+  q?: string
+  status?: ReviewStatus
+  order?: ReviewListOrder
+}
+
+/** List all DDD review requests (plans). Authenticated team users only. */
+export async function listReviews(params: ListReviewsParams = {}): Promise<ReviewListItem[]> {
+  const qs = new URLSearchParams()
+  if (params.q) qs.set('q', params.q)
+  if (params.status) qs.set('status', params.status)
+  if (params.order) qs.set('order', params.order)
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  const resp = await fetch(`/api/reviews/${suffix}`, { credentials: 'same-origin' })
+  return parseResponse<ReviewListItem[]>(resp)
+}
+
+/** Delete a review request (dashboard cleanup). */
+export async function deleteReview(id: string): Promise<void> {
+  const csrf = getCsrfToken()
+  const resp = await fetch(`/api/reviews/${id}/`, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+    headers: { ...(csrf ? { 'X-CSRFToken': csrf } : {}) },
+  })
+  if (!resp.ok) {
+    let msg = `Delete failed: ${resp.status}`
+    try {
+      const body = await resp.json()
+      if (body?.detail) msg = body.detail
+      else if (body?.title) msg = body.title
+    } catch {
+      // ignore
+    }
+    throw new Error(msg)
+  }
+}
