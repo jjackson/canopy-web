@@ -16,6 +16,7 @@ const CATEGORIES = [
   { key: 'pattern', label: 'Patterns' },
   { key: 'stale', label: 'Stale' },
   { key: 'opportunity', label: 'Opportunities' },
+  { key: 'alignment', label: 'Alignment' },
 ]
 
 function InsightCard({ insight, onDismiss }: { insight: Insight; onDismiss: (id: number) => void }) {
