@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout/AppLayout'
 import { WorkspacePage } from './pages/WorkspacePage'
 import { WorkspacesPage } from './pages/WorkspacesPage'
@@ -24,7 +24,8 @@ export const router = createBrowserRouter([
       { path: '/skills', element: <DiscoveryPage /> },
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:id', element: <WalkthroughViewerPage /> },
-      { path: '/reviews', element: <ReviewsPage /> },
+      { path: '/ddd-plans', element: <ReviewsPage /> },
+      { path: '/reviews', element: <Navigate to="/ddd-plans" replace /> },
       { path: '/review/:id', element: <ReviewPage /> },
       { path: '/new', element: <NewCollectionPage /> },
       { path: '/workspaces', element: <WorkspacesPage /> },
