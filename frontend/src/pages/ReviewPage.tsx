@@ -1223,59 +1223,37 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           {req.narrative?.trim() && (
             <p className="text-[15px] leading-relaxed text-stone-200">
               {(() => {
-                const paragraph = req.narrative.trim()
-                // Sentence-split client-side: same shape as scripts/ddd/narrative.py
-                // _split_narrative_sentences. Conservative: splits on sentence-ending
-                // punctuation followed by whitespace + a capital letter or opening quote.
-                const sentences = paragraph
-                  .split(/(?<=[.!?])\s+(?=[A-Z"'])/)
-                  .map((s) => s.trim())
-                  .filter((s) => s.length > 0)
-                // Sentence-mode: when sentence count matches scene count, each
-                // sentence maps 1:1 to a scene and clicks scroll to that scene's
-                // card. Otherwise (under-drafted paragraph, multi-sentence scene)
-                // we still tint the sentences but don't wire click targets — the
-                // mapping isn't deterministic without per-scene sentence ranges.
+                // v2 (gap-flexible-scene-length): iterate the per-scene
+                // narration items from the request. Each item's `text` is the
+                // canonical scene narrative (single OR multi-sentence). We
+                // render each as a clickable span so multi-sentence beats
+                // work without breaking the click-to-scroll mapping.
                 const liveScenes = effectiveScenes.filter((s) => !s.deleted)
-                const sceneMode = sentences.length === liveScenes.length
-                if (sentences.length <= 1) {
-                  return paragraph
+                if (liveScenes.length === 0) {
+                  return req.narrative.trim()
                 }
-                // Quiet visual: no background tints (those made the paragraph
-                // hard to read). Each sentence is a span; on hover (when
-                // sentence-mode is active) it gets a soft underline so the
-                // reviewer sees the scene boundary AND that it's a link.
-                // Edited sentences carry a persistent thin sky-blue underline
-                // so the per-scene "Edited" signal flows through the paragraph
-                // without screaming.
-                return sentences.map((sentence, i) => {
-                  const sceneId = sceneMode ? liveScenes[i].id : null
-                  const isEdited = sceneId ? editedSceneIds.has(sceneId) : false
+                return liveScenes.map((scene, i) => {
+                  const sceneId = scene.id
+                  const isEdited = editedSceneIds.has(sceneId)
                   const stateCls = isEdited
                     ? 'underline decoration-sky-400/60 hover:decoration-sky-300'
-                    : sceneId
-                      ? 'hover:underline hover:decoration-stone-300/70'
-                      : ''
+                    : 'hover:underline hover:decoration-stone-300/70'
                   return (
-                    <span key={i}>
+                    <span key={sceneId}>
                       {i > 0 && ' '}
                       <span
                         className={[
                           'transition-colors decoration-1 underline-offset-4',
-                          sceneId ? 'cursor-pointer' : '',
+                          'cursor-pointer',
                           stateCls,
                         ].join(' ')}
-                        onClick={
-                          sceneId
-                            ? () => {
-                                const el = document.getElementById(`scene-${sceneId}`)
-                                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                              }
-                            : undefined
-                        }
-                        title={sceneId ? `Jump to scene ${i + 1}` : undefined}
+                        onClick={() => {
+                          const el = document.getElementById(`scene-${sceneId}`)
+                          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                        }}
+                        title={`Jump to scene ${i + 1}`}
                       >
-                        {sentence}
+                        {scene.narration}
                       </span>
                     </span>
                   )
