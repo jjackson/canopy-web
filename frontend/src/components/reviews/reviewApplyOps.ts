@@ -12,7 +12,12 @@
  *   the reducer, so each key appears at most once.
  */
 
-import type { ReviewNarrationItem, ReviewFeature } from '../../api/reviews'
+import type {
+  ReviewNarrationItem,
+  ReviewFeature,
+  ReviewPersona,
+  ReviewWhyBrief,
+} from '../../api/reviews'
 import type { PendingReviewOp } from './reviewEditorTypes'
 
 // ---------------------------------------------------------------------------
@@ -29,8 +34,14 @@ export interface EffectiveFeature {
 
 export interface EffectiveScene {
   id: string
-  /** 'new' scenes carry a user-editable title; original scenes use "Scene N". */
+  /** Story-beat title. Original scenes carry the spec title; falls back to
+   * "Scene N" only when the backend sent no title. New scenes carry the
+   * user-entered title. */
   title: string
+  /** Persona key on screen this beat (DDD v3). Empty for new/unassigned scenes. */
+  persona: string
+  /** Spine id this beat grounds — joins to the why-brief grounding. Empty for new scenes. */
+  provenance: string
   narration: string
   deleted: boolean
   features: EffectiveFeature[]
@@ -111,6 +122,8 @@ export function applyReviewOps(
           const newScene: EffectiveScene = {
             id: op.sceneId,
             title: op.title,
+            persona: '',
+            provenance: '',
             narration: '',
             deleted: false,
             features: [],
@@ -212,7 +225,9 @@ export function projectBuildOrder(
 function originalToEffective(items: ReviewNarrationItem[]): EffectiveScene[] {
   return items.map((item) => ({
     id: item.id,
-    title: `Scene ${item.scene}`,
+    title: item.title && item.title.trim() ? item.title : `Scene ${item.scene}`,
+    persona: item.persona ?? '',
+    provenance: item.provenance ?? '',
     narration: item.text,
     deleted: false,
     features: (item.features ?? []).map((f: ReviewFeature) => ({
@@ -224,4 +239,49 @@ function originalToEffective(items: ReviewNarrationItem[]): EffectiveScene[] {
     })),
     feedback: '',
   }))
+}
+
+// ---------------------------------------------------------------------------
+// Persona projection — apply edit-persona ops over the original personas dict.
+// ---------------------------------------------------------------------------
+
+export type EffectivePersonas = Record<string, ReviewPersona>
+
+export function projectPersonas(
+  original: Record<string, ReviewPersona> | undefined,
+  ops: PendingReviewOp[],
+): EffectivePersonas {
+  const personas: EffectivePersonas = JSON.parse(JSON.stringify(original ?? {}))
+  for (const op of ops) {
+    if (op.op !== 'edit-persona') continue
+    const p = personas[op.key]
+    if (!p) continue
+    p[op.field] = op.value
+  }
+  return personas
+}
+
+// ---------------------------------------------------------------------------
+// Why-brief projection — apply edit-why-* ops over the original why-brief.
+// ---------------------------------------------------------------------------
+
+export function projectWhyBrief(
+  original: ReviewWhyBrief | undefined | null,
+  ops: PendingReviewOp[],
+): ReviewWhyBrief {
+  const wb: ReviewWhyBrief = JSON.parse(
+    JSON.stringify(original ?? { problem: '', spine: [], gaps: [] }),
+  )
+  for (const op of ops) {
+    if (op.op === 'edit-why-problem') {
+      wb.problem = op.value
+    } else if (op.op === 'edit-why-spine') {
+      const item = (wb.spine ?? []).find((s) => s.id === op.id)
+      if (item) item[op.field] = op.value
+    } else if (op.op === 'edit-why-gap') {
+      const gap = (wb.gaps ?? []).find((g) => g.id === op.id)
+      if (gap) gap[op.field] = op.value
+    }
+  }
+  return wb
 }

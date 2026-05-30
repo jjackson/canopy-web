@@ -39,6 +39,22 @@ describe('applyReviewOps', () => {
     expect(scenes[0].features[0].feedback).toBe('')
   })
 
+  it('carries the real story-beat title and persona when present', () => {
+    const withTitles: ReviewNarrationItem[] = [
+      { scene: 1, id: 'scene-1', title: 'Maya picks the district', persona: 'lead', text: 'one', features: [] },
+    ]
+    const scenes = applyReviewOps(withTitles, [])
+    expect(scenes[0].title).toBe('Maya picks the district')
+    expect(scenes[0].persona).toBe('lead')
+  })
+
+  it('falls back to "Scene N" when no title is provided', () => {
+    const scenes = applyReviewOps(ORIGINAL, [])
+    expect(scenes[0].title).toBe('Scene 1')
+    expect(scenes[1].title).toBe('Scene 2')
+    expect(scenes[0].persona).toBe('')
+  })
+
   it('edit-narration updates the narration text', () => {
     const ops: PendingReviewOp[] = [
       { op: 'edit-narration', sceneId: 'scene-1', text: 'Edited narration' },
@@ -237,5 +253,65 @@ describe('projectBuildOrder', () => {
     // then reconciles: scene-2 deleted → drop it; new-42 added → append.
     const order = projectBuildOrder(ORIGINAL, ops, null, effective)
     expect(order).toEqual(['scene-1', 'new-42'])
+  })
+})
+
+import { projectPersonas, projectWhyBrief } from './reviewApplyOps'
+import type { ReviewPersona, ReviewWhyBrief } from '../../api/reviews'
+
+describe('projectPersonas', () => {
+  const PERSONAS: Record<string, ReviewPersona> = {
+    maya: { name: 'Maya', role: 'Lead', color: '#3B82F6', intro: 'designs', org: 'Dimagi' },
+    sam: { name: 'Sam', role: 'Partner', color: '#10B981', intro: 'runs field', org: 'LLO' },
+  }
+
+  it('returns a clone with no ops (no mutation of original)', () => {
+    const out = projectPersonas(PERSONAS, [])
+    expect(out.maya.name).toBe('Maya')
+    out.maya.name = 'X'
+    expect(PERSONAS.maya.name).toBe('Maya')
+  })
+
+  it('applies edit-persona ops by key+field', () => {
+    const out = projectPersonas(PERSONAS, [
+      { op: 'edit-persona', key: 'maya', field: 'org', value: 'Dimagi Inc' },
+      { op: 'edit-persona', key: 'sam', field: 'name', value: 'Samir' },
+    ])
+    expect(out.maya.org).toBe('Dimagi Inc')
+    expect(out.sam.name).toBe('Samir')
+    expect(out.maya.name).toBe('Maya')
+  })
+
+  it('ignores edits to unknown persona keys', () => {
+    const out = projectPersonas(PERSONAS, [
+      { op: 'edit-persona', key: 'ghost', field: 'name', value: 'Nobody' },
+    ])
+    expect(out.ghost).toBeUndefined()
+  })
+})
+
+describe('projectWhyBrief', () => {
+  const WB: ReviewWhyBrief = {
+    problem: 'old problem',
+    spine: [{ id: 'S1', claim: 'old claim', rationale: 'old rat', status: 'grounded' }],
+    gaps: [{ id: 'g1', type: 'CAPABILITY', claim_ref: 'S1', detail: 'old detail', proposed_action: 'old action' }],
+  }
+
+  it('applies problem / spine / gap edits, leaving others intact', () => {
+    const out = projectWhyBrief(WB, [
+      { op: 'edit-why-problem', value: 'new problem' },
+      { op: 'edit-why-spine', id: 'S1', field: 'claim', value: 'new claim' },
+      { op: 'edit-why-gap', id: 'g1', field: 'proposed_action', value: 'new action' },
+    ])
+    expect(out.problem).toBe('new problem')
+    expect(out.spine![0].claim).toBe('new claim')
+    expect(out.spine![0].rationale).toBe('old rat')
+    expect(out.gaps![0].proposed_action).toBe('new action')
+    expect(out.gaps![0].detail).toBe('old detail')
+  })
+
+  it('does not mutate the original', () => {
+    projectWhyBrief(WB, [{ op: 'edit-why-problem', value: 'x' }])
+    expect(WB.problem).toBe('old problem')
   })
 })

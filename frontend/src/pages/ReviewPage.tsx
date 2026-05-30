@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TextareaHTMLAttributes } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   getReview,
@@ -8,12 +8,56 @@ import {
   type ReviewSceneActionability,
   type ReviewSubmitPayload,
   type ReviewSubmittedScene,
+  type ReviewPersona,
+  type ReviewWhySpineItem,
+  type ReviewWhyGap,
 } from '../api/reviews'
 import { walkthroughContentUrl } from '../api/walkthroughs'
 import {
   ReviewEditorProvider,
   useReviewEditor,
 } from '../components/reviews/ReviewEditorContext'
+
+// ---------------------------------------------------------------------------
+// AutoTextarea — a textarea that grows to fit its content (never internally
+// scrolls). Re-fits on value changes and window resize; honors any min-height
+// supplied via className.
+// ---------------------------------------------------------------------------
+
+const AutoTextarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function AutoTextarea(props, fwdRef) {
+    const innerRef = useRef<HTMLTextAreaElement | null>(null)
+    const setRef = (el: HTMLTextAreaElement | null) => {
+      innerRef.current = el
+      if (typeof fwdRef === 'function') fwdRef(el)
+      else if (fwdRef) (fwdRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el
+    }
+    const resize = useCallback(() => {
+      const el = innerRef.current
+      if (!el) return
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight}px`
+    }, [])
+    useLayoutEffect(() => {
+      resize()
+    }, [resize, props.value])
+    useEffect(() => {
+      window.addEventListener('resize', resize)
+      return () => window.removeEventListener('resize', resize)
+    }, [resize])
+    const userOnInput = props.onInput
+    return (
+      <textarea
+        {...props}
+        ref={setRef}
+        onInput={(e) => {
+          resize()
+          userOnInput?.(e)
+        }}
+      />
+    )
+  },
+)
 
 // ---------------------------------------------------------------------------
 // Small utility components
@@ -45,6 +89,24 @@ function DirtyBadge({ isDirty }: { isDirty: boolean }) {
   return (
     <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
       Edited
+    </span>
+  )
+}
+
+function PersonaChip({ persona, dim = false }: { persona: ReviewPersona; dim?: boolean }) {
+  return (
+    <span
+      title={`${persona.name} — ${persona.role}`}
+      className={[
+        'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium select-none',
+        dim ? 'border-stone-700 text-stone-400' : 'border-stone-600 text-stone-200',
+      ].join(' ')}
+    >
+      <span
+        className="inline-block h-2 w-2 rounded-full shrink-0"
+        style={{ backgroundColor: persona.color || '#78716c' }}
+      />
+      {persona.name}
     </span>
   )
 }
@@ -248,32 +310,38 @@ function FeatureRow({
       </div>
 
       {/* description */}
-      <textarea
-        className={[
-          'w-full rounded border bg-stone-900 px-2 py-1.5 text-sm text-stone-200 resize-y min-h-[2.5rem]',
-          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-          readOnly ? 'opacity-70 cursor-default' : '',
-        ].join(' ')}
-        value={feature.description}
-        onChange={(e) => !readOnly && onEdit('description', e.target.value)}
-        readOnly={readOnly}
-        placeholder="Description"
-        rows={2}
-      />
+      <div>
+        <FieldLabel>What to build</FieldLabel>
+        <AutoTextarea
+          className={[
+            'w-full rounded border bg-stone-900 px-2 py-1.5 text-sm text-stone-200 resize-none min-h-[2.5rem]',
+            'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+            readOnly ? 'opacity-70 cursor-default' : '',
+          ].join(' ')}
+          value={feature.description}
+          onChange={(e) => !readOnly && onEdit('description', e.target.value)}
+          readOnly={readOnly}
+          placeholder="The buildable unit — what an engineer implements"
+          rows={2}
+        />
+      </div>
 
       {/* verify */}
-      <input
-        type="text"
-        className={[
-          'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-400',
-          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-          readOnly ? 'opacity-70 cursor-default' : '',
-        ].join(' ')}
-        value={feature.verify}
-        onChange={(e) => !readOnly && onEdit('verify', e.target.value)}
-        readOnly={readOnly}
-        placeholder="verify: how to confirm"
-      />
+      <div>
+        <FieldLabel>Verify — how we'll confirm it's built</FieldLabel>
+        <AutoTextarea
+          className={[
+            'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-300 resize-none min-h-[2.25rem] whitespace-pre-wrap break-words',
+            'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+            readOnly ? 'opacity-70 cursor-default' : '',
+          ].join(' ')}
+          value={feature.verify}
+          onChange={(e) => !readOnly && onEdit('verify', e.target.value)}
+          readOnly={readOnly}
+          rows={2}
+          placeholder="A runnable check — API assertion, UI state, or test command"
+        />
+      </div>
 
       {isMissed && (
         <p className="text-[11px] text-amber-400/80">⚠ eval flagged as under-specified</p>
@@ -304,6 +372,7 @@ interface SceneCardProps {
   scene: {
     id: string
     title: string
+    persona: string
     narration: string
     deleted: boolean
     features: Array<{
@@ -315,6 +384,12 @@ interface SceneCardProps {
     }>
     feedback: string
   }
+  sceneNumber?: number
+  persona?: ReviewPersona
+  /** The spine item this scene grounds (resolved by provenance), if any. */
+  grounding?: ReviewWhySpineItem
+  /** Gaps whose claim_ref points at this scene's spine item. */
+  gaps?: ReviewWhyGap[]
   readOnly: boolean
   sceneActionability?: ReviewSceneActionability
   onEditNarration: (text: string) => void
@@ -324,10 +399,42 @@ interface SceneCardProps {
   onAddFeature: () => void
   onDeleteScene: () => void
   onSceneFeedback: (text: string) => void
+  /** Edit the grounding rationale (persists to the why-brief spine item). */
+  onEditRationale?: (value: string) => void
+  /** Edit a gap field (persists to the why-brief gap). */
+  onEditGap?: (gapId: string, field: 'detail' | 'proposed_action', value: string) => void
+  /** When true, the scene's details start expanded (e.g. ?expand=1 / print/judge view). */
+  defaultOpen?: boolean
+  /** When true, the scene has pending edits in the current session — drives the
+   *  "Edited" badge + a sky-tinted border so the reviewer sees at a glance which
+   *  beats they've touched. */
+  isEdited?: boolean
+}
+
+function StatusBadge({ status }: { status?: string }) {
+  if (!status) return null
+  const frontier = status !== 'grounded'
+  return (
+    <span
+      title={frontier ? 'New feature — not yet built; this scene shows intended behavior' : 'Grounded — backed by shipped code/evidence (not re-verified live)'}
+      className={[
+        'shrink-0 rounded px-2 py-0.5 text-[11px] font-medium select-none',
+        frontier
+          ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+          : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
+      ].join(' ')}
+    >
+      {frontier ? 'New feature' : 'Grounded'}
+    </span>
+  )
 }
 
 function SceneCard({
   scene,
+  sceneNumber,
+  persona,
+  grounding,
+  gaps,
   readOnly,
   sceneActionability,
   onEditNarration,
@@ -337,20 +444,64 @@ function SceneCard({
   onAddFeature,
   onDeleteScene,
   onSceneFeedback,
+  onEditRationale,
+  onEditGap,
+  defaultOpen,
+  isEdited,
 }: SceneCardProps) {
   if (scene.deleted) return null
 
   const missedIds = new Set(sceneActionability?.missed ?? [])
   const activeFeatures = scene.features.filter((f) => !f.deleted)
+  const hasGrounding = grounding != null || (gaps != null && gaps.length > 0)
+  // Collapsed by default: header + narration stay visible (the skimmable arc);
+  // features + grounding hide behind a toggle so the page isn't a wall.
+  // defaultOpen (?expand=1) starts expanded so the full substance is captured for judging/print.
+  const [open, setOpen] = useState(defaultOpen ?? false)
+  // Top-level trust signal: did this scene's verify actually run green? (kept visible
+  // in the collapsed view so the proof isn't buried behind the details toggle.)
+  const verifiedGreen = (grounding?.evidence ?? []).some((e) =>
+    /verify ran green/i.test(e.ref),
+  )
 
   return (
-    <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
+    <div
+      className={[
+        'rounded-lg border p-4 space-y-3 transition-colors',
+        isEdited
+          ? 'border-sky-500/60 bg-sky-500/5 ring-1 ring-sky-500/20'
+          : 'border-stone-700 bg-stone-950',
+      ].join(' ')}
+    >
       {/* Scene header */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-stone-500 uppercase tracking-wider">
-          {scene.title}
-        </span>
-        <div className="flex items-center gap-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          {sceneNumber != null && (
+            <span className="text-[11px] font-semibold text-stone-500 tabular-nums shrink-0">
+              Scene {sceneNumber}
+            </span>
+          )}
+          {persona && <PersonaChip persona={persona} />}
+          <span className="text-sm font-medium text-stone-100">{scene.title}</span>
+          {grounding?.status && <StatusBadge status={grounding.status} />}
+          {isEdited && (
+            <span
+              title="This scene has pending edits in your current session"
+              className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium bg-sky-500/15 text-sky-300 border border-sky-500/30 select-none"
+            >
+              Edited
+            </span>
+          )}
+          {verifiedGreen && (
+            <span
+              title="This scene's verify actually ran and passed"
+              className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 select-none"
+            >
+              ✓ verify passed
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           {sceneActionability != null && (
             <ScoreBadge
               score={sceneActionability.score}
@@ -371,26 +522,51 @@ function SceneCard({
       </div>
 
       {/* Editable narration */}
-      <textarea
-        className={[
-          'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[4rem]',
-          'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-          readOnly ? 'opacity-70 cursor-default' : '',
-        ].join(' ')}
-        value={scene.narration}
-        onChange={(e) => !readOnly && onEditNarration(e.target.value)}
-        readOnly={readOnly}
-        rows={3}
-        placeholder="Scene narration…"
-      />
+      <div>
+        <FieldLabel>What plays in the demo</FieldLabel>
+        <AutoTextarea
+          className={[
+            'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-none min-h-[4rem]',
+            'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+            readOnly ? 'opacity-70 cursor-default' : '',
+          ].join(' ')}
+          value={scene.narration}
+          onChange={(e) => !readOnly && onEditNarration(e.target.value)}
+          readOnly={readOnly}
+          rows={3}
+          placeholder="The beat the viewer watches in this scene…"
+        />
+      </div>
 
+      {/* Collapsed-by-default details. A one-line buildability summary stays visible
+          so a reviewer can judge what they're approving without expanding all scenes. */}
+      {!open && activeFeatures.length > 0 && (
+        <p className="text-xs text-stone-500">
+          <span className="text-stone-600">Builds: </span>
+          {activeFeatures[0].description}
+          {activeFeatures.length > 1 ? ` +${activeFeatures.length - 1} more` : ''}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-stone-500 hover:text-stone-300 transition-colors flex items-center gap-1.5"
+      >
+        <span className="text-stone-600">{open ? '▾' : '▸'}</span>
+        {open
+          ? 'Hide details'
+          : `Show ${activeFeatures.length} feature${activeFeatures.length === 1 ? '' : 's'} + verify${hasGrounding ? ' + why' : ''}`}
+      </button>
+
+      {open && (
+        <>
       {/* Features list */}
       {(activeFeatures.length > 0 || !readOnly) && (
         <div className="space-y-2">
           {activeFeatures.length > 0 && (
             <>
               <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-                Features this scene commits to
+                Features to build
               </p>
               <ul className="space-y-2">
                 {scene.features.map((f) => (
@@ -417,6 +593,75 @@ function SceneCard({
             </button>
           )}
         </div>
+      )}
+
+      {/* Grounding — why this scene matters, co-located with the scene it grounds.
+          Muted + below the demo/features because the narration is what's most
+          important to get right; this is the supporting "why" + build status. */}
+      {hasGrounding && (
+        <div className="rounded border border-stone-800 bg-stone-900/40 p-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-600">
+            Why this matters {grounding?.id ? `· ${grounding.id}` : ''}
+          </p>
+          {grounding != null && (
+            <div>
+              <FieldLabel>Why it matters (rationale)</FieldLabel>
+              <AutoTextarea
+                className={inputCls(readOnly) + ' resize-none min-h-[3rem]'}
+                value={grounding.rationale ?? ''}
+                readOnly={readOnly || !onEditRationale}
+                rows={2}
+                placeholder="The reason this capability earns its place in the demo"
+                onChange={(e) => !readOnly && onEditRationale?.(e.target.value)}
+              />
+            </div>
+          )}
+          {grounding?.evidence && grounding.evidence.length > 0 && (
+            <div>
+              <FieldLabel>
+                {grounding.status === 'grounded' ? 'Backed by (shipped code/docs)' : 'Evidence'}
+              </FieldLabel>
+              <ul className="space-y-0.5">
+                {grounding.evidence.map((ev, i) => (
+                  <li key={i} className="text-[11px] text-stone-400 font-mono break-words">
+                    <span className="text-stone-600">{ev.kind ?? 'ref'}:</span> {ev.ref}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(gaps ?? []).map((gap) => (
+            <div key={gap.id} className="rounded border border-amber-500/20 bg-amber-500/5 p-2 space-y-2">
+              <div className="flex items-center gap-2 text-[11px]">
+                {gap.type && (
+                  <span className="rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">{gap.type}</span>
+                )}
+                <span className="text-stone-500">what's missing for this scene</span>
+              </div>
+              <AutoTextarea
+                className={inputCls(readOnly) + ' resize-none min-h-[2.5rem]'}
+                value={gap.detail}
+                readOnly={readOnly || !onEditGap}
+                rows={2}
+                placeholder="The gap"
+                onChange={(e) => !readOnly && onEditGap?.(gap.id, 'detail', e.target.value)}
+              />
+              <div>
+                <FieldLabel>Proposed action</FieldLabel>
+                <AutoTextarea
+                  className={inputCls(readOnly) + ' resize-none min-h-[2.5rem]'}
+                  value={gap.proposed_action}
+                  readOnly={readOnly || !onEditGap}
+                  rows={2}
+                  placeholder="What to do to close it"
+                  onChange={(e) => !readOnly && onEditGap?.(gap.id, 'proposed_action', e.target.value)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+        </>
       )}
 
       {/* Per-scene feedback */}
@@ -563,6 +808,99 @@ function BuildSequenceSection({
 }
 
 // ---------------------------------------------------------------------------
+// Personas section — the cast, visible + editable
+// ---------------------------------------------------------------------------
+
+function inputCls(readOnly: boolean): string {
+  return [
+    'w-full rounded border bg-stone-900 px-2.5 py-1.5 text-sm text-stone-200',
+    'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+    readOnly ? 'opacity-70 cursor-default' : 'hover:border-stone-500 cursor-text',
+  ].join(' ')
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <span className="block text-[10px] uppercase tracking-wider text-stone-600 mb-0.5">{children}</span>
+}
+
+function PersonasSection({
+  personas,
+  readOnly,
+  onEdit,
+}: {
+  personas: Record<string, ReviewPersona>
+  readOnly: boolean
+  onEdit: (key: string, field: 'name' | 'org' | 'role' | 'intro', value: string) => void
+}) {
+  const keys = Object.keys(personas)
+  if (keys.length === 0) return null
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
+        Personas
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {keys.map((key) => {
+          const p = personas[key]
+          return (
+            <div key={key} className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block h-3 w-3 rounded-full shrink-0"
+                  style={{ backgroundColor: p.color || '#78716c' }}
+                />
+                <span className="text-sm font-medium text-stone-100">{p.name || key}</span>
+                {p.org && <span className="text-xs text-stone-500">· {p.org}</span>}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel>Name</FieldLabel>
+                  <input
+                    className={inputCls(readOnly)}
+                    value={p.name}
+                    readOnly={readOnly}
+                    onChange={(e) => !readOnly && onEdit(key, 'name', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Org</FieldLabel>
+                  <input
+                    className={inputCls(readOnly)}
+                    value={p.org ?? ''}
+                    readOnly={readOnly}
+                    placeholder="e.g. Dimagi"
+                    onChange={(e) => !readOnly && onEdit(key, 'org', e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <FieldLabel>Role</FieldLabel>
+                <input
+                  className={inputCls(readOnly)}
+                  value={p.role}
+                  readOnly={readOnly}
+                  onChange={(e) => !readOnly && onEdit(key, 'role', e.target.value)}
+                />
+              </div>
+              <div>
+                <FieldLabel>Intro</FieldLabel>
+                <AutoTextarea
+                  className={inputCls(readOnly) + ' resize-none min-h-[3rem]'}
+                  value={p.intro}
+                  readOnly={readOnly}
+                  rows={2}
+                  onChange={(e) => !readOnly && onEdit(key, 'intro', e.target.value)}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Inner editor — has access to the ReviewEditor context
 // Owns all user interaction + submit logic.
 // ---------------------------------------------------------------------------
@@ -575,12 +913,46 @@ interface ReviewEditorInnerProps {
 }
 
 function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerProps) {
-  const { effectiveScenes, overallFeedback, buildOrder, isDirty, dispatch } = useReviewEditor()
+  const {
+    state,
+    effectiveScenes,
+    effectivePersonas,
+    effectiveWhyBrief,
+    overallFeedback,
+    buildOrder,
+    isDirty,
+    dispatch,
+  } = useReviewEditor()
+
+  // Scenes that have any pending edit op in the buffer — drives the per-scene
+  // "Edited" badge + border tint so the reviewer can see at a glance which
+  // beats they've touched in this session.
+  const editedSceneIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const op of state.buffer) {
+      if ('sceneId' in op && op.sceneId) ids.add(op.sceneId)
+    }
+    return ids
+  }, [state.buffer])
 
   const shareToken = useRef(new URLSearchParams(window.location.search).get('t')).current
 
   const newFeatureCounterRef = useRef(0)
   const newSceneCounterRef = useRef(0)
+
+  // Active tab — reflected in the URL (?tab=cuts) so it's shareable/linkable.
+  const initialTab = new URLSearchParams(window.location.search).get('tab') === 'cuts' ? 'cuts' : 'narrative'
+  // ?expand=1 starts every scene expanded — so the full build substance + evidence is visible
+  // (the default collapsed view is for fast human skimming; expand is for judging/print/audit).
+  const expandAll = new URLSearchParams(window.location.search).get('expand') === '1'
+  const [tab, setTab] = useState<'narrative' | 'cuts'>(initialTab)
+  const selectTab = useCallback((t: 'narrative' | 'cuts') => {
+    setTab(t)
+    const url = new URL(window.location.href)
+    if (t === 'cuts') url.searchParams.set('tab', 'cuts')
+    else url.searchParams.delete('tab')
+    window.history.replaceState({}, '', url)
+  }, [])
 
   const [choices, setChoices] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {}
@@ -599,6 +971,39 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
   const actionability = req.actionability ?? null
   const overallScore = actionability?.overall_score ?? null
   const perScene = actionability?.per_scene ?? {}
+  // Use the projected personas so chips + cards reflect in-flight edits.
+  const personas = effectivePersonas
+
+  // 1-based scene numbers among non-deleted scenes (renumbers as scenes are added/deleted).
+  const sceneNumberById = new Map<string, number>()
+  effectiveScenes
+    .filter((s) => !s.deleted)
+    .forEach((s, i) => sceneNumberById.set(s.id, i + 1))
+
+  // Join each scene to its why-brief grounding (spine item by provenance) + gaps
+  // (by claim_ref), so the "why" lives inside the scene it grounds instead of a
+  // parallel section. Anything not tied to a scene falls through to "other grounding".
+  const spineById = new Map((effectiveWhyBrief.spine ?? []).map((s) => [s.id, s]))
+  const gapsByRef = new Map<string, ReviewWhyGap[]>()
+  for (const g of effectiveWhyBrief.gaps ?? []) {
+    const ref = g.claim_ref ?? ''
+    if (!gapsByRef.has(ref)) gapsByRef.set(ref, [])
+    gapsByRef.get(ref)!.push(g)
+  }
+  const usedProvenance = new Set(
+    effectiveScenes.filter((s) => !s.deleted).map((s) => s.provenance).filter(Boolean),
+  )
+  const orphanSpine = (effectiveWhyBrief.spine ?? []).filter((s) => !usedProvenance.has(s.id))
+  const orphanGaps = (effectiveWhyBrief.gaps ?? []).filter(
+    (g) => !g.claim_ref || !usedProvenance.has(g.claim_ref),
+  )
+
+  // Honesty flag before approval: how many scenes are New features (not built) or below the ≥4 bar.
+  const liveScenes = effectiveScenes.filter((s) => !s.deleted)
+  const frontierCount = liveScenes.filter(
+    (s) => s.provenance && (spineById.get(s.provenance)?.status ?? 'grounded') !== 'grounded',
+  ).length
+  const belowBarCount = liveScenes.filter((s) => (perScene[s.id]?.score ?? 5) < 4).length
 
   const narrativeVerdictDecision = decisions.find((d) => d.id === 'narrative-verdict') ?? null
   const otherDecisions = decisions.filter((d) => d.id !== 'narrative-verdict')
@@ -631,12 +1036,51 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         feedback: scene.feedback,
       }))
 
+      // Diff personas: send only changed fields per persona key.
+      const origPersonas = review.request_json.personas ?? {}
+      const editedPersonas: ReviewSubmitPayload['edited_personas'] = {}
+      for (const [key, p] of Object.entries(effectivePersonas)) {
+        const o = origPersonas[key]
+        const delta: Record<string, string> = {}
+        for (const f of ['name', 'org', 'role', 'intro'] as const) {
+          if ((p[f] ?? '') !== (o?.[f] ?? '')) delta[f] = p[f] ?? ''
+        }
+        if (Object.keys(delta).length > 0) editedPersonas![key] = delta
+      }
+
+      // Diff why-brief prose fields.
+      const origWb = review.request_json.why_brief ?? {}
+      const wbDelta: ReviewSubmitPayload['edited_why_brief'] = {}
+      if ((effectiveWhyBrief.problem ?? '') !== (origWb.problem ?? '')) {
+        wbDelta!.problem = effectiveWhyBrief.problem ?? ''
+      }
+      const spineDelta: Record<string, { claim?: string; rationale?: string }> = {}
+      for (const item of effectiveWhyBrief.spine ?? []) {
+        const o = (origWb.spine ?? []).find((s) => s.id === item.id)
+        const d: { claim?: string; rationale?: string } = {}
+        if ((item.claim ?? '') !== (o?.claim ?? '')) d.claim = item.claim ?? ''
+        if ((item.rationale ?? '') !== (o?.rationale ?? '')) d.rationale = item.rationale ?? ''
+        if (Object.keys(d).length > 0) spineDelta[item.id] = d
+      }
+      if (Object.keys(spineDelta).length > 0) wbDelta!.spine = spineDelta
+      const gapDelta: Record<string, { detail?: string; proposed_action?: string }> = {}
+      for (const gap of effectiveWhyBrief.gaps ?? []) {
+        const o = (origWb.gaps ?? []).find((g) => g.id === gap.id)
+        const d: { detail?: string; proposed_action?: string } = {}
+        if ((gap.detail ?? '') !== (o?.detail ?? '')) d.detail = gap.detail ?? ''
+        if ((gap.proposed_action ?? '') !== (o?.proposed_action ?? '')) d.proposed_action = gap.proposed_action ?? ''
+        if (Object.keys(d).length > 0) gapDelta[gap.id] = d
+      }
+      if (Object.keys(gapDelta).length > 0) wbDelta!.gaps = gapDelta
+
       const payload: ReviewSubmitPayload = {
         decisions: choices,
         edited_scenes: editedScenes,
         overall_feedback: overallFeedback,
         build_order: buildOrder,
       }
+      if (Object.keys(editedPersonas!).length > 0) payload.edited_personas = editedPersonas
+      if (Object.keys(wbDelta!).length > 0) payload.edited_why_brief = wbDelta
 
       const updated = await submitReview(review.id, payload, shareToken)
       onResolved(updated)
@@ -645,7 +1089,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
     } finally {
       setBusy(false)
     }
-  }, [effectiveScenes, overallFeedback, buildOrder, choices, review.id, shareToken, onResolved])
+  }, [effectiveScenes, effectivePersonas, effectiveWhyBrief, overallFeedback, buildOrder, choices, review.id, review.request_json, shareToken, onResolved])
 
   const canSubmit = !busy && decisions.every((d) => !!choices[d.id])
 
@@ -679,8 +1123,14 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-start gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-semibold text-stone-100">Review gate: {req.gate}</h1>
-            <p className="text-sm text-stone-500 mt-0.5">Run {req.run_id}</p>
+            <h1 className="text-xl font-semibold text-stone-100">
+              {req.gate === 'concept_change'
+                ? 'Approve the story before we build it'
+                : req.gate === 'external_release'
+                  ? 'Approve for release'
+                  : `Review: ${req.gate}`}
+            </h1>
+            <p className="text-sm text-stone-500 mt-0.5">{req.run_id}</p>
           </div>
           {overallScore != null && (
             <div className="mt-0.5">
@@ -688,7 +1138,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 score={overallScore}
                 tooltip="Actionability score — how confidently an AI could build this narrative as written (out of 5)"
               />
-              <p className="text-[10px] text-stone-600 mt-0.5 text-center">Actionability</p>
+              <p className="text-[10px] text-stone-600 mt-0.5 text-center">Actionability · AI eval</p>
             </div>
           )}
         </div>
@@ -720,30 +1170,96 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         </div>
       )}
 
-      {/* Current cut */}
-      <section>
-        <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
-          Current cut
-        </h2>
-        <div className="rounded-lg border border-stone-700 bg-black overflow-hidden">
-          {videoElement}
-        </div>
-      </section>
+      {/* Tabs — narrative review vs the rendered cut(s) */}
+      <div className="flex items-center gap-1 border-b border-stone-800">
+        {(['narrative', 'cuts'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => selectTab(t)}
+            className={[
+              'px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors',
+              tab === t
+                ? 'border-orange-500 text-stone-100'
+                : 'border-transparent text-stone-500 hover:text-stone-300',
+            ].join(' ')}
+          >
+            {t === 'narrative' ? 'Narrative' : 'Cuts'}
+          </button>
+        ))}
+      </div>
 
-      {/* Narrative verdict decision tile */}
-      {narrativeVerdictDecision && (
+      {/* Cuts tab — the rendered demo cut; kept off the main view so it isn't distracting */}
+      {tab === 'cuts' && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
-            {readOnly ? 'Decision (submitted)' : 'Your decision'}
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
+            Current cut
           </h2>
-          <NarrativeVerdictControl
-            decision={narrativeVerdictDecision}
-            chosen={resolvedChoice('narrative-verdict')}
-            onChange={(val) => setChoices((prev) => ({ ...prev, 'narrative-verdict': val }))}
-            readOnly={readOnly}
-          />
+          <div className="rounded-lg border border-stone-700 bg-black overflow-hidden">
+            {videoElement}
+          </div>
+          <p className="text-xs text-stone-600 mt-2">
+            This tab shows the rendered demo cut. Spec/yaml history lives in git — not version-controlled here.
+          </p>
         </section>
       )}
+
+      {/* Narrative tab — the story, personas, why-brief, scenes, decision */}
+      {tab === 'narrative' && (
+        <>
+      {!readOnly && (
+        <p className="text-xs text-stone-400 rounded border border-stone-700 bg-stone-900/60 px-3 py-2">
+          Every field on this page is editable — click any text to change it, drag the build
+          sequence to reorder, then approve or send back at the bottom.
+        </p>
+      )}
+      {/* The demo — the cohesive story + the one problem it all serves */}
+      {(req.narrative?.trim() || effectiveWhyBrief.problem || Object.keys(personas).length > 0) && (
+        <section className="rounded-lg border border-stone-700 bg-stone-900/60 p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider">
+            The demo
+          </h2>
+          {req.narrative?.trim() && (
+            <p className="text-[15px] leading-relaxed text-stone-200">
+              {req.narrative.trim()}
+            </p>
+          )}
+          {(effectiveWhyBrief.problem || !readOnly) && (
+            <div className="pt-1">
+              <FieldLabel>The problem we're solving</FieldLabel>
+              <AutoTextarea
+                className={inputCls(readOnly) + ' resize-none min-h-[3rem]'}
+                value={effectiveWhyBrief.problem ?? ''}
+                readOnly={readOnly}
+                rows={3}
+                placeholder="The core problem this whole demo exists to solve"
+                onChange={(e) =>
+                  !readOnly && dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-problem', value: e.target.value } })
+                }
+              />
+            </div>
+          )}
+          {Object.keys(personas).length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <span className="text-[11px] uppercase tracking-wider text-stone-600">Cast</span>
+              {Object.values(personas).map((p) => (
+                <PersonaChip key={p.name} persona={p} dim />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Personas — visible + editable */}
+      <PersonasSection
+        personas={personas}
+        readOnly={readOnly}
+        onEdit={(key, field, value) =>
+          dispatch({ type: 'APPEND_OP', op: { op: 'edit-persona', key, field, value } })
+        }
+      />
+
+      {/* Narrative verdict decision now lives at the bottom, next to Submit (single decision zone). */}
 
       {/* Other decisions */}
       {otherDecisions.length > 0 && (
@@ -768,16 +1284,44 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Scene cards — driven by op-buffer projection */}
       {(effectiveScenes.length > 0 || !readOnly) && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
-            {readOnly ? 'Narration (submitted)' : 'Narration — edit inline'}
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-1">
+            {readOnly ? 'Scenes (submitted)' : 'Scenes — the story, beat by beat'}
           </h2>
+          <p className="text-xs text-stone-600 mb-3">
+            <span className="text-emerald-300">Grounded</span> = backed by shipped code ·{' '}
+            <span className="text-amber-300">New feature</span> = intended, not built yet. Each scene = one beat of the demo.
+            Per-scene numbers are AI actionability estimates (1–5; passes at ≥4).
+          </p>
           <div className="space-y-4">
             {effectiveScenes.map((scene) => (
               <SceneCard
                 key={scene.id}
                 scene={scene}
+                sceneNumber={sceneNumberById.get(scene.id)}
+                isEdited={editedSceneIds.has(scene.id)}
+                defaultOpen={
+                  expandAll ||
+                  (scene.provenance
+                    ? (spineById.get(scene.provenance)?.status ?? 'grounded') !== 'grounded'
+                    : false) ||
+                  (perScene[scene.id]?.score ?? 5) < 4 ||
+                  editedSceneIds.has(scene.id)
+                }
+                persona={scene.persona ? personas[scene.persona] : undefined}
+                grounding={scene.provenance ? spineById.get(scene.provenance) : undefined}
+                gaps={scene.provenance ? gapsByRef.get(scene.provenance) : undefined}
                 readOnly={readOnly}
                 sceneActionability={perScene[scene.id] ?? undefined}
+                onEditRationale={(value) =>
+                  scene.provenance &&
+                  dispatch({
+                    type: 'APPEND_OP',
+                    op: { op: 'edit-why-spine', id: scene.provenance, field: 'rationale', value },
+                  })
+                }
+                onEditGap={(gapId, field, value) =>
+                  dispatch({ type: 'APPEND_OP', op: { op: 'edit-why-gap', id: gapId, field, value } })
+                }
                 onEditNarration={(text) =>
                   dispatch({ type: 'APPEND_OP', op: { op: 'edit-narration', sceneId: scene.id, text } })
                 }
@@ -831,6 +1375,44 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         </section>
       )}
 
+      {/* Other grounding — spine claims / gaps not tied to any scene (kept so nothing is lost) */}
+      {(orphanSpine.length > 0 || orphanGaps.length > 0) && (
+        <section>
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-1">
+            Other grounding
+          </h2>
+          <p className="text-xs text-stone-600 mb-3">
+            Why-brief items not tied to any scene above. Tie one to a scene by setting that scene's provenance.
+          </p>
+          <div className="rounded-lg border border-stone-800 bg-stone-900/40 p-4 space-y-3">
+            {orphanSpine.map((item) => (
+              <div key={item.id} className="text-sm">
+                <div className="flex items-center gap-2 text-xs mb-1">
+                  <span className="font-mono text-stone-400">{item.id}</span>
+                  <StatusBadge status={item.status} />
+                </div>
+                <p className="text-stone-300">{item.claim}</p>
+                {item.rationale && <p className="text-stone-500 text-xs mt-0.5">{item.rationale}</p>}
+              </div>
+            ))}
+            {orphanGaps.map((gap) => (
+              <div key={gap.id} className="text-sm">
+                <div className="flex items-center gap-2 text-xs mb-1">
+                  <span className="font-mono text-stone-400">{gap.id}</span>
+                  {gap.type && (
+                    <span className="rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">{gap.type}</span>
+                  )}
+                </div>
+                <p className="text-stone-300">{gap.detail}</p>
+                {gap.proposed_action && (
+                  <p className="text-stone-500 text-xs mt-0.5">→ {gap.proposed_action}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Build sequence — independent of the video order */}
       {effectiveScenes.filter((s) => !s.deleted).length > 0 && (
         <BuildSequenceSection
@@ -854,8 +1436,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
             Overall feedback
           </h2>
-          <textarea
-            className="w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-y min-h-[3rem] border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
+          <AutoTextarea
+            className="w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-none min-h-[3rem] border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
             value={overallFeedback}
             onChange={(e) =>
               dispatch({ type: 'APPEND_OP', op: { op: 'set-overall-feedback', text: e.target.value } })
@@ -917,6 +1499,21 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         </p>
       )}
 
+      {/* Your decision — single decision zone, immediately above Submit */}
+      {narrativeVerdictDecision && (
+        <section>
+          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
+            {readOnly ? 'Decision (submitted)' : 'Your decision'}
+          </h2>
+          <NarrativeVerdictControl
+            decision={narrativeVerdictDecision}
+            chosen={resolvedChoice('narrative-verdict')}
+            onChange={(val) => setChoices((prev) => ({ ...prev, 'narrative-verdict': val }))}
+            readOnly={readOnly}
+          />
+        </section>
+      )}
+
       {/* Submit / resolved state */}
       {readOnly ? (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
@@ -930,7 +1527,15 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           )}
         </div>
       ) : (
-        <div className="flex justify-end">
+        <div className="flex flex-col items-end gap-1">
+          {(frontierCount > 0 || belowBarCount > 0) && resolvedChoice('narrative-verdict') !== 'redraft' && (
+            <p className="text-[11px] text-amber-300/90 max-w-md text-right mb-1">
+              ⚠ {frontierCount > 0 && `${frontierCount} scene${frontierCount === 1 ? ' shows a new feature' : 's show new features'} (not built yet)`}
+              {frontierCount > 0 && belowBarCount > 0 && '; '}
+              {belowBarCount > 0 && `${belowBarCount} below the ≥4 actionability bar`}
+              . Approving commits to building these as intended — they are not yet verified.
+            </p>
+          )}
           <button
             type="button"
             onClick={() => void handleSubmit()}
@@ -942,9 +1547,18 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 : 'bg-orange-500 hover:bg-orange-400 text-white',
             ].join(' ')}
           >
-            {busy ? 'Submitting…' : 'Submit review'}
+            {busy
+              ? 'Submitting…'
+              : resolvedChoice('narrative-verdict') === 'redraft'
+                ? 'Submit — send back to re-draft'
+                : 'Submit — approve & build'}
           </button>
+          <span className="text-[11px] text-stone-600">
+            Commits your decision above (with any edits you made).
+          </span>
         </div>
+      )}
+        </>
       )}
     </div>
   )
@@ -995,6 +1609,8 @@ export function ReviewPage() {
     <ReviewEditorProvider
       original={review.request_json.narration ?? []}
       initialBuildOrder={review.request_json.build_order ?? null}
+      personas={review.request_json.personas ?? {}}
+      whyBrief={review.request_json.why_brief ?? null}
     >
       <ReviewEditorInner
         review={review}

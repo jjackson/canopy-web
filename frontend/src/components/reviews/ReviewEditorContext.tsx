@@ -17,14 +17,21 @@ import {
   useReducer,
   type ReactNode,
 } from 'react'
-import { applyReviewOps, projectBuildOrder, type EffectiveScene } from './reviewApplyOps'
+import {
+  applyReviewOps,
+  projectBuildOrder,
+  projectPersonas,
+  projectWhyBrief,
+  type EffectiveScene,
+  type EffectivePersonas,
+} from './reviewApplyOps'
 import {
   reviewEditorReducer,
   initialReviewEditorState,
   type ReviewEditorAction,
 } from './reviewEditorReducer'
 import type { ReviewEditorState, PendingReviewOp } from './reviewEditorTypes'
-import type { ReviewNarrationItem } from '../../api/reviews'
+import type { ReviewNarrationItem, ReviewPersona, ReviewWhyBrief } from '../../api/reviews'
 
 // ---------------------------------------------------------------------------
 // Context shape
@@ -33,6 +40,10 @@ import type { ReviewNarrationItem } from '../../api/reviews'
 interface ReviewEditorContextValue {
   state: ReviewEditorState
   effectiveScenes: EffectiveScene[]
+  /** Personas with edit-persona ops applied (pure projection). */
+  effectivePersonas: EffectivePersonas
+  /** Why-brief with edit-why-* ops applied (pure projection). */
+  effectiveWhyBrief: ReviewWhyBrief
   /** Current value of the overall_feedback field (from buffer or ''). */
   overallFeedback: string
   /**
@@ -56,19 +67,45 @@ interface Props {
   original: ReviewNarrationItem[]
   /** From request_json.build_order — null/undefined = absent, fall back to narration order. */
   initialBuildOrder?: string[] | null
+  /** From request_json.personas — the cast, editable on the surface. */
+  personas?: Record<string, ReviewPersona>
+  /** From request_json.why_brief — the grounding doc, editable on the surface. */
+  whyBrief?: ReviewWhyBrief | null
   children: ReactNode
 }
 
-export function ReviewEditorProvider({ original, initialBuildOrder, children }: Props) {
+export function ReviewEditorProvider({
+  original,
+  initialBuildOrder,
+  personas,
+  whyBrief,
+  children,
+}: Props) {
   const [state, dispatch] = useReducer(
     reviewEditorReducer,
     undefined,
-    () => initialReviewEditorState(original, initialBuildOrder ?? null),
+    () =>
+      initialReviewEditorState(
+        original,
+        initialBuildOrder ?? null,
+        personas ?? {},
+        whyBrief ?? null,
+      ),
   )
 
   const effectiveScenes = useMemo(
     () => applyReviewOps(state.original, state.buffer),
     [state.original, state.buffer],
+  )
+
+  const effectivePersonas = useMemo(
+    () => projectPersonas(state.originalPersonas, state.buffer),
+    [state.originalPersonas, state.buffer],
+  )
+
+  const effectiveWhyBrief = useMemo(
+    () => projectWhyBrief(state.originalWhyBrief, state.buffer),
+    [state.originalWhyBrief, state.buffer],
   )
 
   const overallFeedback = useMemo(() => {
@@ -90,6 +127,8 @@ export function ReviewEditorProvider({ original, initialBuildOrder, children }: 
   const value: ReviewEditorContextValue = {
     state,
     effectiveScenes,
+    effectivePersonas,
+    effectiveWhyBrief,
     overallFeedback,
     buildOrder,
     isDirty,

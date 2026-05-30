@@ -8,11 +8,15 @@
  *  - ReviewEditorState  = original review + buffer + save status
  */
 
-import type { ReviewNarrationItem } from '../../api/reviews'
+import type { ReviewNarrationItem, ReviewPersona, ReviewWhyBrief } from '../../api/reviews'
 
 // ---------------------------------------------------------------------------
 // Op types
 // ---------------------------------------------------------------------------
+
+export type PersonaField = 'name' | 'org' | 'role' | 'intro'
+export type WhySpineField = 'claim' | 'rationale'
+export type WhyGapField = 'detail' | 'proposed_action'
 
 export type PendingReviewOp =
   | { op: 'edit-narration'; sceneId: string; text: string }
@@ -24,6 +28,12 @@ export type PendingReviewOp =
   | { op: 'delete-scene'; sceneId: string }
   | { op: 'set-scene-feedback'; sceneId: string; text: string }
   | { op: 'set-overall-feedback'; text: string }
+  // Persona edits — key is the persona's stable dict key (never renamed here).
+  | { op: 'edit-persona'; key: string; field: PersonaField; value: string }
+  // Why-brief edits — prose fields only; ids/status/type are structural.
+  | { op: 'edit-why-problem'; value: string }
+  | { op: 'edit-why-spine'; id: string; field: WhySpineField; value: string }
+  | { op: 'edit-why-gap'; id: string; field: WhyGapField; value: string }
   /**
    * Replaces the entire build order with the given sequence of scene ids.
    * last-write-wins: the reducer coalesces all set-build-order ops into one.
@@ -52,6 +62,14 @@ export function opCoalesceKey(op: PendingReviewOp): string {
       return `set-scene-feedback:${op.sceneId}`
     case 'set-overall-feedback':
       return 'set-overall-feedback'
+    case 'edit-persona':
+      return `edit-persona:${op.key}:${op.field}`
+    case 'edit-why-problem':
+      return 'edit-why-problem'
+    case 'edit-why-spine':
+      return `edit-why-spine:${op.id}:${op.field}`
+    case 'edit-why-gap':
+      return `edit-why-gap:${op.id}:${op.field}`
     case 'set-build-order':
       // All set-build-order ops coalesce into one slot — last write wins.
       return 'set-build-order'
@@ -65,6 +83,10 @@ export function opCoalesceKey(op: PendingReviewOp): string {
 export interface ReviewEditorState {
   /** The original review request narration (never mutated). */
   original: ReviewNarrationItem[]
+  /** The original personas dict (never mutated); projection applies edit-persona ops. */
+  originalPersonas: Record<string, ReviewPersona>
+  /** The original why-brief (never mutated); projection applies edit-why-* ops. */
+  originalWhyBrief: ReviewWhyBrief | null
   /**
    * The initial build order from request_json.build_order, if provided.
    * When absent, the reducer falls back to the narration order.
