@@ -19,6 +19,24 @@ import {
 } from '../components/reviews/ReviewEditorContext'
 
 // ---------------------------------------------------------------------------
+// Narrative-banner per-sentence tints. Each sentence in the top "The demo"
+// paragraph is wrapped in a clickable span; in sentence-mode (sentence count
+// matches scene count) clicks scroll to that scene's card. Subtle base tint;
+// brighter on hover so it's clear the span is interactive.
+// ---------------------------------------------------------------------------
+
+const NARRATIVE_TINTS: Array<{ base: string; hover: string }> = [
+  { base: 'bg-sky-500/10', hover: 'hover:bg-sky-500/20' },
+  { base: 'bg-emerald-500/10', hover: 'hover:bg-emerald-500/20' },
+  { base: 'bg-violet-500/10', hover: 'hover:bg-violet-500/20' },
+  { base: 'bg-amber-500/10', hover: 'hover:bg-amber-500/20' },
+  { base: 'bg-rose-500/10', hover: 'hover:bg-rose-500/20' },
+  { base: 'bg-teal-500/10', hover: 'hover:bg-teal-500/20' },
+  { base: 'bg-indigo-500/10', hover: 'hover:bg-indigo-500/20' },
+  { base: 'bg-fuchsia-500/10', hover: 'hover:bg-fuchsia-500/20' },
+]
+
+// ---------------------------------------------------------------------------
 // AutoTextarea — a textarea that grows to fit its content (never internally
 // scrolls). Re-fits on value changes and window resize; honors any min-height
 // supplied via className.
@@ -466,8 +484,9 @@ function SceneCard({
 
   return (
     <div
+      id={`scene-${scene.id}`}
       className={[
-        'rounded-lg border p-4 space-y-3 transition-colors',
+        'rounded-lg border p-4 space-y-3 transition-colors scroll-mt-4',
         isEdited
           ? 'border-sky-500/60 bg-sky-500/5 ring-1 ring-sky-500/20'
           : 'border-stone-700 bg-stone-950',
@@ -1221,7 +1240,57 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           </h2>
           {req.narrative?.trim() && (
             <p className="text-[15px] leading-relaxed text-stone-200">
-              {req.narrative.trim()}
+              {(() => {
+                const paragraph = req.narrative.trim()
+                // Sentence-split client-side: same shape as scripts/ddd/narrative.py
+                // _split_narrative_sentences. Conservative: splits on sentence-ending
+                // punctuation followed by whitespace + a capital letter or opening quote.
+                const sentences = paragraph
+                  .split(/(?<=[.!?])\s+(?=[A-Z"'])/)
+                  .map((s) => s.trim())
+                  .filter((s) => s.length > 0)
+                // Sentence-mode: when sentence count matches scene count, each
+                // sentence maps 1:1 to a scene and clicks scroll to that scene's
+                // card. Otherwise (under-drafted paragraph, multi-sentence scene)
+                // we still tint the sentences but don't wire click targets — the
+                // mapping isn't deterministic without per-scene sentence ranges.
+                const liveScenes = effectiveScenes.filter((s) => !s.deleted)
+                const sceneMode = sentences.length === liveScenes.length
+                if (sentences.length <= 1) {
+                  return paragraph
+                }
+                return sentences.map((sentence, i) => {
+                  const sceneId = sceneMode ? liveScenes[i].id : null
+                  const palette = NARRATIVE_TINTS[i % NARRATIVE_TINTS.length]
+                  const isEdited = sceneId ? editedSceneIds.has(sceneId) : false
+                  const tintCls = isEdited
+                    ? 'bg-sky-500/10 hover:bg-sky-500/20'
+                    : `${palette.base} ${palette.hover}`
+                  return (
+                    <span key={i}>
+                      {i > 0 && ' '}
+                      <span
+                        className={[
+                          tintCls,
+                          'rounded px-1 py-0.5 transition-colors',
+                          sceneId ? 'cursor-pointer' : '',
+                        ].join(' ')}
+                        onClick={
+                          sceneId
+                            ? () => {
+                                const el = document.getElementById(`scene-${sceneId}`)
+                                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                              }
+                            : undefined
+                        }
+                        title={sceneId ? `Jump to scene ${i + 1}` : undefined}
+                      >
+                        {sentence}
+                      </span>
+                    </span>
+                  )
+                })
+              })()}
             </p>
           )}
           {(effectiveWhyBrief.problem || !readOnly) && (
