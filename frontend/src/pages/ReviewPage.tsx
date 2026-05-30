@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from 'react'
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TextareaHTMLAttributes } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   getReview,
@@ -405,6 +405,10 @@ interface SceneCardProps {
   onEditGap?: (gapId: string, field: 'detail' | 'proposed_action', value: string) => void
   /** When true, the scene's details start expanded (e.g. ?expand=1 / print/judge view). */
   defaultOpen?: boolean
+  /** When true, the scene has pending edits in the current session — drives the
+   *  "Edited" badge + a sky-tinted border so the reviewer sees at a glance which
+   *  beats they've touched. */
+  isEdited?: boolean
 }
 
 function StatusBadge({ status }: { status?: string }) {
@@ -443,6 +447,7 @@ function SceneCard({
   onEditRationale,
   onEditGap,
   defaultOpen,
+  isEdited,
 }: SceneCardProps) {
   if (scene.deleted) return null
 
@@ -460,7 +465,14 @@ function SceneCard({
   )
 
   return (
-    <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
+    <div
+      className={[
+        'rounded-lg border p-4 space-y-3 transition-colors',
+        isEdited
+          ? 'border-sky-500/60 bg-sky-500/5 ring-1 ring-sky-500/20'
+          : 'border-stone-700 bg-stone-950',
+      ].join(' ')}
+    >
       {/* Scene header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -472,6 +484,14 @@ function SceneCard({
           {persona && <PersonaChip persona={persona} />}
           <span className="text-sm font-medium text-stone-100">{scene.title}</span>
           {grounding?.status && <StatusBadge status={grounding.status} />}
+          {isEdited && (
+            <span
+              title="This scene has pending edits in your current session"
+              className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium bg-sky-500/15 text-sky-300 border border-sky-500/30 select-none"
+            >
+              Edited
+            </span>
+          )}
           {verifiedGreen && (
             <span
               title="This scene's verify actually ran and passed"
@@ -894,6 +914,7 @@ interface ReviewEditorInnerProps {
 
 function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerProps) {
   const {
+    state,
     effectiveScenes,
     effectivePersonas,
     effectiveWhyBrief,
@@ -902,6 +923,17 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
     isDirty,
     dispatch,
   } = useReviewEditor()
+
+  // Scenes that have any pending edit op in the buffer — drives the per-scene
+  // "Edited" badge + border tint so the reviewer can see at a glance which
+  // beats they've touched in this session.
+  const editedSceneIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const op of state.buffer) {
+      if ('sceneId' in op && op.sceneId) ids.add(op.sceneId)
+    }
+    return ids
+  }, [state.buffer])
 
   const shareToken = useRef(new URLSearchParams(window.location.search).get('t')).current
 
@@ -1266,12 +1298,14 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 key={scene.id}
                 scene={scene}
                 sceneNumber={sceneNumberById.get(scene.id)}
+                isEdited={editedSceneIds.has(scene.id)}
                 defaultOpen={
                   expandAll ||
                   (scene.provenance
                     ? (spineById.get(scene.provenance)?.status ?? 'grounded') !== 'grounded'
                     : false) ||
-                  (perScene[scene.id]?.score ?? 5) < 4
+                  (perScene[scene.id]?.score ?? 5) < 4 ||
+                  editedSceneIds.has(scene.id)
                 }
                 persona={scene.persona ? personas[scene.persona] : undefined}
                 grounding={scene.provenance ? spineById.get(scene.provenance) : undefined}
