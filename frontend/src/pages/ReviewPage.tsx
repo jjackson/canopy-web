@@ -19,24 +19,6 @@ import {
 } from '../components/reviews/ReviewEditorContext'
 
 // ---------------------------------------------------------------------------
-// Narrative-banner per-sentence tints. Each sentence in the top "The demo"
-// paragraph is wrapped in a clickable span; in sentence-mode (sentence count
-// matches scene count) clicks scroll to that scene's card. Subtle base tint;
-// brighter on hover so it's clear the span is interactive.
-// ---------------------------------------------------------------------------
-
-const NARRATIVE_TINTS: Array<{ base: string; hover: string }> = [
-  { base: 'bg-sky-500/10', hover: 'hover:bg-sky-500/20' },
-  { base: 'bg-emerald-500/10', hover: 'hover:bg-emerald-500/20' },
-  { base: 'bg-violet-500/10', hover: 'hover:bg-violet-500/20' },
-  { base: 'bg-amber-500/10', hover: 'hover:bg-amber-500/20' },
-  { base: 'bg-rose-500/10', hover: 'hover:bg-rose-500/20' },
-  { base: 'bg-teal-500/10', hover: 'hover:bg-teal-500/20' },
-  { base: 'bg-indigo-500/10', hover: 'hover:bg-indigo-500/20' },
-  { base: 'bg-fuchsia-500/10', hover: 'hover:bg-fuchsia-500/20' },
-]
-
-// ---------------------------------------------------------------------------
 // AutoTextarea — a textarea that grows to fit its content (never internally
 // scrolls). Re-fits on value changes and window resize; honors any min-height
 // supplied via className.
@@ -1259,21 +1241,29 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 if (sentences.length <= 1) {
                   return paragraph
                 }
+                // Quiet visual: no background tints (those made the paragraph
+                // hard to read). Each sentence is a span; on hover (when
+                // sentence-mode is active) it gets a soft underline so the
+                // reviewer sees the scene boundary AND that it's a link.
+                // Edited sentences carry a persistent thin sky-blue underline
+                // so the per-scene "Edited" signal flows through the paragraph
+                // without screaming.
                 return sentences.map((sentence, i) => {
                   const sceneId = sceneMode ? liveScenes[i].id : null
-                  const palette = NARRATIVE_TINTS[i % NARRATIVE_TINTS.length]
                   const isEdited = sceneId ? editedSceneIds.has(sceneId) : false
-                  const tintCls = isEdited
-                    ? 'bg-sky-500/10 hover:bg-sky-500/20'
-                    : `${palette.base} ${palette.hover}`
+                  const stateCls = isEdited
+                    ? 'underline decoration-sky-400/60 hover:decoration-sky-300'
+                    : sceneId
+                      ? 'hover:underline hover:decoration-stone-300/70'
+                      : ''
                   return (
                     <span key={i}>
                       {i > 0 && ' '}
                       <span
                         className={[
-                          tintCls,
-                          'rounded px-1 py-0.5 transition-colors',
+                          'transition-colors decoration-1 underline-offset-4',
                           sceneId ? 'cursor-pointer' : '',
+                          stateCls,
                         ].join(' ')}
                         onClick={
                           sceneId
