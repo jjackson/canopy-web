@@ -13,6 +13,7 @@ import { GuidePage } from './pages/GuidePage'
 import { WalkthroughsPage } from './pages/WalkthroughsPage'
 import { WalkthroughViewerPage } from './pages/WalkthroughViewerPage'
 import { ReviewPage } from './pages/ReviewPage'
+import { ReviewsPage } from './pages/ReviewsPage'
 
 export const router = createBrowserRouter([
   {
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
       { path: '/skills', element: <DiscoveryPage /> },
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:id', element: <WalkthroughViewerPage /> },
+      { path: '/reviews', element: <ReviewsPage /> },
       { path: '/review/:id', element: <ReviewPage /> },
       { path: '/new', element: <NewCollectionPage /> },
       { path: '/workspaces', element: <WorkspacesPage /> },

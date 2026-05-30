@@ -818,6 +818,96 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/reviews/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List review requests (DDD-plans dashboard)
+         * @description List every review request for the DDD-plans dashboard.
+         *
+         *     Team-internal: any authenticated user (session or PAT) sees all reviews —
+         *     same read rule as GET /<id>/. Supports a free-text `q` (matches feature,
+         *     run_id, gate, or title), an optional `status` filter (pending|resolved),
+         *     and `order` ∈ {-last_activity, last_activity, -created, created, feature}.
+         *     Default sort is most-recently-edited first.
+         */
+        readonly get: operations["apps_reviews_api_list_reviews"];
+        readonly put?: never;
+        /**
+         * Create a review request (orchestrator)
+         * @description Called by the canopy orchestrator when it hits a pause gate.
+         *
+         *     The orchestrator authenticates via a Personal Access Token (PAT).
+         *     Returns the review's UUID and the share URL the human will visit.
+         */
+        readonly post: operations["apps_reviews_api_create_review"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/reviews/{rid}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get review request detail or poll for resolution
+         * @description Returns the full review request + current status.
+         *
+         *     Access rules:
+         *     - Any authenticated user can read any review (they're team-internal).
+         *     - Unauthenticated callers may read if visibility=="link" and ?t= matches.
+         *     - Otherwise → 404 (don't leak existence).
+         */
+        readonly get: operations["apps_reviews_api_get_review"];
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Delete a review request (dashboard cleanup)
+         * @description Delete a review request.
+         *
+         *     Team-internal cleanup: any authenticated user (session or PAT) may delete —
+         *     reviews are owned by whichever identity posted them (often the orchestrator's
+         *     PAT, not the human browsing), so restricting to owner would make the human
+         *     unable to tidy up. The router's session_auth already blocks anonymous callers.
+         */
+        readonly delete: operations["apps_reviews_api_delete_review"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/reviews/{rid}/submit/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Submit decisions + narration edits (human → server)
+         * @description Human submits their decisions and any narration edits.
+         *
+         *     Flips status to "resolved" and stamps resolved_at.  Can only be submitted
+         *     once; re-submission on an already-resolved review → 403.
+         */
+        readonly post: operations["apps_reviews_api_submit_review"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1863,6 +1953,141 @@ export interface components {
         readonly PersonalTokenCreateIn: {
             /** Label */
             readonly label: string;
+        };
+        /**
+         * ReviewListItemOut
+         * @description One row in the DDD-plans dashboard list (GET /api/reviews/).
+         */
+        readonly ReviewListItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Run Id */
+            readonly run_id: string;
+            /** Gate */
+            readonly gate: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "pending" | "resolved";
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+            /** Feature */
+            readonly feature: string;
+            /** Title */
+            readonly title?: string | null;
+            /**
+             * Scene Count
+             * @default 0
+             */
+            readonly scene_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Resolved At */
+            readonly resolved_at?: string | null;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            readonly last_activity_at: string;
+            /** Share Token */
+            readonly share_token?: string | null;
+            /** Is Owner */
+            readonly is_owner: boolean;
+        };
+        /**
+         * ReviewCreateOut
+         * @description Slim response from POST /api/reviews/: just enough for the orchestrator to poll.
+         */
+        readonly ReviewCreateOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Url */
+            readonly url: string;
+            /** Share Token */
+            readonly share_token: string;
+        };
+        /**
+         * ReviewCreateIn
+         * @description Body of POST /api/reviews/: the inbound request_json plus optional meta.
+         */
+        readonly ReviewCreateIn: {
+            /** Request Json */
+            readonly request_json: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Visibility
+             * @default link
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+        };
+        /**
+         * ReviewRequestOut
+         * @description Detail/list output for a review request.
+         */
+        readonly ReviewRequestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Run Id */
+            readonly run_id: string;
+            /** Gate */
+            readonly gate: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "pending" | "resolved";
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+            /** Request Json */
+            readonly request_json: {
+                readonly [key: string]: unknown;
+            };
+            /** Response Json */
+            readonly response_json?: {
+                readonly [key: string]: unknown;
+            } | null;
+            /** Share Token */
+            readonly share_token?: string | null;
+            /** Is Owner */
+            readonly is_owner: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Resolved At */
+            readonly resolved_at?: string | null;
+        };
+        /**
+         * ReviewSubmitIn
+         * @description Body of POST /api/reviews/<id>/submit/: the human's response.
+         */
+        readonly ReviewSubmitIn: {
+            /** Response Json */
+            readonly response_json: {
+                readonly [key: string]: unknown;
+            };
         };
     };
     responses: never;
@@ -3137,6 +3362,122 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly apps_reviews_api_list_reviews: {
+        readonly parameters: {
+            readonly query?: {
+                readonly q?: string;
+                readonly status?: string;
+                readonly order?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ReviewListItemOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_reviews_api_create_review: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReviewCreateIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ReviewCreateOut"];
+                };
+            };
+        };
+    };
+    readonly apps_reviews_api_get_review: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly rid: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ReviewRequestOut"];
+                };
+            };
+        };
+    };
+    readonly apps_reviews_api_delete_review: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly rid: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly apps_reviews_api_submit_review: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly rid: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReviewSubmitIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ReviewRequestOut"];
+                };
             };
         };
     };

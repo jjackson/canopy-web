@@ -27,6 +27,26 @@ class ReviewRequestOut(StrictModel):
     resolved_at: dt.datetime | None = None
 
 
+class ReviewListItemOut(StrictModel):
+    """One row in the DDD-plans dashboard list (GET /api/reviews/)."""
+
+    id: uuid.UUID
+    run_id: str
+    gate: str
+    status: ReviewStatus
+    visibility: ReviewVisibility
+    # Derived from request_json for a scannable list — never the raw payload.
+    feature: str
+    title: str | None = None
+    scene_count: int = 0
+    created_at: dt.datetime
+    resolved_at: dt.datetime | None = None
+    # resolved_at when resolved, else created_at — the "last edit" the dashboard sorts by.
+    last_activity_at: dt.datetime
+    share_token: str | None = None
+    is_owner: bool
+
+
 class ReviewCreateIn(StrictModel):
     """Body of POST /api/reviews/: the inbound request_json plus optional meta."""
 
