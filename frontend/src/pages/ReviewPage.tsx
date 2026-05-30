@@ -416,7 +416,7 @@ function StatusBadge({ status }: { status?: string }) {
   const frontier = status !== 'grounded'
   return (
     <span
-      title={frontier ? 'New feature — not yet built; this scene shows intended behavior' : 'Grounded — backed by shipped code/evidence (not re-verified live)'}
+      title={frontier ? 'New feature — not yet built; this scene shows intended behavior' : 'Existing feature — backed by shipped code/evidence (not re-verified live)'}
       className={[
         'shrink-0 rounded px-2 py-0.5 text-[11px] font-medium select-none',
         frontier
@@ -424,7 +424,7 @@ function StatusBadge({ status }: { status?: string }) {
           : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
       ].join(' ')}
     >
-      {frontier ? 'New feature' : 'Grounded'}
+      {frontier ? 'New feature' : 'Existing feature'}
     </span>
   )
 }
@@ -1325,7 +1325,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             {readOnly ? 'Scenes (submitted)' : 'Scenes — the story, beat by beat'}
           </h2>
           <p className="text-xs text-stone-600 mb-3">
-            <span className="text-emerald-300">Grounded</span> = backed by shipped code ·{' '}
+            <span className="text-emerald-300">Existing feature</span> = backed by shipped code ·{' '}
             <span className="text-amber-300">New feature</span> = intended, not built yet. Each scene = one beat of the demo.
             Per-scene numbers are AI actionability estimates (1–5; passes at ≥4).
           </p>
