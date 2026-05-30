@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { path: '/insights', label: 'Insights' },
   { path: '/skills', label: 'Skills' },
   { path: '/walkthroughs', label: 'Walkthroughs' },
-  { path: '/reviews', label: 'DDD Plans' },
+  { path: '/ddd-plans', label: 'DDD Plans' },
   { path: '/workspaces', label: 'Workspaces' },
   { path: '/leaderboard', label: 'Leaderboard' },
   { path: '/guide', label: 'Guide' },
