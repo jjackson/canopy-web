@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "apps.walkthroughs",
     "apps.tokens",
     "apps.reviews",
+    "apps.mcp",
 ]
 
 MIDDLEWARE = [
@@ -187,6 +188,15 @@ WALKTHROUGH_MAX_UPLOAD_BYTES = env.int(
 # `apps.tokens.middleware.BearerTokenAuthMiddleware` resolves it to a
 # real Django user. The legacy shared-secret WORKBENCH_WRITE_TOKEN +
 # CANOPY_E2E_AUTH_TOKEN env vars were retired by the PAT refactor.
+
+# --- MCP server (apps/mcp) -------------------------------------------
+# FastMCP 3.x Streamable-HTTP server mounted at /api/mcp/. Auth is per-user
+# Personal Access Token (apps/tokens) — minting a PAT requires logging in,
+# which is exactly the intended access gate, so no separate OAuth flow is
+# needed. See apps/mcp/server.py.
+# Per-user write rate limit for mutating MCP tools (e.g. clear_insights).
+MCP_WRITE_LIMIT = env.int("MCP_WRITE_LIMIT", default=10)
+MCP_WRITE_WINDOW_SECONDS = env.int("MCP_WRITE_WINDOW_SECONDS", default=60)
 
 # AI Backend: "api" (direct Anthropic SDK) or "cli" (claude code CLI)
 AI_BACKEND = env("AI_BACKEND", default="api")

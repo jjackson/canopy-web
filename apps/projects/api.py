@@ -1,15 +1,13 @@
 """Django Ninja v2 router for the projects + insights surface."""
 from __future__ import annotations
 
-from datetime import timedelta
-
 from django.db import IntegrityError
 from django.db.models import Prefetch
 from django.http import HttpRequest
-from django.utils import timezone
 from ninja import Body, Router, Status
 
 from apps.api.auth import session_auth
+from apps.projects import services
 from apps.api.errors import (
     TYPE_CONFLICT,
     TYPE_NOT_FOUND,
@@ -546,29 +544,10 @@ def list_insights(
 ) -> Page[InsightOut]:
     """Bearer-readable xfail (Phase 5.4)."""
     limit = min(limit, 100)
-    qs = (
-        ProjectContext.objects.filter(context_type="insight")
-        .select_related("project")
-        .order_by("-created_at")
+    rows = services.list_insights(
+        category=category, source=source, project=project, limit=limit
     )
-    if category:
-        qs = qs.filter(content__startswith=f"[{category}]")
-    if source:
-        qs = qs.filter(source=source)
-    if project:
-        qs = qs.filter(project__slug=project)
-
-    items = [
-        InsightOut(
-            id=ins.pk,
-            project_slug=ins.project.slug,
-            project_name=ins.project.name,
-            content=ins.content,
-            source=ins.source,
-            created_at=ins.created_at,
-        )
-        for ins in qs[:limit]
-    ]
+    items = [InsightOut.model_validate(row) for row in rows]
     return paginate(items, offset=0, limit=limit)
 
 
@@ -592,18 +571,12 @@ def clear_insights(
 
     A body with no filters ({}) clears ALL insights — this is intended.
     """
-    qs = ProjectContext.objects.filter(context_type="insight")
-    if payload.source:
-        qs = qs.filter(source=payload.source)
-    if payload.category:
-        qs = qs.filter(content__startswith=f"[{payload.category}]")
-    if payload.project:
-        qs = qs.filter(project__slug=payload.project)
-    if payload.older_than_days is not None:
-        cutoff = timezone.now() - timedelta(days=payload.older_than_days)
-        qs = qs.filter(created_at__lt=cutoff)
-    count = qs.count()
-    qs.delete()
+    count = services.clear_insights(
+        source=payload.source,
+        category=payload.category,
+        project=payload.project,
+        older_than_days=payload.older_than_days,
+    )
     return InsightsClearOut(cleared=count)
 
 
