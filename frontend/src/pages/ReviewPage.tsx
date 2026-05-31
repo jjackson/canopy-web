@@ -411,9 +411,11 @@ interface SceneCardProps {
   isEdited?: boolean
 }
 
-function StatusBadge({ status }: { status?: string }) {
-  if (!status) return null
-  const frontier = status !== 'grounded'
+function StatusBadge({ status, frontier: frontierOverride }: { status?: string; frontier?: boolean }) {
+  if (frontierOverride === undefined && !status) return null
+  // Caller may pass an explicit `frontier` (e.g. grounded claim WITH an open gap → still
+  // to-build); otherwise fall back to the spine status.
+  const frontier = frontierOverride ?? status !== 'grounded'
   return (
     <span
       title={frontier ? 'New feature — not yet built; this scene shows intended behavior' : 'Existing feature — backed by shipped code/evidence (not re-verified live)'}
@@ -484,7 +486,11 @@ function SceneCard({
           )}
           {persona && <PersonaChip persona={persona} />}
           <span className="text-sm font-medium text-stone-100">{scene.title}</span>
-          {grounding?.status && <StatusBadge status={grounding.status} />}
+          {(grounding?.status || (gaps && gaps.length > 0)) && (
+            <StatusBadge
+              frontier={(grounding?.status ?? 'grounded') !== 'grounded' || (gaps?.length ?? 0) > 0}
+            />
+          )}
           {isEdited && (
             <span
               title="This scene has pending edits in your current session"
@@ -1000,10 +1006,17 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
   )
 
   // Honesty flag before approval: how many scenes are New features (not built) or below the ≥4 bar.
+  // A scene is "frontier" (to-build) if its spine item is a gap OR a why-brief gap
+  // (CAPABILITY/RESEARCH/DECISION) references it — a grounded claim with an open
+  // capability gap is still something we'd build, so it must read as New, not Existing.
   const liveScenes = effectiveScenes.filter((s) => !s.deleted)
-  const frontierCount = liveScenes.filter(
-    (s) => s.provenance && (spineById.get(s.provenance)?.status ?? 'grounded') !== 'grounded',
-  ).length
+  const sceneIsFrontier = (s: { provenance?: string }) =>
+    (s.provenance ? (spineById.get(s.provenance)?.status ?? 'grounded') : 'grounded') !== 'grounded' ||
+    (s.provenance ? (gapsByRef.get(s.provenance)?.length ?? 0) : 0) > 0
+  const frontierScenes = liveScenes.filter(sceneIsFrontier)
+  const frontierCount = frontierScenes.length
+  const builtSceneCount = liveScenes.length - frontierCount
+  const toBuildFeatures = frontierScenes.flatMap((s) => (s.features ?? []).filter((f) => !f.deleted))
   const belowBarCount = liveScenes.filter((s) => (perScene[s.id]?.score ?? 5) < 4).length
 
   const narrativeVerdictDecision = decisions.find((d) => d.id === 'narrative-verdict') ?? null
@@ -1318,6 +1331,54 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
         </section>
       )}
 
+      {/* What approving does — the next-action + engage-vs-delegate summary */}
+      {!readOnly && liveScenes.length > 0 && resolvedChoice('narrative-verdict') !== 'redraft' && (
+        <section className="rounded-lg border border-sky-500/30 bg-sky-500/[0.06] p-4">
+          <h2 className="text-sm font-semibold text-sky-200 mb-2">If you approve, running DDD next will…</h2>
+          <ul className="space-y-1 text-sm text-stone-300">
+            <li>
+              <span className="text-stone-500">▶</span>{' '}
+              <span className="text-stone-100">Render {liveScenes.length} scene{liveScenes.length === 1 ? '' : 's'}</span>{' '}
+              against the live app and screenshot each beat.
+            </li>
+            <li>
+              <span className="text-stone-500">🔨</span>{' '}
+              <span className="text-stone-100">
+                Build {frontierCount} new feature{frontierCount === 1 ? '' : 's'}
+              </span>
+              {frontierCount > 0 && toBuildFeatures.length > 0 ? (
+                <>
+                  :{' '}
+                  <span className="text-amber-300">
+                    {toBuildFeatures.map((f) => f.id).join(', ')}
+                  </span>
+                </>
+              ) : (
+                <span className="text-stone-500"> — none; every beat already rides shipped code</span>
+              )}
+              .
+            </li>
+            <li>
+              <span className="text-stone-500">⚖</span>{' '}
+              <span className="text-stone-100">Re-judge</span> (concept + actionability) and loop, stopping at the
+              next <em className="text-stone-400">concept_change</em> or <em className="text-stone-400">external_release</em> gate.
+            </li>
+          </ul>
+          <p className="text-xs text-stone-500 mt-3">
+            {builtSceneCount}/{liveScenes.length} scenes already ride shipped code.{' '}
+            {frontierCount > 0 ? (
+              <>
+                The build is {frontierCount} scoped feature{frontierCount === 1 ? '' : 's'} —{' '}
+                <span className="text-emerald-300">safe to delegate</span>. The story framing is the part that&apos;s{' '}
+                <span className="text-sky-300">yours to approve</span>.
+              </>
+            ) : (
+              <>Nothing new to build — this is a <span className="text-emerald-300">render-and-confirm</span> pass.</>
+            )}
+          </p>
+        </section>
+      )}
+
       {/* Scene cards — driven by op-buffer projection */}
       {(effectiveScenes.length > 0 || !readOnly) && (
         <section>
@@ -1338,9 +1399,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 isEdited={editedSceneIds.has(scene.id)}
                 defaultOpen={
                   expandAll ||
-                  (scene.provenance
-                    ? (spineById.get(scene.provenance)?.status ?? 'grounded') !== 'grounded'
-                    : false) ||
+                  sceneIsFrontier(scene) ||
                   (perScene[scene.id]?.score ?? 5) < 4 ||
                   editedSceneIds.has(scene.id)
                 }
