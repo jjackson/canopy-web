@@ -190,17 +190,10 @@ WALKTHROUGH_MAX_UPLOAD_BYTES = env.int(
 # CANOPY_E2E_AUTH_TOKEN env vars were retired by the PAT refactor.
 
 # --- MCP server (apps/mcp) -------------------------------------------
-# FastMCP 3.x Streamable-HTTP server mounted at /api/mcp/. Auth is dual
-# (MultiAuth): per-user Personal Access Token (always on) + Google OAuth
-# (env-gated seam, off by default — see apps/mcp/server.py).
-#
-# Public base URL of the MCP mount (used for OAuth discovery/redirect
-# metadata only). Set to the deployed origin + "/api/mcp" when OAuth is on.
-MCP_BASE_URL = env("MCP_BASE_URL", default="")
-# Turn on the interactive Google OAuth path. Requires the FastMCP redirect
-# URI ("<MCP_BASE_URL>/auth/callback") to be registered on the Google
-# OAuth client. PAT auth works regardless of this flag.
-MCP_OAUTH_ENABLED = env.bool("MCP_OAUTH_ENABLED", default=False)
+# FastMCP 3.x Streamable-HTTP server mounted at /api/mcp/. Auth is per-user
+# Personal Access Token (apps/tokens) — minting a PAT requires logging in,
+# which is exactly the intended access gate, so no separate OAuth flow is
+# needed. See apps/mcp/server.py.
 # Per-user write rate limit for mutating MCP tools (e.g. clear_insights).
 MCP_WRITE_LIMIT = env.int("MCP_WRITE_LIMIT", default=10)
 MCP_WRITE_WINDOW_SECONDS = env.int("MCP_WRITE_WINDOW_SECONDS", default=60)

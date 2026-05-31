@@ -11,10 +11,10 @@ from starlette.applications import Starlette
 from apps.mcp.server import build_http_app, mcp
 
 
-def test_mcp_instance_has_dual_auth():
-    from fastmcp.server.auth import MultiAuth
+def test_mcp_instance_uses_pat_verifier():
+    from apps.mcp.auth import CanopyPATVerifier
 
-    assert isinstance(mcp.auth, MultiAuth)
+    assert isinstance(mcp.auth, CanopyPATVerifier)
 
 
 def test_build_http_app_constructs():
