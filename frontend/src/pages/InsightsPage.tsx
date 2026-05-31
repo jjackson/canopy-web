@@ -89,6 +89,8 @@ export function InsightsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
+  const [clearing, setClearing] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const projectFilter = searchParams.get('project') || ''
 
@@ -135,6 +137,38 @@ export function InsightsPage() {
     return hit?.project_name || projectFilter
   }, [projectFilter, insights])
 
+  // Clear exactly what the active filter currently shows: category (unless
+  // 'all') and project (if set). Refetches afterward and surfaces the count.
+  async function handleClear() {
+    const catLabel =
+      activeFilter === 'all'
+        ? ''
+        : (CATEGORIES.find((c) => c.key === activeFilter)?.label ?? activeFilter) + ' '
+    const scope = projectFilter ? ` for ${projectFilterLabel}` : ''
+    const confirmed = window.confirm(
+      `Clear all ${insights.length} ${catLabel}insight${insights.length === 1 ? '' : 's'}${scope}? This cannot be undone.`,
+    )
+    if (!confirmed) return
+    setClearing(true)
+    setNotice(null)
+    try {
+      const { cleared } = await insightsApi.clear({
+        category: activeFilter === 'all' ? undefined : activeFilter,
+        project: projectFilter || undefined,
+      })
+      const data = await insightsApi.list({
+        category: activeFilter === 'all' ? undefined : activeFilter,
+        project: projectFilter || undefined,
+      })
+      setInsights(data)
+      setNotice(`Cleared ${cleared} insight${cleared === 1 ? '' : 's'}.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear insights')
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const emptyMessage = (() => {
     if (projectFilter && activeFilter !== 'all') {
       const catLabel = CATEGORIES.find((c) => c.key === activeFilter)?.label.toLowerCase() ?? activeFilter
@@ -152,10 +186,29 @@ export function InsightsPage() {
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-stone-100">Insights</h1>
-        <span className="text-xs text-stone-600 bg-stone-900 px-2.5 py-1 rounded">
-          {loading ? 'loading...' : `${insights.length} insights`}
-        </span>
+        <div className="flex items-center gap-2">
+          {!loading && !error && insights.length > 0 && (
+            <button
+              onClick={handleClear}
+              disabled={clearing}
+              className="text-xs font-medium text-stone-400 hover:text-red-400 border border-stone-800 hover:border-red-400/40 bg-stone-900 px-2.5 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Clear the insights currently in view"
+            >
+              {clearing ? 'Clearing…' : 'Clear'}
+            </button>
+          )}
+          <span className="text-xs text-stone-600 bg-stone-900 px-2.5 py-1 rounded">
+            {loading ? 'loading...' : `${insights.length} insights`}
+          </span>
+        </div>
       </div>
+
+      {/* Clear confirmation notice */}
+      {notice && (
+        <div className="mb-3 text-xs text-stone-400 bg-stone-900 border border-stone-800 px-3 py-2 rounded">
+          {notice}
+        </div>
+      )}
 
       {/* Active project filter chip */}
       {projectFilter && (

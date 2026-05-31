@@ -245,7 +245,15 @@ export interface paths {
         readonly put?: never;
         /**
          * Clear insights
-         * @description Clear all insights (optionally filtered by source).
+         * @description Delete insights matching the provided filters.
+         *
+         *     All filters in the request body are optional and AND-combined:
+         *       - source: ProjectContext.source exact match
+         *       - category: content starts with "[<category>]"
+         *       - project: project slug exact match
+         *       - older_than_days: created_at older than N days ago
+         *
+         *     A body with no filters ({}) clears ALL insights — this is intended.
          */
         readonly post: operations["apps_projects_api_clear_insights"];
         readonly delete?: never;
@@ -1328,6 +1336,23 @@ export interface components {
         readonly InsightsClearOut: {
             /** Cleared */
             readonly cleared: number;
+        };
+        /**
+         * InsightsClearIn
+         * @description Body of POST /api/insights/clear/.
+         *
+         *     All fields optional. Provided filters are AND-combined to narrow which
+         *     insights are deleted. A body with no filters clears ALL insights.
+         */
+        readonly InsightsClearIn: {
+            /** Source */
+            readonly source?: string | null;
+            /** Category */
+            readonly category?: string | null;
+            /** Project */
+            readonly project?: string | null;
+            /** Older Than Days */
+            readonly older_than_days?: number | null;
         };
         /** InsightDismissOut */
         readonly InsightDismissOut: {
@@ -2500,14 +2525,16 @@ export interface operations {
     };
     readonly apps_projects_api_clear_insights: {
         readonly parameters: {
-            readonly query?: {
-                readonly source?: string | null;
-            };
+            readonly query?: never;
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly requestBody?: never;
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["InsightsClearIn"];
+            };
+        };
         readonly responses: {
             /** @description OK */
             readonly 200: {

@@ -518,17 +518,122 @@ def test_list_insights_pat_readable():
 
 
 @pytest.mark.django_db
-def test_clear_insights_200():
+def test_clear_insights_all_empty_body():
+    """An empty body clears ALL insights."""
     p = _make_project(slug="ins-clear")
     ProjectContext.objects.create(
-        project=p, context_type="insight", content="x", source="test"
+        project=p, context_type="insight", content="[a] x", source="src-a"
+    )
+    ProjectContext.objects.create(
+        project=p, context_type="insight", content="[b] y", source="src-b"
     )
     c = _auth_client()
     resp = _post_json(c, "/api/insights/clear/", {})
     assert resp.status_code == 200
     body = resp.json()
-    assert "cleared" in body
-    assert body["cleared"] >= 1
+    assert body["cleared"] == 2
+    assert not ProjectContext.objects.filter(context_type="insight").exists()
+
+
+@pytest.mark.django_db
+def test_clear_insights_source_filter():
+    p = _make_project(slug="ins-clear-src")
+    keep = ProjectContext.objects.create(
+        project=p, context_type="insight", content="[a] x", source="keep"
+    )
+    ProjectContext.objects.create(
+        project=p, context_type="insight", content="[a] y", source="drop"
+    )
+    c = _auth_client()
+    resp = _post_json(c, "/api/insights/clear/", {"source": "drop"})
+    assert resp.status_code == 200
+    assert resp.json()["cleared"] == 1
+    remaining = list(ProjectContext.objects.filter(context_type="insight"))
+    assert [r.pk for r in remaining] == [keep.pk]
+
+
+@pytest.mark.django_db
+def test_clear_insights_category_filter():
+    p = _make_project(slug="ins-clear-cat")
+    ProjectContext.objects.create(
+        project=p, context_type="insight", content="[ship_gap] X", source="test"
+    )
+    keep = ProjectContext.objects.create(
+        project=p, context_type="insight", content="[debt] Y", source="test"
+    )
+    c = _auth_client()
+    resp = _post_json(c, "/api/insights/clear/", {"category": "ship_gap"})
+    assert resp.status_code == 200
+    assert resp.json()["cleared"] == 1
+    remaining = list(ProjectContext.objects.filter(context_type="insight"))
+    assert [r.pk for r in remaining] == [keep.pk]
+
+
+@pytest.mark.django_db
+def test_clear_insights_project_filter():
+    p1 = _make_project(slug="ins-clear-p1")
+    p2 = _make_project(slug="ins-clear-p2")
+    ProjectContext.objects.create(
+        project=p1, context_type="insight", content="[a] x", source="test"
+    )
+    keep = ProjectContext.objects.create(
+        project=p2, context_type="insight", content="[a] y", source="test"
+    )
+    c = _auth_client()
+    resp = _post_json(c, "/api/insights/clear/", {"project": "ins-clear-p1"})
+    assert resp.status_code == 200
+    assert resp.json()["cleared"] == 1
+    remaining = list(ProjectContext.objects.filter(context_type="insight"))
+    assert [r.pk for r in remaining] == [keep.pk]
+
+
+@pytest.mark.django_db
+def test_clear_insights_older_than_days_filter():
+    from django.utils import timezone as _tz
+
+    p = _make_project(slug="ins-clear-age")
+    old = ProjectContext.objects.create(
+        project=p, context_type="insight", content="[a] old", source="test"
+    )
+    # auto_now_add sets created_at; force it into the past.
+    ProjectContext.objects.filter(pk=old.pk).update(
+        created_at=_tz.now() - dt.timedelta(days=30)
+    )
+    fresh = ProjectContext.objects.create(
+        project=p, context_type="insight", content="[a] fresh", source="test"
+    )
+    c = _auth_client()
+    resp = _post_json(c, "/api/insights/clear/", {"older_than_days": 7})
+    assert resp.status_code == 200
+    assert resp.json()["cleared"] == 1
+    remaining = list(ProjectContext.objects.filter(context_type="insight"))
+    assert [r.pk for r in remaining] == [fresh.pk]
+
+
+@pytest.mark.django_db
+def test_clear_insights_combined_filters():
+    p1 = _make_project(slug="ins-clear-c1")
+    p2 = _make_project(slug="ins-clear-c2")
+    target = ProjectContext.objects.create(
+        project=p1, context_type="insight", content="[ship_gap] X", source="test"
+    )
+    # Same category, different project — must survive.
+    survives_project = ProjectContext.objects.create(
+        project=p2, context_type="insight", content="[ship_gap] Y", source="test"
+    )
+    # Same project, different category — must survive.
+    survives_category = ProjectContext.objects.create(
+        project=p1, context_type="insight", content="[debt] Z", source="test"
+    )
+    c = _auth_client()
+    resp = _post_json(
+        c, "/api/insights/clear/", {"category": "ship_gap", "project": "ins-clear-c1"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["cleared"] == 1
+    remaining = {r.pk for r in ProjectContext.objects.filter(context_type="insight")}
+    assert remaining == {survives_project.pk, survives_category.pk}
+    assert not ProjectContext.objects.filter(pk=target.pk).exists()
 
 
 @pytest.mark.django_db

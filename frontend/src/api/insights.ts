@@ -21,6 +21,13 @@ export interface InsightListParams {
   limit?: number
 }
 
+export interface InsightClearParams {
+  source?: string
+  category?: string
+  project?: string
+  older_than_days?: number
+}
+
 // Category weight for the dashboard "Today's top 3" hero. Higher = more
 // urgent to surface. Tuned for the morning-triage flow: ship gaps and
 // opportunities are time-sensitive (a release, a CWS review, an upstream PR
@@ -81,5 +88,17 @@ export const insightsApi = {
     });
     if (error) throw new Error("Failed to dismiss insight");
     return data as { dismissed: number };
+  },
+  clear: async (params: InsightClearParams = {}): Promise<{ cleared: number }> => {
+    const { data, error } = await apiV2.POST("/api/insights/clear/", {
+      body: {
+        source: params.source ?? null,
+        category: params.category ?? null,
+        project: params.project ?? null,
+        older_than_days: params.older_than_days ?? null,
+      },
+    });
+    if (error) throw new Error("Failed to clear insights");
+    return data as { cleared: number };
   },
 }

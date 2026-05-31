@@ -1,9 +1,12 @@
 """Django Ninja v2 router for the projects + insights surface."""
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.db import IntegrityError
 from django.db.models import Prefetch
 from django.http import HttpRequest
+from django.utils import timezone
 from ninja import Body, Router, Status
 
 from apps.api.auth import session_auth
@@ -20,6 +23,7 @@ from .schemas import (
     BatchContextIn,
     InsightDismissOut,
     InsightOut,
+    InsightsClearIn,
     InsightsClearOut,
     ProjectActionCreateIn,
     ProjectActionOut,
@@ -568,15 +572,36 @@ def list_insights(
     return paginate(items, offset=0, limit=limit)
 
 
-@insights_router.post("/clear/", response=InsightsClearOut, summary="Clear insights")
+@insights_router.post(
+    "/clear/",
+    response=InsightsClearOut,
+    summary="Clear insights",
+    openapi_extra={"x-mcp-expose": True},
+)
 def clear_insights(
     request: HttpRequest,
-    source: str | None = None,
+    payload: InsightsClearIn,
 ) -> InsightsClearOut:
-    """Clear all insights (optionally filtered by source)."""
+    """Delete insights matching the provided filters.
+
+    All filters in the request body are optional and AND-combined:
+      - source: ProjectContext.source exact match
+      - category: content starts with "[<category>]"
+      - project: project slug exact match
+      - older_than_days: created_at older than N days ago
+
+    A body with no filters ({}) clears ALL insights — this is intended.
+    """
     qs = ProjectContext.objects.filter(context_type="insight")
-    if source:
-        qs = qs.filter(source=source)
+    if payload.source:
+        qs = qs.filter(source=payload.source)
+    if payload.category:
+        qs = qs.filter(content__startswith=f"[{payload.category}]")
+    if payload.project:
+        qs = qs.filter(project__slug=payload.project)
+    if payload.older_than_days is not None:
+        cutoff = timezone.now() - timedelta(days=payload.older_than_days)
+        qs = qs.filter(created_at__lt=cutoff)
     count = qs.count()
     qs.delete()
     return InsightsClearOut(cleared=count)
