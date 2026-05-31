@@ -157,6 +157,18 @@ class InsightOut(StrictModel):
     created_at: dt.datetime
 
 
+class InsightsClearIn(StrictModel):
+    """Body of POST /api/insights/clear/.
+
+    All fields optional. Provided filters are AND-combined to narrow which
+    insights are deleted. A body with no filters clears ALL insights.
+    """
+    source: str | None = None
+    category: str | None = None
+    project: str | None = None  # project slug
+    older_than_days: int | None = None
+
+
 class InsightsClearOut(StrictModel):
     cleared: int
 
