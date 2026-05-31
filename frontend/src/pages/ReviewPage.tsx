@@ -1344,7 +1344,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             <li>
               <span className="text-stone-500">🔨</span>{' '}
               <span className="text-stone-100">
-                Build {frontierCount} new feature{frontierCount === 1 ? '' : 's'}
+                Build {toBuildFeatures.length} new feature{toBuildFeatures.length === 1 ? '' : 's'}
+                {frontierCount > 0 && ` (across ${frontierCount} beat${frontierCount === 1 ? '' : 's'})`}
               </span>
               {frontierCount > 0 && toBuildFeatures.length > 0 ? (
                 <>
@@ -1368,7 +1369,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             {builtSceneCount}/{liveScenes.length} scenes already ride shipped code.{' '}
             {frontierCount > 0 ? (
               <>
-                The build is {frontierCount} scoped feature{frontierCount === 1 ? '' : 's'} —{' '}
+                The build is {toBuildFeatures.length} scoped feature{toBuildFeatures.length === 1 ? '' : 's'} —{' '}
                 <span className="text-emerald-300">safe to delegate</span>. The story framing is the part that&apos;s{' '}
                 <span className="text-sky-300">yours to approve</span>.
               </>
