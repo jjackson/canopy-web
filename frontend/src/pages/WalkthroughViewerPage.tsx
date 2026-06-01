@@ -81,11 +81,11 @@ export function WalkthroughViewerPage() {
 
   if (error) {
     return (
-      <div className="max-w-4xl mx-auto p-6 text-red-600">Error: {error}</div>
+      <div className="max-w-4xl mx-auto p-6 text-red-400/90">Error: {error}</div>
     )
   }
   if (!w) {
-    return <div className="max-w-4xl mx-auto p-6 text-slate-500">Loading…</div>
+    return <div className="max-w-4xl mx-auto p-6 text-stone-500">Loading…</div>
   }
 
   const params = new URLSearchParams(window.location.search)
@@ -107,17 +107,17 @@ export function WalkthroughViewerPage() {
     <div className="max-w-5xl mx-auto p-6">
       <header className="mb-4 flex items-baseline justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{w.title}</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-2xl font-semibold text-stone-100">{w.title}</h1>
+          <p className="text-sm text-stone-500">
             {w.kind === 'video' ? 'Video' : 'HTML slideshow'} · {w.owner_email}
             {w.project_slug ? ` · ${w.project_slug}` : ''}
           </p>
         </div>
         <span
-          className={`px-2 py-0.5 text-xs rounded ${
+          className={`px-2 py-0.5 text-xs rounded border ${
             w.visibility === 'link'
-              ? 'bg-emerald-100 text-emerald-800'
-              : 'bg-slate-100 text-slate-700'
+              ? 'text-emerald-400/90 bg-emerald-400/10 border-emerald-400/25'
+              : 'text-stone-400 bg-stone-800/60 border-stone-700'
           }`}
         >
           {w.visibility === 'link' ? 'Shareable link' : 'Private (dimagi)'}
@@ -127,14 +127,14 @@ export function WalkthroughViewerPage() {
       {w.is_owner && (
         <div className="mb-4 flex flex-wrap gap-2 text-sm">
           <button
-            className="px-3 py-1 rounded border hover:bg-slate-50"
+            className="px-3 py-1 rounded-lg border border-stone-800 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:border-stone-700 transition-colors disabled:opacity-50"
             onClick={toggleVisibility}
             disabled={busy}
           >
             {w.visibility === 'link' ? 'Make private' : 'Enable link'}
           </button>
           <button
-            className="px-3 py-1 rounded border hover:bg-slate-50"
+            className="px-3 py-1 rounded-lg border border-stone-800 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:border-stone-700 transition-colors disabled:opacity-50"
             onClick={copyShareLink}
             disabled={busy}
           >
@@ -142,7 +142,7 @@ export function WalkthroughViewerPage() {
           </button>
           {w.visibility === 'link' && (
             <button
-              className="px-3 py-1 rounded border hover:bg-slate-50"
+              className="px-3 py-1 rounded-lg border border-stone-800 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:border-stone-700 transition-colors disabled:opacity-50"
               onClick={rotate}
               disabled={busy}
             >
@@ -150,7 +150,7 @@ export function WalkthroughViewerPage() {
             </button>
           )}
           <button
-            className="px-3 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50 ml-auto"
+            className="px-3 py-1 rounded-lg border border-red-500/30 text-red-400/90 bg-red-500/5 hover:bg-red-500/10 transition-colors disabled:opacity-50 ml-auto"
             onClick={destroy}
             disabled={busy}
           >
@@ -159,7 +159,7 @@ export function WalkthroughViewerPage() {
         </div>
       )}
 
-      <div className="rounded border bg-white overflow-hidden">
+      <div className="rounded-xl border border-stone-800 bg-black overflow-hidden">
         {w.kind === 'video' ? (
           <video
             src={contentSrc}
@@ -171,7 +171,7 @@ export function WalkthroughViewerPage() {
             src={contentSrc}
             title={w.title}
             sandbox="allow-scripts allow-same-origin"
-            className="w-full h-[80vh]"
+            className="w-full h-[80vh] bg-white"
           />
         )}
       </div>
@@ -179,8 +179,8 @@ export function WalkthroughViewerPage() {
       {(siblingLinks.length > 0 || referenceLinks.length > 0) && (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {siblingLinks.length > 0 && (
-            <section className="rounded border bg-white p-4">
-              <h2 className="text-sm font-semibold text-slate-700 mb-2">
+            <section className="bg-stone-900 border border-stone-800 rounded-xl p-5">
+              <h2 className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-3">
                 This walkthrough
               </h2>
               <div className="flex flex-col gap-2">
@@ -190,10 +190,20 @@ export function WalkthroughViewerPage() {
                     href={l.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded border text-sm hover:bg-slate-50"
+                    className="group flex items-center gap-3 bg-stone-950/40 hover:bg-stone-950/70 border border-stone-800 hover:border-stone-700 rounded-lg px-3 py-2 transition-colors"
                   >
-                    <span aria-hidden>{siblingIcon(l.kind)}</span>
-                    <span>{l.label}</span>
+                    <span aria-hidden className="shrink-0 text-sm">
+                      {siblingIcon(l.kind)}
+                    </span>
+                    <span className="text-xs text-stone-300 truncate flex-1">
+                      {l.label}
+                    </span>
+                    <span
+                      aria-hidden
+                      className="text-[11px] text-stone-600 group-hover:text-orange-400 transition-colors shrink-0"
+                    >
+                      ↗
+                    </span>
                   </a>
                 ))}
               </div>
@@ -201,28 +211,34 @@ export function WalkthroughViewerPage() {
           )}
 
           {referenceLinks.length > 0 && (
-            <section className="rounded border bg-white p-4">
-              <h2 className="text-sm font-semibold text-slate-700 mb-1">
+            <section className="bg-stone-900 border border-stone-800 rounded-xl p-5">
+              <h2 className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-1">
                 Explore in the app
               </h2>
-              <p className="text-xs text-slate-500 mb-3">
+              <p className="text-xs text-stone-500 mb-3">
                 Destinations shown in this walkthrough — open them live.
               </p>
-              <ul className="grid gap-1.5">
+              <div className="flex flex-col gap-2">
                 {referenceLinks.map((l) => (
-                  <li key={l.url}>
-                    <a
-                      href={l.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-indigo-600 hover:underline inline-flex items-center gap-1"
+                  <a
+                    key={l.url}
+                    href={l.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-center gap-3 bg-stone-950/40 hover:bg-stone-950/70 border border-stone-800 hover:border-stone-700 rounded-lg px-3 py-2 transition-colors"
+                  >
+                    <span className="text-xs text-stone-300 truncate flex-1">
+                      {l.label}
+                    </span>
+                    <span
+                      aria-hidden
+                      className="text-[11px] text-stone-600 group-hover:text-orange-400 transition-colors shrink-0"
                     >
-                      <span>{l.label}</span>
-                      <span aria-hidden>↗</span>
-                    </a>
-                  </li>
+                      ↗
+                    </span>
+                  </a>
                 ))}
-              </ul>
+              </div>
             </section>
           )}
         </div>
