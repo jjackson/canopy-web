@@ -117,6 +117,62 @@ def test_upload_walkthrough_html(auth_client, fake_drive, owner):
 
 
 # ---------------------------------------------------------------------------
+# 1b. test_upload_with_links round-trips the companion links
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+@override_settings(
+    WALKTHROUGHS_ENABLED=True,
+    CANOPY_DRIVE_ROOT_FOLDER_ID="root-folder",
+    CANOPY_DRIVE_SA_KEY_JSON='{"x":"y"}',
+)
+def test_upload_with_links(auth_client, fake_drive, owner):
+    links = [
+        {"label": "Back to the narrative", "url": "https://x/review/1/", "kind": "narrative"},
+        {"label": "Still-frame walkthrough", "url": "https://x/w/abc", "kind": "companion"},
+        {"label": "Sampling designer", "url": "https://labs/microplans/program/133/new/"},
+    ]
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={
+            "file": _file_part("video.mp4", b"\x00\x00", "video/mp4"),
+            "title": "Video Demo",
+            "kind": "video",
+            "links": json.dumps(links),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.content
+    out = WalkthroughDetailOut.model_validate(resp.json())
+    assert [(l.kind, l.label) for l in out.links] == [
+        ("narrative", "Back to the narrative"),
+        ("companion", "Still-frame walkthrough"),
+        ("reference", "Sampling designer"),  # kind defaults to reference
+    ]
+
+
+@pytest.mark.django_db
+@override_settings(
+    WALKTHROUGHS_ENABLED=True,
+    CANOPY_DRIVE_ROOT_FOLDER_ID="root-folder",
+    CANOPY_DRIVE_SA_KEY_JSON='{"x":"y"}',
+)
+def test_upload_rejects_malformed_links(auth_client, fake_drive, owner):
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={
+            "file": _file_part("video.mp4", b"\x00", "video/mp4"),
+            "title": "Bad links",
+            "kind": "video",
+            "links": json.dumps([{"label": "no url"}]),  # missing required url
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 422, resp.content
+
+
+# ---------------------------------------------------------------------------
 # 2. test_upload_requires_file
 # ---------------------------------------------------------------------------
 

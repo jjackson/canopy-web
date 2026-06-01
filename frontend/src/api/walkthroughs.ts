@@ -6,6 +6,8 @@ export type WalkthroughVisibility = "private" | "link";
 
 export type WalkthroughListItem = components["schemas"]["WalkthroughListItemOut"];
 export type WalkthroughDetail = components["schemas"]["WalkthroughDetailOut"];
+export type WalkthroughLink = components["schemas"]["WalkthroughLink"];
+export type WalkthroughLinkKind = "narrative" | "companion" | "reference";
 
 export interface WalkthroughListFilters {
   project?: string;

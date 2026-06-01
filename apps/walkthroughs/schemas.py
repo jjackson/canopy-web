@@ -16,6 +16,21 @@ from apps.common.schemas import StrictModel
 
 WalkthroughKind = Literal["html", "video"]
 WalkthroughVisibility = Literal["private", "link"]
+WalkthroughLinkKind = Literal["narrative", "companion", "reference"]
+
+
+class WalkthroughLink(StrictModel):
+    """One companion link rendered on the viewer page.
+
+    ``kind`` drives which section it lands in:
+      narrative  — the design story / spec that generated this walkthrough
+      companion  — the sibling artifact (still-frame deck ↔ video)
+      reference  — a destination shown in the demo, for the viewer to explore
+    """
+
+    label: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1, max_length=2000)
+    kind: WalkthroughLinkKind = "reference"
 
 
 class WalkthroughListItemOut(StrictModel):
@@ -38,6 +53,7 @@ class WalkthroughDetailOut(WalkthroughListItemOut):
     share_token: str | None = None
     content_type: str
     is_owner: bool
+    links: list[WalkthroughLink] = []
 
 
 class WalkthroughUploadIn(StrictModel):
@@ -52,6 +68,7 @@ class WalkthroughUploadIn(StrictModel):
     project_slug: str = ""
     description: str = ""
     visibility: WalkthroughVisibility = "private"
+    links: list[WalkthroughLink] = []
 
 
 class WalkthroughPatchIn(StrictModel):
@@ -59,6 +76,7 @@ class WalkthroughPatchIn(StrictModel):
     description: str | None = None
     project_slug: str | None = None  # may be set to null to detach
     visibility: WalkthroughVisibility | None = None
+    links: list[WalkthroughLink] | None = None
 
 
 class WalkthroughRotateTokenOut(StrictModel):

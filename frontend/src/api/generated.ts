@@ -1871,6 +1871,32 @@ export interface components {
             readonly content_type: string;
             /** Is Owner */
             readonly is_owner: boolean;
+            /**
+             * Links
+             * @default []
+             */
+            readonly links: readonly components["schemas"]["WalkthroughLink"][];
+        };
+        /**
+         * WalkthroughLink
+         * @description One companion link rendered on the viewer page.
+         *
+         *     ``kind`` drives which section it lands in:
+         *       narrative  — the design story / spec that generated this walkthrough
+         *       companion  — the sibling artifact (still-frame deck ↔ video)
+         *       reference  — a destination shown in the demo, for the viewer to explore
+         */
+        readonly WalkthroughLink: {
+            /** Label */
+            readonly label: string;
+            /** Url */
+            readonly url: string;
+            /**
+             * Kind
+             * @default reference
+             * @enum {string}
+             */
+            readonly kind: "narrative" | "companion" | "reference";
         };
         /** WalkthroughListItemOut */
         readonly WalkthroughListItemOut: {
@@ -1928,6 +1954,8 @@ export interface components {
             readonly project_slug?: string | null;
             /** Visibility */
             readonly visibility?: ("private" | "link") | null;
+            /** Links */
+            readonly links?: readonly components["schemas"]["WalkthroughLink"][] | null;
         };
         /** WalkthroughRotateTokenOut */
         readonly WalkthroughRotateTokenOut: {
@@ -3223,6 +3251,11 @@ export interface operations {
                      * @enum {string}
                      */
                     readonly visibility?: "private" | "link";
+                    /**
+                     * Links
+                     * @default
+                     */
+                    readonly links?: string;
                 };
             };
         };
