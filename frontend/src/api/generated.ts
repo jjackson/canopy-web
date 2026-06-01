@@ -1871,6 +1871,24 @@ export interface components {
             readonly content_type: string;
             /** Is Owner */
             readonly is_owner: boolean;
+            /** Links */
+            readonly links?: readonly components["schemas"]["WalkthroughLink"][];
+        };
+        /**
+         * WalkthroughLink
+         * @description One companion link rendered on the viewer page.
+         */
+        readonly WalkthroughLink: {
+            /** Label */
+            readonly label: string;
+            /** Url */
+            readonly url: string;
+            /**
+             * Kind
+             * @default reference
+             * @enum {string}
+             */
+            readonly kind?: "narrative" | "companion" | "reference";
         };
         /** WalkthroughListItemOut */
         readonly WalkthroughListItemOut: {

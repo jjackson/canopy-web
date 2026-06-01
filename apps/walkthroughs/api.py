@@ -1,11 +1,13 @@
 """Django Ninja v2 router for the walkthroughs surface."""
 from __future__ import annotations
 
+import json
 import logging
 from uuid import UUID
 
 from django.conf import settings
 from django.http import Http404, HttpRequest
+from pydantic import ValidationError
 
 log = logging.getLogger(__name__)
 from ninja import File, Form, Router, Status
@@ -27,6 +29,7 @@ from .models import Walkthrough
 from .schemas import (
     WalkthroughDetailOut,
     WalkthroughKind,
+    WalkthroughLink,
     WalkthroughListItemOut,
     WalkthroughPatchIn,
     WalkthroughRotateTokenOut,
@@ -44,6 +47,29 @@ def _require_enabled() -> None:
         raise Http404("walkthroughs disabled")
 
 
+def _parse_links_field(raw: str) -> list[dict]:
+    """Parse the multipart ``links`` form field (a JSON-encoded list).
+
+    Each entry is validated against :class:`WalkthroughLink`. Returns a list
+    of plain dicts ready to store on the JSONField. An empty/blank field
+    yields ``[]``. Raises ProblemError(422) on malformed input so a buggy
+    uploader fails loud rather than silently dropping the links.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ProblemError(422, "Invalid links JSON", detail=str(exc))
+    if not isinstance(parsed, list):
+        raise ProblemError(422, "links must be a JSON list")
+    try:
+        return [WalkthroughLink.model_validate(item).model_dump() for item in parsed]
+    except ValidationError as exc:
+        raise ProblemError(422, "Invalid link entry", detail=str(exc))
+
+
 def _detail_payload(w: Walkthrough, *, is_owner: bool) -> dict:
     return {
         "id": w.id,
@@ -58,6 +84,7 @@ def _detail_payload(w: Walkthrough, *, is_owner: bool) -> dict:
         "share_token": w.share_token if is_owner else None,
         "content_type": w.content_type,
         "is_owner": is_owner,
+        "links": w.links or [],
         "created_at": w.created_at,
         "updated_at": w.updated_at,
     }
@@ -104,6 +131,7 @@ def upload_walkthrough(
     project_slug: str = Form(""),
     description: str = Form(""),
     visibility: WalkthroughVisibility = Form("private"),
+    links: str = Form(""),
 ) -> Status:
     _require_enabled()
 
@@ -119,6 +147,7 @@ def upload_walkthrough(
     resolved_title = (title.strip() or file.name or "untitled")[:200]
     resolved_project_slug = project_slug.strip() or None
     resolved_description = description.strip()
+    resolved_links = _parse_links_field(links)
     content_type = CONTENT_TYPE_BY_KIND[kind]
     filename = FILENAME_BY_KIND[kind]
     data = file.read()
@@ -131,6 +160,7 @@ def upload_walkthrough(
         project_slug=resolved_project_slug,
         owner=request.user,
         visibility=visibility,
+        links=resolved_links,
         drive_file_id="",
         drive_folder_id="",
         content_type=content_type,

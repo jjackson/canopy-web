@@ -92,6 +92,17 @@ export function WalkthroughViewerPage() {
   const viewerToken = params.get('t') ?? w.share_token ?? null
   const contentSrc = walkthroughContentUrl(w.id, viewerToken)
 
+  const links = w.links ?? []
+  // narrative + companion are provenance / sibling-artifact nav; reference
+  // links are destinations the demo visited that the viewer can go open live.
+  const siblingLinks = links.filter(
+    (l) => l.kind === 'narrative' || l.kind === 'companion',
+  )
+  const referenceLinks = links.filter((l) => l.kind === 'reference')
+
+  const siblingIcon = (kind: string) =>
+    kind === 'narrative' ? '📖' : '🎞️'
+
   return (
     <div className="max-w-5xl mx-auto p-6">
       <header className="mb-4 flex items-baseline justify-between gap-4">
@@ -164,6 +175,58 @@ export function WalkthroughViewerPage() {
           />
         )}
       </div>
+
+      {(siblingLinks.length > 0 || referenceLinks.length > 0) && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {siblingLinks.length > 0 && (
+            <section className="rounded border bg-white p-4">
+              <h2 className="text-sm font-semibold text-slate-700 mb-2">
+                This walkthrough
+              </h2>
+              <div className="flex flex-col gap-2">
+                {siblingLinks.map((l) => (
+                  <a
+                    key={l.url}
+                    href={l.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded border text-sm hover:bg-slate-50"
+                  >
+                    <span aria-hidden>{siblingIcon(l.kind)}</span>
+                    <span>{l.label}</span>
+                  </a>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {referenceLinks.length > 0 && (
+            <section className="rounded border bg-white p-4">
+              <h2 className="text-sm font-semibold text-slate-700 mb-1">
+                Explore in the app
+              </h2>
+              <p className="text-xs text-slate-500 mb-3">
+                Destinations shown in this walkthrough — open them live.
+              </p>
+              <ul className="grid gap-1.5">
+                {referenceLinks.map((l) => (
+                  <li key={l.url}>
+                    <a
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-indigo-600 hover:underline inline-flex items-center gap-1"
+                    >
+                      <span>{l.label}</span>
+                      <span aria-hidden>↗</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
     </div>
   )
 }

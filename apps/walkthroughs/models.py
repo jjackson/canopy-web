@@ -44,6 +44,15 @@ class Walkthrough(models.Model):
     content_type = models.CharField(max_length=64)
     size_bytes = models.BigIntegerField()
     duration_sec = models.IntegerField(null=True, blank=True)
+    # Companion links shown on the viewer page. Each entry is
+    # {"label": str, "url": str, "kind": "narrative" | "companion" | "reference"}.
+    #   narrative  — the design narrative / spec that generated this walkthrough
+    #   companion  — the sibling artifact (e.g. the still-frame deck for a video)
+    #   reference  — a destination shown in the demo the viewer can go explore
+    # Authored by the uploader (the DDD loop populates them from the spec); the
+    # viewer groups them into "Narrative", "Still-frame walkthrough", and
+    # "Explore in the app" sections.
+    links = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
