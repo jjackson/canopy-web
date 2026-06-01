@@ -43,7 +43,10 @@ export async function getWalkthrough(id: string): Promise<WalkthroughDetail> {
     params: { path: { wid: id } },
   });
   if (error) throw new Error("Failed to load walkthrough");
-  return data;
+  // openapi-fetch's immutable response type deep-freezes the `links` array
+  // (method signatures become `{}`), which no longer structurally matches the
+  // plain schema alias. Same cast `listWalkthroughs` uses for its array body.
+  return data as unknown as WalkthroughDetail;
 }
 
 export async function patchWalkthrough(
@@ -60,7 +63,7 @@ export async function patchWalkthrough(
     },
   });
   if (error) throw new Error("Failed to update walkthrough");
-  return data;
+  return data as unknown as WalkthroughDetail;
 }
 
 export async function deleteWalkthrough(id: string): Promise<void> {
@@ -98,7 +101,7 @@ export async function uploadWalkthrough(
     bodySerializer: (body: unknown) => body as FormData,
   });
   if (error) throw new Error("Upload failed");
-  return data;
+  return data as unknown as WalkthroughDetail;
 }
 
 export function walkthroughContentUrl(
