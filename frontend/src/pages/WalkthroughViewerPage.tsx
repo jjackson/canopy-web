@@ -100,7 +100,7 @@ export function WalkthroughViewerPage() {
   )
   const referenceLinks = links.filter((l) => l.kind === 'reference')
 
-  const siblingIcon = (kind: string) =>
+  const siblingIcon = (kind: string | undefined) =>
     kind === 'narrative' ? '📖' : '🎞️'
 
   return (
