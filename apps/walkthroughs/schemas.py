@@ -43,6 +43,10 @@ class WalkthroughListItemOut(StrictModel):
     owner_email: EmailStr
     size_bytes: int = Field(ge=0)
     duration_sec: int | None = None
+    # DDD-run grouping (null for one-off uploads).
+    run_id: str | None = None
+    feature: str | None = None
+    role: str | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
 
@@ -69,6 +73,9 @@ class WalkthroughUploadIn(StrictModel):
     description: str = ""
     visibility: WalkthroughVisibility = "private"
     links: list[WalkthroughLink] = []
+    run_id: str = ""
+    feature: str = ""
+    role: str = ""
 
 
 class WalkthroughPatchIn(StrictModel):

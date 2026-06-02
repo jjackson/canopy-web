@@ -18,7 +18,6 @@ logged in via Google OAuth) or, if visibility=="link", the ?t= query token.
 from __future__ import annotations
 
 import logging
-import re
 from uuid import UUID
 
 from django.http import HttpRequest
@@ -27,6 +26,7 @@ from ninja import Router, Status
 
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, ProblemError
+from apps.common.ddd import feature_from_run_id
 
 from .models import ReviewRequest
 from .schemas import (
@@ -40,10 +40,6 @@ from .schemas import (
 log = logging.getLogger(__name__)
 
 router = Router(auth=session_auth, tags=["reviews"])
-
-# A run_id looks like "<feature>-YYYY-MM-DD-NNN"; the feature is everything before
-# the trailing date+sequence stamp. Strip it for a clean dashboard label.
-_RUN_ID_STAMP = re.compile(r"-\d{4}-\d{2}-\d{2}-\d+$")
 
 
 # ---------------------------------------------------------------------------
@@ -108,12 +104,6 @@ def _detail_payload(review: ReviewRequest, *, is_owner: bool, expose_token: bool
     }
 
 
-def _feature_from_run_id(run_id: str) -> str:
-    """'microplans-study-design-2026-05-29-001' -> 'microplans-study-design'."""
-    base = _RUN_ID_STAMP.sub("", run_id).strip("-")
-    return base or run_id or "(untitled)"
-
-
 def _list_title(request_json: dict) -> str | None:
     """A short human label: the narrative's first line, else the first scene title."""
     narrative = (request_json.get("narrative") or "").strip()
@@ -137,7 +127,7 @@ def _list_item_payload(request: HttpRequest, review: ReviewRequest) -> dict:
         "gate": review.gate,
         "status": review.status,
         "visibility": review.visibility,
-        "feature": _feature_from_run_id(review.run_id),
+        "feature": feature_from_run_id(review.run_id),
         "title": _list_title(rj),
         "scene_count": len(narration) if isinstance(narration, list) else 0,
         "created_at": review.created_at,

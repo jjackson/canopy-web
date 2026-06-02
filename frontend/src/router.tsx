@@ -14,6 +14,7 @@ import { WalkthroughsPage } from './pages/WalkthroughsPage'
 import { WalkthroughViewerPage } from './pages/WalkthroughViewerPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { ReviewsPage } from './pages/ReviewsPage'
+import { DddPage } from './pages/DddPage'
 
 export const router = createBrowserRouter([
   {
@@ -24,6 +25,9 @@ export const router = createBrowserRouter([
       { path: '/skills', element: <DiscoveryPage /> },
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:id', element: <WalkthroughViewerPage /> },
+      { path: '/ddd', element: <DddPage /> },
+      { path: '/ddd/:narrative', element: <DddPage /> },
+      { path: '/ddd/:narrative/:runId', element: <DddPage /> },
       { path: '/ddd-plans', element: <ReviewsPage /> },
       { path: '/reviews', element: <Navigate to="/ddd-plans" replace /> },
       { path: '/review/:id', element: <ReviewPage /> },

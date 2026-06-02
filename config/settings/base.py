@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "apps.walkthroughs",
     "apps.tokens",
     "apps.reviews",
+    "apps.runs",
     "apps.mcp",
 ]
 

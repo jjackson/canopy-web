@@ -23,6 +23,8 @@ from apps.api.errors import (
     ProblemError,
 )
 
+from apps.common.ddd import feature_from_run_id
+
 from . import storage
 from .drive_client import DriveNotConfigured
 from .models import Walkthrough
@@ -85,6 +87,9 @@ def _detail_payload(w: Walkthrough, *, is_owner: bool) -> dict:
         "content_type": w.content_type,
         "is_owner": is_owner,
         "links": w.links or [],
+        "run_id": w.run_id,
+        "feature": w.feature,
+        "role": w.role,
         "created_at": w.created_at,
         "updated_at": w.updated_at,
     }
@@ -101,6 +106,9 @@ def _list_item_payload(w: Walkthrough) -> dict:
         "owner_email": w.owner.email,
         "size_bytes": w.size_bytes,
         "duration_sec": w.duration_sec,
+        "run_id": w.run_id,
+        "feature": w.feature,
+        "role": w.role,
         "created_at": w.created_at,
         "updated_at": w.updated_at,
     }
@@ -132,6 +140,9 @@ def upload_walkthrough(
     description: str = Form(""),
     visibility: WalkthroughVisibility = Form("private"),
     links: str = Form(""),
+    run_id: str = Form(""),
+    feature: str = Form(""),
+    role: str = Form(""),
 ) -> Status:
     _require_enabled()
 
@@ -152,6 +163,14 @@ def upload_walkthrough(
     filename = FILENAME_BY_KIND[kind]
     data = file.read()
 
+    # DDD-run grouping (optional). feature defaults to the narrative slug
+    # derived from run_id when the uploader didn't send one explicitly.
+    resolved_run_id = run_id.strip() or None
+    resolved_feature = feature.strip() or None
+    if resolved_run_id and not resolved_feature:
+        resolved_feature = feature_from_run_id(resolved_run_id)
+    resolved_role = role.strip() or None
+
     # Create ORM row first — if Drive fails, delete to avoid orphan row.
     w = Walkthrough.objects.create(
         title=resolved_title,
@@ -161,6 +180,9 @@ def upload_walkthrough(
         owner=request.user,
         visibility=visibility,
         links=resolved_links,
+        run_id=resolved_run_id,
+        feature=resolved_feature,
+        role=resolved_role,
         drive_file_id="",
         drive_folder_id="",
         content_type=content_type,
