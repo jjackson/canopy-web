@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { path: '/insights', label: 'Insights' },
   { path: '/skills', label: 'Skills' },
   { path: '/walkthroughs', label: 'Walkthroughs' },
+  { path: '/ddd', label: 'DDD' },
   { path: '/ddd-plans', label: 'DDD Plans' },
   { path: '/workspaces', label: 'Workspaces' },
   { path: '/leaderboard', label: 'Leaderboard' },
@@ -223,7 +224,12 @@ export function AppLayout() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-6 py-8"><Outlet /></main>
+      {location.pathname.startsWith('/ddd') && !location.pathname.startsWith('/ddd-plans') ? (
+        // DDD is a full-bleed workspace (persistent left nav + wide main).
+        <main className="h-[calc(100vh-53px)]"><Outlet /></main>
+      ) : (
+        <main className="mx-auto max-w-7xl px-6 py-8"><Outlet /></main>
+      )}
     </div>
   )
 }

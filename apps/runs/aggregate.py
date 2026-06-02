@@ -1,0 +1,417 @@
+"""Read-time aggregation of DDD runs.
+
+A DDD *run* (one ``run_id``) packages a hero video, an HTML walkthrough/deck, a
+narrative, and companion links — but those live across two tables
+(``Walkthrough`` and ``ReviewRequest``) with no FK. These pure functions join
+them on ``run_id`` and roll runs up under their *narrative* (the run_id slug).
+
+Everything here is queryset-in / plain-dict-out so it can be unit-tested without
+the HTTP layer, and so the Ninja handlers stay thin.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from apps.common.ddd import feature_from_run_id
+from apps.reviews.models import ReviewRequest
+from apps.walkthroughs.models import Walkthrough
+
+# ---------------------------------------------------------------------------
+# Small predicates
+# ---------------------------------------------------------------------------
+
+
+def _is_video(w: Walkthrough) -> bool:
+    return w.role in (Walkthrough.ROLE_HERO_VIDEO, Walkthrough.ROLE_CLIP) or (
+        w.kind == Walkthrough.KIND_VIDEO
+    )
+
+
+def _is_deck(w: Walkthrough) -> bool:
+    return w.role in (Walkthrough.ROLE_DOCS, Walkthrough.ROLE_DECK) or (
+        w.kind == Walkthrough.KIND_HTML
+    )
+
+
+def narrative_of_walkthrough(w: Walkthrough) -> str:
+    return (w.feature or "").strip() or feature_from_run_id(w.run_id or "")
+
+
+def narrative_of_review(r: ReviewRequest) -> str:
+    return feature_from_run_id(r.run_id)
+
+
+def _content_url(w: Walkthrough) -> str:
+    """In-app viewer stream. Session auth covers private artifacts for the
+    dimagi-gated app; share tokens are managed on the /w/<id> viewer page."""
+    return f"/w/{w.id}/content"
+
+
+def _viewer_url(w: Walkthrough) -> str:
+    return f"/w/{w.id}"
+
+
+def _artifact_payload(w: Walkthrough | None) -> dict | None:
+    if w is None:
+        return None
+    return {
+        "id": w.id,
+        "title": w.title,
+        "kind": w.kind,
+        "role": w.role,
+        "content_url": _content_url(w),
+        "viewer_url": _viewer_url(w),
+        "duration_sec": w.duration_sec,
+    }
+
+
+def _pick(wts: list[Walkthrough], *predicates) -> Walkthrough | None:
+    """Return the most-recent walkthrough matching the earliest predicate that
+    matches anything. ``wts`` must be newest-first."""
+    for pred in predicates:
+        for w in wts:
+            if pred(w):
+                return w
+    return None
+
+
+def _review_has_narrative(r: ReviewRequest) -> bool:
+    rj = r.request_json if isinstance(r.request_json, dict) else {}
+    return bool((rj.get("narrative") or "").strip() or rj.get("narration"))
+
+
+def _title_from_review(r: ReviewRequest) -> str | None:
+    rj = r.request_json if isinstance(r.request_json, dict) else {}
+    narrative = (rj.get("narrative") or "").strip()
+    if narrative:
+        first = narrative.splitlines()[0].strip()
+        return first[:140] if first else None
+    narration = rj.get("narration") or []
+    if narration and isinstance(narration[0], dict):
+        t = (narration[0].get("title") or "").strip()
+        return t or None
+    return None
+
+
+def _phase_label(r: ReviewRequest) -> str:
+    return f"{r.gate} · {r.status}"
+
+
+def _scene_count(r: ReviewRequest | None) -> int:
+    if r is None:
+        return 0
+    rj = r.request_json if isinstance(r.request_json, dict) else {}
+    narration = rj.get("narration") or []
+    return len(narration) if isinstance(narration, list) else 0
+
+
+# ---------------------------------------------------------------------------
+# Single run package
+# ---------------------------------------------------------------------------
+
+
+def build_run(run_id: str) -> dict | None:
+    """Aggregate one run_id into a package dict, or ``None`` if nothing matches."""
+    wts = list(Walkthrough.objects.filter(run_id=run_id).select_related("owner"))
+    revs = list(ReviewRequest.objects.filter(run_id=run_id))  # -created_at default
+    if not wts and not revs:
+        return None
+
+    video = _pick(
+        wts,
+        lambda w: w.role == Walkthrough.ROLE_HERO_VIDEO,
+        lambda w: w.role == Walkthrough.ROLE_CLIP,
+        lambda w: w.kind == Walkthrough.KIND_VIDEO,
+    )
+    deck = _pick(
+        wts,
+        lambda w: w.role == Walkthrough.ROLE_DOCS,
+        lambda w: w.role == Walkthrough.ROLE_DECK,
+        lambda w: w.kind == Walkthrough.KIND_HTML,
+    )
+
+    # Narrative: newest review that actually carries a story; else newest review.
+    narrative_review = next((r for r in revs if _review_has_narrative(r)), None)
+    if narrative_review is None and revs:
+        narrative_review = revs[0]
+
+    narrative_payload = None
+    if narrative_review is not None:
+        rj = (
+            narrative_review.request_json
+            if isinstance(narrative_review.request_json, dict)
+            else {}
+        )
+        narrative_payload = {
+            "run_id": narrative_review.run_id,
+            "gate": narrative_review.gate,
+            "title": _title_from_review(narrative_review),
+            "story": (rj.get("narrative") or "").strip() or None,
+            "narration": rj.get("narration") or [],
+            "personas": rj.get("personas") or {},
+            "why_brief": rj.get("why_brief"),
+        }
+
+    phase = _phase_label(revs[0]) if revs else None
+
+    # Links: union across the run's walkthroughs, de-duped on (url, kind),
+    # oldest-first for a stable order.
+    links: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for w in sorted(wts, key=lambda x: x.created_at):
+        for link in w.links or []:
+            if not isinstance(link, dict):
+                continue
+            key = (link.get("url", ""), link.get("kind", "reference"))
+            if key in seen:
+                continue
+            seen.add(key)
+            links.append(
+                {
+                    "label": link.get("label", ""),
+                    "url": link.get("url", ""),
+                    "kind": link.get("kind", "reference"),
+                }
+            )
+
+    all_artifacts = [
+        {
+            "id": w.id,
+            "title": w.title,
+            "kind": w.kind,
+            "role": w.role,
+            "created_at": w.created_at,
+            "viewer_url": _viewer_url(w),
+        }
+        for w in sorted(wts, key=lambda x: x.created_at)
+    ]
+
+    narrative_slug = (
+        narrative_of_walkthrough(wts[0]) if wts else feature_from_run_id(run_id)
+    )
+
+    # Previous runs in the same narrative (excluding this one), newest first.
+    sibling = _runs_in_narrative(narrative_slug)
+    previous_runs = [
+        {"run_id": rid, "latest_at": latest}
+        for rid, latest in sorted(
+            sibling.items(), key=lambda kv: kv[1], reverse=True
+        )
+        if rid != run_id
+    ]
+
+    timestamps = [w.created_at for w in wts] + [r.created_at for r in revs]
+    created_at = min(timestamps) if timestamps else None
+    latest_at = max(timestamps) if timestamps else None
+
+    return {
+        "run_id": run_id,
+        "narrative_slug": narrative_slug,
+        "created_at": created_at,
+        "latest_at": latest_at,
+        "phase": phase,
+        "video": _artifact_payload(video),
+        "deck": _artifact_payload(deck),
+        "narrative": narrative_payload,
+        "links": links,
+        "all_artifacts": all_artifacts,
+        "previous_runs": previous_runs,
+    }
+
+
+def _runs_in_narrative(slug: str) -> dict[str, datetime]:
+    """Map run_id -> latest activity timestamp for every run under ``slug``."""
+    out: dict[str, datetime] = {}
+    wq = (
+        Walkthrough.objects.exclude(run_id__isnull=True)
+        .exclude(run_id="")
+        .values_list("run_id", "feature", "created_at")
+    )
+    for run_id, feature, created_at in wq:
+        s = (feature or "").strip() or feature_from_run_id(run_id)
+        if s != slug:
+            continue
+        if run_id not in out or created_at > out[run_id]:
+            out[run_id] = created_at
+    for run_id, created_at in ReviewRequest.objects.values_list(
+        "run_id", "created_at"
+    ):
+        if feature_from_run_id(run_id) != slug:
+            continue
+        if run_id not in out or created_at > out[run_id]:
+            out[run_id] = created_at
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Narrative list + detail
+# ---------------------------------------------------------------------------
+
+
+def _blank_narrative(slug: str) -> dict[str, Any]:
+    return {
+        "slug": slug,
+        "title": None,
+        "story": None,
+        "phase": None,
+        "project_slug": None,
+        "run_ids": set(),
+        "project_slugs": set(),
+        "owner_ids": set(),
+        "latest_at": None,
+        "has_video": False,
+        "has_deck": False,
+        "has_narrative": False,
+        "_latest_rev_at": None,
+        "_latest_narr_at": None,
+    }
+
+
+def _max(a: datetime | None, b: datetime | None) -> datetime | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a if a >= b else b
+
+
+def _aggregate(project: str | None, owner_id: int | None) -> dict[str, dict]:
+    """Build the per-narrative aggregate map from both tables. Filters are
+    applied at the narrative level afterwards by the callers."""
+    wts = list(
+        Walkthrough.objects.exclude(run_id__isnull=True)
+        .exclude(run_id="")
+        .select_related("owner")
+    )
+    revs = list(ReviewRequest.objects.all())
+
+    narr: dict[str, dict] = {}
+    for w in wts:
+        slug = narrative_of_walkthrough(w)
+        a = narr.get(slug) or narr.setdefault(slug, _blank_narrative(slug))
+        a["run_ids"].add(w.run_id)
+        if w.project_slug:
+            a["project_slugs"].add(w.project_slug)
+            if a["project_slug"] is None:
+                a["project_slug"] = w.project_slug
+        a["owner_ids"].add(w.owner_id)
+        a["latest_at"] = _max(a["latest_at"], w.created_at)
+        if _is_video(w):
+            a["has_video"] = True
+        if _is_deck(w):
+            a["has_deck"] = True
+
+    for r in revs:
+        slug = narrative_of_review(r)
+        a = narr.setdefault(slug, _blank_narrative(slug))
+        a["run_ids"].add(r.run_id)
+        if r.owner_id:
+            a["owner_ids"].add(r.owner_id)
+        a["latest_at"] = _max(a["latest_at"], r.created_at)
+        # Latest review overall drives the phase label.
+        if a["_latest_rev_at"] is None or r.created_at > a["_latest_rev_at"]:
+            a["_latest_rev_at"] = r.created_at
+            a["phase"] = _phase_label(r)
+        # Latest review carrying a story drives title/story.
+        if _review_has_narrative(r) and (
+            a["_latest_narr_at"] is None or r.created_at > a["_latest_narr_at"]
+        ):
+            a["_latest_narr_at"] = r.created_at
+            a["has_narrative"] = True
+            a["title"] = _title_from_review(r)
+            rj = r.request_json if isinstance(r.request_json, dict) else {}
+            a["story"] = (rj.get("narrative") or "").strip() or None
+
+    # Narrative-level filters.
+    def _keep(a: dict) -> bool:
+        if project is not None and project not in a["project_slugs"]:
+            return False
+        if owner_id is not None and owner_id not in a["owner_ids"]:
+            return False
+        return True
+
+    return {slug: a for slug, a in narr.items() if _keep(a)}
+
+
+def list_narratives(
+    project: str | None = None, owner_id: int | None = None
+) -> list[dict]:
+    """Narrative list items, newest activity first."""
+    narr = _aggregate(project, owner_id)
+    items = [
+        {
+            "slug": a["slug"],
+            "title": a["title"],
+            "phase": a["phase"],
+            "project_slug": a["project_slug"],
+            "run_count": len(a["run_ids"]),
+            "latest_at": a["latest_at"],
+            "has_video": a["has_video"],
+            "has_deck": a["has_deck"],
+            "has_narrative": a["has_narrative"],
+        }
+        for a in narr.values()
+    ]
+    items.sort(key=lambda it: it["latest_at"] or datetime.min, reverse=True)
+    return items
+
+
+def build_narrative(slug: str) -> dict | None:
+    """Narrative landing: title/story/phase + its runs (newest first)."""
+    narr = _aggregate(project=None, owner_id=None)
+    a = narr.get(slug)
+    if a is None:
+        return None
+
+    # Per-run summaries for this narrative.
+    wts = [
+        w
+        for w in Walkthrough.objects.exclude(run_id__isnull=True)
+        .exclude(run_id="")
+        .select_related("owner")
+        if narrative_of_walkthrough(w) == slug
+    ]
+    revs = [
+        r for r in ReviewRequest.objects.all() if narrative_of_review(r) == slug
+    ]
+
+    wts_by_run: dict[str, list[Walkthrough]] = {}
+    for w in wts:
+        wts_by_run.setdefault(w.run_id, []).append(w)
+    revs_by_run: dict[str, list[ReviewRequest]] = {}
+    for r in revs:
+        revs_by_run.setdefault(r.run_id, []).append(r)
+
+    run_ids = set(wts_by_run) | set(revs_by_run)
+    runs = []
+    for run_id in run_ids:
+        run_wts = wts_by_run.get(run_id, [])
+        run_revs = sorted(
+            revs_by_run.get(run_id, []), key=lambda r: r.created_at, reverse=True
+        )
+        latest_rev = run_revs[0] if run_revs else None
+        narr_rev = next((r for r in run_revs if _review_has_narrative(r)), latest_rev)
+        ts = [w.created_at for w in run_wts] + [r.created_at for r in run_revs]
+        runs.append(
+            {
+                "run_id": run_id,
+                "created_at": min(ts) if ts else None,
+                "latest_at": max(ts) if ts else None,
+                "status": latest_rev.status if latest_rev else None,
+                "gate": latest_rev.gate if latest_rev else None,
+                "scene_count": _scene_count(narr_rev),
+                "has_video": any(_is_video(w) for w in run_wts),
+                "has_deck": any(_is_deck(w) for w in run_wts),
+            }
+        )
+    runs.sort(key=lambda it: it["latest_at"] or datetime.min, reverse=True)
+
+    return {
+        "slug": slug,
+        "title": a["title"],
+        "story": a["story"],
+        "phase": a["phase"],
+        "project_slug": a["project_slug"],
+        "runs": runs,
+    }

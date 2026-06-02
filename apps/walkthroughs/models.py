@@ -21,6 +21,13 @@ class Walkthrough(models.Model):
         (VISIBILITY_LINK, "Link (anyone with token)"),
     ]
 
+    # Artifact roles within a DDD run. Optional — when absent, the run
+    # aggregator derives a role from ``kind`` (video->clip, html->deck).
+    ROLE_HERO_VIDEO = "hero_video"
+    ROLE_DECK = "deck"
+    ROLE_DOCS = "docs"
+    ROLE_CLIP = "clip"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, default="")
@@ -28,6 +35,16 @@ class Walkthrough(models.Model):
     project_slug = models.CharField(
         max_length=200, blank=True, null=True, db_index=True
     )
+    # DDD-run grouping. A run_id looks like "<feature>-YYYY-MM-DD-NNN" and ties
+    # this artifact to its sibling video/deck/narrative. One-off (non-DDD)
+    # uploads leave these null and never surface in the DDD section.
+    run_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
+    # Narrative slug (matches run_state.yaml's `feature`). Falls back to
+    # feature_from_run_id(run_id) when blank but run_id is set.
+    feature = models.CharField(max_length=200, blank=True, null=True)
+    # Artifact role: hero_video | deck | docs | clip. Free-form (not a DB-level
+    # choices enum) so the plugin can evolve it; the aggregator tolerates blanks.
+    role = models.CharField(max_length=20, blank=True, null=True)
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -61,6 +78,7 @@ class Walkthrough(models.Model):
         indexes = [
             models.Index(fields=["project_slug", "-created_at"]),
             models.Index(fields=["owner", "-created_at"]),
+            models.Index(fields=["run_id", "-created_at"]),
         ]
 
     def __str__(self):

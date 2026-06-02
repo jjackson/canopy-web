@@ -916,6 +916,57 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/ddd/narratives/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List DDD narratives */
+        readonly get: operations["apps_runs_api_list_narratives"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/ddd/narratives/{slug}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get a narrative + its runs */
+        readonly get: operations["apps_runs_api_get_narrative"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/ddd/runs/{run_id}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get a run package (video + deck + narrative + links) */
+        readonly get: operations["apps_runs_api_get_run"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1855,6 +1906,12 @@ export interface components {
             readonly size_bytes: number;
             /** Duration Sec */
             readonly duration_sec?: number | null;
+            /** Run Id */
+            readonly run_id?: string | null;
+            /** Feature */
+            readonly feature?: string | null;
+            /** Role */
+            readonly role?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1933,6 +1990,12 @@ export interface components {
             readonly size_bytes: number;
             /** Duration Sec */
             readonly duration_sec?: number | null;
+            /** Run Id */
+            readonly run_id?: string | null;
+            /** Feature */
+            readonly feature?: string | null;
+            /** Role */
+            readonly role?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2141,6 +2204,199 @@ export interface components {
             readonly response_json: {
                 readonly [key: string]: unknown;
             };
+        };
+        /** NarrativeListItemOut */
+        readonly NarrativeListItemOut: {
+            /** Slug */
+            readonly slug: string;
+            /** Title */
+            readonly title?: string | null;
+            /** Phase */
+            readonly phase?: string | null;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /**
+             * Run Count
+             * @default 0
+             */
+            readonly run_count: number;
+            /** Latest At */
+            readonly latest_at?: string | null;
+            /**
+             * Has Video
+             * @default false
+             */
+            readonly has_video: boolean;
+            /**
+             * Has Deck
+             * @default false
+             */
+            readonly has_deck: boolean;
+            /**
+             * Has Narrative
+             * @default false
+             */
+            readonly has_narrative: boolean;
+        };
+        /** NarrativeDetailOut */
+        readonly NarrativeDetailOut: {
+            /** Slug */
+            readonly slug: string;
+            /** Title */
+            readonly title?: string | null;
+            /** Story */
+            readonly story?: string | null;
+            /** Phase */
+            readonly phase?: string | null;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /**
+             * Runs
+             * @default []
+             */
+            readonly runs: readonly components["schemas"]["NarrativeRunOut"][];
+        };
+        /** NarrativeRunOut */
+        readonly NarrativeRunOut: {
+            /** Run Id */
+            readonly run_id: string;
+            /** Created At */
+            readonly created_at?: string | null;
+            /** Latest At */
+            readonly latest_at?: string | null;
+            /** Status */
+            readonly status?: string | null;
+            /** Gate */
+            readonly gate?: string | null;
+            /**
+             * Scene Count
+             * @default 0
+             */
+            readonly scene_count: number;
+            /**
+             * Has Video
+             * @default false
+             */
+            readonly has_video: boolean;
+            /**
+             * Has Deck
+             * @default false
+             */
+            readonly has_deck: boolean;
+        };
+        /** PreviousRunOut */
+        readonly PreviousRunOut: {
+            /** Run Id */
+            readonly run_id: string;
+            /** Latest At */
+            readonly latest_at?: string | null;
+        };
+        /** RunArtifactOut */
+        readonly RunArtifactOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Title */
+            readonly title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "html" | "video";
+            /** Role */
+            readonly role?: string | null;
+            /** Content Url */
+            readonly content_url: string;
+            /** Viewer Url */
+            readonly viewer_url: string;
+            /** Duration Sec */
+            readonly duration_sec?: number | null;
+        };
+        /** RunArtifactRefOut */
+        readonly RunArtifactRefOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Title */
+            readonly title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "html" | "video";
+            /** Role */
+            readonly role?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Viewer Url */
+            readonly viewer_url: string;
+        };
+        /** RunNarrativeOut */
+        readonly RunNarrativeOut: {
+            /** Run Id */
+            readonly run_id: string;
+            /** Gate */
+            readonly gate: string;
+            /** Title */
+            readonly title?: string | null;
+            /** Story */
+            readonly story?: string | null;
+            /**
+             * Narration
+             * @default []
+             */
+            readonly narration: readonly {
+                readonly [key: string]: unknown;
+            }[];
+            /**
+             * Personas
+             * @default {}
+             */
+            readonly personas: {
+                readonly [key: string]: unknown;
+            };
+            /** Why Brief */
+            readonly why_brief?: {
+                readonly [key: string]: unknown;
+            } | null;
+        };
+        /** RunPackageOut */
+        readonly RunPackageOut: {
+            /** Run Id */
+            readonly run_id: string;
+            /** Narrative Slug */
+            readonly narrative_slug: string;
+            /** Created At */
+            readonly created_at?: string | null;
+            /** Latest At */
+            readonly latest_at?: string | null;
+            /** Phase */
+            readonly phase?: string | null;
+            readonly video?: components["schemas"]["RunArtifactOut"] | null;
+            readonly deck?: components["schemas"]["RunArtifactOut"] | null;
+            readonly narrative?: components["schemas"]["RunNarrativeOut"] | null;
+            /**
+             * Links
+             * @default []
+             */
+            readonly links: readonly components["schemas"]["WalkthroughLink"][];
+            /**
+             * All Artifacts
+             * @default []
+             */
+            readonly all_artifacts: readonly components["schemas"]["RunArtifactRefOut"][];
+            /**
+             * Previous Runs
+             * @default []
+             */
+            readonly previous_runs: readonly components["schemas"]["PreviousRunOut"][];
         };
     };
     responses: never;
@@ -3256,6 +3512,21 @@ export interface operations {
                      * @default
                      */
                     readonly links?: string;
+                    /**
+                     * Run Id
+                     * @default
+                     */
+                    readonly run_id?: string;
+                    /**
+                     * Feature
+                     * @default
+                     */
+                    readonly feature?: string;
+                    /**
+                     * Role
+                     * @default
+                     */
+                    readonly role?: string;
                 };
             };
         };
@@ -3537,6 +3808,73 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ReviewRequestOut"];
+                };
+            };
+        };
+    };
+    readonly apps_runs_api_list_narratives: {
+        readonly parameters: {
+            readonly query?: {
+                readonly project?: string;
+                readonly mine?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["NarrativeListItemOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_runs_api_get_narrative: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NarrativeDetailOut"];
+                };
+            };
+        };
+    };
+    readonly apps_runs_api_get_run: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly run_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RunPackageOut"];
                 };
             };
         };
