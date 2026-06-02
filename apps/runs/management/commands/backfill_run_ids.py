@@ -1,23 +1,27 @@
-"""Backfill ``run_id`` / ``feature`` on existing walkthroughs.
+"""Backfill ``run_id`` / ``feature`` on walkthroughs uploaded before the DDD
+upload contract (which now sends both explicitly).
 
-Pre-dates the DDD-run upload contract, so artifacts uploaded before the plugin
-started sending ``run_id`` need grouping inferred:
+Two passes, in priority order:
 
-1. Authoritative — every ``ReviewRequest`` may reference its rendered video via
-   ``request_json.video.walkthrough_id``. If that walkthrough has no run_id,
-   stamp it from the review's run_id.
-2. Heuristic (opt-in, ``--from-titles``) — match walkthroughs whose title starts
-   with a known narrative slug (derived from review run_ids).
+1. **Authoritative** — a ``ReviewRequest`` whose ``request_json.video`` points
+   at a walkthrough via ``walkthrough_id`` pins that walkthrough to the review's
+   ``run_id``.
+2. **Title inference** — for everything still unstamped, infer a narrative slug
+   + run_id from the title (see ``apps/runs/inference.py``). This produces the
+   real multiple-runs-per-narrative shape from human-authored titles.
 
-Idempotent: never overwrites a non-null run_id. ``--dry-run`` prints the plan
-without writing.
+Idempotent: never overwrites a non-null ``run_id``. ``--dry-run`` prints the
+full plan (grouped by narrative) without writing.
 """
 from __future__ import annotations
+
+import collections
 
 from django.core.management.base import BaseCommand
 
 from apps.common.ddd import feature_from_run_id
 from apps.reviews.models import ReviewRequest
+from apps.runs.inference import infer
 from apps.walkthroughs.models import Walkthrough
 
 
@@ -26,23 +30,16 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--dry-run",
-            action="store_true",
-            help="Print what would change without writing.",
-        )
-        parser.add_argument(
-            "--from-titles",
-            action="store_true",
-            help="Also match walkthroughs by title-prefix against known narrative slugs.",
+            "--dry-run", action="store_true", help="Print the plan without writing."
         )
 
     def handle(self, *args, **opts):
         dry = opts["dry_run"]
-        from_titles = opts["from_titles"]
 
-        planned: dict[str, tuple[str, str]] = {}  # walkthrough_id -> (run_id, feature)
+        # walkthrough_id -> (run_id, feature, source)
+        planned: dict[str, tuple[str, str, str]] = {}
 
-        # 1. Authoritative — review.request_json.video.walkthrough_id
+        # 1. Authoritative: review.request_json.video.walkthrough_id
         for r in ReviewRequest.objects.all():
             rj = r.request_json if isinstance(r.request_json, dict) else {}
             video = rj.get("video") or {}
@@ -52,36 +49,45 @@ class Command(BaseCommand):
             w = Walkthrough.objects.filter(pk=wid).first()
             if w is None or w.run_id:
                 continue
-            planned[str(w.id)] = (r.run_id, feature_from_run_id(r.run_id))
+            planned[str(w.id)] = (r.run_id, feature_from_run_id(r.run_id), "review")
 
-        # 2. Heuristic — title prefix against known narrative slugs.
-        if from_titles:
-            slugs = {
-                feature_from_run_id(rid)
-                for rid in ReviewRequest.objects.values_list("run_id", flat=True)
-            }
-            for w in Walkthrough.objects.filter(run_id__isnull=True):
-                if str(w.id) in planned:
-                    continue
-                title = (w.title or "").lower()
-                match = next(
-                    (s for s in slugs if s and title.startswith(s.lower())), None
-                )
-                if match:
-                    # No run_id known from a title alone — group under the
-                    # narrative via feature, leave run_id null so it doesn't
-                    # masquerade as a specific run.
-                    planned[str(w.id)] = ("", match)
+        # 2. Title inference for the rest.
+        for w in Walkthrough.objects.filter(run_id__isnull=True):
+            if str(w.id) in planned:
+                continue
+            result = infer(w.title, w.created_at.date())
+            if result is None:
+                self.stdout.write(f"  [skip — unclassifiable] {w.id} :: {w.title}")
+                continue
+            feature, run_id = result
+            planned[str(w.id)] = (run_id, feature, "title")
 
         if not planned:
             self.stdout.write("Nothing to backfill.")
             return
 
-        for wid, (run_id, feature) in planned.items():
-            label = f"  {wid} -> run_id={run_id or '(none)'} feature={feature}"
-            if dry:
-                self.stdout.write(f"[dry-run]{label}")
-                continue
+        # Group the plan by narrative for a readable summary.
+        by_feature: dict[str, set[str]] = collections.defaultdict(set)
+        for _wid, (run_id, feature, _src) in planned.items():
+            by_feature[feature].add(run_id)
+
+        self.stdout.write("Plan (narrative -> runs -> artifacts):")
+        for feature in sorted(by_feature):
+            runs = by_feature[feature]
+            n_art = sum(
+                1 for v in planned.values() if v[1] == feature
+            )
+            self.stdout.write(f"  {feature}: {len(runs)} run(s), {n_art} artifact(s)")
+            for rid in sorted(runs):
+                arts = [wid for wid, v in planned.items() if v[0] == rid]
+                self.stdout.write(f"      {rid}  ({len(arts)})")
+
+        if dry:
+            self.stdout.write(self.style.WARNING(f"[dry-run] {len(planned)} walkthrough(s) would change. No writes."))
+            return
+
+        written = 0
+        for wid, (run_id, feature, _src) in planned.items():
             w = Walkthrough.objects.get(pk=wid)
             fields = []
             if run_id and not w.run_id:
@@ -92,7 +98,6 @@ class Command(BaseCommand):
                 fields.append("feature")
             if fields:
                 w.save(update_fields=[*fields, "updated_at"])
-                self.stdout.write(label)
+                written += 1
 
-        verb = "Would update" if dry else "Updated"
-        self.stdout.write(self.style.SUCCESS(f"{verb} {len(planned)} walkthrough(s)."))
+        self.stdout.write(self.style.SUCCESS(f"Updated {written} walkthrough(s)."))

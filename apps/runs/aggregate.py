@@ -42,6 +42,29 @@ def narrative_of_review(r: ReviewRequest) -> str:
     return feature_from_run_id(r.run_id)
 
 
+def narrative_for_run_id(run_id: str, feature_map: dict[str, str] | None = None) -> str:
+    """Narrative slug for a run.
+
+    The explicitly-uploaded ``feature`` of any walkthrough in the run is the
+    source of truth (the plugin sends it). Parsing the run_id slug
+    (:func:`feature_from_run_id`) is only a last-resort fallback for runs that
+    have no walkthrough carrying an explicit feature (e.g. a review-only run).
+    """
+    if feature_map and feature_map.get(run_id):
+        return feature_map[run_id]
+    return feature_from_run_id(run_id)
+
+
+def _feature_map(walkthroughs) -> dict[str, str]:
+    """run_id -> explicit feature, from walkthroughs that carry both."""
+    m: dict[str, str] = {}
+    for w in walkthroughs:
+        feat = (getattr(w, "feature", None) or "").strip()
+        if w.run_id and feat:
+            m.setdefault(w.run_id, feat)
+    return m
+
+
 def _content_url(w: Walkthrough) -> str:
     """In-app viewer stream. Session auth covers private artifacts for the
     dimagi-gated app; share tokens are managed on the /w/<id> viewer page."""
@@ -187,9 +210,11 @@ def build_run(run_id: str) -> dict | None:
         for w in sorted(wts, key=lambda x: x.created_at)
     ]
 
-    narrative_slug = (
-        narrative_of_walkthrough(wts[0]) if wts else feature_from_run_id(run_id)
+    # Explicit feature (uploaded by the plugin) wins; run_id parsing is fallback.
+    explicit_feature = next(
+        (w.feature for w in wts if (w.feature or "").strip()), None
     )
+    narrative_slug = explicit_feature or feature_from_run_id(run_id)
 
     # Previous runs in the same narrative (excluding this one), newest first.
     sibling = _runs_in_narrative(narrative_slug)
@@ -223,13 +248,17 @@ def build_run(run_id: str) -> dict | None:
 def _runs_in_narrative(slug: str) -> dict[str, datetime]:
     """Map run_id -> latest activity timestamp for every run under ``slug``."""
     out: dict[str, datetime] = {}
+    feature_map: dict[str, str] = {}
     wq = (
         Walkthrough.objects.exclude(run_id__isnull=True)
         .exclude(run_id="")
         .values_list("run_id", "feature", "created_at")
     )
     for run_id, feature, created_at in wq:
-        s = (feature or "").strip() or feature_from_run_id(run_id)
+        feat = (feature or "").strip()
+        if run_id and feat:
+            feature_map.setdefault(run_id, feat)
+        s = feat or feature_from_run_id(run_id)
         if s != slug:
             continue
         if run_id not in out or created_at > out[run_id]:
@@ -237,7 +266,7 @@ def _runs_in_narrative(slug: str) -> dict[str, datetime]:
     for run_id, created_at in ReviewRequest.objects.values_list(
         "run_id", "created_at"
     ):
-        if feature_from_run_id(run_id) != slug:
+        if narrative_for_run_id(run_id, feature_map) != slug:
             continue
         if run_id not in out or created_at > out[run_id]:
             out[run_id] = created_at
@@ -286,6 +315,8 @@ def _aggregate(project: str | None, owner_id: int | None) -> dict[str, dict]:
     )
     revs = list(ReviewRequest.objects.all())
 
+    feature_map = _feature_map(wts)
+
     narr: dict[str, dict] = {}
     for w in wts:
         slug = narrative_of_walkthrough(w)
@@ -303,7 +334,7 @@ def _aggregate(project: str | None, owner_id: int | None) -> dict[str, dict]:
             a["has_deck"] = True
 
     for r in revs:
-        slug = narrative_of_review(r)
+        slug = narrative_for_run_id(r.run_id, feature_map)
         a = narr.setdefault(slug, _blank_narrative(slug))
         a["run_ids"].add(r.run_id)
         if r.owner_id:
