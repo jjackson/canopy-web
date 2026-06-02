@@ -2340,6 +2340,8 @@ export interface components {
         };
         /** RunNarrativeOut */
         readonly RunNarrativeOut: {
+            /** Review Id */
+            readonly review_id?: string | null;
             /** Run Id */
             readonly run_id: string;
             /** Gate */

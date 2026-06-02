@@ -61,6 +61,7 @@ class RunArtifactRefOut(StrictModel):
 
 
 class RunNarrativeOut(StrictModel):
+    review_id: str | None = None
     run_id: str
     gate: str
     title: str | None = None

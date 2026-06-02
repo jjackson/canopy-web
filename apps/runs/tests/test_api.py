@@ -67,6 +67,7 @@ def test_run_package(client, owner):
     assert body["video"]["id"] == str(vid.id)
     assert body["deck"] is not None
     assert body["narrative"]["story"] == "Story line one."
+    assert body["narrative"]["review_id"]  # deep-links to /review/<id> for editing
     assert len(body["all_artifacts"]) == 2
 
 
