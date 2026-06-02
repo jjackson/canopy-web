@@ -72,6 +72,7 @@ export interface DddNarration {
 }
 
 export interface DddRunNarrative {
+  review_id: string | null
   run_id: string
   gate: string
   title: string | null

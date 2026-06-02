@@ -167,6 +167,7 @@ def build_run(run_id: str) -> dict | None:
             else {}
         )
         narrative_payload = {
+            "review_id": str(narrative_review.id),
             "run_id": narrative_review.run_id,
             "gate": narrative_review.gate,
             "title": _title_from_review(narrative_review),

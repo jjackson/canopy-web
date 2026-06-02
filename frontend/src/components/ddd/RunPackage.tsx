@@ -214,6 +214,15 @@ export function RunPackage({ runId }: { runId: string }) {
       </Section>
 
       <Section title="Narrative">
+        {run.narrative?.review_id && (
+          <a
+            href={`/review/${run.narrative.review_id}`}
+            className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs text-orange-300 transition-colors hover:bg-orange-500/20"
+          >
+            Edit narrative in review
+            <span aria-hidden>→</span>
+          </a>
+        )}
         {run.narrative && (run.narrative.story || run.narrative.narration.length > 0) ? (
           <NarrativeBlock narrative={run.narrative} />
         ) : (
