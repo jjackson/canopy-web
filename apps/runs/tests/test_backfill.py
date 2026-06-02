@@ -13,7 +13,7 @@ pytestmark = pytest.mark.django_db
 
 def test_backfill_from_review_video_link():
     u = make_user()
-    w = make_walkthrough(u, kind="video")  # no run_id yet
+    w = make_walkthrough(u, kind="video", title="some hero video")  # no run_id
     assert w.run_id is None
     make_review(
         u,
@@ -24,45 +24,43 @@ def test_backfill_from_review_video_link():
             "video": {"walkthrough_id": str(w.id)},
         },
     )
-
     call_command("backfill_run_ids", stdout=StringIO())
     w.refresh_from_db()
     assert w.run_id == "microplans-2026-06-02-001"
     assert w.feature == "microplans"
 
 
+def test_backfill_infers_run_from_title():
+    u = make_user()
+    w = make_walkthrough(u, kind="video", title="microplans-10-wards iter1 video (2026-06-01-002)")
+    call_command("backfill_run_ids", stdout=StringIO())
+    w.refresh_from_db()
+    assert w.feature == "microplans-10-wards"
+    assert w.run_id == "microplans-10-wards-2026-06-01-002"
+
+
 def test_backfill_dry_run_writes_nothing():
     u = make_user()
-    w = make_walkthrough(u, kind="video")
-    make_review(
-        u,
-        run_id="x-2026-06-02-001",
-        request_json={"run_id": "x-2026-06-02-001", "gate": "g", "video": {"walkthrough_id": str(w.id)}},
-    )
+    w = make_walkthrough(u, kind="video", title="Program Admin Report — HTML deck (v4)")
     call_command("backfill_run_ids", "--dry-run", stdout=StringIO())
     w.refresh_from_db()
     assert w.run_id is None
 
 
-def test_backfill_is_idempotent_and_skips_existing():
+def test_backfill_skips_existing_run_id():
     u = make_user()
-    w = make_walkthrough(u, kind="video", run_id="already-2026-01-01-001", feature="already")
-    make_review(
-        u,
-        run_id="new-2026-06-02-001",
-        request_json={"run_id": "new-2026-06-02-001", "gate": "g", "video": {"walkthrough_id": str(w.id)}},
+    w = make_walkthrough(
+        u, kind="video", title="microplans-10-wards iter1", run_id="already-2026-01-01-001", feature="already"
     )
     call_command("backfill_run_ids", stdout=StringIO())
     w.refresh_from_db()
-    # Existing run_id must not be overwritten.
     assert w.run_id == "already-2026-01-01-001"
 
 
-def test_backfill_from_titles_groups_by_feature():
+def test_backfill_leaves_unclassifiable_untouched():
     u = make_user()
-    make_review(u, run_id="microplans-2026-06-02-001")
-    w = make_walkthrough(u, kind="html", title="Microplans deep dive")
-    call_command("backfill_run_ids", "--from-titles", stdout=StringIO())
+    w = make_walkthrough(u, kind="video", title="totally unrelated artifact")
+    call_command("backfill_run_ids", stdout=StringIO())
     w.refresh_from_db()
-    assert w.feature == "microplans"
-    assert w.run_id is None  # a title alone doesn't pin a specific run
+    assert w.run_id is None
+    assert w.feature is None
