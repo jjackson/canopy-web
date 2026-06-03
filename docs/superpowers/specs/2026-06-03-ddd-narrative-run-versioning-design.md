@@ -25,32 +25,35 @@ exposed two faults this model can't represent:
 Root cause: `run_id` is being asked to mean three different things at once — the
 narrative, a story revision, and an execution. They need to be separate.
 
-## Target model (three levels)
+## Target model (strict hierarchy)
+
+A run belongs to exactly one narrative version. Versions group the story's
+history; **runs nest under the version they rendered**.
 
 ```
-Narrative  (stable narrative_id, e.g. "did-monitoring")   ← the thing you're demoing
-├─ Narrative versions  (the story/spec, iterated over time: v1, v2, …)
-│     each is editable + viewable; the latest is "current"
-└─ Runs  (each a DDD loop render; fresh run_id; IMMUTABLE artifact set)
-      did-monitoring-2026-06-03-001  → video + deck + links
-        └─ rendered_from: narrative version v2
-      did-monitoring-2026-06-03-002  → …
-        └─ rendered_from: narrative version v2
+Narrative  (stable narrative_id, e.g. "did-monitoring")     ← the thing you're demoing
+├─ Narrative version v1   (story draft 1; an editable ReviewRequest)
+│    ├─ run did-monitoring-2026-06-01-001   → video + deck + links   (immutable)
+│    └─ run did-monitoring-2026-06-01-002   → …
+└─ Narrative version v2   (story re-drafted)
+     ├─ run did-monitoring-2026-06-03-001   → …
+     └─ run did-monitoring-2026-06-03-002   → …
 ```
 
-Two things iterate **independently** under a narrative:
-- **Narrative versions** — the story changes (re-draft, scene edits). Versioned,
-  with history; each version is a `ReviewRequest` (the editable surface).
-- **Runs** — each DDD loop render mints a **fresh** `run_id`, produces one
-  **immutable** artifact set, and **records which narrative version it
-  rendered**. Re-rendering is a *new run*, never an in-place append.
+- **Narrative versions** — the story, iterated over time (re-draft, scene
+  edits). Each is a `ReviewRequest` (the editable surface), keyed by
+  `(narrative_id, version)`. The highest version is "current."
+- **Runs** — each DDD loop render mints a **fresh** `run_id` and produces one
+  **immutable** artifact set. A run is **attached to a specific narrative
+  version** (the version it rendered) and is listed under it. Re-rendering is a
+  *new run* under the same (or a newer) version — never an in-place append.
 
-`/ddd` navigation becomes:
+`/ddd` navigation:
 - **L1 Narratives** — list (title, run count, latest activity, current phase).
-- **L2 Narrative** — current story + **version history** (+ edit link to the
-  review) **and** the list of runs (newest first).
-- **L3 Run** — the frozen package (video + deck + links) **+ the narrative
-  version it was built from** (+ edit link to that version).
+- **L2 Narrative** — the **version history**; each version shows its story (+
+  edit link to the review) and, nested beneath it, **its runs** (newest first).
+- **L3 Run** — the frozen package (video + deck + links) + a breadcrumb to its
+  narrative version (+ edit link to that version).
 
 ## Identity & relationships
 
@@ -98,21 +101,27 @@ sharing a `run_id`.
 ## API — `apps/runs` (`/api/ddd`)
 
 - `GET /api/ddd/narratives/` — unchanged shape (list).
-- `GET /api/ddd/narratives/{narrative_id}/` — now returns:
+- `GET /api/ddd/narratives/{narrative_id}/` — returns the **version-grouped**
+  tree:
   - `current_version` — the latest narrative version (title, story, review_id).
-  - `versions[]` — `{version, review_id, title, created_at, gate, status}`
-    (newest first) — the **history**.
-  - `runs[]` — `{run_id, created_at, status, has_video, has_deck,
-    narrative_version}` (which version each run rendered).
+  - `versions[]` (newest first), each:
+    `{version, review_id, title, created_at, gate, status, runs[]}` where
+    `runs[]` = `{run_id, created_at, status, has_video, has_deck}` for the runs
+    attached to that version (newest first).
+  - Legacy runs whose `narrative_review_id` is unset attach to the current
+    version (or an `unversioned` bucket — see Open Questions).
 - `GET /api/ddd/runs/{run_id}/` — the package, with `narrative` resolved from
-  the run's `narrative_review_id` (the version it actually rendered), falling
-  back to the narrative's current version when unstamped (legacy).
+  the run's `narrative_review_id` (the version it actually rendered), plus
+  `narrative_version` (the int) for the breadcrumb. Falls back to the
+  narrative's current version when unstamped (legacy).
 
 Aggregation rules (pure functions in `apps/runs/aggregate.py`):
 - narrative of a run = explicit `feature` (already source-of-truth).
-- a run's narrative version = `narrative_review_id` if set, else the feature's
-  current version (legacy fallback).
-- versions list = `ReviewRequest`s for the feature, ordered by `version`.
+- a run's version = the `version` of its `narrative_review_id` review; if unset,
+  the feature's current version.
+- versions list = `ReviewRequest`s for the feature, ordered by `version`; each
+  version's `runs[]` = walkthroughs grouped by `run_id` whose
+  `narrative_review_id` resolves to that version.
 
 ## Plugin contract — canopy (`scripts/ddd`, skills)
 
@@ -132,8 +141,8 @@ Aggregation rules (pure functions in `apps/runs/aggregate.py`):
 4. **Idempotent / no identical re-publish.** `ddd-upload` uploads exactly one
    hero-video + one docs deck per run. If invoked again for the same run with
    byte-identical content, it is a no-op (skip); if content changed, it should
-   be a *new run*, not an append. (Defensive: canopy-web may also de-dup by
-   checksum within a run — see Open Questions.)
+   be a *new run*, not an append. canopy-web stays append-only (no server-side
+   checksum guard — Decision 5); idempotency is the plugin's responsibility.
 
 ## Migration of existing data
 
@@ -155,30 +164,37 @@ they map cleanly; `study-design` becomes a narrative with version history.
 
 ## UI — `/ddd` (frontend)
 
-- **Narrative page** (`/ddd/:narrative`): add a **"Story"** panel (current
-  version, rendered) with an **edit link** to `/review/<current review_id>` and
-  a collapsible **version history** (`v3 · 06-03 · resolved`, each linking to
-  its review). Keep the **Runs** list below.
-- **Run page** (`/ddd/:narrative/:runId`): the Narrative section shows the
-  **specific version this run rendered** (label `narrative v2`) with the edit
-  link to that version (reuse the existing `review_id` link, now sourced from
-  `narrative_review_id`).
+- **Narrative page** (`/ddd/:narrative`): a **version-grouped** list. The
+  current version is expanded by default — its story (rendered) + **edit link**
+  to `/review/<review_id>` + its **runs** nested beneath. Older versions
+  collapse under a `▸ v2 · 06-03` disclosure, each expanding to its own story +
+  runs. (Left nav mirrors this: narrative → version → run.)
+- **Run page** (`/ddd/:narrative/:runId`): the package + a **breadcrumb**
+  `narrative › v2 › run`, and the Narrative section shows the **specific version
+  this run rendered** (label `narrative v2`) with the edit link to that version
+  (the existing `review_id` link, now sourced from `narrative_review_id`).
 
-## Open questions (decide before/with build)
+## Decisions (locked)
 
-1. **Re-render = new run vs same run?** The model says a run is immutable and
-   re-rendering mints a new run_id. Confirm the orchestrator should mint a fresh
-   run_id for each *render* (not resume), so the narrative shows N runs over
-   time. (Recommended: yes.)
-2. **Explicit `version` int vs ordered reviews?** Store a real `version` integer
-   on `ReviewRequest` (clean labels, stable across re-sorts) vs derive version
-   from `created_at` order. (Recommended: explicit int, assigned server-side.)
-3. **did-monitoring's 3 distinct video renders** — collapse to one run (keep
-   newest) or split into 3 runs? (Recommended: keep newest converged set as the
-   one run; it predates the new model.)
-4. **Checksum de-dup in canopy-web** — should the upload endpoint reject/replace
-   a byte-identical artifact within the same run as a safety net, independent of
-   the plugin fix? (Recommended: yes, cheap defense.)
+1. **Runs nest under versions.** A run is attached to exactly one narrative
+   version (`narrative_review_id`) and is listed beneath it. Narrative →
+   version → run is a strict hierarchy.
+2. **Fresh run_id per render.** A render is an immutable run; the orchestrator
+   mints a new run_id each render and never resumes-in-place for the package.
+3. **Explicit `version` int** on `ReviewRequest`, assigned server-side
+   (monotonic per `feature`).
+4. **did-monitoring cleanup:** keep the newest converged video+deck as the one
+   run; de-dup the byte-identical extras. (Held until this lands; done as part
+   of the migration.)
+5. **No server-side checksum guard** — rely on the plugin's idempotent upload to
+   prevent duplicate re-publishes. (Revisit if a buggy client reappears.)
+
+## Open questions (decide during build)
+
+- **Legacy unversioned runs** — runs with no `narrative_review_id` after
+  backfill: attach to the feature's current version, or show in a separate
+  `unversioned` bucket on the narrative page? (Lean: attach to current version,
+  since the backfill stamps them anyway.)
 
 ## Out of scope
 - No new `Narrative`/`Run` DB tables (stay read-time aggregates).
