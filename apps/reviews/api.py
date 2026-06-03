@@ -220,8 +220,21 @@ def create_review(request: HttpRequest, payload: ReviewCreateIn) -> Status:
     run_id = str(request_json.get("run_id", ""))
     gate = str(request_json.get("gate", ""))
 
+    # Narrative identity + version. `feature` (narrative_id) is explicit when the
+    # plugin sends it, else derived from the run_id slug. A narrative-agreement
+    # review (gate concept_change) opens a NEW version; other gates attach to the
+    # current version so version numbers stay clean (1, 2, 3, …).
+    feature = (request_json.get("feature") or feature_from_run_id(run_id)) or None
+    is_narrative_gate = gate in ("concept_change", "narrative-agreement")
+    if is_narrative_gate:
+        version = ReviewRequest.next_version(feature)
+    else:
+        version = max(ReviewRequest.next_version(feature) - 1, 1)
+
     review = ReviewRequest.objects.create(
         run_id=run_id,
+        feature=feature,
+        version=version,
         gate=gate,
         status=ReviewRequest.STATUS_PENDING,
         request_json=request_json,

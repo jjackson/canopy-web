@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getNarrative, type DddNarrativeDetail } from '@/api/ddd'
+import {
+  getNarrative,
+  type DddNarrativeDetail,
+  type DddNarrativeRun,
+  type DddNarrativeVersion,
+} from '@/api/ddd'
 
 function fmtDate(iso: string | null): string {
   if (!iso) return ''
@@ -13,6 +18,96 @@ function fmtDate(iso: string | null): string {
   } catch {
     return iso
   }
+}
+
+function RunCard({ slug, run, latest }: { slug: string; run: DddNarrativeRun; latest: boolean }) {
+  return (
+    <Link
+      to={`/ddd/${encodeURIComponent(slug)}/${encodeURIComponent(run.run_id)}`}
+      className="group rounded-xl border border-stone-800 bg-stone-900 p-4 transition-colors hover:border-stone-700"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-sm text-stone-200">{run.run_id}</span>
+        {latest && (
+          <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[9px] text-orange-300">
+            latest
+          </span>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-stone-500">
+        {run.gate && <span>{run.gate}</span>}
+        {run.status && (
+          <span className="rounded bg-stone-800 px-1.5 py-0.5 text-stone-400">{run.status}</span>
+        )}
+        <span>· {run.scene_count} scenes</span>
+        {run.has_video && <span title="has video">🎬</span>}
+        {run.has_deck && <span title="has deck">🖼️</span>}
+        <span className="ml-auto">{fmtDate(run.latest_at)}</span>
+      </div>
+    </Link>
+  )
+}
+
+function VersionBlock({
+  slug,
+  version,
+  isCurrent,
+}: {
+  slug: string
+  version: DddNarrativeVersion
+  isCurrent: boolean
+}) {
+  const [open, setOpen] = useState(isCurrent)
+  const label = version.version != null ? `v${version.version}` : 'no narrative'
+  return (
+    <section className="rounded-xl border border-stone-800 bg-stone-950/30">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 px-4 py-3 text-left"
+      >
+        <span aria-hidden className="text-stone-600">{open ? '▾' : '▸'}</span>
+        <span className="font-mono text-xs text-orange-300">{label}</span>
+        {isCurrent && (
+          <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[9px] text-orange-300">
+            current
+          </span>
+        )}
+        <span className="truncate text-sm text-stone-300">{version.title || ''}</span>
+        <span className="ml-auto shrink-0 text-[11px] text-stone-600">
+          {version.runs.length} run{version.runs.length === 1 ? '' : 's'} · {fmtDate(version.created_at)}
+        </span>
+      </button>
+
+      {open && (
+        <div className="border-t border-stone-800 px-4 py-3">
+          {version.story && (
+            <p className="mb-3 whitespace-pre-line text-sm leading-relaxed text-stone-300">
+              {version.story}
+            </p>
+          )}
+          {version.review_id && (
+            <a
+              href={`/review/${version.review_id}`}
+              className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs text-orange-300 transition-colors hover:bg-orange-500/20"
+            >
+              Edit narrative <span aria-hidden>→</span>
+            </a>
+          )}
+          {version.runs.length > 0 ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {version.runs.map((r, i) => (
+                <RunCard key={r.run_id} slug={slug} run={r} latest={isCurrent && i === 0} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-stone-800 px-4 py-4 text-center text-xs text-stone-600">
+              No runs rendered from this version yet.
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
 }
 
 export function NarrativeLanding({ slug }: { slug: string }) {
@@ -34,6 +129,8 @@ export function NarrativeLanding({ slug }: { slug: string }) {
   if (error) return <div className="p-8 text-sm text-red-400/90">Error: {error}</div>
   if (!detail) return <div className="p-8 text-sm text-stone-500">Loading…</div>
 
+  const currentVersion = detail.current_version?.version ?? null
+
   return (
     <div className="mx-auto max-w-4xl px-8 py-6">
       <header>
@@ -50,49 +147,28 @@ export function NarrativeLanding({ slug }: { slug: string }) {
         </div>
       </header>
 
-      {detail.story && (
-        <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-stone-300">
-          {detail.story}
-        </p>
-      )}
-
       <div className="mt-6 flex items-baseline gap-2">
         <h2 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
-          Runs
+          Versions &amp; runs
         </h2>
-        <span className="text-[11px] text-stone-600">{detail.runs.length}</span>
+        <span className="text-[11px] text-stone-600">{detail.versions.length}</span>
         <span className="h-px flex-1 bg-stone-800" />
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {detail.runs.map((r, i) => (
-          <Link
-            key={r.run_id}
-            to={`/ddd/${encodeURIComponent(slug)}/${encodeURIComponent(r.run_id)}`}
-            className="group rounded-xl border border-stone-800 bg-stone-900 p-4 transition-colors hover:border-stone-700"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-sm text-stone-200">{r.run_id}</span>
-              {i === 0 && (
-                <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[9px] text-orange-300">
-                  latest
-                </span>
-              )}
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-stone-500">
-              {r.gate && <span>{r.gate}</span>}
-              {r.status && (
-                <span className="rounded bg-stone-800 px-1.5 py-0.5 text-stone-400">
-                  {r.status}
-                </span>
-              )}
-              <span>· {r.scene_count} scenes</span>
-              {r.has_video && <span title="has video">🎬</span>}
-              {r.has_deck && <span title="has deck">🖼️</span>}
-              <span className="ml-auto">{fmtDate(r.latest_at)}</span>
-            </div>
-          </Link>
+      <div className="mt-3 flex flex-col gap-3">
+        {detail.versions.map((v) => (
+          <VersionBlock
+            key={v.review_id ?? 'unversioned'}
+            slug={slug}
+            version={v}
+            isCurrent={v.version != null && v.version === currentVersion}
+          />
         ))}
+        {detail.versions.length === 0 && (
+          <div className="rounded-xl border border-dashed border-stone-800 px-4 py-6 text-center text-sm text-stone-600">
+            No narrative versions yet.
+          </div>
+        )}
       </div>
     </div>
   )

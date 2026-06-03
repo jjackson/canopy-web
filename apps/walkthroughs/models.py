@@ -45,6 +45,10 @@ class Walkthrough(models.Model):
     # Artifact role: hero_video | deck | docs | clip. Free-form (not a DB-level
     # choices enum) so the plugin can evolve it; the aggregator tolerates blanks.
     role = models.CharField(max_length=20, blank=True, null=True)
+    # The narrative version (ReviewRequest.id) this run rendered. Stamped by the
+    # plugin at upload; lets a run link to its exact story version instead of
+    # being matched by run_id. Null for one-off / legacy uploads.
+    narrative_review_id = models.UUIDField(blank=True, null=True, db_index=True)
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,

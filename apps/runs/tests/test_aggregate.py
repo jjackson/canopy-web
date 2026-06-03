@@ -163,12 +163,55 @@ def test_build_narrative_lists_runs_newest_first():
 
     narrative = aggregate.build_narrative("feat")
     assert narrative is not None
-    assert [r["run_id"] for r in narrative["runs"]] == [
+    # One narrative version; both runs nest under it, newest first.
+    assert len(narrative["versions"]) == 1
+    v = narrative["versions"][0]
+    assert v["story"] == "The story."
+    assert [r["run_id"] for r in v["runs"]] == [
         "feat-2026-06-01-002",
         "feat-2026-05-01-001",
     ]
-    assert narrative["runs"][0]["scene_count"] == 1
-    assert narrative["story"] == "The story."
+    assert v["runs"][0]["scene_count"] == 1
+    assert narrative["current_version"]["story"] == "The story."
+
+
+def test_build_narrative_groups_runs_under_their_version():
+    u = make_user()
+    # v1 review + a run stamped to it; v2 review + a run stamped to it.
+    v1 = make_review(
+        u, run_id="feat-2026-06-01-001", version=1,
+        request_json={"run_id": "feat-2026-06-01-001", "gate": "concept_change",
+                      "narrative": "Story v1", "narration": [{"id": "n", "text": "x"}]},
+    )
+    v2 = make_review(
+        u, run_id="feat-2026-06-02-001", version=2,
+        request_json={"run_id": "feat-2026-06-02-001", "gate": "concept_change",
+                      "narrative": "Story v2", "narration": [{"id": "n", "text": "x"}]},
+    )
+    make_walkthrough(u, kind="video", run_id="run-a", feature="feat", narrative_review_id=v1.id)
+    make_walkthrough(u, kind="video", run_id="run-b", feature="feat", narrative_review_id=v2.id)
+
+    narrative = aggregate.build_narrative("feat")
+    # newest version first
+    assert [v["version"] for v in narrative["versions"]] == [2, 1]
+    by_ver = {v["version"]: v for v in narrative["versions"]}
+    assert [r["run_id"] for r in by_ver[1]["runs"]] == ["run-a"]
+    assert [r["run_id"] for r in by_ver[2]["runs"]] == ["run-b"]
+    assert narrative["current_version"]["version"] == 2
+
+
+def test_build_run_resolves_version_from_stamp():
+    u = make_user()
+    v2 = make_review(
+        u, run_id="feat-2026-06-02-001", version=2,
+        request_json={"run_id": "feat-2026-06-02-001", "gate": "concept_change",
+                      "narrative": "Story v2", "narration": [{"id": "n", "text": "x"}]},
+    )
+    make_walkthrough(u, kind="video", run_id="run-b", feature="feat", narrative_review_id=v2.id)
+    run = aggregate.build_run("run-b")
+    assert run["narrative"]["review_id"] == str(v2.id)
+    assert run["narrative"]["version"] == 2
+    assert run["narrative"]["story"] == "Story v2"
 
 
 def test_build_narrative_unknown_slug_is_none():

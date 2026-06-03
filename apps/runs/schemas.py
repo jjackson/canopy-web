@@ -32,13 +32,34 @@ class NarrativeRunOut(StrictModel):
     has_deck: bool = False
 
 
+class NarrativeVersionOut(StrictModel):
+    version: int | None = None
+    review_id: str | None = None
+    title: str | None = None
+    story: str | None = None
+    created_at: dt.datetime | None = None
+    gate: str | None = None
+    status: str | None = None
+    runs: list[NarrativeRunOut] = []
+
+
+class NarrativeStoryOut(StrictModel):
+    """The current narrative version, for the narrative header + edit link."""
+
+    review_id: str | None = None
+    version: int | None = None
+    title: str | None = None
+    story: str | None = None
+
+
 class NarrativeDetailOut(StrictModel):
     slug: str
     title: str | None = None
     story: str | None = None
     phase: str | None = None
     project_slug: str | None = None
-    runs: list[NarrativeRunOut] = []
+    current_version: NarrativeStoryOut | None = None
+    versions: list[NarrativeVersionOut] = []
 
 
 class RunArtifactOut(StrictModel):
@@ -62,6 +83,7 @@ class RunArtifactRefOut(StrictModel):
 
 class RunNarrativeOut(StrictModel):
     review_id: str | None = None
+    version: int | None = None
     run_id: str
     gate: str
     title: str | None = None

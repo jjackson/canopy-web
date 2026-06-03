@@ -2250,11 +2250,12 @@ export interface components {
             readonly phase?: string | null;
             /** Project Slug */
             readonly project_slug?: string | null;
+            readonly current_version?: components["schemas"]["NarrativeStoryOut"] | null;
             /**
-             * Runs
+             * Versions
              * @default []
              */
-            readonly runs: readonly components["schemas"]["NarrativeRunOut"][];
+            readonly versions: readonly components["schemas"]["NarrativeVersionOut"][];
         };
         /** NarrativeRunOut */
         readonly NarrativeRunOut: {
@@ -2283,6 +2284,42 @@ export interface components {
              * @default false
              */
             readonly has_deck: boolean;
+        };
+        /**
+         * NarrativeStoryOut
+         * @description The current narrative version, for the narrative header + edit link.
+         */
+        readonly NarrativeStoryOut: {
+            /** Review Id */
+            readonly review_id?: string | null;
+            /** Version */
+            readonly version?: number | null;
+            /** Title */
+            readonly title?: string | null;
+            /** Story */
+            readonly story?: string | null;
+        };
+        /** NarrativeVersionOut */
+        readonly NarrativeVersionOut: {
+            /** Version */
+            readonly version?: number | null;
+            /** Review Id */
+            readonly review_id?: string | null;
+            /** Title */
+            readonly title?: string | null;
+            /** Story */
+            readonly story?: string | null;
+            /** Created At */
+            readonly created_at?: string | null;
+            /** Gate */
+            readonly gate?: string | null;
+            /** Status */
+            readonly status?: string | null;
+            /**
+             * Runs
+             * @default []
+             */
+            readonly runs: readonly components["schemas"]["NarrativeRunOut"][];
         };
         /** PreviousRunOut */
         readonly PreviousRunOut: {
@@ -2342,6 +2379,8 @@ export interface components {
         readonly RunNarrativeOut: {
             /** Review Id */
             readonly review_id?: string | null;
+            /** Version */
+            readonly version?: number | null;
             /** Run Id */
             readonly run_id: string;
             /** Gate */
@@ -3529,6 +3568,11 @@ export interface operations {
                      * @default
                      */
                     readonly role?: string;
+                    /**
+                     * Narrative Review Id
+                     * @default
+                     */
+                    readonly narrative_review_id?: string;
                 };
             };
         };

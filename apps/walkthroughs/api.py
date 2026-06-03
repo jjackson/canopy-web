@@ -143,6 +143,7 @@ def upload_walkthrough(
     run_id: str = Form(""),
     feature: str = Form(""),
     role: str = Form(""),
+    narrative_review_id: str = Form(""),
 ) -> Status:
     _require_enabled()
 
@@ -170,6 +171,14 @@ def upload_walkthrough(
     if resolved_run_id and not resolved_feature:
         resolved_feature = feature_from_run_id(resolved_run_id)
     resolved_role = role.strip() or None
+    # The narrative version (ReviewRequest.id) this run rendered. Ignore a
+    # malformed value rather than 500 — it's optional grouping metadata.
+    resolved_review_id = None
+    if narrative_review_id.strip():
+        try:
+            resolved_review_id = UUID(narrative_review_id.strip())
+        except ValueError:
+            resolved_review_id = None
 
     # Create ORM row first — if Drive fails, delete to avoid orphan row.
     w = Walkthrough.objects.create(
@@ -183,6 +192,7 @@ def upload_walkthrough(
         run_id=resolved_run_id,
         feature=resolved_feature,
         role=resolved_role,
+        narrative_review_id=resolved_review_id,
         drive_file_id="",
         drive_folder_id="",
         content_type=content_type,

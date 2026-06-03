@@ -39,7 +39,41 @@ def narrative_of_walkthrough(w: Walkthrough) -> str:
 
 
 def narrative_of_review(r: ReviewRequest) -> str:
-    return feature_from_run_id(r.run_id)
+    return (getattr(r, "feature", None) or "").strip() or feature_from_run_id(r.run_id)
+
+
+def _is_narrative_version(r: ReviewRequest) -> bool:
+    """A narrative version = a story-bearing review that isn't the external
+    release gate (which also carries a one-line narration but is not the story)."""
+    return _review_has_narrative(r) and r.gate != "external_release"
+
+
+def _narrative_versions_for(feature: str) -> list[ReviewRequest]:
+    """Narrative-version reviews for a feature, oldest version first."""
+    out = [
+        r
+        for r in ReviewRequest.objects.all()
+        if narrative_of_review(r) == feature and _is_narrative_version(r)
+    ]
+    out.sort(key=lambda r: (r.version, r.created_at))
+    return out
+
+
+def _narrative_payload(r: ReviewRequest | None) -> dict | None:
+    if r is None:
+        return None
+    rj = r.request_json if isinstance(r.request_json, dict) else {}
+    return {
+        "review_id": str(r.id),
+        "version": r.version,
+        "run_id": r.run_id,
+        "gate": r.gate,
+        "title": _title_from_review(r),
+        "story": (rj.get("narrative") or "").strip() or None,
+        "narration": rj.get("narration") or [],
+        "personas": rj.get("personas") or {},
+        "why_brief": rj.get("why_brief"),
+    }
 
 
 def narrative_for_run_id(run_id: str, feature_map: dict[str, str] | None = None) -> str:
@@ -154,29 +188,26 @@ def build_run(run_id: str) -> dict | None:
         lambda w: w.kind == Walkthrough.KIND_HTML,
     )
 
-    # Narrative: newest review that actually carries a story; else newest review.
-    narrative_review = next((r for r in revs if _review_has_narrative(r)), None)
-    if narrative_review is None and revs:
-        narrative_review = revs[0]
+    # Explicit feature (uploaded by the plugin) wins; run_id parsing is fallback.
+    explicit_feature = next(
+        (w.feature for w in wts if (w.feature or "").strip()), None
+    )
+    narrative_slug = explicit_feature or feature_from_run_id(run_id)
 
-    narrative_payload = None
-    if narrative_review is not None:
-        rj = (
-            narrative_review.request_json
-            if isinstance(narrative_review.request_json, dict)
-            else {}
-        )
-        narrative_payload = {
-            "review_id": str(narrative_review.id),
-            "run_id": narrative_review.run_id,
-            "gate": narrative_review.gate,
-            "title": _title_from_review(narrative_review),
-            "story": (rj.get("narrative") or "").strip() or None,
-            "narration": rj.get("narration") or [],
-            "personas": rj.get("personas") or {},
-            "why_brief": rj.get("why_brief"),
-        }
+    # The narrative VERSION this run rendered. Prefer the explicit stamp
+    # (narrative_review_id on the run's artifacts); else the run's own
+    # story-bearing review; else the narrative's current version (legacy).
+    stamped = next((w.narrative_review_id for w in wts if w.narrative_review_id), None)
+    narrative_review = None
+    if stamped:
+        narrative_review = ReviewRequest.objects.filter(pk=stamped).first()
+    if narrative_review is None:
+        narrative_review = next((r for r in revs if _is_narrative_version(r)), None)
+    if narrative_review is None:
+        versions = _narrative_versions_for(narrative_slug)
+        narrative_review = versions[-1] if versions else None
 
+    narrative_payload = _narrative_payload(narrative_review)
     phase = _phase_label(revs[0]) if revs else None
 
     # Links: union across the run's walkthroughs, de-duped on (url, kind),
@@ -210,12 +241,6 @@ def build_run(run_id: str) -> dict | None:
         }
         for w in sorted(wts, key=lambda x: x.created_at)
     ]
-
-    # Explicit feature (uploaded by the plugin) wins; run_id parsing is fallback.
-    explicit_feature = next(
-        (w.feature for w in wts if (w.feature or "").strip()), None
-    )
-    narrative_slug = explicit_feature or feature_from_run_id(run_id)
 
     # Previous runs in the same narrative (excluding this one), newest first.
     sibling = _runs_in_narrative(narrative_slug)
@@ -389,14 +414,31 @@ def list_narratives(
     return items
 
 
+def _run_summary(run_id, run_wts, run_revs) -> dict:
+    run_revs = sorted(run_revs, key=lambda r: r.created_at, reverse=True)
+    latest_rev = run_revs[0] if run_revs else None
+    narr_rev = next((r for r in run_revs if _is_narrative_version(r)), latest_rev)
+    ts = [w.created_at for w in run_wts] + [r.created_at for r in run_revs]
+    return {
+        "run_id": run_id,
+        "created_at": min(ts) if ts else None,
+        "latest_at": max(ts) if ts else None,
+        "status": latest_rev.status if latest_rev else None,
+        "gate": latest_rev.gate if latest_rev else None,
+        "scene_count": _scene_count(narr_rev),
+        "has_video": any(_is_video(w) for w in run_wts),
+        "has_deck": any(_is_deck(w) for w in run_wts),
+    }
+
+
 def build_narrative(slug: str) -> dict | None:
-    """Narrative landing: title/story/phase + its runs (newest first)."""
+    """Narrative landing: version-grouped — each narrative version with its runs
+    nested beneath it (newest version first)."""
     narr = _aggregate(project=None, owner_id=None)
     a = narr.get(slug)
     if a is None:
         return None
 
-    # Per-run summaries for this narrative.
     wts = [
         w
         for w in Walkthrough.objects.exclude(run_id__isnull=True)
@@ -404,9 +446,7 @@ def build_narrative(slug: str) -> dict | None:
         .select_related("owner")
         if narrative_of_walkthrough(w) == slug
     ]
-    revs = [
-        r for r in ReviewRequest.objects.all() if narrative_of_review(r) == slug
-    ]
+    revs = [r for r in ReviewRequest.objects.all() if narrative_of_review(r) == slug]
 
     wts_by_run: dict[str, list[Walkthrough]] = {}
     for w in wts:
@@ -415,29 +455,76 @@ def build_narrative(slug: str) -> dict | None:
     for r in revs:
         revs_by_run.setdefault(r.run_id, []).append(r)
 
-    run_ids = set(wts_by_run) | set(revs_by_run)
-    runs = []
-    for run_id in run_ids:
+    # Narrative versions (story-bearing reviews), oldest first.
+    versions = [r for r in revs if _is_narrative_version(r)]
+    versions.sort(key=lambda r: (r.version, r.created_at))
+    versions_by_id = {str(r.id): r for r in versions}
+    current = versions[-1] if versions else None
+
+    # Resolve which version each run rendered.
+    def _version_review_for(run_id) -> ReviewRequest | None:
         run_wts = wts_by_run.get(run_id, [])
-        run_revs = sorted(
-            revs_by_run.get(run_id, []), key=lambda r: r.created_at, reverse=True
+        stamped = next((w.narrative_review_id for w in run_wts if w.narrative_review_id), None)
+        if stamped and str(stamped) in versions_by_id:
+            return versions_by_id[str(stamped)]
+        own = next(
+            (r for r in revs_by_run.get(run_id, []) if _is_narrative_version(r)), None
         )
-        latest_rev = run_revs[0] if run_revs else None
-        narr_rev = next((r for r in run_revs if _review_has_narrative(r)), latest_rev)
-        ts = [w.created_at for w in run_wts] + [r.created_at for r in run_revs]
-        runs.append(
+        if own is not None:
+            return own
+        return current
+
+    # A "run" is a render — it has artifacts. Narrative-version reviews are NOT
+    # runs (they're the story), so bucket only artifact-bearing run_ids.
+    buckets: dict[str | None, list[dict]] = {}
+    for run_id in wts_by_run:
+        ver = _version_review_for(run_id)
+        key = str(ver.id) if ver is not None else None
+        summary = _run_summary(run_id, wts_by_run[run_id], revs_by_run.get(run_id, []))
+        buckets.setdefault(key, []).append(summary)
+
+    def _sorted_runs(rs):
+        return sorted(rs, key=lambda it: it["latest_at"] or datetime.min, reverse=True)
+
+    versions_payload = []
+    for r in reversed(versions):  # newest version first
+        np = _narrative_payload(r)
+        versions_payload.append(
             {
-                "run_id": run_id,
-                "created_at": min(ts) if ts else None,
-                "latest_at": max(ts) if ts else None,
-                "status": latest_rev.status if latest_rev else None,
-                "gate": latest_rev.gate if latest_rev else None,
-                "scene_count": _scene_count(narr_rev),
-                "has_video": any(_is_video(w) for w in run_wts),
-                "has_deck": any(_is_deck(w) for w in run_wts),
+                "version": r.version,
+                "review_id": str(r.id),
+                "title": np["title"],
+                "story": np["story"],
+                "created_at": r.created_at,
+                "gate": r.gate,
+                "status": r.status,
+                "runs": _sorted_runs(buckets.get(str(r.id), [])),
             }
         )
-    runs.sort(key=lambda it: it["latest_at"] or datetime.min, reverse=True)
+    # Runs with no resolvable version (e.g. narrative has artifacts but no review).
+    if buckets.get(None):
+        versions_payload.append(
+            {
+                "version": None,
+                "review_id": None,
+                "title": None,
+                "story": None,
+                "created_at": None,
+                "gate": None,
+                "status": None,
+                "runs": _sorted_runs(buckets[None]),
+            }
+        )
+
+    current_payload = None
+    if current is not None:
+        cp = _narrative_payload(current)
+        current_payload = {
+            "review_id": cp["review_id"],
+            "version": cp["version"],
+            "title": cp["title"],
+            "story": cp["story"],
+        }
 
     return {
         "slug": slug,
@@ -445,5 +532,6 @@ def build_narrative(slug: str) -> dict | None:
         "story": a["story"],
         "phase": a["phase"],
         "project_slug": a["project_slug"],
-        "runs": runs,
+        "current_version": current_payload,
+        "versions": versions_payload,
     }

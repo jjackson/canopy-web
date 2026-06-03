@@ -213,13 +213,17 @@ export function RunPackage({ runId }: { runId: string }) {
         )}
       </Section>
 
-      <Section title="Narrative">
+      <Section
+        title="Narrative"
+        subtitle={run.narrative?.version != null ? `v${run.narrative.version}` : undefined}
+      >
         {run.narrative?.review_id && (
           <a
             href={`/review/${run.narrative.review_id}`}
             className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs text-orange-300 transition-colors hover:bg-orange-500/20"
           >
             Edit narrative in review
+            {run.narrative.version != null && ` (v${run.narrative.version})`}
             <span aria-hidden>→</span>
           </a>
         )}
