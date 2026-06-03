@@ -39,11 +39,16 @@ function NarrativeRuns({
   if (!detail) {
     return <div className="px-3 py-1 text-[11px] text-stone-600">Loading runs…</div>
   }
-  if (detail.runs.length === 0) {
+  // Flatten runs across versions for the rail (newest first); the version
+  // structure itself lives on the narrative page.
+  const allRuns = detail.versions
+    .flatMap((v) => v.runs)
+    .sort((a, b) => (b.latest_at || '').localeCompare(a.latest_at || ''))
+  if (allRuns.length === 0) {
     return <div className="px-3 py-1 text-[11px] text-stone-600">No runs yet</div>
   }
 
-  const [latest, ...previous] = detail.runs
+  const [latest, ...previous] = allRuns
 
   const runRow = (runId: string, isLatest: boolean) => (
     <Link

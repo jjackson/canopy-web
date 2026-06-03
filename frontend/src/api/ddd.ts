@@ -32,13 +32,32 @@ export interface DddNarrativeRun {
   has_deck: boolean
 }
 
+export interface DddNarrativeStory {
+  review_id: string | null
+  version: number | null
+  title: string | null
+  story: string | null
+}
+
+export interface DddNarrativeVersion {
+  version: number | null
+  review_id: string | null
+  title: string | null
+  story: string | null
+  created_at: string | null
+  gate: string | null
+  status: string | null
+  runs: DddNarrativeRun[]
+}
+
 export interface DddNarrativeDetail {
   slug: string
   title: string | null
   story: string | null
   phase: string | null
   project_slug: string | null
-  runs: DddNarrativeRun[]
+  current_version: DddNarrativeStory | null
+  versions: DddNarrativeVersion[]
 }
 
 export interface DddRunArtifact {
@@ -73,6 +92,7 @@ export interface DddNarration {
 
 export interface DddRunNarrative {
   review_id: string | null
+  version: number | null
   run_id: string
   gate: string
   title: string | null

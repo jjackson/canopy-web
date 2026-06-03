@@ -35,12 +35,14 @@ def test_list_narratives(client, owner):
 
 
 def test_narrative_detail(client, owner):
+    # A walkthrough run with no review → one unversioned bucket holding it.
     make_walkthrough(owner, kind="video", run_id="a-2026-06-01-001", feature="a")
     resp = client.get(f"{BASE}/narratives/a/")
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert body["slug"] == "a"
-    assert [r["run_id"] for r in body["runs"]] == ["a-2026-06-01-001"]
+    run_ids = [r["run_id"] for v in body["versions"] for r in v["runs"]]
+    assert run_ids == ["a-2026-06-01-001"]
 
 
 def test_narrative_detail_404(client):
