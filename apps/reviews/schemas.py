@@ -16,6 +16,9 @@ class ReviewRequestOut(StrictModel):
 
     id: uuid.UUID
     run_id: str
+    # Narrative slug this review belongs to (explicit feature, else derived from
+    # run_id) — lets the DDD shell highlight the right narrative on the editor.
+    feature: str
     gate: str
     status: ReviewStatus
     visibility: ReviewVisibility

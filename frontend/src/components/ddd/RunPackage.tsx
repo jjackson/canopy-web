@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
+  deleteRun,
   getRun,
   type DddLink,
   type DddRunNarrative,
@@ -144,8 +145,10 @@ function LinksBlock({ links }: { links: DddLink[] }) {
 }
 
 export function RunPackage({ runId }: { runId: string }) {
+  const navigate = useNavigate()
   const [run, setRun] = useState<DddRunPackage | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -159,6 +162,24 @@ export function RunPackage({ runId }: { runId: string }) {
     }
   }, [runId])
 
+  async function onDeleteRun() {
+    if (!run) return
+    if (
+      !window.confirm(
+        `Delete run ${run.run_id}?\n\nIts rendered video/deck files will be removed from Drive. This cannot be undone.`,
+      )
+    )
+      return
+    setDeleting(true)
+    try {
+      await deleteRun(run.run_id)
+      navigate(`/ddd/${encodeURIComponent(run.narrative_slug)}`)
+    } catch (err) {
+      window.alert(`Delete failed: ${(err as Error).message || err}`)
+      setDeleting(false)
+    }
+  }
+
   if (error)
     return <div className="p-8 text-sm text-red-400/90">Error: {error}</div>
   if (!run) return <div className="p-8 text-sm text-stone-500">Loading run…</div>
@@ -167,9 +188,12 @@ export function RunPackage({ runId }: { runId: string }) {
     <div className="mx-auto max-w-4xl px-8 py-6">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <div className="text-[11px] uppercase tracking-wider text-stone-500">
+          <Link
+            to={`/ddd/${encodeURIComponent(run.narrative_slug)}`}
+            className="text-[11px] uppercase tracking-wider text-stone-500 hover:text-stone-300"
+          >
             {run.narrative_slug}
-          </div>
+          </Link>
           <h1 className="font-mono text-xl font-semibold text-stone-100">
             {run.run_id}
           </h1>
@@ -181,6 +205,14 @@ export function RunPackage({ runId }: { runId: string }) {
             </span>
           )}
           <span>{fmtDate(run.latest_at)}</span>
+          <button
+            type="button"
+            onClick={onDeleteRun}
+            disabled={deleting}
+            className="rounded-md border border-stone-800 px-2.5 py-1 text-xs text-stone-500 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+          >
+            {deleting ? 'Deleting…' : 'Delete run'}
+          </button>
         </div>
       </header>
 

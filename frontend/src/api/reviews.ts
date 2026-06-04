@@ -173,6 +173,8 @@ export interface ReviewSubmitPayload {
 export interface ReviewDetail {
   id: string
   run_id: string
+  /** Narrative slug this review belongs to (for highlighting in the DDD shell). */
+  feature: string
   gate: string
   status: ReviewStatus
   visibility: ReviewVisibility

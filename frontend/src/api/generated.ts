@@ -944,7 +944,8 @@ export interface paths {
         readonly get: operations["apps_runs_api_get_narrative"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
+        /** Delete an entire narrative (all versions + runs) */
+        readonly delete: operations["apps_runs_api_delete_narrative"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -961,7 +962,25 @@ export interface paths {
         readonly get: operations["apps_runs_api_get_run"];
         readonly put?: never;
         readonly post?: never;
-        readonly delete?: never;
+        /** Delete a run (its walkthroughs + reviews) */
+        readonly delete: operations["apps_runs_api_delete_run"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/ddd/narratives/{slug}/versions/{version}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete a narrative version (and the runs under it) */
+        readonly delete: operations["apps_runs_api_delete_version"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -2188,6 +2207,8 @@ export interface components {
             readonly id: string;
             /** Run Id */
             readonly run_id: string;
+            /** Feature */
+            readonly feature: string;
             /** Gate */
             readonly gate: string;
             /**
@@ -4056,6 +4077,26 @@ export interface operations {
             };
         };
     };
+    readonly apps_runs_api_delete_narrative: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly apps_runs_api_get_run: {
         readonly parameters: {
             readonly query?: never;
@@ -4075,6 +4116,47 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["RunPackageOut"];
                 };
+            };
+        };
+    };
+    readonly apps_runs_api_delete_run: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly run_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly apps_runs_api_delete_version: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly version: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
