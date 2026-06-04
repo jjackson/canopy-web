@@ -164,13 +164,23 @@ jobs:
     name: Deploy to Cloud Run
     needs: [test-backend, test-frontend]
     # Manual-only: must be triggered from the Actions tab via "Run workflow".
-    # Tests still gate the deploy because of `needs:` above.
+    # Tests still gate the deploy because of `needs:` above. The first step
+    # also hard-fails unless the dispatched ref is `main` — production ships
+    # from main only, never from a feature branch.
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write  # Required for Workload Identity Federation
     steps:
+      - name: Guard — deploy from main only
+        run: |
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            echo "::error::Refusing to deploy from '${{ github.ref_name }}'. Production deploys must run from main — merge your branch, then dispatch the deploy from main."
+            exit 1
+          fi
+          echo "Ref guard OK: deploying from main (${{ github.sha }})."
+
       - uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud

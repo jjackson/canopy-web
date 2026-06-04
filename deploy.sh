@@ -9,6 +9,40 @@ SERVICE_NAME="canopy-web"
 TAG="${1:-latest}"
 SKIP_TESTS="${SKIP_TESTS:-0}"
 REQUIRE_AUTH_FLAG="${REQUIRE_AUTH:-True}"
+ALLOW_NON_MAIN_DEPLOY="${ALLOW_NON_MAIN_DEPLOY:-0}"
+
+# --------------------------------------------------------------------------
+# Branch guard: production is deployed from `main` only. Everyone merges to
+# main to ship — no deploying a feature branch's working tree.
+#
+# Under GitHub Actions the checkout is a detached HEAD at a specific SHA, and
+# the CI deploy job enforces ref==main itself (see .github/workflows/ci.yml),
+# so we skip the local branch check there. Emergency local override:
+#   ALLOW_NON_MAIN_DEPLOY=1 ./deploy.sh
+# --------------------------------------------------------------------------
+if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+  echo "==> GitHub Actions run; branch enforcement handled by the workflow."
+elif [ "${ALLOW_NON_MAIN_DEPLOY}" = "1" ]; then
+  echo "==> ALLOW_NON_MAIN_DEPLOY=1 — BYPASSING the main-branch guard (emergency)."
+else
+  CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  if [ "${CURRENT_BRANCH}" != "main" ]; then
+    echo "ERROR: refusing to deploy from branch '${CURRENT_BRANCH}'." >&2
+    echo "       Production deploys must come from 'main'. Merge your branch first." >&2
+    echo "       Emergency override: ALLOW_NON_MAIN_DEPLOY=1 ./deploy.sh" >&2
+    exit 1
+  fi
+  git fetch origin main --quiet 2>/dev/null || true
+  LOCAL_SHA="$(git rev-parse HEAD 2>/dev/null || echo)"
+  REMOTE_SHA="$(git rev-parse origin/main 2>/dev/null || echo)"
+  if [ -n "${REMOTE_SHA}" ] && [ "${LOCAL_SHA}" != "${REMOTE_SHA}" ]; then
+    echo "ERROR: local main (${LOCAL_SHA:0:9}) is out of sync with origin/main (${REMOTE_SHA:0:9})." >&2
+    echo "       Pull/push so you deploy exactly what's on origin/main." >&2
+    echo "       Emergency override: ALLOW_NON_MAIN_DEPLOY=1 ./deploy.sh" >&2
+    exit 1
+  fi
+  echo "==> Branch guard OK: on main, in sync with origin/main."
+fi
 
 if [ "${SKIP_TESTS}" = "1" ]; then
   echo "==> SKIP_TESTS=1, skipping pre-deploy verification"
