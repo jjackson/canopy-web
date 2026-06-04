@@ -37,8 +37,12 @@ docker compose up
 
 # Deploy to GCP Cloud Run. CI also has a manual deploy job — trigger it from
 # the Actions tab ("CI / Deploy" → Run workflow).
-./deploy.sh                  # Cloud Build → push → gcloud run deploy
+# Production ships from `main` ONLY — merge your branch first. Both deploy
+# paths enforce this: deploy.sh refuses unless on main + in sync with
+# origin/main; the CI deploy job hard-fails unless dispatched from main.
+./deploy.sh                  # Cloud Build → push → gcloud run deploy (must be on main)
 SKIP_TESTS=1 ./deploy.sh     # bypass test gate (emergencies only)
+ALLOW_NON_MAIN_DEPLOY=1 ./deploy.sh   # bypass the main-branch guard (emergencies only)
 ```
 
 When `AI_BACKEND=cli`, the `claude` binary must be on PATH and authenticated. In Docker, use the headless auth flow at `/settings` (drives `claude setup-token` via PTY; token persists in `CLAUDE_CODE_OAUTH_TOKEN`).
