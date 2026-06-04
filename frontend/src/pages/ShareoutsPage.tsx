@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -194,14 +194,18 @@ function prTotal(period: ShareoutPeriod): number {
   return period.projects.reduce((n, p) => n + (p.all_prs?.length ?? 0), 0)
 }
 
+// Shareable URL slug for a period: the date for a single day, `start_end` for a
+// span. Routed at /shareouts/:period — a clean, copy-pasteable permalink.
+function periodSlug(p: ShareoutPeriod): string {
+  return p.periodStart === p.periodEnd ? p.periodStart : `${p.periodStart}_${p.periodEnd}`
+}
+
 function PeriodRail({
   periods,
   activeKey,
-  onSelect,
 }: {
   periods: ShareoutPeriod[]
   activeKey: string
-  onSelect: (key: string) => void
 }) {
   return (
     <nav
@@ -214,12 +218,14 @@ function PeriodRail({
       <ul className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible pb-1">
         {periods.map((p) => {
           const active = p.key === activeKey
+          // Real link → URL updates, browser back works, and the user can
+          // right-click → copy link to share this exact shareout.
           return (
             <li key={p.key} className="shrink-0">
-              <button
-                onClick={() => onSelect(p.key)}
+              <Link
+                to={`/shareouts/${periodSlug(p)}`}
                 aria-current={active ? 'true' : undefined}
-                className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
+                className={`block rounded-lg border px-3 py-2 transition-colors ${
                   active
                     ? 'bg-stone-800/70 border-orange-400/40 text-stone-100'
                     : 'bg-transparent border-transparent text-stone-400 hover:bg-stone-900 hover:text-stone-200'
@@ -237,7 +243,7 @@ function PeriodRail({
                   {p.projects.length} project{p.projects.length === 1 ? '' : 's'}
                   {prTotal(p) > 0 && ` · ${prTotal(p)} PRs`}
                 </div>
-              </button>
+              </Link>
             </li>
           )
         })}
@@ -246,17 +252,44 @@ function PeriodRail({
   )
 }
 
+function CopyLinkButton({ period }: { period: ShareoutPeriod }) {
+  const [copied, setCopied] = useState(false)
+  const url = `${window.location.origin}/shareouts/${periodSlug(period)}`
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      // clipboard blocked (e.g. insecure context) — fall back to selecting nothing
+    }
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <button
+      onClick={copy}
+      title={`Copy link to this shareout — ${url}`}
+      className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-medium text-stone-400 hover:text-orange-300 border border-stone-800 hover:border-orange-400/40 bg-stone-900 px-2.5 py-1 rounded-md transition-colors"
+    >
+      <span className="text-orange-400/70">🔗</span>
+      {copied ? 'Copied!' : 'Copy link'}
+    </button>
+  )
+}
+
 function PeriodMain({ period }: { period: ShareoutPeriod }) {
   return (
     <section className="min-w-0 flex-1 max-w-3xl">
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold text-stone-100">
-          {formatPeriod(period.periodStart, period.periodEnd)}
-        </h2>
-        <p className="text-[12px] text-stone-500 mt-0.5">
-          {period.projects.length} project{period.projects.length === 1 ? '' : 's'}
-          {prTotal(period) > 0 && ` · ${prTotal(period)} PRs`}
-        </p>
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-stone-100">
+            {formatPeriod(period.periodStart, period.periodEnd)}
+          </h2>
+          <p className="text-[12px] text-stone-500 mt-0.5">
+            {period.projects.length} project{period.projects.length === 1 ? '' : 's'}
+            {prTotal(period) > 0 && ` · ${prTotal(period)} PRs`}
+          </p>
+        </div>
+        <CopyLinkButton period={period} />
       </div>
       <div className="space-y-3">
         {period.rollup && <RollupCard shareout={period.rollup} />}
@@ -269,8 +302,9 @@ function PeriodMain({ period }: { period: ShareoutPeriod }) {
 }
 
 export function ShareoutsPage() {
+  const { period: periodParam } = useParams()
+  const navigate = useNavigate()
   const [periods, setPeriods] = useState<ShareoutPeriod[]>([])
-  const [activeKey, setActiveKey] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -280,12 +314,7 @@ export function ShareoutsPage() {
     void (async () => {
       try {
         const data = await shareoutsApi.list({ limit: 200 })
-        if (!cancelled) {
-          const grouped = groupByPeriod(data) // newest period first
-          setPeriods(grouped)
-          // Default the home page to the most recent period.
-          setActiveKey(grouped.length ? grouped[0].key : null)
-        }
+        if (!cancelled) setPeriods(groupByPeriod(data)) // newest period first
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load shareouts')
       } finally {
@@ -297,7 +326,16 @@ export function ShareoutsPage() {
     }
   }, [])
 
-  const active = periods.find((p) => p.key === activeKey) ?? periods[0]
+  // Active period is URL-driven: /shareouts/:period selects that one (so it's a
+  // shareable permalink); bare /shareouts defaults to the most recent. An
+  // unknown/stale slug falls back to the most recent and rewrites the URL.
+  const matched = periodParam ? periods.find((p) => periodSlug(p) === periodParam) : undefined
+  const active = matched ?? periods[0]
+  useEffect(() => {
+    if (!loading && periodParam && periods.length > 0 && !matched) {
+      navigate('/shareouts', { replace: true })
+    }
+  }, [loading, periodParam, periods, matched, navigate])
 
   return (
     <div>
@@ -330,7 +368,7 @@ export function ShareoutsPage() {
 
       {!loading && !error && periods.length > 0 && active && (
         <div className="flex flex-col md:flex-row gap-6 md:gap-10">
-          <PeriodRail periods={periods} activeKey={active.key} onSelect={setActiveKey} />
+          <PeriodRail periods={periods} activeKey={active.key} />
           <PeriodMain period={active} />
         </div>
       )}

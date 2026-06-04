@@ -22,6 +22,7 @@ export const router = createBrowserRouter([
       { path: '/', element: <ProjectsPage /> },
       { path: '/insights', element: <InsightsPage /> },
       { path: '/shareouts', element: <ShareoutsPage /> },
+      { path: '/shareouts/:period', element: <ShareoutsPage /> },
       { path: '/skills', element: <DiscoveryPage /> },
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:id', element: <WalkthroughViewerPage /> },
