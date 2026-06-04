@@ -28,24 +28,31 @@ function formatPeriod(start: string, end: string): string {
 // leverage it) renders as a labeled section: an orange uppercase label with a
 // divider above it, so the three concepts are visually distinct blocks rather
 // than one run of prose. Bullets get clear markers + breathing room.
+//
+// NOTE: this styles markdown with arbitrary `[&_el]:` descendant variants, NOT
+// `@tailwindcss/typography`'s `prose`/`prose-*` modifiers — that plugin is not
+// registered in index.css, so `prose-*` classes emit NO css in the production
+// build (verified: the live stylesheet had zero prose rules). Arbitrary
+// variants compile to plain utilities that always ship. Tailwind preflight
+// strips list styling, so `list-disc` + padding are required for bullets.
 function Markdown({ children }: { children: string }) {
   return (
     <div
       className="
-        prose prose-invert prose-sm max-w-none leading-relaxed
-        prose-h2:text-[11px] prose-h2:font-bold prose-h2:uppercase prose-h2:tracking-[0.08em]
-        prose-h2:text-orange-300/90 prose-h2:mt-5 prose-h2:mb-2 prose-h2:pt-4
-        prose-h2:border-t prose-h2:border-stone-800
+        text-sm leading-relaxed text-stone-300 max-w-none
+        [&_h2]:text-[11px] [&_h2]:font-bold [&_h2]:uppercase [&_h2]:tracking-[0.08em]
+        [&_h2]:text-orange-300 [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:pt-4
+        [&_h2]:border-t [&_h2]:border-stone-800
         [&_h2:first-child]:border-t-0 [&_h2:first-child]:pt-0 [&_h2:first-child]:mt-0
-        prose-h3:text-stone-200 prose-h3:text-[13px] prose-h3:font-semibold prose-h3:mt-3 prose-h3:mb-1
-        prose-p:text-stone-300 prose-p:my-2
-        prose-ul:my-2 prose-ul:space-y-1.5 prose-ul:pl-1
-        prose-li:text-stone-300 prose-li:my-0 prose-li:pl-1
-        prose-li:marker:text-orange-400/70
-        prose-strong:text-stone-100 prose-strong:font-semibold
-        prose-a:text-orange-400 prose-a:no-underline hover:prose-a:underline
-        prose-code:text-orange-300 prose-code:bg-stone-950 prose-code:px-1 prose-code:py-0.5
-        prose-code:rounded prose-code:text-[0.85em] prose-code:before:content-none prose-code:after:content-none
+        [&_h3]:text-stone-200 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1
+        [&_p]:text-stone-300 [&_p]:my-2
+        [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5
+        [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1.5
+        [&_li]:text-stone-300 [&_li]:pl-1 [&_li]:marker:text-orange-400/70
+        [&_strong]:text-stone-100 [&_strong]:font-semibold
+        [&_a]:text-orange-400 [&_a]:no-underline [&_a:hover]:underline
+        [&_code]:text-orange-300 [&_code]:bg-stone-950 [&_code]:px-1 [&_code]:py-0.5
+        [&_code]:rounded [&_code]:text-[0.85em]
       "
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
