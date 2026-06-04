@@ -179,19 +179,84 @@ function ProjectCard({ shareout }: { shareout: Shareout }) {
   )
 }
 
-function PeriodBlock({ period }: { period: ShareoutPeriod }) {
-  const prTotal = period.projects.reduce((n, p) => n + (p.all_prs?.length ?? 0), 0)
+// Compact rail label: "Tue, Jun 3" for a single day, "May 30 – Jun 1" for a span.
+function formatRail(start: string, end: string): string {
+  const o: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+  const s = parseLocalDate(start).toLocaleDateString(undefined, o)
+  if (start === end) {
+    const wd = parseLocalDate(start).toLocaleDateString(undefined, { weekday: 'short' })
+    return `${wd}, ${s}`
+  }
+  return `${s} – ${parseLocalDate(end).toLocaleDateString(undefined, o)}`
+}
+
+function prTotal(period: ShareoutPeriod): number {
+  return period.projects.reduce((n, p) => n + (p.all_prs?.length ?? 0), 0)
+}
+
+function PeriodRail({
+  periods,
+  activeKey,
+  onSelect,
+}: {
+  periods: ShareoutPeriod[]
+  activeKey: string
+  onSelect: (key: string) => void
+}) {
   return (
-    <section className="mb-12">
-      <div className="flex items-baseline gap-3 mb-4">
-        <h2 className="text-base font-semibold text-stone-200">
+    <nav
+      aria-label="Shareouts by date"
+      className="md:w-56 md:shrink-0 md:sticky md:top-6 self-start"
+    >
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-600 mb-2 px-2">
+        By date
+      </div>
+      <ul className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible pb-1">
+        {periods.map((p) => {
+          const active = p.key === activeKey
+          return (
+            <li key={p.key} className="shrink-0">
+              <button
+                onClick={() => onSelect(p.key)}
+                aria-current={active ? 'true' : undefined}
+                className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
+                  active
+                    ? 'bg-stone-800/70 border-orange-400/40 text-stone-100'
+                    : 'bg-transparent border-transparent text-stone-400 hover:bg-stone-900 hover:text-stone-200'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`h-3 w-[3px] rounded-full ${active ? 'bg-orange-400' : 'bg-transparent'}`}
+                  />
+                  <span className="text-[13px] font-medium whitespace-nowrap">
+                    {formatRail(p.periodStart, p.periodEnd)}
+                  </span>
+                </div>
+                <div className="text-[10px] text-stone-500 mt-0.5 ml-[11px] whitespace-nowrap">
+                  {p.projects.length} project{p.projects.length === 1 ? '' : 's'}
+                  {prTotal(p) > 0 && ` · ${prTotal(p)} PRs`}
+                </div>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </nav>
+  )
+}
+
+function PeriodMain({ period }: { period: ShareoutPeriod }) {
+  return (
+    <section className="min-w-0 flex-1 max-w-3xl">
+      <div className="mb-5">
+        <h2 className="text-lg font-semibold text-stone-100">
           {formatPeriod(period.periodStart, period.periodEnd)}
         </h2>
-        <span className="text-[11px] text-stone-600">
+        <p className="text-[12px] text-stone-500 mt-0.5">
           {period.projects.length} project{period.projects.length === 1 ? '' : 's'}
-          {prTotal > 0 && ` · ${prTotal} PRs`}
-        </span>
-        <div className="flex-1 h-px bg-gradient-to-r from-stone-800 to-transparent" />
+          {prTotal(period) > 0 && ` · ${prTotal(period)} PRs`}
+        </p>
       </div>
       <div className="space-y-3">
         {period.rollup && <RollupCard shareout={period.rollup} />}
@@ -205,6 +270,7 @@ function PeriodBlock({ period }: { period: ShareoutPeriod }) {
 
 export function ShareoutsPage() {
   const [periods, setPeriods] = useState<ShareoutPeriod[]>([])
+  const [activeKey, setActiveKey] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -214,7 +280,12 @@ export function ShareoutsPage() {
     void (async () => {
       try {
         const data = await shareoutsApi.list({ limit: 200 })
-        if (!cancelled) setPeriods(groupByPeriod(data))
+        if (!cancelled) {
+          const grouped = groupByPeriod(data) // newest period first
+          setPeriods(grouped)
+          // Default the home page to the most recent period.
+          setActiveKey(grouped.length ? grouped[0].key : null)
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load shareouts')
       } finally {
@@ -226,12 +297,14 @@ export function ShareoutsPage() {
     }
   }, [])
 
+  const active = periods.find((p) => p.key === activeKey) ?? periods[0]
+
   return (
-    <div className="max-w-3xl mx-auto px-1">
-      <div className="mb-8">
+    <div>
+      <div className="mb-6">
         <h1 className="text-xl font-semibold text-stone-100">Shareouts</h1>
         <p className="text-[13px] text-stone-500 mt-1">
-          What shipped, why it matters, and how to leverage it — by date. Tap a project to read the briefing.
+          What shipped, why it matters, and how to leverage it. Pick a date on the left; tap a project to read the briefing.
         </p>
       </div>
 
@@ -240,7 +313,7 @@ export function ShareoutsPage() {
       )}
 
       {loading && (
-        <div className="space-y-3">
+        <div className="space-y-3 max-w-3xl">
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
@@ -255,24 +328,24 @@ export function ShareoutsPage() {
         </div>
       )}
 
-      {!loading && !error && (
-        <>
-          {periods.map((period) => (
-            <PeriodBlock key={period.key} period={period} />
-          ))}
-          {periods.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-48 text-center">
-              <p className="text-sm text-stone-500 mb-1">No shareouts yet.</p>
-              <p className="text-xs text-stone-700">
-                Run{' '}
-                <code className="text-orange-400/70 bg-stone-900 px-1.5 py-0.5 rounded">
-                  canopy:shareout
-                </code>{' '}
-                to publish a briefing.
-              </p>
-            </div>
-          )}
-        </>
+      {!loading && !error && periods.length > 0 && active && (
+        <div className="flex flex-col md:flex-row gap-6 md:gap-10">
+          <PeriodRail periods={periods} activeKey={active.key} onSelect={setActiveKey} />
+          <PeriodMain period={active} />
+        </div>
+      )}
+
+      {!loading && !error && periods.length === 0 && (
+        <div className="flex flex-col items-center justify-center h-48 text-center">
+          <p className="text-sm text-stone-500 mb-1">No shareouts yet.</p>
+          <p className="text-xs text-stone-700">
+            Run{' '}
+            <code className="text-orange-400/70 bg-stone-900 px-1.5 py-0.5 rounded">
+              canopy:shareout
+            </code>{' '}
+            to publish a briefing.
+          </p>
+        </div>
       )}
     </div>
   )
