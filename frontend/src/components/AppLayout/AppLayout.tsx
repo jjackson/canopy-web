@@ -10,9 +10,7 @@ const NAV_ITEMS = [
   { path: '/skills', label: 'Skills' },
   { path: '/walkthroughs', label: 'Walkthroughs' },
   { path: '/ddd', label: 'DDD' },
-  { path: '/ddd-plans', label: 'DDD Plans' },
   { path: '/workspaces', label: 'Workspaces' },
-  { path: '/leaderboard', label: 'Leaderboard' },
   { path: '/guide', label: 'Guide' },
   { path: '/settings', label: 'Settings' },
 ]
@@ -208,23 +206,28 @@ export function AppLayout() {
           <Link to="/" className="text-lg font-semibold text-stone-100">Canopy<span className="text-orange-400">.</span></Link>
           <div className="flex items-center gap-6">
             <nav className="flex gap-1">
-              {NAV_ITEMS.map((item) => (
-                <Link key={item.path} to={item.path}
-                  className={clsx('text-sm font-medium px-3 py-1.5 rounded transition-colors',
-                    location.pathname === item.path
-                      ? 'text-stone-100 bg-stone-900'
-                      : 'text-stone-500 hover:text-stone-300 hover:bg-stone-900/50'
-                  )}>
-                  {item.label}
-                </Link>
-              ))}
+              {NAV_ITEMS.map((item) => {
+                const isActive =
+                  location.pathname === item.path ||
+                  (item.path !== '/' && location.pathname.startsWith(item.path))
+                return (
+                  <Link key={item.path} to={item.path}
+                    className={clsx('text-sm font-medium px-3 py-1.5 rounded transition-colors',
+                      isActive
+                        ? 'text-stone-100 bg-stone-900'
+                        : 'text-stone-500 hover:text-stone-300 hover:bg-stone-900/50'
+                    )}>
+                    {item.label}
+                  </Link>
+                )
+              })}
             </nav>
             <AiStatusBadge />
             <UserChip />
           </div>
         </div>
       </header>
-      {location.pathname.startsWith('/ddd') && !location.pathname.startsWith('/ddd-plans') ? (
+      {location.pathname.startsWith('/ddd') ? (
         // DDD is a full-bleed workspace (persistent left nav + wide main).
         <main className="h-[calc(100vh-53px)]"><Outlet /></main>
       ) : (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import {
   getNarrative,
@@ -97,6 +97,8 @@ export function DddLeftNav({
   const [error, setError] = useState<string | null>(null)
   const [mine, setMine] = useState(false)
   const [project, setProject] = useState('')
+  const location = useLocation()
+  const plansActive = location.pathname === '/ddd-plans'
 
   useEffect(() => {
     let cancelled = false
@@ -115,6 +117,21 @@ export function DddLeftNav({
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-stone-800 bg-stone-950/40">
+      <div className="border-b border-stone-800 px-2 py-2">
+        <Link
+          to="/ddd-plans"
+          className={clsx(
+            'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+            plansActive
+              ? 'bg-stone-800/70 text-stone-100'
+              : 'text-stone-300 hover:bg-stone-800/40',
+          )}
+        >
+          <span aria-hidden>📋</span>
+          Plans
+        </Link>
+      </div>
+
       <div className="border-b border-stone-800 px-4 py-3">
         <h2 className="text-sm font-semibold text-stone-200">Narratives</h2>
         <p className="text-[11px] text-stone-500">DDD runs, grouped by narrative</p>
