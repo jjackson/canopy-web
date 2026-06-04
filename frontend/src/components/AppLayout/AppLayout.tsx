@@ -7,6 +7,7 @@ import { useAuth } from '@/auth/AuthProvider'
 const NAV_ITEMS = [
   { path: '/', label: 'Projects' },
   { path: '/insights', label: 'Insights' },
+  { path: '/shareouts', label: 'Shareouts' },
   { path: '/skills', label: 'Skills' },
   { path: '/walkthroughs', label: 'Walkthroughs' },
   { path: '/ddd', label: 'DDD' },

@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "apps.tokens",
     "apps.reviews",
     "apps.runs",
+    "apps.shareouts",
     "apps.mcp",
 ]
 
