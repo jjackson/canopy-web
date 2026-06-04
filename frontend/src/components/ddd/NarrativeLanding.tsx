@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
+  deleteNarrative,
+  deleteNarrativeVersion,
+  deleteRun,
   getNarrative,
   type DddNarrativeDetail,
   type DddNarrativeRun,
@@ -20,19 +23,80 @@ function fmtDate(iso: string | null): string {
   }
 }
 
-function RunCard({ slug, run, latest }: { slug: string; run: DddNarrativeRun; latest: boolean }) {
+/** Small ghost button that turns red on hover — the delete affordance. */
+function DeleteButton({
+  label,
+  busy,
+  onClick,
+}: {
+  label: string
+  busy: boolean
+  onClick: (e: React.MouseEvent) => void
+}) {
   return (
-    <Link
-      to={`/ddd/${encodeURIComponent(slug)}/${encodeURIComponent(run.run_id)}`}
-      className="group rounded-xl border border-stone-800 bg-stone-900 p-4 transition-colors hover:border-stone-700"
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title={label}
+      className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-stone-500 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+    >
+      {busy ? '…' : 'Delete'}
+    </button>
+  )
+}
+
+function RunCard({
+  slug,
+  run,
+  latest,
+  onDeleted,
+}: {
+  slug: string
+  run: DddNarrativeRun
+  latest: boolean
+  onDeleted: () => void
+}) {
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState(false)
+  const href = `/ddd/${encodeURIComponent(slug)}/${encodeURIComponent(run.run_id)}`
+
+  async function onDelete(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (
+      !window.confirm(
+        `Delete run ${run.run_id}?\n\nIts rendered video/deck files will be removed from Drive. This cannot be undone.`,
+      )
+    )
+      return
+    setBusy(true)
+    try {
+      await deleteRun(run.run_id)
+      onDeleted()
+    } catch (err) {
+      window.alert(`Delete failed: ${(err as Error).message || err}`)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={() => navigate(href)}
+      onKeyDown={(e) => e.key === 'Enter' && navigate(href)}
+      className="group cursor-pointer rounded-xl border border-stone-800 bg-stone-900 p-4 transition-colors hover:border-stone-700"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-sm text-stone-200">{run.run_id}</span>
-        {latest && (
-          <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[9px] text-orange-300">
-            latest
-          </span>
-        )}
+        <span className="truncate font-mono text-sm text-stone-200">{run.run_id}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          {latest && (
+            <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[9px] text-orange-300">
+              latest
+            </span>
+          )}
+          <DeleteButton label="Delete run" busy={busy} onClick={onDelete} />
+        </div>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-stone-500">
         {run.gate && <span>{run.gate}</span>}
@@ -44,7 +108,7 @@ function RunCard({ slug, run, latest }: { slug: string; run: DddNarrativeRun; la
         {run.has_deck && <span title="has deck">🖼️</span>}
         <span className="ml-auto">{fmtDate(run.latest_at)}</span>
       </div>
-    </Link>
+    </div>
   )
 }
 
@@ -52,31 +116,64 @@ function VersionBlock({
   slug,
   version,
   isCurrent,
+  onChanged,
 }: {
   slug: string
   version: DddNarrativeVersion
   isCurrent: boolean
+  onChanged: () => void
 }) {
   const [open, setOpen] = useState(isCurrent)
+  const [busy, setBusy] = useState(false)
   const label = version.version != null ? `v${version.version}` : 'no narrative'
+
+  async function onDelete(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (version.version == null) return
+    const n = version.runs.length
+    if (
+      !window.confirm(
+        `Delete ${label}${version.title ? ` — "${version.title}"` : ''}?\n\n` +
+          `This removes the version and its ${n} run${n === 1 ? '' : 's'} (rendered files included). This cannot be undone.`,
+      )
+    )
+      return
+    setBusy(true)
+    try {
+      await deleteNarrativeVersion(slug, version.version)
+      onChanged()
+    } catch (err) {
+      window.alert(`Delete failed: ${(err as Error).message || err}`)
+      setBusy(false)
+    }
+  }
+
   return (
     <section className="rounded-xl border border-stone-800 bg-stone-950/30">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-4 py-3 text-left"
-      >
-        <span aria-hidden className="text-stone-600">{open ? '▾' : '▸'}</span>
-        <span className="font-mono text-xs text-orange-300">{label}</span>
-        {isCurrent && (
-          <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[9px] text-orange-300">
-            current
+      <div className="flex items-center gap-2 px-4 py-3">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <span aria-hidden className="text-stone-600">
+            {open ? '▾' : '▸'}
           </span>
+          <span className="font-mono text-xs text-orange-300">{label}</span>
+          {isCurrent && (
+            <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[9px] text-orange-300">
+              current
+            </span>
+          )}
+          <span className="truncate text-sm text-stone-300">{version.title || ''}</span>
+          <span className="ml-auto shrink-0 text-[11px] text-stone-600">
+            {version.runs.length} run{version.runs.length === 1 ? '' : 's'} ·{' '}
+            {fmtDate(version.created_at)}
+          </span>
+        </button>
+        {version.version != null && (
+          <DeleteButton label="Delete version" busy={busy} onClick={onDelete} />
         )}
-        <span className="truncate text-sm text-stone-300">{version.title || ''}</span>
-        <span className="ml-auto shrink-0 text-[11px] text-stone-600">
-          {version.runs.length} run{version.runs.length === 1 ? '' : 's'} · {fmtDate(version.created_at)}
-        </span>
-      </button>
+      </div>
 
       {open && (
         <div className="border-t border-stone-800 px-4 py-3">
@@ -96,7 +193,13 @@ function VersionBlock({
           {version.runs.length > 0 ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {version.runs.map((r, i) => (
-                <RunCard key={r.run_id} slug={slug} run={r} latest={isCurrent && i === 0} />
+                <RunCard
+                  key={r.run_id}
+                  slug={slug}
+                  run={r}
+                  latest={isCurrent && i === 0}
+                  onDeleted={onChanged}
+                />
               ))}
             </div>
           ) : (
@@ -111,8 +214,11 @@ function VersionBlock({
 }
 
 export function NarrativeLanding({ slug }: { slug: string }) {
+  const navigate = useNavigate()
   const [detail, setDetail] = useState<DddNarrativeDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [deletingNarrative, setDeletingNarrative] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -124,7 +230,26 @@ export function NarrativeLanding({ slug }: { slug: string }) {
     return () => {
       cancelled = true
     }
-  }, [slug])
+  }, [slug, reloadKey])
+
+  async function onDeleteNarrative() {
+    const n = detail?.versions.length ?? 0
+    if (
+      !window.confirm(
+        `Delete the ENTIRE narrative "${slug}"?\n\n` +
+          `This removes all ${n} version${n === 1 ? '' : 's'} and every run + rendered file. This cannot be undone.`,
+      )
+    )
+      return
+    setDeletingNarrative(true)
+    try {
+      await deleteNarrative(slug)
+      navigate('/ddd')
+    } catch (err) {
+      window.alert(`Delete failed: ${(err as Error).message || err}`)
+      setDeletingNarrative(false)
+    }
+  }
 
   if (error) return <div className="p-8 text-sm text-red-400/90">Error: {error}</div>
   if (!detail) return <div className="p-8 text-sm text-stone-500">Loading…</div>
@@ -133,18 +258,28 @@ export function NarrativeLanding({ slug }: { slug: string }) {
 
   return (
     <div className="mx-auto max-w-4xl px-8 py-6">
-      <header>
-        <div className="text-[11px] uppercase tracking-wider text-stone-500">Narrative</div>
-        <h1 className="text-2xl font-semibold text-stone-100">{detail.title || detail.slug}</h1>
-        <div className="mt-1 flex items-center gap-3 text-xs text-stone-500">
-          <span className="font-mono">{detail.slug}</span>
-          {detail.phase && (
-            <span className="rounded border border-stone-700 bg-stone-800/60 px-2 py-0.5 text-stone-300">
-              {detail.phase}
-            </span>
-          )}
-          {detail.project_slug && <span>· {detail.project_slug}</span>}
+      <header className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-wider text-stone-500">Narrative</div>
+          <h1 className="text-2xl font-semibold text-stone-100">{detail.title || detail.slug}</h1>
+          <div className="mt-1 flex items-center gap-3 text-xs text-stone-500">
+            <span className="font-mono">{detail.slug}</span>
+            {detail.phase && (
+              <span className="rounded border border-stone-700 bg-stone-800/60 px-2 py-0.5 text-stone-300">
+                {detail.phase}
+              </span>
+            )}
+            {detail.project_slug && <span>· {detail.project_slug}</span>}
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={onDeleteNarrative}
+          disabled={deletingNarrative}
+          className="shrink-0 rounded-md border border-stone-800 px-2.5 py-1 text-xs text-stone-500 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+        >
+          {deletingNarrative ? 'Deleting…' : 'Delete narrative'}
+        </button>
       </header>
 
       <div className="mt-6 flex items-baseline gap-2">
@@ -162,6 +297,7 @@ export function NarrativeLanding({ slug }: { slug: string }) {
             slug={slug}
             version={v}
             isCurrent={v.version != null && v.version === currentVersion}
+            onChanged={() => setReloadKey((k) => k + 1)}
           />
         ))}
         {detail.versions.length === 0 && (

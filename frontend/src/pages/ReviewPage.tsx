@@ -1,5 +1,7 @@
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TextareaHTMLAttributes } from 'react'
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type TextareaHTMLAttributes } from 'react'
 import { useParams } from 'react-router-dom'
+import { DddShell } from '@/components/ddd/DddShell'
+import { useAuth } from '@/auth/AuthProvider'
 import {
   getReview,
   submitReview,
@@ -1667,6 +1669,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
 
 export function ReviewPage() {
   const { id } = useParams<{ id: string }>()
+  const auth = useAuth()
 
   // ?t= share-token (stable for page lifetime — intentionally not in deps)
   const shareToken = useRef(new URLSearchParams(window.location.search).get('t')).current
@@ -1683,26 +1686,40 @@ export function ReviewPage() {
     return () => { cancelled = true }
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The DDD rail belongs to internal, signed-in browsing. Public share links
+  // (?t=token) stay standalone — the rail's APIs need a session and would just
+  // 403 for token holders. Either way we keep our own scroll container so the
+  // full-bleed AppLayout main doesn't clip the editor.
+  const showShell = !shareToken && auth.status === 'authenticated'
+  const withChrome = (node: ReactNode) =>
+    showShell ? (
+      <DddShell activeSlug={review?.feature} activeRunId={review?.run_id}>
+        {node}
+      </DddShell>
+    ) : (
+      <div className="h-full overflow-y-auto">{node}</div>
+    )
+
   // -------------------------------------------------------------------
   // Loading / error states
   // -------------------------------------------------------------------
 
   if (error && !review) {
-    return (
+    return withChrome(
       <div className="max-w-4xl mx-auto p-6 text-red-500">
         <p className="font-semibold">Error loading review</p>
         <p className="text-sm mt-1 text-red-400">{error}</p>
-      </div>
+      </div>,
     )
   }
 
   if (!review) {
-    return <div className="max-w-4xl mx-auto p-6 text-stone-500">Loading…</div>
+    return withChrome(<div className="max-w-4xl mx-auto p-6 text-stone-500">Loading…</div>)
   }
 
   const isResolved = review.status === 'resolved'
 
-  return (
+  return withChrome(
     <ReviewEditorProvider
       original={review.request_json.narration ?? []}
       initialBuildOrder={review.request_json.build_order ?? null}
@@ -1714,6 +1731,6 @@ export function ReviewPage() {
         readOnly={isResolved}
         onResolved={(updated) => setReview(updated)}
       />
-    </ReviewEditorProvider>
+    </ReviewEditorProvider>,
   )
 }

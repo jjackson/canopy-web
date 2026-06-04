@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { DddLeftNav } from '@/components/ddd/DddLeftNav'
+import { DddShell } from '@/components/ddd/DddShell'
 import { NarrativeLanding } from '@/components/ddd/NarrativeLanding'
 import { RunPackage } from '@/components/ddd/RunPackage'
 
@@ -15,19 +15,16 @@ export function DddPage() {
   const { narrative, runId } = useParams<{ narrative?: string; runId?: string }>()
 
   return (
-    <div className="flex h-full">
-      <DddLeftNav activeSlug={narrative} activeRunId={runId} />
-      <main className="flex-1 overflow-y-auto">
-        {runId ? (
-          <RunPackage key={runId} runId={runId} />
-        ) : narrative ? (
-          <NarrativeLanding key={narrative} slug={narrative} />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-stone-600">
-            Select a narrative to see its runs.
-          </div>
-        )}
-      </main>
-    </div>
+    <DddShell activeSlug={narrative} activeRunId={runId}>
+      {runId ? (
+        <RunPackage key={runId} runId={runId} />
+      ) : narrative ? (
+        <NarrativeLanding key={narrative} slug={narrative} />
+      ) : (
+        <div className="flex h-full items-center justify-center text-sm text-stone-600">
+          Select a narrative to see its runs.
+        </div>
+      )}
+    </DddShell>
   )
 }

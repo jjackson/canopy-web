@@ -93,6 +93,8 @@ def _detail_payload(review: ReviewRequest, *, is_owner: bool, expose_token: bool
         "gate": review.gate,
         "status": review.status,
         "visibility": review.visibility,
+        "feature": (getattr(review, "feature", None) or "").strip()
+        or feature_from_run_id(review.run_id),
         "request_json": review.request_json,
         "response_json": review.response_json,
         # share_token exposed to owner OR link-token holders (they demonstrably

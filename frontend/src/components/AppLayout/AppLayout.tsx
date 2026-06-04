@@ -228,8 +228,9 @@ export function AppLayout() {
           </div>
         </div>
       </header>
-      {location.pathname.startsWith('/ddd') ? (
-        // DDD is a full-bleed workspace (persistent left nav + wide main).
+      {location.pathname.startsWith('/ddd') || location.pathname.startsWith('/review') ? (
+        // DDD (and the narrative editor at /review) is a full-bleed workspace:
+        // persistent left rail + wide main. The page owns its own scroll.
         <main className="h-[calc(100vh-53px)]"><Outlet /></main>
       ) : (
         <main className="mx-auto max-w-7xl px-6 py-8"><Outlet /></main>

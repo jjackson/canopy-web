@@ -141,6 +141,29 @@ async function getJson<T>(url: string): Promise<T> {
   return resp.json() as Promise<T>
 }
 
+function csrfToken(): string {
+  return document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? ''
+}
+
+async function del(url: string): Promise<void> {
+  const csrf = csrfToken()
+  const resp = await fetch(url, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+    headers: { ...(csrf ? { 'X-CSRFToken': decodeURIComponent(csrf) } : {}) },
+  })
+  if (!resp.ok) {
+    let detail = ''
+    try {
+      const body = await resp.json()
+      detail = body?.detail ?? body?.title ?? ''
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || `Delete failed (${resp.status})`)
+  }
+}
+
 export interface ListNarrativesParams {
   project?: string
   mine?: boolean
@@ -162,4 +185,19 @@ export function getNarrative(slug: string): Promise<DddNarrativeDetail> {
 
 export function getRun(runId: string): Promise<DddRunPackage> {
   return getJson(`/api/ddd/runs/${encodeURIComponent(runId)}/`)
+}
+
+/** Delete a single run: its walkthroughs + reviews (best-effort Drive cleanup). */
+export function deleteRun(runId: string): Promise<void> {
+  return del(`/api/ddd/runs/${encodeURIComponent(runId)}/`)
+}
+
+/** Delete one narrative version and the runs nested under it. */
+export function deleteNarrativeVersion(slug: string, version: number): Promise<void> {
+  return del(`/api/ddd/narratives/${encodeURIComponent(slug)}/versions/${version}/`)
+}
+
+/** Delete an entire narrative: every version + run for the slug. */
+export function deleteNarrative(slug: string): Promise<void> {
+  return del(`/api/ddd/narratives/${encodeURIComponent(slug)}/`)
 }

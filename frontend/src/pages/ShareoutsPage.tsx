@@ -24,9 +24,30 @@ function formatPeriod(start: string, end: string): string {
   return `${s} – ${e}`
 }
 
+// Each `## Heading` in a briefing (What shipped / Why it matters / How to
+// leverage it) renders as a labeled section: an orange uppercase label with a
+// divider above it, so the three concepts are visually distinct blocks rather
+// than one run of prose. Bullets get clear markers + breathing room.
 function Markdown({ children }: { children: string }) {
   return (
-    <div className="prose prose-invert prose-sm max-w-none leading-relaxed prose-headings:text-stone-200 prose-headings:font-semibold prose-headings:text-[13px] prose-headings:uppercase prose-headings:tracking-wide prose-headings:mt-4 prose-headings:mb-1.5 prose-p:text-stone-300 prose-p:my-2 prose-li:text-stone-300 prose-li:my-0.5 prose-ul:my-2 prose-strong:text-stone-100 prose-a:text-orange-400 prose-a:no-underline hover:prose-a:underline prose-code:text-orange-300 prose-code:bg-stone-950 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-[0.85em] prose-code:before:content-none prose-code:after:content-none">
+    <div
+      className="
+        prose prose-invert prose-sm max-w-none leading-relaxed
+        prose-h2:text-[11px] prose-h2:font-bold prose-h2:uppercase prose-h2:tracking-[0.08em]
+        prose-h2:text-orange-300/90 prose-h2:mt-5 prose-h2:mb-2 prose-h2:pt-4
+        prose-h2:border-t prose-h2:border-stone-800
+        [&_h2:first-child]:border-t-0 [&_h2:first-child]:pt-0 [&_h2:first-child]:mt-0
+        prose-h3:text-stone-200 prose-h3:text-[13px] prose-h3:font-semibold prose-h3:mt-3 prose-h3:mb-1
+        prose-p:text-stone-300 prose-p:my-2
+        prose-ul:my-2 prose-ul:space-y-1.5 prose-ul:pl-1
+        prose-li:text-stone-300 prose-li:my-0 prose-li:pl-1
+        prose-li:marker:text-orange-400/70
+        prose-strong:text-stone-100 prose-strong:font-semibold
+        prose-a:text-orange-400 prose-a:no-underline hover:prose-a:underline
+        prose-code:text-orange-300 prose-code:bg-stone-950 prose-code:px-1 prose-code:py-0.5
+        prose-code:rounded prose-code:text-[0.85em] prose-code:before:content-none prose-code:after:content-none
+      "
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
     </div>
   )
