@@ -48,6 +48,10 @@ def _item(**overrides):
         "summary": "TL;DR",
         "content": "## What\nBuilt it.\n\n## Why\nTeammates need it.",
         "links": [{"label": "PR #1", "url": "https://github.com/x/y/pull/1"}],
+        "all_prs": [
+            {"number": 1, "title": "Add the feed", "url": "https://github.com/x/y/pull/1", "state": "MERGED"},
+            {"number": 2, "title": "Fix a bug", "url": "https://github.com/x/y/pull/2", "state": "OPEN"},
+        ],
         "author": "jjackson",
         "source": "canopy:shareout@2026-06-04T00:00:00",
     }
@@ -148,7 +152,9 @@ def test_list_returns_rows_and_validates():
     assert resp.status_code == 200
     body = resp.json()
     assert body["total"] >= 1
-    ShareoutOut.model_validate(body["items"][0])
+    item = ShareoutOut.model_validate(body["items"][0])
+    assert len(item.all_prs) == 2
+    assert item.all_prs[0].number == 1
 
 
 @pytest.mark.django_db

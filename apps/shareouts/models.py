@@ -27,6 +27,9 @@ class Shareout(models.Model):
     summary = models.TextField(blank=True, default="")
     content = models.TextField()
     links = models.JSONField(default=list, blank=True)
+    # Curated highlight links (subset of all_prs, most relevant first).
+    all_prs = models.JSONField(default=list, blank=True)
+    # Every PR in the window for this project: [{number,title,url,state}].
     author = models.CharField(max_length=100, blank=True, default="")
     source = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
