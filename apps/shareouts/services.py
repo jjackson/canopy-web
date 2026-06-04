@@ -67,6 +67,7 @@ def upsert_shareouts(items: list) -> dict:
             summary=item.summary,
             content=item.content,
             links=[link.model_dump() for link in item.links],
+            all_prs=[pr.model_dump() for pr in item.all_prs],
             author=item.author,
             source=item.source,
         )
@@ -109,6 +110,7 @@ def list_shareouts(
             "summary": s.summary,
             "content": s.content,
             "links": s.links or [],
+            "all_prs": s.all_prs or [],
             "author": s.author,
             "source": s.source,
             "created_at": s.created_at,

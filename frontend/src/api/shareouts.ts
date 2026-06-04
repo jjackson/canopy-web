@@ -3,6 +3,7 @@ import type { components } from "./generated";
 
 export type Shareout = components["schemas"]["ShareoutOut"];
 export type ShareoutLink = components["schemas"]["ShareoutLink"];
+export type ShareoutPR = components["schemas"]["ShareoutPR"];
 
 export interface ShareoutListParams {
   date_from?: string; // YYYY-MM-DD

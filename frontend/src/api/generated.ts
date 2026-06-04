@@ -2508,6 +2508,8 @@ export interface components {
             readonly content: string;
             /** Links */
             readonly links?: readonly components["schemas"]["ShareoutLink"][];
+            /** All Prs */
+            readonly all_prs?: readonly components["schemas"]["ShareoutPR"][];
             /** Author */
             readonly author: string;
             /** Source */
@@ -2517,6 +2519,26 @@ export interface components {
              * Format: date-time
              */
             readonly created_at: string;
+        };
+        /** ShareoutPR */
+        readonly ShareoutPR: {
+            /** Number */
+            readonly number?: number | null;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /**
+             * Url
+             * @default
+             */
+            readonly url: string;
+            /**
+             * State
+             * @default
+             */
+            readonly state: string;
         };
         /** ShareoutBatchOut */
         readonly ShareoutBatchOut: {
@@ -2560,6 +2582,8 @@ export interface components {
             readonly content: string;
             /** Links */
             readonly links?: readonly components["schemas"]["ShareoutLink"][];
+            /** All Prs */
+            readonly all_prs?: readonly components["schemas"]["ShareoutPR"][];
             /**
              * Author
              * @default

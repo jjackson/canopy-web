@@ -13,6 +13,13 @@ class ShareoutLink(StrictModel):
     url: str = Field(min_length=1, max_length=500)
 
 
+class ShareoutPR(StrictModel):
+    number: int | None = None
+    title: str = ""
+    url: str = ""
+    state: str = ""
+
+
 class ShareoutIn(StrictModel):
     """One briefing in a POST batch. `project_slug` omitted/null = roll-up."""
 
@@ -23,6 +30,7 @@ class ShareoutIn(StrictModel):
     summary: str = ""
     content: str = Field(min_length=1)
     links: list[ShareoutLink] = Field(default_factory=list)
+    all_prs: list[ShareoutPR] = Field(default_factory=list)
     author: str = Field(default="", max_length=100)
     source: str = Field(min_length=1, max_length=100)
 
@@ -47,6 +55,7 @@ class ShareoutOut(StrictModel):
     summary: str
     content: str
     links: list[ShareoutLink] = Field(default_factory=list)
+    all_prs: list[ShareoutPR] = Field(default_factory=list)
     author: str
     source: str
     created_at: dt.datetime
