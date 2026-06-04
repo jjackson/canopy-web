@@ -14,7 +14,11 @@ function runStamp(runId: string): string {
   return m ? m[1] : runId
 }
 
-/** The runs of the active narrative: latest expanded, older under a disclosure. */
+/**
+ * The active narrative's versions, each with its runs nested beneath — mirrors
+ * the "Versions & runs" structure on the narrative page. Newest version first;
+ * the current version carries a badge.
+ */
 function NarrativeRuns({
   slug,
   activeRunId,
@@ -23,7 +27,6 @@ function NarrativeRuns({
   activeRunId?: string
 }) {
   const [detail, setDetail] = useState<DddNarrativeDetail | null>(null)
-  const [showPrev, setShowPrev] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -39,49 +42,60 @@ function NarrativeRuns({
   if (!detail) {
     return <div className="px-3 py-1 text-[11px] text-stone-600">Loading runs…</div>
   }
-  // Flatten runs across versions for the rail (newest first); the version
-  // structure itself lives on the narrative page.
-  const allRuns = detail.versions
-    .flatMap((v) => v.runs)
-    .sort((a, b) => (b.latest_at || '').localeCompare(a.latest_at || ''))
-  if (allRuns.length === 0) {
-    return <div className="px-3 py-1 text-[11px] text-stone-600">No runs yet</div>
+
+  const currentVersion = detail.current_version?.version ?? null
+  // Newest version first, matching the narrative page ordering.
+  const versions = [...detail.versions].sort(
+    (a, b) => (b.version ?? 0) - (a.version ?? 0),
+  )
+  if (versions.length === 0) {
+    return <div className="px-3 py-1 text-[11px] text-stone-600">No versions yet</div>
   }
 
-  const [latest, ...previous] = allRuns
-
-  const runRow = (runId: string, isLatest: boolean) => (
-    <Link
-      key={runId}
-      to={`/ddd/${encodeURIComponent(slug)}/${encodeURIComponent(runId)}`}
-      className={clsx(
-        'flex items-center gap-2 rounded-md px-3 py-1 text-xs transition-colors',
-        runId === activeRunId
-          ? 'bg-orange-500/10 text-orange-300 border border-orange-500/30'
-          : 'text-stone-400 hover:bg-stone-800/60 hover:text-stone-200 border border-transparent',
-      )}
-    >
-      <span aria-hidden className="text-stone-600">
-        {isLatest ? '●' : '○'}
-      </span>
-      <span className="truncate font-mono">{runStamp(runId)}</span>
-    </Link>
-  )
-
   return (
-    <div className="ml-2 flex flex-col gap-0.5 border-l border-stone-800 pl-1">
-      {runRow(latest.run_id, true)}
-      {previous.length > 0 && (
-        <>
-          {showPrev && previous.map((r) => runRow(r.run_id, false))}
-          <button
-            onClick={() => setShowPrev((s) => !s)}
-            className="px-3 py-1 text-left text-[11px] text-stone-500 hover:text-stone-300"
-          >
-            {showPrev ? '▾ hide previous' : `▸ previous runs (${previous.length})`}
-          </button>
-        </>
-      )}
+    <div className="ml-2 flex flex-col gap-1 border-l border-stone-800 pl-1">
+      {versions.map((v) => {
+        const isCurrent = v.version != null && v.version === currentVersion
+        const label = v.version != null ? `v${v.version}` : 'no narrative'
+        const runs = [...v.runs].sort((a, b) =>
+          (b.latest_at || '').localeCompare(a.latest_at || ''),
+        )
+        return (
+          <div key={v.review_id ?? `v${v.version ?? 'none'}`} className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5 px-3 py-0.5">
+              <span className="font-mono text-[11px] font-medium text-stone-300">{label}</span>
+              {isCurrent && (
+                <span className="rounded bg-orange-500/15 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-orange-300">
+                  current
+                </span>
+              )}
+            </div>
+            {runs.length === 0 ? (
+              <div className="px-3 py-0.5 pl-5 text-[11px] text-stone-600">No runs</div>
+            ) : (
+              <div className="ml-3 flex flex-col gap-0.5 border-l border-stone-800/70 pl-1">
+                {runs.map((r) => (
+                  <Link
+                    key={r.run_id}
+                    to={`/ddd/${encodeURIComponent(slug)}/${encodeURIComponent(r.run_id)}`}
+                    className={clsx(
+                      'flex items-center gap-2 rounded-md px-3 py-1 text-xs transition-colors',
+                      r.run_id === activeRunId
+                        ? 'bg-orange-500/10 text-orange-300 border border-orange-500/30'
+                        : 'text-stone-400 hover:bg-stone-800/60 hover:text-stone-200 border border-transparent',
+                    )}
+                  >
+                    <span aria-hidden className="text-stone-600">
+                      {r.run_id === activeRunId ? '●' : '○'}
+                    </span>
+                    <span className="truncate font-mono">{runStamp(r.run_id)}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
