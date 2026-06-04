@@ -29,11 +29,6 @@ scenes:
     show: "Click into a skill to see its full definition — steps, tools, inputs/outputs — plus eval history"
     impressive_because: "Complete skill anatomy at a glance. Eval runs show quality trending over time."
 
-  - persona: maya
-    title: "Who's shipping quality"
-    show: "Leaderboard page showing skills ranked by eval scores and usage"
-    impressive_because: "Surfaces which skills are battle-tested vs. freshly published. Creates healthy competition."
-
   # Act 2: Creation — building a new skill from scratch
   - persona: ravi
     title: "Start from a conversation"

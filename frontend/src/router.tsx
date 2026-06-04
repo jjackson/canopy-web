@@ -7,14 +7,13 @@ import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
 import { NewCollectionPage } from './pages/NewCollectionPage'
 import { SkillDetailPage } from './pages/SkillDetailPage'
-import { LeaderboardPage } from './pages/LeaderboardPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { GuidePage } from './pages/GuidePage'
 import { WalkthroughsPage } from './pages/WalkthroughsPage'
 import { WalkthroughViewerPage } from './pages/WalkthroughViewerPage'
 import { ReviewPage } from './pages/ReviewPage'
-import { ReviewsPage } from './pages/ReviewsPage'
 import { DddPage } from './pages/DddPage'
+import { DddPlansPage } from './pages/DddPlansPage'
 
 export const router = createBrowserRouter([
   {
@@ -28,14 +27,13 @@ export const router = createBrowserRouter([
       { path: '/ddd', element: <DddPage /> },
       { path: '/ddd/:narrative', element: <DddPage /> },
       { path: '/ddd/:narrative/:runId', element: <DddPage /> },
-      { path: '/ddd-plans', element: <ReviewsPage /> },
+      { path: '/ddd-plans', element: <DddPlansPage /> },
       { path: '/reviews', element: <Navigate to="/ddd-plans" replace /> },
       { path: '/review/:id', element: <ReviewPage /> },
       { path: '/new', element: <NewCollectionPage /> },
       { path: '/workspaces', element: <WorkspacesPage /> },
       { path: '/workspace/:sessionId', element: <WorkspacePage /> },
       { path: '/skills/:skillId', element: <SkillDetailPage /> },
-      { path: '/leaderboard', element: <LeaderboardPage /> },
       { path: '/guide', element: <GuidePage /> },
       { path: '/settings', element: <SettingsPage /> },
     ],

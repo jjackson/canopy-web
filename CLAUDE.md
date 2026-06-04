@@ -62,7 +62,6 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/new` — New collection / source ingestion flow
 - `/workspace/:sessionId` — Co-authoring workspace
 - `/skills/:skillId` — Skill detail + eval history
-- `/leaderboard` — Eval improvement leaderboard
 - `/guide` — Interactive walkthrough using a "Discovery Call Debrief" sample collection (try-it / how-it-works / review / eval / deploy sections)
 - `/insights` — Cross-portfolio AI insights feed
 - `/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
