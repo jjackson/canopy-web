@@ -16,7 +16,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Push with a PAT when one is configured (secret REGEN_TOKEN) so the
+          # regenerated-types commit RE-TRIGGERS CI on the PR. Commits pushed
+          # with the default GITHUB_TOKEN do not start new workflow runs, which
+          # leaves the PR head with no status checks — a problem once `main`
+          # requires status checks (the merge gets blocked). With REGEN_TOKEN
+          # set you can safely enforce branch protection on admins too.
+          # Falls back to GITHUB_TOKEN when the secret is absent.
+          token: ${{ secrets.REGEN_TOKEN || secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
