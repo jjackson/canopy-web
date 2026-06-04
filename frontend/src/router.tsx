@@ -5,6 +5,7 @@ import { WorkspacesPage } from './pages/WorkspacesPage'
 import { DiscoveryPage } from './pages/DiscoveryPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
+import { ShareoutsPage } from './pages/ShareoutsPage'
 import { NewCollectionPage } from './pages/NewCollectionPage'
 import { SkillDetailPage } from './pages/SkillDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -21,6 +22,7 @@ export const router = createBrowserRouter([
     children: [
       { path: '/', element: <ProjectsPage /> },
       { path: '/insights', element: <InsightsPage /> },
+      { path: '/shareouts', element: <ShareoutsPage /> },
       { path: '/skills', element: <DiscoveryPage /> },
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:id', element: <WalkthroughViewerPage /> },

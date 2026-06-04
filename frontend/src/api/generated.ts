@@ -967,6 +967,31 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/shareouts/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List shareouts
+         * @description List dated work briefings, newest period first. Filters AND-combine.
+         */
+        readonly get: operations["apps_shareouts_api_list_shareouts"];
+        readonly put?: never;
+        /**
+         * Create shareouts (batch, idempotent per period+source)
+         * @description Create a batch of briefings. Re-posting the same period from the same
+         *     source replaces the prior rows (see services.upsert_shareouts).
+         */
+        readonly post: operations["apps_shareouts_api_create_shareouts"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2438,6 +2463,110 @@ export interface components {
              * @default []
              */
             readonly previous_runs: readonly components["schemas"]["PreviousRunOut"][];
+        };
+        /** Page[ShareoutOut] */
+        readonly Page_ShareoutOut_: {
+            /** Items */
+            readonly items: readonly components["schemas"]["ShareoutOut"][];
+            /** Total */
+            readonly total: number;
+            /** Offset */
+            readonly offset: number;
+            /** Limit */
+            readonly limit: number;
+        };
+        /** ShareoutLink */
+        readonly ShareoutLink: {
+            /** Label */
+            readonly label: string;
+            /** Url */
+            readonly url: string;
+        };
+        /** ShareoutOut */
+        readonly ShareoutOut: {
+            /** Id */
+            readonly id: number;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /** Project Name */
+            readonly project_name?: string | null;
+            /**
+             * Period Start
+             * Format: date
+             */
+            readonly period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            readonly period_end: string;
+            /** Title */
+            readonly title: string;
+            /** Summary */
+            readonly summary: string;
+            /** Content */
+            readonly content: string;
+            /** Links */
+            readonly links?: readonly components["schemas"]["ShareoutLink"][];
+            /** Author */
+            readonly author: string;
+            /** Source */
+            readonly source: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** ShareoutBatchOut */
+        readonly ShareoutBatchOut: {
+            /** Created */
+            readonly created: number;
+            /** Replaced */
+            readonly replaced: number;
+            /** Skipped */
+            readonly skipped: number;
+        };
+        /** ShareoutBatchIn */
+        readonly ShareoutBatchIn: {
+            /** Shareouts */
+            readonly shareouts: readonly components["schemas"]["ShareoutIn"][];
+        };
+        /**
+         * ShareoutIn
+         * @description One briefing in a POST batch. `project_slug` omitted/null = roll-up.
+         */
+        readonly ShareoutIn: {
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /**
+             * Period Start
+             * Format: date
+             */
+            readonly period_start: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            readonly period_end: string;
+            /** Title */
+            readonly title: string;
+            /**
+             * Summary
+             * @default
+             */
+            readonly summary: string;
+            /** Content */
+            readonly content: string;
+            /** Links */
+            readonly links?: readonly components["schemas"]["ShareoutLink"][];
+            /**
+             * Author
+             * @default
+             */
+            readonly author: string;
+            /** Source */
+            readonly source: string;
         };
     };
     responses: never;
@@ -3921,6 +4050,55 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["RunPackageOut"];
+                };
+            };
+        };
+    };
+    readonly apps_shareouts_api_list_shareouts: {
+        readonly parameters: {
+            readonly query?: {
+                readonly date_from?: string | null;
+                readonly date_to?: string | null;
+                readonly project?: string | null;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Page_ShareoutOut_"];
+                };
+            };
+        };
+    };
+    readonly apps_shareouts_api_create_shareouts: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ShareoutBatchIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ShareoutBatchOut"];
                 };
             };
         };

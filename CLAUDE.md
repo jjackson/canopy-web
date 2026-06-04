@@ -64,6 +64,7 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/skills/:skillId` — Skill detail + eval history
 - `/guide` — Interactive walkthrough using a "Discovery Call Debrief" sample collection (try-it / how-it-works / review / eval / deploy sections)
 - `/insights` — Cross-portfolio AI insights feed
+- `/shareouts` — Dated, teammate-facing work briefings (what shipped, why, how to leverage) posted by `/canopy:shareout`
 - `/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
 - `/w/:id` — Single walkthrough viewer (HTML iframe or video player)
 - `/settings` — AI backend status, switch backends, headless Claude CLI auth, debug-session minting
