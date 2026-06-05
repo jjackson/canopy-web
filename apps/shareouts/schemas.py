@@ -45,6 +45,20 @@ class ShareoutBatchOut(StrictModel):
     skipped: int
 
 
+class ShareoutsClearIn(StrictModel):
+    """Body of POST /api/shareouts/clear/. All optional, AND-combined. An empty
+    body clears ALL shareouts."""
+
+    source: str | None = None
+    project: str | None = None  # project slug
+    date_from: dt.date | None = None
+    date_to: dt.date | None = None
+
+
+class ShareoutsClearOut(StrictModel):
+    cleared: int
+
+
 class ShareoutOut(StrictModel):
     id: int
     project_slug: str | None = None

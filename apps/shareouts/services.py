@@ -89,6 +89,37 @@ def upsert_shareouts(items: list) -> dict:
     return {"created": created, "replaced": replaced, "skipped": skipped}
 
 
+def clear_shareouts(
+    *,
+    source: str | None = None,
+    project: str | None = None,
+    date_from: dt.date | None = None,
+    date_to: dt.date | None = None,
+) -> int:
+    """Delete shareouts matching the filters (AND-combined); return the count.
+
+    - source:    exact source match (e.g. a prior run's source tag)
+    - project:   project slug exact match
+    - date_from: period_end date >= date_from
+    - date_to:   period_start date <= date_to
+
+    A call with no filters deletes ALL shareouts — intended (matches the
+    insights clear contract).
+    """
+    qs = Shareout.objects.all()
+    if source:
+        qs = qs.filter(source=source)
+    if project:
+        qs = qs.filter(project__slug=project)
+    if date_from is not None:
+        qs = qs.filter(period_end__date__gte=date_from)
+    if date_to is not None:
+        qs = qs.filter(period_start__date__lte=date_to)
+    count = qs.count()
+    qs.delete()
+    return count
+
+
 def list_shareouts(
     *,
     date_from: dt.date | None = None,

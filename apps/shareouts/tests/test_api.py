@@ -180,3 +180,30 @@ def test_list_date_filter():
     body = resp.json()
     assert body["total"] == 1
     assert body["items"][0]["period_start"].startswith("2026-06-03")
+
+
+# --- clear ----------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_clear_by_source():
+    _make_project()
+    c = _auth_client()
+    _post(c, {"shareouts": [_item(source="run-A")]})
+    _post(c, {"shareouts": [_item(period_start="2026-06-04T09:00:00Z", period_end="2026-06-04T17:00:00Z", source="run-B")]})
+    resp = c.post("/api/shareouts/clear/", data=json.dumps({"source": "run-A"}), content_type="application/json")
+    assert resp.status_code == 200
+    assert resp.json() == {"cleared": 1}
+    assert Shareout.objects.count() == 1
+    assert Shareout.objects.get().source == "run-B"
+
+
+@pytest.mark.django_db
+def test_clear_empty_body_clears_all():
+    _make_project()
+    c = _auth_client()
+    _post(c, {"shareouts": [_item()]})
+    resp = c.post("/api/shareouts/clear/", data=json.dumps({}), content_type="application/json")
+    assert resp.status_code == 200
+    assert resp.json()["cleared"] >= 1
+    assert Shareout.objects.count() == 0
