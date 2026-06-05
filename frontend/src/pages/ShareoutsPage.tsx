@@ -9,19 +9,35 @@ import {
   shareoutsApi,
 } from '@/api/shareouts'
 
-// Parse a YYYY-MM-DD date as *local* time (not UTC) so a single-day briefing
-// doesn't render as the previous day in negative-offset timezones.
-function parseLocalDate(iso: string): Date {
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d)
+// Shareout windows are tz-aware UTC timestamps. A window built from calendar
+// dates is "day-aligned" (00:00:00 → 23:59:59 UTC) and renders as plain dates;
+// a precise mid-day run renders with local times (the user's wall clock).
+const pad = (n: number) => String(n).padStart(2, '0')
+const utcYmd = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+const sameUtcDate = (a: Date, b: Date) => utcYmd(a) === utcYmd(b)
+
+function isDayAligned(s: Date, e: Date): boolean {
+  const start0 = s.getUTCHours() === 0 && s.getUTCMinutes() === 0 && s.getUTCSeconds() === 0
+  const end1 = e.getUTCHours() === 23 && e.getUTCMinutes() === 59 && e.getUTCSeconds() === 59
+  return start0 && end1
 }
 
 function formatPeriod(start: string, end: string): string {
-  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }
-  const s = parseLocalDate(start).toLocaleDateString(undefined, opts)
-  if (start === end) return s
-  const e = parseLocalDate(end).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-  return `${s} – ${e}`
+  const s = new Date(start)
+  const e = new Date(end)
+  if (isDayAligned(s, e)) {
+    const full: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }
+    const sd = s.toLocaleDateString(undefined, full)
+    if (sameUtcDate(s, e)) return sd
+    const ed = e.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+    return `${sd} – ${ed}`
+  }
+  const dOpt: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }
+  const tOpt: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' }
+  if (s.toDateString() === e.toDateString()) {
+    return `${s.toLocaleDateString(undefined, dOpt)}, ${s.toLocaleTimeString(undefined, tOpt)} – ${e.toLocaleTimeString(undefined, tOpt)}`
+  }
+  return `${s.toLocaleDateString(undefined, dOpt)}, ${s.toLocaleTimeString(undefined, tOpt)} – ${e.toLocaleDateString(undefined, dOpt)}, ${e.toLocaleTimeString(undefined, tOpt)}`
 }
 
 // Each `## Heading` in a briefing (What shipped / Why it matters / How to
@@ -179,25 +195,35 @@ function ProjectCard({ shareout }: { shareout: Shareout }) {
   )
 }
 
-// Compact rail label: "Tue, Jun 3" for a single day, "May 30 – Jun 1" for a span.
+// Compact rail label: "Tue, Jun 3" (day), "May 30 – Jun 1" (span), or
+// "Jun 4, 2:30 PM" (a precise mid-day run).
 function formatRail(start: string, end: string): string {
-  const o: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
-  const s = parseLocalDate(start).toLocaleDateString(undefined, o)
-  if (start === end) {
-    const wd = parseLocalDate(start).toLocaleDateString(undefined, { weekday: 'short' })
-    return `${wd}, ${s}`
+  const s = new Date(start)
+  const e = new Date(end)
+  if (isDayAligned(s, e)) {
+    const o: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', timeZone: 'UTC' }
+    if (sameUtcDate(s, e)) {
+      return s.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+    }
+    return `${s.toLocaleDateString(undefined, o)} – ${e.toLocaleDateString(undefined, o)}`
   }
-  return `${s} – ${parseLocalDate(end).toLocaleDateString(undefined, o)}`
+  return `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${s.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
 }
 
 function prTotal(period: ShareoutPeriod): number {
   return period.projects.reduce((n, p) => n + (p.all_prs?.length ?? 0), 0)
 }
 
-// Shareable URL slug for a period: the date for a single day, `start_end` for a
-// span. Routed at /shareouts/:period — a clean, copy-pasteable permalink.
+// Shareable URL slug, built from UTC so it's identical for every viewer:
+// a date (single day), `start_end` (day span), or `YYYY-MM-DD-HHMM` (a precise
+// mid-day run). Routed at /shareouts/:period.
 function periodSlug(p: ShareoutPeriod): string {
-  return p.periodStart === p.periodEnd ? p.periodStart : `${p.periodStart}_${p.periodEnd}`
+  const s = new Date(p.periodStart)
+  const e = new Date(p.periodEnd)
+  if (isDayAligned(s, e)) {
+    return sameUtcDate(s, e) ? utcYmd(s) : `${utcYmd(s)}_${utcYmd(e)}`
+  }
+  return `${utcYmd(s)}-${pad(s.getUTCHours())}${pad(s.getUTCMinutes())}`
 }
 
 function PeriodRail({

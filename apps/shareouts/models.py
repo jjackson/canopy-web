@@ -21,8 +21,11 @@ class Shareout(models.Model):
         blank=True,
         help_text="Null = cross-project roll-up for the period.",
     )
-    period_start = models.DateField()
-    period_end = models.DateField()
+    # Timestamps (not dates): a shareout is rarely run on a clean day boundary,
+    # so the window is precise to the second and consecutive shareouts chain
+    # exactly (next.period_start == prev.period_end).
+    period_start = models.DateTimeField()
+    period_end = models.DateTimeField()
     title = models.CharField(max_length=200)
     summary = models.TextField(blank=True, default="")
     content = models.TextField()

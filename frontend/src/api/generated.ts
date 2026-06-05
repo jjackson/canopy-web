@@ -2513,12 +2513,12 @@ export interface components {
             readonly project_name?: string | null;
             /**
              * Period Start
-             * Format: date
+             * Format: date-time
              */
             readonly period_start: string;
             /**
              * Period End
-             * Format: date
+             * Format: date-time
              */
             readonly period_end: string;
             /** Title */
@@ -2584,12 +2584,12 @@ export interface components {
             readonly project_slug?: string | null;
             /**
              * Period Start
-             * Format: date
+             * Format: date-time
              */
             readonly period_start: string;
             /**
              * Period End
-             * Format: date
+             * Format: date-time
              */
             readonly period_end: string;
             /** Title */

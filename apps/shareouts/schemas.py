@@ -24,8 +24,8 @@ class ShareoutIn(StrictModel):
     """One briefing in a POST batch. `project_slug` omitted/null = roll-up."""
 
     project_slug: str | None = None
-    period_start: dt.date
-    period_end: dt.date
+    period_start: dt.datetime
+    period_end: dt.datetime
     title: str = Field(min_length=1, max_length=200)
     summary: str = ""
     content: str = Field(min_length=1)
@@ -49,8 +49,8 @@ class ShareoutOut(StrictModel):
     id: int
     project_slug: str | None = None
     project_name: str | None = None
-    period_start: dt.date
-    period_end: dt.date
+    period_start: dt.datetime
+    period_end: dt.datetime
     title: str
     summary: str
     content: str

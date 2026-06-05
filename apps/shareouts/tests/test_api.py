@@ -42,8 +42,8 @@ def _post(client, data):
 def _item(**overrides):
     base = {
         "project_slug": "canopy-web",
-        "period_start": "2026-06-03",
-        "period_end": "2026-06-03",
+        "period_start": "2026-06-03T09:00:00Z",
+        "period_end": "2026-06-03T17:30:00Z",
         "title": "Shipped the shareout feed",
         "summary": "TL;DR",
         "content": "## What\nBuilt it.\n\n## Why\nTeammates need it.",
@@ -135,8 +135,8 @@ def test_post_idempotent_replace_same_group():
 def test_post_different_period_does_not_replace():
     _make_project()
     c = _auth_client()
-    _post(c, {"shareouts": [_item(period_start="2026-06-02", period_end="2026-06-02")]})
-    _post(c, {"shareouts": [_item(period_start="2026-06-03", period_end="2026-06-03")]})
+    _post(c, {"shareouts": [_item(period_start="2026-06-02T09:00:00Z", period_end="2026-06-02T17:00:00Z")]})
+    _post(c, {"shareouts": [_item(period_start="2026-06-03T09:00:00Z", period_end="2026-06-03T17:00:00Z")]})
     assert Shareout.objects.count() == 2
 
 
@@ -174,9 +174,9 @@ def test_list_project_filter_excludes_others():
 def test_list_date_filter():
     _make_project()
     c = _auth_client()
-    _post(c, {"shareouts": [_item(period_start="2026-05-01", period_end="2026-05-01")]})
-    _post(c, {"shareouts": [_item(period_start="2026-06-03", period_end="2026-06-03")]})
+    _post(c, {"shareouts": [_item(period_start="2026-05-01T09:00:00Z", period_end="2026-05-01T17:00:00Z")]})
+    _post(c, {"shareouts": [_item(period_start="2026-06-03T09:00:00Z", period_end="2026-06-03T17:00:00Z")]})
     resp = c.get("/api/shareouts/?date_from=2026-06-01")
     body = resp.json()
     assert body["total"] == 1
-    assert body["items"][0]["period_start"] == "2026-06-03"
+    assert body["items"][0]["period_start"].startswith("2026-06-03")
