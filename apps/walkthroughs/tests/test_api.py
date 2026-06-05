@@ -539,3 +539,140 @@ def test_endpoints_404_when_disabled(auth_client, owner):
     # POST /{wid}/rotate-token/
     resp = auth_client.post(f"{BASE}/{w.id}/rotate-token/")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Server-side narrative backstop — refuse terminal DDD artifacts with no
+# narrative (mirrors the plugin guard in scripts/ddd/upload.py).
+# ---------------------------------------------------------------------------
+
+_DDD_SETTINGS = dict(
+    WALKTHROUGHS_ENABLED=True,
+    CANOPY_DRIVE_ROOT_FOLDER_ID="root-folder",
+    CANOPY_DRIVE_SA_KEY_JSON='{"x":"y"}',
+)
+
+
+def _make_narrative_version(feature, run_id):
+    """A story-bearing concept_change review = a narrative version for `feature`."""
+    from apps.reviews.models import ReviewRequest
+
+    return ReviewRequest.objects.create(
+        run_id=run_id,
+        feature=feature,
+        version=1,
+        gate="concept_change",
+        status=ReviewRequest.STATUS_PENDING,
+        request_json={"run_id": run_id, "feature": feature, "narrative": "A story."},
+    )
+
+
+@pytest.mark.django_db
+@override_settings(**_DDD_SETTINGS)
+def test_hero_video_without_narrative_is_refused(auth_client, fake_drive, owner):
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={
+            "file": _file_part("video.mp4", b"\x00\x00", "video/mp4"),
+            "title": "hero", "kind": "video",
+            "run_id": "verified-monitoring-2026-06-04-001",
+            "feature": "verified-monitoring",
+            "role": "hero_video",
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 409, resp.content
+    assert "no narrative" in resp.json().get("detail", "").lower()
+    # Nothing persisted.
+    assert not Walkthrough.objects.filter(feature="verified-monitoring").exists()
+
+
+@pytest.mark.django_db
+@override_settings(**_DDD_SETTINGS)
+def test_docs_without_narrative_is_refused(auth_client, fake_drive, owner):
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={
+            "file": _file_part("slideshow.html", b"<html></html>", "text/html"),
+            "title": "deck", "kind": "html",
+            "run_id": "verified-monitoring-2026-06-04-001",
+            "feature": "verified-monitoring",
+            "role": "docs",
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 409, resp.content
+
+
+@pytest.mark.django_db
+@override_settings(**_DDD_SETTINGS)
+def test_hero_video_with_narrative_is_allowed(auth_client, fake_drive, owner):
+    _make_narrative_version("verified-monitoring", "verified-monitoring-2026-06-04-001")
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={
+            "file": _file_part("video.mp4", b"\x00\x00", "video/mp4"),
+            "title": "hero", "kind": "video",
+            "run_id": "verified-monitoring-2026-06-04-001",
+            "feature": "verified-monitoring",
+            "role": "hero_video",
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.content
+
+
+@pytest.mark.django_db
+@override_settings(**_DDD_SETTINGS)
+def test_stamped_review_id_bypasses_server_check(auth_client, fake_drive, owner):
+    """A supplied narrative_review_id is trusted proof — no narrative row needed."""
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={
+            "file": _file_part("video.mp4", b"\x00\x00", "video/mp4"),
+            "title": "hero", "kind": "video",
+            "run_id": "verified-monitoring-2026-06-04-001",
+            "feature": "verified-monitoring",
+            "role": "hero_video",
+            "narrative_review_id": str(uuid.uuid4()),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.content
+
+
+@pytest.mark.django_db
+@override_settings(**_DDD_SETTINGS)
+def test_intermediate_deck_clip_not_guarded(auth_client, fake_drive, owner):
+    """ddd-run mid-loop uploads (deck/clip) must NOT be blocked by the guard."""
+    for role, kind, fname, ct in [
+        ("deck", "html", "slideshow.html", "text/html"),
+        ("clip", "video", "video.mp4", "video/mp4"),
+    ]:
+        resp = auth_client.post(
+            f"{BASE}/",
+            data={
+                "file": _file_part(fname, b"\x00\x00", ct),
+                "title": role, "kind": kind,
+                "run_id": "verified-monitoring-2026-06-04-001",
+                "feature": "verified-monitoring",
+                "role": role,
+            },
+            format="multipart",
+        )
+        assert resp.status_code == 201, (role, resp.content)
+
+
+@pytest.mark.django_db
+@override_settings(**_DDD_SETTINGS)
+def test_non_ddd_walkthrough_share_not_guarded(auth_client, fake_drive, owner):
+    """A plain walkthrough-share upload (no role, no feature) is unaffected."""
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={
+            "file": _file_part("slideshow.html", b"<html></html>", "text/html"),
+            "title": "share", "kind": "html",
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201, resp.content

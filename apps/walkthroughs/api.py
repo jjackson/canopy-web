@@ -15,6 +15,7 @@ from ninja.files import UploadedFile
 
 from apps.api.auth import session_auth
 from apps.api.errors import (
+    TYPE_CONFLICT,
     TYPE_DRIVE_NOT_CONFIGURED,
     TYPE_DRIVE_UPLOAD_FAILED,
     TYPE_FORBIDDEN,
@@ -24,6 +25,7 @@ from apps.api.errors import (
 )
 
 from apps.common.ddd import feature_from_run_id
+from apps.runs.aggregate import has_narrative_version
 
 from . import storage
 from .drive_client import DriveNotConfigured
@@ -42,6 +44,13 @@ router = Router(auth=session_auth, tags=["walkthroughs"])
 
 CONTENT_TYPE_BY_KIND: dict[str, str] = {"html": "text/html", "video": "video/mp4"}
 FILENAME_BY_KIND: dict[str, str] = {"html": "slideshow.html", "video": "video.mp4"}
+
+# Terminal DDD package artifacts — the ones ddd-upload publishes. Uploading one
+# without a narrative is what produces a "no narrative" package, so the server
+# refuses it as a backstop to the plugin-side guard. Intermediate ddd-run
+# artifacts (deck/clip) and non-DDD walkthrough-share uploads carry neither of
+# these roles and are unaffected.
+_NARRATIVE_REQUIRED_ROLES = {Walkthrough.ROLE_HERO_VIDEO, Walkthrough.ROLE_DOCS}
 
 
 def _require_enabled() -> None:
@@ -179,6 +188,30 @@ def upload_walkthrough(
             resolved_review_id = UUID(narrative_review_id.strip())
         except ValueError:
             resolved_review_id = None
+
+    # Backstop guard: refuse to publish a terminal DDD package artifact
+    # (hero_video / docs) for a narrative that has no story-bearing version —
+    # such a package renders as "no narrative". A supplied narrative_review_id is
+    # proof the narrative gate ran, so it's trusted and skips the check. Mirrors
+    # the plugin-side guard in scripts/ddd/upload.py so the rule holds even for
+    # older plugin versions or manual uploads.
+    if (
+        resolved_role in _NARRATIVE_REQUIRED_ROLES
+        and resolved_feature
+        and resolved_review_id is None
+        and not has_narrative_version(resolved_feature)
+    ):
+        raise ProblemError(
+            409,
+            "Narrative required",
+            type_=TYPE_CONFLICT,
+            detail=(
+                f"Refusing to publish a {resolved_role!r} artifact for narrative "
+                f"{resolved_feature!r}: it has no narrative version, so the run "
+                f"would render as \"no narrative\". Run the ddd-narrative-review "
+                f"gate for this run first, then re-upload."
+            ),
+        )
 
     # Create ORM row first — if Drive fails, delete to avoid orphan row.
     w = Walkthrough.objects.create(
