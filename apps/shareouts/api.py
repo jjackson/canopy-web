@@ -10,7 +10,13 @@ from apps.api.auth import session_auth
 from apps.api.pagination import Page, paginate
 
 from . import services
-from .schemas import ShareoutBatchIn, ShareoutBatchOut, ShareoutOut
+from .schemas import (
+    ShareoutBatchIn,
+    ShareoutBatchOut,
+    ShareoutOut,
+    ShareoutsClearIn,
+    ShareoutsClearOut,
+)
 
 router = Router(auth=session_auth, tags=["shareouts"])
 
@@ -51,3 +57,23 @@ def create_shareouts(
     source replaces the prior rows (see services.upsert_shareouts)."""
     result = services.upsert_shareouts(payload.shareouts)
     return Status(201, ShareoutBatchOut(**result))
+
+
+@router.post(
+    "/clear/",
+    response=ShareoutsClearOut,
+    summary="Clear shareouts by source / project / date (AND-combined)",
+    openapi_extra={"x-mcp-expose": True},
+)
+def clear_shareouts(
+    request: HttpRequest,
+    payload: ShareoutsClearIn,
+) -> ShareoutsClearOut:
+    """Delete shareouts matching the filters. An empty body clears all."""
+    count = services.clear_shareouts(
+        source=payload.source,
+        project=payload.project,
+        date_from=payload.date_from,
+        date_to=payload.date_to,
+    )
+    return ShareoutsClearOut(cleared=count)

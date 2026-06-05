@@ -1011,6 +1011,26 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/shareouts/clear/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Clear shareouts by source / project / date (AND-combined)
+         * @description Delete shareouts matching the filters. An empty body clears all.
+         */
+        readonly post: operations["apps_shareouts_api_clear_shareouts"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2613,6 +2633,26 @@ export interface components {
             /** Source */
             readonly source: string;
         };
+        /** ShareoutsClearOut */
+        readonly ShareoutsClearOut: {
+            /** Cleared */
+            readonly cleared: number;
+        };
+        /**
+         * ShareoutsClearIn
+         * @description Body of POST /api/shareouts/clear/. All optional, AND-combined. An empty
+         *     body clears ALL shareouts.
+         */
+        readonly ShareoutsClearIn: {
+            /** Source */
+            readonly source?: string | null;
+            /** Project */
+            readonly project?: string | null;
+            /** Date From */
+            readonly date_from?: string | null;
+            /** Date To */
+            readonly date_to?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -4205,6 +4245,30 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ShareoutBatchOut"];
+                };
+            };
+        };
+    };
+    readonly apps_shareouts_api_clear_shareouts: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ShareoutsClearIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ShareoutsClearOut"];
                 };
             };
         };
