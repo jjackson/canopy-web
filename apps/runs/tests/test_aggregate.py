@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from apps.common.ddd import feature_from_run_id
+from apps.common.ddd import narrative_slug_from_run_id
 from apps.runs import aggregate
 
 from .factories import make_review, make_user, make_walkthrough
@@ -12,18 +12,18 @@ pytestmark = pytest.mark.django_db
 
 
 # ---------------------------------------------------------------------------
-# feature_from_run_id
+# narrative_slug_from_run_id
 # ---------------------------------------------------------------------------
 
 
 def test_feature_strips_date_stamp():
-    assert feature_from_run_id("microplans-2026-06-02-001") == "microplans"
-    assert feature_from_run_id("micro-plans-study-2026-06-02-012") == "micro-plans-study"
+    assert narrative_slug_from_run_id("microplans-2026-06-02-001") == "microplans"
+    assert narrative_slug_from_run_id("micro-plans-study-2026-06-02-012") == "micro-plans-study"
 
 
 def test_feature_fallbacks():
-    assert feature_from_run_id("") == "(untitled)"
-    assert feature_from_run_id("no-stamp-here") == "no-stamp-here"
+    assert narrative_slug_from_run_id("") == "(untitled)"
+    assert narrative_slug_from_run_id("no-stamp-here") == "no-stamp-here"
 
 
 # ---------------------------------------------------------------------------
@@ -113,9 +113,9 @@ def test_build_run_dedupes_links_across_artifacts():
 
 def test_build_run_lists_previous_runs_in_same_narrative():
     u = make_user()
-    make_walkthrough(u, kind="video", run_id="feat-2026-05-01-001", feature="feat")
-    make_walkthrough(u, kind="video", run_id="feat-2026-06-01-002", feature="feat")
-    make_walkthrough(u, kind="video", run_id="other-2026-06-01-001", feature="other")
+    make_walkthrough(u, kind="video", run_id="feat-2026-05-01-001", narrative_slug="feat")
+    make_walkthrough(u, kind="video", run_id="feat-2026-06-01-002", narrative_slug="feat")
+    make_walkthrough(u, kind="video", run_id="other-2026-06-01-001", narrative_slug="other")
 
     run = aggregate.build_run("feat-2026-06-01-002")
     prev_ids = {p["run_id"] for p in run["previous_runs"]}
@@ -130,9 +130,9 @@ def test_build_run_lists_previous_runs_in_same_narrative():
 def test_list_narratives_groups_and_filters():
     u = make_user()
     other = make_user("other@dimagi.com")
-    make_walkthrough(u, kind="video", run_id="a-2026-06-01-001", feature="a", project_slug="proj1")
-    make_walkthrough(u, kind="html", run_id="a-2026-06-02-002", feature="a", project_slug="proj1")
-    make_walkthrough(other, kind="video", run_id="b-2026-06-01-001", feature="b", project_slug="proj2")
+    make_walkthrough(u, kind="video", run_id="a-2026-06-01-001", narrative_slug="a", project_slug="proj1")
+    make_walkthrough(u, kind="html", run_id="a-2026-06-02-002", narrative_slug="a", project_slug="proj1")
+    make_walkthrough(other, kind="video", run_id="b-2026-06-01-001", narrative_slug="b", project_slug="proj2")
 
     all_narr = {n["slug"]: n for n in aggregate.list_narratives()}
     assert set(all_narr) == {"a", "b"}
@@ -148,8 +148,8 @@ def test_list_narratives_groups_and_filters():
 
 def test_build_narrative_lists_runs_newest_first():
     u = make_user()
-    make_walkthrough(u, kind="video", run_id="feat-2026-05-01-001", feature="feat")
-    make_walkthrough(u, kind="video", run_id="feat-2026-06-01-002", feature="feat")
+    make_walkthrough(u, kind="video", run_id="feat-2026-05-01-001", narrative_slug="feat")
+    make_walkthrough(u, kind="video", run_id="feat-2026-06-01-002", narrative_slug="feat")
     make_review(
         u,
         run_id="feat-2026-06-01-002",
@@ -188,8 +188,8 @@ def test_build_narrative_groups_runs_under_their_version():
         request_json={"run_id": "feat-2026-06-02-001", "gate": "concept_change",
                       "narrative": "Story v2", "narration": [{"id": "n", "text": "x"}]},
     )
-    make_walkthrough(u, kind="video", run_id="run-a", feature="feat", narrative_review_id=v1.id)
-    make_walkthrough(u, kind="video", run_id="run-b", feature="feat", narrative_review_id=v2.id)
+    make_walkthrough(u, kind="video", run_id="run-a", narrative_slug="feat", narrative_review_id=v1.id)
+    make_walkthrough(u, kind="video", run_id="run-b", narrative_slug="feat", narrative_review_id=v2.id)
 
     narrative = aggregate.build_narrative("feat")
     # newest version first
@@ -207,7 +207,7 @@ def test_build_run_resolves_version_from_stamp():
         request_json={"run_id": "feat-2026-06-02-001", "gate": "concept_change",
                       "narrative": "Story v2", "narration": [{"id": "n", "text": "x"}]},
     )
-    make_walkthrough(u, kind="video", run_id="run-b", feature="feat", narrative_review_id=v2.id)
+    make_walkthrough(u, kind="video", run_id="run-b", narrative_slug="feat", narrative_review_id=v2.id)
     run = aggregate.build_run("run-b")
     assert run["narrative"]["review_id"] == str(v2.id)
     assert run["narrative"]["version"] == 2

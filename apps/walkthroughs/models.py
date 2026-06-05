@@ -35,13 +35,13 @@ class Walkthrough(models.Model):
     project_slug = models.CharField(
         max_length=200, blank=True, null=True, db_index=True
     )
-    # DDD-run grouping. A run_id looks like "<feature>-YYYY-MM-DD-NNN" and ties
+    # DDD-run grouping. A run_id looks like "<narrative_slug>-YYYY-MM-DD-NNN" and ties
     # this artifact to its sibling video/deck/narrative. One-off (non-DDD)
     # uploads leave these null and never surface in the DDD section.
     run_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
-    # Narrative slug (matches run_state.yaml's `feature`). Falls back to
-    # feature_from_run_id(run_id) when blank but run_id is set.
-    feature = models.CharField(max_length=200, blank=True, null=True)
+    # Narrative slug (matches run_state.yaml's `narrative_slug`). Falls back to
+    # narrative_slug_from_run_id(run_id) when blank but run_id is set.
+    narrative_slug = models.CharField(max_length=200, blank=True, null=True)
     # Artifact role: hero_video | deck | docs | clip. Free-form (not a DB-level
     # choices enum) so the plugin can evolve it; the aggregator tolerates blanks.
     role = models.CharField(max_length=20, blank=True, null=True)

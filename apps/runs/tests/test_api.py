@@ -24,8 +24,8 @@ def client(owner):
 
 
 def test_list_narratives(client, owner):
-    make_walkthrough(owner, kind="video", run_id="a-2026-06-01-001", feature="a")
-    make_walkthrough(owner, kind="html", run_id="a-2026-06-02-002", feature="a")
+    make_walkthrough(owner, kind="video", run_id="a-2026-06-01-001", narrative_slug="a")
+    make_walkthrough(owner, kind="html", run_id="a-2026-06-02-002", narrative_slug="a")
     resp = client.get(f"{BASE}/narratives/")
     assert resp.status_code == 200, resp.content
     body = resp.json()
@@ -36,7 +36,7 @@ def test_list_narratives(client, owner):
 
 def test_narrative_detail(client, owner):
     # A walkthrough run with no review → one unversioned bucket holding it.
-    make_walkthrough(owner, kind="video", run_id="a-2026-06-01-001", feature="a")
+    make_walkthrough(owner, kind="video", run_id="a-2026-06-01-001", narrative_slug="a")
     resp = client.get(f"{BASE}/narratives/a/")
     assert resp.status_code == 200, resp.content
     body = resp.json()

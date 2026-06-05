@@ -18,13 +18,13 @@ def _narr_json(run_id):
 
 def test_assigns_feature_and_sequential_versions():
     u = make_user()
-    # Two narrative versions for feature "feat" (created in order).
+    # Two narrative versions for narrative_slug "feat" (created in order).
     r1 = make_review(u, run_id="feat-2026-06-01-001", request_json=_narr_json("feat-2026-06-01-001"))
     r2 = make_review(u, run_id="feat-2026-06-02-001", request_json=_narr_json("feat-2026-06-02-001"))
     call_command("migrate_narrative_versions", stdout=StringIO())
     r1.refresh_from_db()
     r2.refresh_from_db()
-    assert r1.feature == "feat" and r2.feature == "feat"
+    assert r1.narrative_slug == "feat" and r2.narrative_slug == "feat"
     assert (r1.version, r2.version) == (1, 2)
 
 
@@ -32,7 +32,7 @@ def test_stamps_walkthrough_to_current_version():
     u = make_user()
     make_review(u, run_id="feat-2026-06-01-001", request_json=_narr_json("feat-2026-06-01-001"))
     r2 = make_review(u, run_id="feat-2026-06-02-001", request_json=_narr_json("feat-2026-06-02-001"))
-    w = make_walkthrough(u, kind="video", run_id="render-1", feature="feat")
+    w = make_walkthrough(u, kind="video", run_id="render-1", narrative_slug="feat")
     assert w.narrative_review_id is None
     call_command("migrate_narrative_versions", stdout=StringIO())
     w.refresh_from_db()
@@ -45,7 +45,7 @@ def test_dry_run_writes_nothing():
     r1 = make_review(u, run_id="feat-2026-06-01-001", request_json=_narr_json("feat-2026-06-01-001"))
     call_command("migrate_narrative_versions", "--dry-run", stdout=StringIO())
     r1.refresh_from_db()
-    assert r1.feature is None
+    assert r1.narrative_slug is None
 
 
 def test_idempotent():

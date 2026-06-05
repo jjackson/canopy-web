@@ -174,7 +174,7 @@ export interface ReviewDetail {
   id: string
   run_id: string
   /** Narrative slug this review belongs to (for highlighting in the DDD shell). */
-  feature: string
+  narrative_slug: string
   gate: string
   status: ReviewStatus
   visibility: ReviewVisibility
@@ -257,7 +257,7 @@ export interface ReviewListItem {
   gate: string
   status: ReviewStatus
   visibility: ReviewVisibility
-  feature: string
+  narrative_slug: string
   title: string | null
   scene_count: number
   created_at: string
@@ -272,7 +272,7 @@ export type ReviewListOrder =
   | 'last_activity'
   | '-created'
   | 'created'
-  | 'feature'
+  | 'narrative_slug'
 
 export interface ListReviewsParams {
   q?: string

@@ -13,13 +13,13 @@ def make_user(email="owner@dimagi.com"):
     return User.objects.get_or_create(username=email, defaults={"email": email})[0]
 
 
-def make_walkthrough(owner, *, kind, run_id=None, feature=None, role=None, **kw):
+def make_walkthrough(owner, *, kind, run_id=None, narrative_slug=None, role=None, **kw):
     defaults = dict(
         title=kw.pop("title", f"{run_id or 'oneoff'}-{kind}"),
         kind=kind,
         owner=owner,
         run_id=run_id,
-        feature=feature,
+        narrative_slug=narrative_slug,
         role=role,
         project_slug=kw.pop("project_slug", None),
         links=kw.pop("links", []),

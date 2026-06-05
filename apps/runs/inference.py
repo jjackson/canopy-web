@@ -1,6 +1,6 @@
 """Best-effort inference of a narrative slug + run_id from a walkthrough title.
 
-Only used to backfill artifacts uploaded *before* the plugin sent run_id/feature
+Only used to backfill artifacts uploaded *before* the plugin sent run_id/narrative_slug
 explicitly. Going forward those fields arrive on the upload, so this is a
 one-time historical cleanup, not a runtime path.
 

@@ -1,4 +1,4 @@
-"""Backfill ``run_id`` / ``feature`` on walkthroughs uploaded before the DDD
+"""Backfill ``run_id`` / ``narrative_slug`` on walkthroughs uploaded before the DDD
 upload contract (which now sends both explicitly).
 
 Two passes, in priority order:
@@ -19,14 +19,14 @@ import collections
 
 from django.core.management.base import BaseCommand
 
-from apps.common.ddd import feature_from_run_id
+from apps.common.ddd import narrative_slug_from_run_id
 from apps.reviews.models import ReviewRequest
 from apps.runs.inference import infer
 from apps.walkthroughs.models import Walkthrough
 
 
 class Command(BaseCommand):
-    help = "Infer run_id/feature for walkthroughs uploaded before the DDD contract."
+    help = "Infer run_id/narrative_slug for walkthroughs uploaded before the DDD contract."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -36,7 +36,7 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         dry = opts["dry_run"]
 
-        # walkthrough_id -> (run_id, feature, source)
+        # walkthrough_id -> (run_id, narrative_slug, source)
         planned: dict[str, tuple[str, str, str]] = {}
 
         # 1. Authoritative: review.request_json.video.walkthrough_id
@@ -49,7 +49,7 @@ class Command(BaseCommand):
             w = Walkthrough.objects.filter(pk=wid).first()
             if w is None or w.run_id:
                 continue
-            planned[str(w.id)] = (r.run_id, feature_from_run_id(r.run_id), "review")
+            planned[str(w.id)] = (r.run_id, narrative_slug_from_run_id(r.run_id), "review")
 
         # 2. Title inference for the rest.
         for w in Walkthrough.objects.filter(run_id__isnull=True):
@@ -59,25 +59,25 @@ class Command(BaseCommand):
             if result is None:
                 self.stdout.write(f"  [skip — unclassifiable] {w.id} :: {w.title}")
                 continue
-            feature, run_id = result
-            planned[str(w.id)] = (run_id, feature, "title")
+            narrative_slug, run_id = result
+            planned[str(w.id)] = (run_id, narrative_slug, "title")
 
         if not planned:
             self.stdout.write("Nothing to backfill.")
             return
 
         # Group the plan by narrative for a readable summary.
-        by_feature: dict[str, set[str]] = collections.defaultdict(set)
-        for _wid, (run_id, feature, _src) in planned.items():
-            by_feature[feature].add(run_id)
+        by_narrative_slug: dict[str, set[str]] = collections.defaultdict(set)
+        for _wid, (run_id, narrative_slug, _src) in planned.items():
+            by_narrative_slug[narrative_slug].add(run_id)
 
         self.stdout.write("Plan (narrative -> runs -> artifacts):")
-        for feature in sorted(by_feature):
-            runs = by_feature[feature]
+        for narrative_slug in sorted(by_narrative_slug):
+            runs = by_narrative_slug[narrative_slug]
             n_art = sum(
-                1 for v in planned.values() if v[1] == feature
+                1 for v in planned.values() if v[1] == narrative_slug
             )
-            self.stdout.write(f"  {feature}: {len(runs)} run(s), {n_art} artifact(s)")
+            self.stdout.write(f"  {narrative_slug}: {len(runs)} run(s), {n_art} artifact(s)")
             for rid in sorted(runs):
                 arts = [wid for wid, v in planned.items() if v[0] == rid]
                 self.stdout.write(f"      {rid}  ({len(arts)})")
@@ -87,15 +87,15 @@ class Command(BaseCommand):
             return
 
         written = 0
-        for wid, (run_id, feature, _src) in planned.items():
+        for wid, (run_id, narrative_slug, _src) in planned.items():
             w = Walkthrough.objects.get(pk=wid)
             fields = []
             if run_id and not w.run_id:
                 w.run_id = run_id
                 fields.append("run_id")
-            if feature and not w.feature:
-                w.feature = feature
-                fields.append("feature")
+            if narrative_slug and not w.narrative_slug:
+                w.narrative_slug = narrative_slug
+                fields.append("narrative_slug")
             if fields:
                 w.save(update_fields=[*fields, "updated_at"])
                 written += 1

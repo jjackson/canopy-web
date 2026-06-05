@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from apps.common.ddd import feature_from_run_id
+from apps.common.ddd import narrative_slug_from_run_id
 from apps.reviews.models import ReviewRequest
 from apps.walkthroughs.models import Walkthrough
 
@@ -35,11 +35,11 @@ def _is_deck(w: Walkthrough) -> bool:
 
 
 def narrative_of_walkthrough(w: Walkthrough) -> str:
-    return (w.feature or "").strip() or feature_from_run_id(w.run_id or "")
+    return (w.narrative_slug or "").strip() or narrative_slug_from_run_id(w.run_id or "")
 
 
 def narrative_of_review(r: ReviewRequest) -> str:
-    return (getattr(r, "feature", None) or "").strip() or feature_from_run_id(r.run_id)
+    return (getattr(r, "narrative_slug", None) or "").strip() or narrative_slug_from_run_id(r.run_id)
 
 
 def _is_narrative_version(r: ReviewRequest) -> bool:
@@ -48,26 +48,26 @@ def _is_narrative_version(r: ReviewRequest) -> bool:
     return _review_has_narrative(r) and r.gate != "external_release"
 
 
-def _narrative_versions_for(feature: str) -> list[ReviewRequest]:
-    """Narrative-version reviews for a feature, oldest version first."""
+def _narrative_versions_for(narrative_slug: str) -> list[ReviewRequest]:
+    """Narrative-version reviews for a narrative_slug, oldest version first."""
     out = [
         r
         for r in ReviewRequest.objects.all()
-        if narrative_of_review(r) == feature and _is_narrative_version(r)
+        if narrative_of_review(r) == narrative_slug and _is_narrative_version(r)
     ]
     out.sort(key=lambda r: (r.version, r.created_at))
     return out
 
 
-def has_narrative_version(feature: str) -> bool:
-    """True iff ``feature`` has at least one story-bearing narrative version.
+def has_narrative_version(narrative_slug: str) -> bool:
+    """True iff ``narrative_slug`` has at least one story-bearing narrative version.
 
     A narrative version is a ``concept_change`` review carrying a story (see
     :func:`_is_narrative_version`) — i.e. the ``ddd-narrative-review`` gate ran
-    for this narrative. When this is False, any run uploaded under ``feature``
+    for this narrative. When this is False, any run uploaded under ``narrative_slug``
     renders as **"no narrative"**, so the upload path refuses to publish it.
     """
-    return bool(_narrative_versions_for((feature or "").strip()))
+    return bool(_narrative_versions_for((narrative_slug or "").strip()))
 
 
 def _narrative_payload(r: ReviewRequest | None) -> dict | None:
@@ -90,21 +90,21 @@ def _narrative_payload(r: ReviewRequest | None) -> dict | None:
 def narrative_for_run_id(run_id: str, feature_map: dict[str, str] | None = None) -> str:
     """Narrative slug for a run.
 
-    The explicitly-uploaded ``feature`` of any walkthrough in the run is the
+    The explicitly-uploaded ``narrative_slug`` of any walkthrough in the run is the
     source of truth (the plugin sends it). Parsing the run_id slug
-    (:func:`feature_from_run_id`) is only a last-resort fallback for runs that
-    have no walkthrough carrying an explicit feature (e.g. a review-only run).
+    (:func:`narrative_slug_from_run_id`) is only a last-resort fallback for runs that
+    have no walkthrough carrying an explicit narrative_slug (e.g. a review-only run).
     """
     if feature_map and feature_map.get(run_id):
         return feature_map[run_id]
-    return feature_from_run_id(run_id)
+    return narrative_slug_from_run_id(run_id)
 
 
-def _feature_map(walkthroughs) -> dict[str, str]:
-    """run_id -> explicit feature, from walkthroughs that carry both."""
+def _narrative_slug_map(walkthroughs) -> dict[str, str]:
+    """run_id -> explicit narrative_slug, from walkthroughs that carry both."""
     m: dict[str, str] = {}
     for w in walkthroughs:
-        feat = (getattr(w, "feature", None) or "").strip()
+        feat = (getattr(w, "narrative_slug", None) or "").strip()
         if w.run_id and feat:
             m.setdefault(w.run_id, feat)
     return m
@@ -199,11 +199,11 @@ def build_run(run_id: str) -> dict | None:
         lambda w: w.kind == Walkthrough.KIND_HTML,
     )
 
-    # Explicit feature (uploaded by the plugin) wins; run_id parsing is fallback.
-    explicit_feature = next(
-        (w.feature for w in wts if (w.feature or "").strip()), None
+    # Explicit narrative_slug (uploaded by the plugin) wins; run_id parsing is fallback.
+    explicit_narrative_slug = next(
+        (w.narrative_slug for w in wts if (w.narrative_slug or "").strip()), None
     )
-    narrative_slug = explicit_feature or feature_from_run_id(run_id)
+    narrative_slug = explicit_narrative_slug or narrative_slug_from_run_id(run_id)
 
     # The narrative VERSION this run rendered. Prefer the explicit stamp
     # (narrative_review_id on the run's artifacts); else the run's own
@@ -289,13 +289,13 @@ def _runs_in_narrative(slug: str) -> dict[str, datetime]:
     wq = (
         Walkthrough.objects.exclude(run_id__isnull=True)
         .exclude(run_id="")
-        .values_list("run_id", "feature", "created_at")
+        .values_list("run_id", "narrative_slug", "created_at")
     )
-    for run_id, feature, created_at in wq:
-        feat = (feature or "").strip()
+    for run_id, narrative_slug, created_at in wq:
+        feat = (narrative_slug or "").strip()
         if run_id and feat:
             feature_map.setdefault(run_id, feat)
-        s = feat or feature_from_run_id(run_id)
+        s = feat or narrative_slug_from_run_id(run_id)
         if s != slug:
             continue
         if run_id not in out or created_at > out[run_id]:
@@ -352,7 +352,7 @@ def _aggregate(project: str | None, owner_id: int | None) -> dict[str, dict]:
     )
     revs = list(ReviewRequest.objects.all())
 
-    feature_map = _feature_map(wts)
+    feature_map = _narrative_slug_map(wts)
 
     narr: dict[str, dict] = {}
     for w in wts:

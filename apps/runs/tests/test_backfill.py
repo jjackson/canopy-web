@@ -27,7 +27,7 @@ def test_backfill_from_review_video_link():
     call_command("backfill_run_ids", stdout=StringIO())
     w.refresh_from_db()
     assert w.run_id == "microplans-2026-06-02-001"
-    assert w.feature == "microplans"
+    assert w.narrative_slug == "microplans"
 
 
 def test_backfill_infers_run_from_title():
@@ -35,7 +35,7 @@ def test_backfill_infers_run_from_title():
     w = make_walkthrough(u, kind="video", title="microplans-10-wards iter1 video (2026-06-01-002)")
     call_command("backfill_run_ids", stdout=StringIO())
     w.refresh_from_db()
-    assert w.feature == "microplans-10-wards"
+    assert w.narrative_slug == "microplans-10-wards"
     assert w.run_id == "microplans-10-wards-2026-06-01-002"
 
 
@@ -50,7 +50,7 @@ def test_backfill_dry_run_writes_nothing():
 def test_backfill_skips_existing_run_id():
     u = make_user()
     w = make_walkthrough(
-        u, kind="video", title="microplans-10-wards iter1", run_id="already-2026-01-01-001", feature="already"
+        u, kind="video", title="microplans-10-wards iter1", run_id="already-2026-01-01-001", narrative_slug="already"
     )
     call_command("backfill_run_ids", stdout=StringIO())
     w.refresh_from_db()
@@ -63,4 +63,4 @@ def test_backfill_leaves_unclassifiable_untouched():
     call_command("backfill_run_ids", stdout=StringIO())
     w.refresh_from_db()
     assert w.run_id is None
-    assert w.feature is None
+    assert w.narrative_slug is None

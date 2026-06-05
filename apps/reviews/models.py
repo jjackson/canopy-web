@@ -32,9 +32,9 @@ class ReviewRequest(models.Model):
     run_id = models.CharField(max_length=255, db_index=True)
     # DDD narrative identity (the stable narrative_id) + version. A ReviewRequest
     # that carries a narrative IS a narrative version; `version` is monotonic per
-    # `feature`, assigned server-side on create. `feature` falls back to the
+    # `narrative_slug`, assigned server-side on create. `narrative_slug` falls back to the
     # run_id slug when the client doesn't send it explicitly.
-    feature = models.CharField(max_length=200, blank=True, null=True, db_index=True)
+    narrative_slug = models.CharField(max_length=200, blank=True, null=True, db_index=True)
     version = models.IntegerField(default=1, db_index=True)
     gate = models.CharField(max_length=128)
     status = models.CharField(
@@ -61,19 +61,19 @@ class ReviewRequest(models.Model):
         indexes = [
             models.Index(fields=["run_id", "-created_at"]),
             models.Index(fields=["status", "-created_at"]),
-            models.Index(fields=["feature", "version"]),
+            models.Index(fields=["narrative_slug", "version"]),
         ]
 
     def __str__(self):
         return f"ReviewRequest({self.run_id!r}, gate={self.gate!r}, status={self.status})"
 
     @classmethod
-    def next_version(cls, feature: str) -> int:
-        """Next monotonic narrative version for a feature (1-based)."""
-        if not feature:
+    def next_version(cls, narrative_slug: str) -> int:
+        """Next monotonic narrative version for a narrative_slug (1-based)."""
+        if not narrative_slug:
             return 1
         latest = (
-            cls.objects.filter(feature=feature)
+            cls.objects.filter(narrative_slug=narrative_slug)
             .order_by("-version")
             .values_list("version", flat=True)
             .first()
