@@ -4,9 +4,20 @@ from __future__ import annotations
 
 import datetime as dt
 
+from django.utils import timezone
+
 from apps.projects.models import Project
 
 from .models import Shareout
+
+
+def _aware(value):
+    """Treat a naive datetime as UTC so a client that posts `...T09:15:00`
+    (no offset) doesn't trip Django's naive-datetime warning or land in the
+    server's local zone."""
+    if isinstance(value, dt.datetime) and timezone.is_naive(value):
+        return value.replace(tzinfo=dt.timezone.utc)
+    return value
 
 
 def _resolve_project(slug: str | None) -> tuple[Project | None, bool]:
@@ -42,17 +53,19 @@ def upsert_shareouts(items: list) -> dict:
             skipped += 1
             continue
 
+        period_start = _aware(item.period_start)
+        period_end = _aware(item.period_end)
         group = (
             project.pk if project else None,
-            item.period_start,
-            item.period_end,
+            period_start,
+            period_end,
             item.source,
         )
         if group not in cleared_groups:
             existing = Shareout.objects.filter(
                 project=project,
-                period_start=item.period_start,
-                period_end=item.period_end,
+                period_start=period_start,
+                period_end=period_end,
                 source=item.source,
             )
             replaced += existing.count()
@@ -61,8 +74,8 @@ def upsert_shareouts(items: list) -> dict:
 
         Shareout.objects.create(
             project=project,
-            period_start=item.period_start,
-            period_end=item.period_end,
+            period_start=period_start,
+            period_end=period_end,
             title=item.title,
             summary=item.summary,
             content=item.content,
@@ -93,9 +106,9 @@ def list_shareouts(
     limit = min(max(limit, 0), 500)
     qs = Shareout.objects.select_related("project").all()
     if date_from is not None:
-        qs = qs.filter(period_end__gte=date_from)
+        qs = qs.filter(period_end__date__gte=date_from)
     if date_to is not None:
-        qs = qs.filter(period_start__lte=date_to)
+        qs = qs.filter(period_start__date__lte=date_to)
     if project:
         qs = qs.filter(project__slug=project)
 
