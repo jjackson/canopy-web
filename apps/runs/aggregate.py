@@ -59,6 +59,17 @@ def _narrative_versions_for(feature: str) -> list[ReviewRequest]:
     return out
 
 
+def has_narrative_version(feature: str) -> bool:
+    """True iff ``feature`` has at least one story-bearing narrative version.
+
+    A narrative version is a ``concept_change`` review carrying a story (see
+    :func:`_is_narrative_version`) — i.e. the ``ddd-narrative-review`` gate ran
+    for this narrative. When this is False, any run uploaded under ``feature``
+    renders as **"no narrative"**, so the upload path refuses to publish it.
+    """
+    return bool(_narrative_versions_for((feature or "").strip()))
+
+
 def _narrative_payload(r: ReviewRequest | None) -> dict | None:
     if r is None:
         return None
