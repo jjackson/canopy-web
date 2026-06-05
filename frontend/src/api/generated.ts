@@ -838,9 +838,9 @@ export interface paths {
          * @description List every review request for the DDD-plans dashboard.
          *
          *     Team-internal: any authenticated user (session or PAT) sees all reviews —
-         *     same read rule as GET /<id>/. Supports a free-text `q` (matches feature,
+         *     same read rule as GET /<id>/. Supports a free-text `q` (matches narrative_slug,
          *     run_id, gate, or title), an optional `status` filter (pending|resolved),
-         *     and `order` ∈ {-last_activity, last_activity, -created, created, feature}.
+         *     and `order` ∈ {-last_activity, last_activity, -created, created, narrative_slug}.
          *     Default sort is most-recently-edited first.
          */
         readonly get: operations["apps_reviews_api_list_reviews"];
@@ -1972,8 +1972,8 @@ export interface components {
             readonly duration_sec?: number | null;
             /** Run Id */
             readonly run_id?: string | null;
-            /** Feature */
-            readonly feature?: string | null;
+            /** Narrative Slug */
+            readonly narrative_slug?: string | null;
             /** Role */
             readonly role?: string | null;
             /**
@@ -2056,8 +2056,8 @@ export interface components {
             readonly duration_sec?: number | null;
             /** Run Id */
             readonly run_id?: string | null;
-            /** Feature */
-            readonly feature?: string | null;
+            /** Narrative Slug */
+            readonly narrative_slug?: string | null;
             /** Role */
             readonly role?: string | null;
             /**
@@ -2158,8 +2158,8 @@ export interface components {
              * @enum {string}
              */
             readonly visibility: "private" | "link";
-            /** Feature */
-            readonly feature: string;
+            /** Narrative Slug */
+            readonly narrative_slug: string;
             /** Title */
             readonly title?: string | null;
             /**
@@ -2227,8 +2227,8 @@ export interface components {
             readonly id: string;
             /** Run Id */
             readonly run_id: string;
-            /** Feature */
-            readonly feature: string;
+            /** Narrative Slug */
+            readonly narrative_slug: string;
             /** Gate */
             readonly gate: string;
             /**
@@ -3773,10 +3773,10 @@ export interface operations {
                      */
                     readonly run_id?: string;
                     /**
-                     * Feature
+                     * Narrative Slug
                      * @default
                      */
-                    readonly feature?: string;
+                    readonly narrative_slug?: string;
                     /**
                      * Role
                      * @default

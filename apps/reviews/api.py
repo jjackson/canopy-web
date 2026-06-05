@@ -26,7 +26,7 @@ from ninja import Router, Status
 
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, ProblemError
-from apps.common.ddd import feature_from_run_id
+from apps.common.ddd import narrative_slug_from_run_id
 
 from .models import ReviewRequest
 from .schemas import (
@@ -93,8 +93,8 @@ def _detail_payload(review: ReviewRequest, *, is_owner: bool, expose_token: bool
         "gate": review.gate,
         "status": review.status,
         "visibility": review.visibility,
-        "feature": (getattr(review, "feature", None) or "").strip()
-        or feature_from_run_id(review.run_id),
+        "narrative_slug": (getattr(review, "narrative_slug", None) or "").strip()
+        or narrative_slug_from_run_id(review.run_id),
         "request_json": review.request_json,
         "response_json": review.response_json,
         # share_token exposed to owner OR link-token holders (they demonstrably
@@ -129,7 +129,7 @@ def _list_item_payload(request: HttpRequest, review: ReviewRequest) -> dict:
         "gate": review.gate,
         "status": review.status,
         "visibility": review.visibility,
-        "feature": feature_from_run_id(review.run_id),
+        "narrative_slug": narrative_slug_from_run_id(review.run_id),
         "title": _list_title(rj),
         "scene_count": len(narration) if isinstance(narration, list) else 0,
         "created_at": review.created_at,
@@ -164,9 +164,9 @@ def list_reviews(
     List every review request for the DDD-plans dashboard.
 
     Team-internal: any authenticated user (session or PAT) sees all reviews —
-    same read rule as GET /<id>/. Supports a free-text `q` (matches feature,
+    same read rule as GET /<id>/. Supports a free-text `q` (matches narrative_slug,
     run_id, gate, or title), an optional `status` filter (pending|resolved),
-    and `order` ∈ {-last_activity, last_activity, -created, created, feature}.
+    and `order` ∈ {-last_activity, last_activity, -created, created, narrative_slug}.
     Default sort is most-recently-edited first.
     """
     qs = ReviewRequest.objects.all()
@@ -174,7 +174,7 @@ def list_reviews(
         qs = qs.filter(status=status)
 
     # Build derived rows once, then filter/sort in Python — the review set is
-    # team-internal and small, and feature/title live inside the JSON payload.
+    # team-internal and small, and narrative_slug/title live inside the JSON payload.
     items = [_list_item_payload(request, r) for r in qs.iterator()]
 
     needle = q.strip().lower()
@@ -182,7 +182,7 @@ def list_reviews(
         items = [
             it
             for it in items
-            if needle in it["feature"].lower()
+            if needle in it["narrative_slug"].lower()
             or needle in it["run_id"].lower()
             or needle in it["gate"].lower()
             or needle in (it["title"] or "").lower()
@@ -193,7 +193,7 @@ def list_reviews(
         "last_activity": (lambda it: it["last_activity_at"], False),
         "-created": (lambda it: it["created_at"], True),
         "created": (lambda it: it["created_at"], False),
-        "feature": (lambda it: it["feature"].lower(), False),
+        "narrative_slug": (lambda it: it["narrative_slug"].lower(), False),
     }
     key_fn, reverse = sort_keys.get(order, sort_keys["-last_activity"])
     items.sort(key=key_fn, reverse=reverse)
@@ -222,20 +222,20 @@ def create_review(request: HttpRequest, payload: ReviewCreateIn) -> Status:
     run_id = str(request_json.get("run_id", ""))
     gate = str(request_json.get("gate", ""))
 
-    # Narrative identity + version. `feature` (narrative_id) is explicit when the
+    # Narrative identity + version. `narrative_slug` (narrative_id) is explicit when the
     # plugin sends it, else derived from the run_id slug. A narrative-agreement
     # review (gate concept_change) opens a NEW version; other gates attach to the
     # current version so version numbers stay clean (1, 2, 3, …).
-    feature = (request_json.get("feature") or feature_from_run_id(run_id)) or None
+    narrative_slug = (request_json.get("narrative_slug") or narrative_slug_from_run_id(run_id)) or None
     is_narrative_gate = gate in ("concept_change", "narrative-agreement")
     if is_narrative_gate:
-        version = ReviewRequest.next_version(feature)
+        version = ReviewRequest.next_version(narrative_slug)
     else:
-        version = max(ReviewRequest.next_version(feature) - 1, 1)
+        version = max(ReviewRequest.next_version(narrative_slug) - 1, 1)
 
     review = ReviewRequest.objects.create(
         run_id=run_id,
-        feature=feature,
+        narrative_slug=narrative_slug,
         version=version,
         gate=gate,
         status=ReviewRequest.STATUS_PENDING,

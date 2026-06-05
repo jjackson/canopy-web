@@ -16,9 +16,9 @@ class ReviewRequestOut(StrictModel):
 
     id: uuid.UUID
     run_id: str
-    # Narrative slug this review belongs to (explicit feature, else derived from
+    # Narrative slug this review belongs to (explicit narrative_slug, else derived from
     # run_id) — lets the DDD shell highlight the right narrative on the editor.
-    feature: str
+    narrative_slug: str
     gate: str
     status: ReviewStatus
     visibility: ReviewVisibility
@@ -39,7 +39,7 @@ class ReviewListItemOut(StrictModel):
     status: ReviewStatus
     visibility: ReviewVisibility
     # Derived from request_json for a scannable list — never the raw payload.
-    feature: str
+    narrative_slug: str
     title: str | None = None
     scene_count: int = 0
     created_at: dt.datetime

@@ -24,7 +24,7 @@ from apps.api.errors import (
     ProblemError,
 )
 
-from apps.common.ddd import feature_from_run_id
+from apps.common.ddd import narrative_slug_from_run_id
 from apps.runs.aggregate import has_narrative_version
 
 from . import storage
@@ -97,7 +97,7 @@ def _detail_payload(w: Walkthrough, *, is_owner: bool) -> dict:
         "is_owner": is_owner,
         "links": w.links or [],
         "run_id": w.run_id,
-        "feature": w.feature,
+        "narrative_slug": w.narrative_slug,
         "role": w.role,
         "created_at": w.created_at,
         "updated_at": w.updated_at,
@@ -116,7 +116,7 @@ def _list_item_payload(w: Walkthrough) -> dict:
         "size_bytes": w.size_bytes,
         "duration_sec": w.duration_sec,
         "run_id": w.run_id,
-        "feature": w.feature,
+        "narrative_slug": w.narrative_slug,
         "role": w.role,
         "created_at": w.created_at,
         "updated_at": w.updated_at,
@@ -150,7 +150,7 @@ def upload_walkthrough(
     visibility: WalkthroughVisibility = Form("private"),
     links: str = Form(""),
     run_id: str = Form(""),
-    feature: str = Form(""),
+    narrative_slug: str = Form(""),
     role: str = Form(""),
     narrative_review_id: str = Form(""),
 ) -> Status:
@@ -173,12 +173,12 @@ def upload_walkthrough(
     filename = FILENAME_BY_KIND[kind]
     data = file.read()
 
-    # DDD-run grouping (optional). feature defaults to the narrative slug
+    # DDD-run grouping (optional). narrative_slug defaults to the narrative slug
     # derived from run_id when the uploader didn't send one explicitly.
     resolved_run_id = run_id.strip() or None
-    resolved_feature = feature.strip() or None
-    if resolved_run_id and not resolved_feature:
-        resolved_feature = feature_from_run_id(resolved_run_id)
+    resolved_narrative_slug = narrative_slug.strip() or None
+    if resolved_run_id and not resolved_narrative_slug:
+        resolved_narrative_slug = narrative_slug_from_run_id(resolved_run_id)
     resolved_role = role.strip() or None
     # The narrative version (ReviewRequest.id) this run rendered. Ignore a
     # malformed value rather than 500 — it's optional grouping metadata.
@@ -197,9 +197,9 @@ def upload_walkthrough(
     # older plugin versions or manual uploads.
     if (
         resolved_role in _NARRATIVE_REQUIRED_ROLES
-        and resolved_feature
+        and resolved_narrative_slug
         and resolved_review_id is None
-        and not has_narrative_version(resolved_feature)
+        and not has_narrative_version(resolved_narrative_slug)
     ):
         raise ProblemError(
             409,
@@ -207,7 +207,7 @@ def upload_walkthrough(
             type_=TYPE_CONFLICT,
             detail=(
                 f"Refusing to publish a {resolved_role!r} artifact for narrative "
-                f"{resolved_feature!r}: it has no narrative version, so the run "
+                f"{resolved_narrative_slug!r}: it has no narrative version, so the run "
                 f"would render as \"no narrative\". Run the ddd-narrative-review "
                 f"gate for this run first, then re-upload."
             ),
@@ -223,7 +223,7 @@ def upload_walkthrough(
         visibility=visibility,
         links=resolved_links,
         run_id=resolved_run_id,
-        feature=resolved_feature,
+        narrative_slug=resolved_narrative_slug,
         role=resolved_role,
         narrative_review_id=resolved_review_id,
         drive_file_id="",

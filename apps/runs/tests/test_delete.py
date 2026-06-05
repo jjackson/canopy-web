@@ -34,7 +34,7 @@ def client(owner):
 
 def test_delete_run_removes_walkthroughs_and_reviews(client, owner):
     rid = "a-2026-06-01-001"
-    make_walkthrough(owner, kind="video", run_id=rid, feature="a", role="hero_video")
+    make_walkthrough(owner, kind="video", run_id=rid, narrative_slug="a", role="hero_video")
     make_review(owner, run_id=rid, request_json={**NARR_JSON, "run_id": rid}, version=1)
 
     resp = client.delete(f"{BASE}/runs/{rid}/")
@@ -63,7 +63,7 @@ def test_delete_version_removes_its_runs_and_story(client, owner):
         owner,
         kind="video",
         run_id=render_rid,
-        feature="a",
+        narrative_slug="a",
         role="hero_video",
         narrative_review_id=version_review.id,
     )
@@ -76,14 +76,14 @@ def test_delete_version_removes_its_runs_and_story(client, owner):
 
 
 def test_delete_version_404(client, owner):
-    make_walkthrough(owner, kind="video", run_id="a-2026-06-01-001", feature="a")
+    make_walkthrough(owner, kind="video", run_id="a-2026-06-01-001", narrative_slug="a")
     # Narrative exists but has no version 9.
     assert client.delete(f"{BASE}/narratives/a/versions/9/").status_code == 404
 
 
 def test_delete_narrative_removes_everything(client, owner):
-    make_walkthrough(owner, kind="video", run_id="a-2026-06-01-001", feature="a")
-    make_walkthrough(owner, kind="html", run_id="a-2026-06-02-002", feature="a")
+    make_walkthrough(owner, kind="video", run_id="a-2026-06-01-001", narrative_slug="a")
+    make_walkthrough(owner, kind="html", run_id="a-2026-06-02-002", narrative_slug="a")
     make_review(
         owner,
         run_id="a-2026-05-31-001",
@@ -91,11 +91,11 @@ def test_delete_narrative_removes_everything(client, owner):
         version=1,
     )
     # An unrelated narrative must survive.
-    make_walkthrough(owner, kind="video", run_id="b-2026-06-01-001", feature="b")
+    make_walkthrough(owner, kind="video", run_id="b-2026-06-01-001", narrative_slug="b")
 
     resp = client.delete(f"{BASE}/narratives/a/")
     assert resp.status_code == 204, resp.content
-    assert not Walkthrough.objects.filter(feature="a").exists()
+    assert not Walkthrough.objects.filter(narrative_slug="a").exists()
     assert not ReviewRequest.objects.filter(run_id__startswith="a-").exists()
     assert client.get(f"{BASE}/narratives/a/").status_code == 404
     # Sibling untouched.

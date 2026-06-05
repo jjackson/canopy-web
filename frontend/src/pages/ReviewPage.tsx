@@ -1693,7 +1693,7 @@ export function ReviewPage() {
   const showShell = !shareToken && auth.status === 'authenticated'
   const withChrome = (node: ReactNode) =>
     showShell ? (
-      <DddShell activeSlug={review?.feature} activeRunId={review?.run_id}>
+      <DddShell activeSlug={review?.narrative_slug} activeRunId={review?.run_id}>
         {node}
       </DddShell>
     ) : (

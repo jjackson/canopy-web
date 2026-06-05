@@ -553,17 +553,17 @@ _DDD_SETTINGS = dict(
 )
 
 
-def _make_narrative_version(feature, run_id):
-    """A story-bearing concept_change review = a narrative version for `feature`."""
+def _make_narrative_version(narrative_slug, run_id):
+    """A story-bearing concept_change review = a narrative version for `narrative_slug`."""
     from apps.reviews.models import ReviewRequest
 
     return ReviewRequest.objects.create(
         run_id=run_id,
-        feature=feature,
+        narrative_slug=narrative_slug,
         version=1,
         gate="concept_change",
         status=ReviewRequest.STATUS_PENDING,
-        request_json={"run_id": run_id, "feature": feature, "narrative": "A story."},
+        request_json={"run_id": run_id, "narrative_slug": narrative_slug, "narrative": "A story."},
     )
 
 
@@ -576,7 +576,7 @@ def test_hero_video_without_narrative_is_refused(auth_client, fake_drive, owner)
             "file": _file_part("video.mp4", b"\x00\x00", "video/mp4"),
             "title": "hero", "kind": "video",
             "run_id": "verified-monitoring-2026-06-04-001",
-            "feature": "verified-monitoring",
+            "narrative_slug": "verified-monitoring",
             "role": "hero_video",
         },
         format="multipart",
@@ -584,7 +584,7 @@ def test_hero_video_without_narrative_is_refused(auth_client, fake_drive, owner)
     assert resp.status_code == 409, resp.content
     assert "no narrative" in resp.json().get("detail", "").lower()
     # Nothing persisted.
-    assert not Walkthrough.objects.filter(feature="verified-monitoring").exists()
+    assert not Walkthrough.objects.filter(narrative_slug="verified-monitoring").exists()
 
 
 @pytest.mark.django_db
@@ -596,7 +596,7 @@ def test_docs_without_narrative_is_refused(auth_client, fake_drive, owner):
             "file": _file_part("slideshow.html", b"<html></html>", "text/html"),
             "title": "deck", "kind": "html",
             "run_id": "verified-monitoring-2026-06-04-001",
-            "feature": "verified-monitoring",
+            "narrative_slug": "verified-monitoring",
             "role": "docs",
         },
         format="multipart",
@@ -614,7 +614,7 @@ def test_hero_video_with_narrative_is_allowed(auth_client, fake_drive, owner):
             "file": _file_part("video.mp4", b"\x00\x00", "video/mp4"),
             "title": "hero", "kind": "video",
             "run_id": "verified-monitoring-2026-06-04-001",
-            "feature": "verified-monitoring",
+            "narrative_slug": "verified-monitoring",
             "role": "hero_video",
         },
         format="multipart",
@@ -632,7 +632,7 @@ def test_stamped_review_id_bypasses_server_check(auth_client, fake_drive, owner)
             "file": _file_part("video.mp4", b"\x00\x00", "video/mp4"),
             "title": "hero", "kind": "video",
             "run_id": "verified-monitoring-2026-06-04-001",
-            "feature": "verified-monitoring",
+            "narrative_slug": "verified-monitoring",
             "role": "hero_video",
             "narrative_review_id": str(uuid.uuid4()),
         },
@@ -655,7 +655,7 @@ def test_intermediate_deck_clip_not_guarded(auth_client, fake_drive, owner):
                 "file": _file_part(fname, b"\x00\x00", ct),
                 "title": role, "kind": kind,
                 "run_id": "verified-monitoring-2026-06-04-001",
-                "feature": "verified-monitoring",
+                "narrative_slug": "verified-monitoring",
                 "role": role,
             },
             format="multipart",
@@ -666,7 +666,7 @@ def test_intermediate_deck_clip_not_guarded(auth_client, fake_drive, owner):
 @pytest.mark.django_db
 @override_settings(**_DDD_SETTINGS)
 def test_non_ddd_walkthrough_share_not_guarded(auth_client, fake_drive, owner):
-    """A plain walkthrough-share upload (no role, no feature) is unaffected."""
+    """A plain walkthrough-share upload (no role, no narrative_slug) is unaffected."""
     resp = auth_client.post(
         f"{BASE}/",
         data={

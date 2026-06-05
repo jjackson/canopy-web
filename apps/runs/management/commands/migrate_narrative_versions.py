@@ -2,11 +2,11 @@
 
 Idempotent, DB-only (no Drive deletes — artifact cleanup goes through the API):
 
-1. ``ReviewRequest.feature`` = the narrative slug (explicit, else from run_id).
-2. ``ReviewRequest.version`` = monotonic per feature, narrative-version reviews
+1. ``ReviewRequest.narrative_slug`` = the narrative slug (explicit, else from run_id).
+2. ``ReviewRequest.version`` = monotonic per narrative_slug, narrative-version reviews
    (story-bearing, non-external_release) numbered 1..N by created_at; other
    reviews share the current version.
-3. ``Walkthrough.narrative_review_id`` = the feature's current (latest) narrative
+3. ``Walkthrough.narrative_review_id`` = the narrative_slug's current (latest) narrative
    version, for any run that isn't already stamped — so existing runs link to
    their story.
 
@@ -18,14 +18,14 @@ import collections
 
 from django.core.management.base import BaseCommand
 
-from apps.common.ddd import feature_from_run_id
+from apps.common.ddd import narrative_slug_from_run_id
 from apps.reviews.models import ReviewRequest
 from apps.runs.aggregate import _is_narrative_version, narrative_of_review
 from apps.walkthroughs.models import Walkthrough
 
 
 class Command(BaseCommand):
-    help = "Backfill ReviewRequest.feature/version and Walkthrough.narrative_review_id."
+    help = "Backfill ReviewRequest.narrative_slug/version and Walkthrough.narrative_review_id."
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true")
@@ -34,16 +34,16 @@ class Command(BaseCommand):
         dry = opts["dry_run"]
         reviews = list(ReviewRequest.objects.all())
 
-        # 1 + 2: feature + version, per narrative.
-        by_feature: dict[str, list[ReviewRequest]] = collections.defaultdict(list)
+        # 1 + 2: narrative_slug + version, per narrative.
+        by_narrative_slug: dict[str, list[ReviewRequest]] = collections.defaultdict(list)
         for r in reviews:
             slug = narrative_of_review(r)
-            by_feature[slug].append(r)
+            by_narrative_slug[slug].append(r)
 
         rev_changed = 0
-        # current (latest) narrative-version review id per feature, for stamping.
+        # current (latest) narrative-version review id per narrative_slug, for stamping.
         current_version_id: dict[str, str] = {}
-        for slug, revs in by_feature.items():
+        for slug, revs in by_narrative_slug.items():
             revs.sort(key=lambda r: r.created_at)
             counter = 0
             latest_narr = None
@@ -53,12 +53,12 @@ class Command(BaseCommand):
                     counter += 1
                     latest_narr = r
                 new_version = counter or 1
-                if r.feature != new_feature or r.version != new_version:
+                if r.narrative_slug != new_feature or r.version != new_version:
                     rev_changed += 1
                     if not dry:
-                        r.feature = new_feature
+                        r.narrative_slug = new_feature
                         r.version = new_version
-                        r.save(update_fields=["feature", "version"])
+                        r.save(update_fields=["narrative_slug", "version"])
             if latest_narr is not None:
                 current_version_id[slug] = str(latest_narr.id)
 
@@ -70,7 +70,7 @@ class Command(BaseCommand):
         for w in wts:
             if w.narrative_review_id:
                 continue
-            slug = (w.feature or "").strip() or feature_from_run_id(w.run_id)
+            slug = (w.narrative_slug or "").strip() or narrative_slug_from_run_id(w.run_id)
             rid = current_version_id.get(slug)
             if not rid:
                 continue

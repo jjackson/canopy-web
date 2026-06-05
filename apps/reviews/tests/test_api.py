@@ -411,8 +411,8 @@ def test_list_returns_all_with_derived_fields(auth_client, owner):
     rows = resp.json()
     assert len(rows) == 1
     row = rows[0]
-    # run_id stamp stripped → clean feature label
-    assert row["feature"] == "microplans-study-design"
+    # run_id stamp stripped → clean narrative_slug label
+    assert row["narrative_slug"] == "microplans-study-design"
     # title is the narrative's first line
     assert row["title"] == "Maya turns delivery into a defensible study."
     assert row["scene_count"] == 2
@@ -424,14 +424,14 @@ def test_list_returns_all_with_derived_fields(auth_client, owner):
 
 @pytest.mark.django_db
 def test_list_search_filters_by_feature(auth_client, owner):
-    _make_review(owner, run_id="alpha-feature-2026-05-01-001")
+    _make_review(owner, run_id="alpha-narrative_slug-2026-05-01-001")
     _make_review(owner, run_id="beta-thing-2026-05-01-001")
 
     resp = auth_client.get(f"{BASE}/?q=beta")
     assert resp.status_code == 200, resp.content
     rows = resp.json()
     assert len(rows) == 1
-    assert rows[0]["feature"] == "beta-thing"
+    assert rows[0]["narrative_slug"] == "beta-thing"
 
 
 @pytest.mark.django_db
@@ -462,7 +462,7 @@ def test_list_orders_by_last_activity_desc_by_default(auth_client, owner):
 
     resp = auth_client.get(f"{BASE}/")
     assert resp.status_code == 200, resp.content
-    features = [r["feature"] for r in resp.json()]
+    features = [r["narrative_slug"] for r in resp.json()]
     assert features[0] == "older"  # most-recently-edited first
 
 

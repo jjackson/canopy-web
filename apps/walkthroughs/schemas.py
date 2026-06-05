@@ -45,7 +45,7 @@ class WalkthroughListItemOut(StrictModel):
     duration_sec: int | None = None
     # DDD-run grouping (null for one-off uploads).
     run_id: str | None = None
-    feature: str | None = None
+    narrative_slug: str | None = None
     role: str | None = None
     created_at: dt.datetime
     updated_at: dt.datetime
@@ -74,7 +74,7 @@ class WalkthroughUploadIn(StrictModel):
     visibility: WalkthroughVisibility = "private"
     links: list[WalkthroughLink] = []
     run_id: str = ""
-    feature: str = ""
+    narrative_slug: str = ""
     role: str = ""
 
 
