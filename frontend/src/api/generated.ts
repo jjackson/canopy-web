@@ -2487,7 +2487,8 @@ export interface components {
             /** Phase */
             readonly phase?: string | null;
             readonly video?: components["schemas"]["RunArtifactOut"] | null;
-            readonly deck?: components["schemas"]["RunArtifactOut"] | null;
+            readonly slides?: components["schemas"]["RunArtifactOut"] | null;
+            readonly documentation?: components["schemas"]["RunArtifactOut"] | null;
             readonly narrative?: components["schemas"]["RunNarrativeOut"] | null;
             /**
              * Links
