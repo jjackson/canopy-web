@@ -2387,13 +2387,6 @@ export interface components {
              */
             readonly runs: readonly components["schemas"]["NarrativeRunOut"][];
         };
-        /** PreviousRunOut */
-        readonly PreviousRunOut: {
-            /** Run Id */
-            readonly run_id: string;
-            /** Latest At */
-            readonly latest_at?: string | null;
-        };
         /** RunArtifactOut */
         readonly RunArtifactOut: {
             /**
@@ -2500,11 +2493,6 @@ export interface components {
              * @default []
              */
             readonly all_artifacts: readonly components["schemas"]["RunArtifactRefOut"][];
-            /**
-             * Previous Runs
-             * @default []
-             */
-            readonly previous_runs: readonly components["schemas"]["PreviousRunOut"][];
         };
         /** Page[ShareoutOut] */
         readonly Page_ShareoutOut_: {
