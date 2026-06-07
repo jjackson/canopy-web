@@ -120,7 +120,10 @@ export interface DddRunPackage {
   latest_at: string | null
   phase: string | null
   video: DddRunArtifact | null
-  deck: DddRunArtifact | null
+  // First-class run outputs. `slides` = the canopy:walkthrough HTML slideshow
+  // (role=deck); `documentation` = the feature docs page (role=docs).
+  slides: DddRunArtifact | null
+  documentation: DddRunArtifact | null
   narrative: DddRunNarrative | null
   links: DddLink[]
   all_artifacts: DddRunArtifactRef[]

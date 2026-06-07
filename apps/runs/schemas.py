@@ -106,7 +106,12 @@ class RunPackageOut(StrictModel):
     latest_at: dt.datetime | None = None
     phase: str | None = None
     video: RunArtifactOut | None = None
-    deck: RunArtifactOut | None = None
+    # First-class, single-valued run outputs. `slides` is the canopy:walkthrough
+    # HTML slideshow (role=deck); `documentation` is the feature docs page
+    # (role=docs). They were previously collapsed into one `deck` field that
+    # picked docs-then-deck, which hid the slides entirely.
+    slides: RunArtifactOut | None = None
+    documentation: RunArtifactOut | None = None
     narrative: RunNarrativeOut | None = None
     links: list[WalkthroughLink] = []
     all_artifacts: list[RunArtifactRefOut] = []

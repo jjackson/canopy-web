@@ -31,30 +31,35 @@ def test_feature_fallbacks():
 # ---------------------------------------------------------------------------
 
 
-def test_build_run_picks_hero_video_and_docs_over_iteration_artifacts():
+def test_build_run_surfaces_video_slides_and_documentation_as_first_class():
     u = make_user()
     rid = "microplans-2026-06-02-001"
     make_walkthrough(u, kind="video", run_id=rid, role="clip", title="iter0 clip")
     hero = make_walkthrough(u, kind="video", run_id=rid, role="hero_video", title="hero")
-    make_walkthrough(u, kind="html", run_id=rid, role="deck", title="iter0 deck")
+    slides = make_walkthrough(u, kind="html", run_id=rid, role="deck", title="slideshow")
     docs = make_walkthrough(u, kind="html", run_id=rid, role="docs", title="docs page")
 
     run = aggregate.build_run(rid)
     assert run is not None
     assert run["video"]["id"] == hero.id
-    assert run["deck"]["id"] == docs.id
+    # slides (role=deck) and documentation (role=docs) are distinct first-class
+    # objects — the slideshow must not be hidden behind the docs page.
+    assert run["slides"]["id"] == slides.id
+    assert run["documentation"]["id"] == docs.id
     assert run["narrative_slug"] == "microplans"
     assert run["video"]["content_url"] == f"/w/{hero.id}/content"
 
 
-def test_build_run_falls_back_to_kind_when_no_role():
+def test_build_run_unroled_html_falls_back_to_documentation():
     u = make_user()
     rid = "calendar-2026-06-01-002"
     vid = make_walkthrough(u, kind="video", run_id=rid)
-    deck = make_walkthrough(u, kind="html", run_id=rid)
+    html = make_walkthrough(u, kind="html", run_id=rid)
     run = aggregate.build_run(rid)
     assert run["video"]["id"] == vid.id
-    assert run["deck"]["id"] == deck.id
+    # An unroled HTML artifact surfaces as documentation, not slides.
+    assert run["documentation"]["id"] == html.id
+    assert run["slides"] is None
 
 
 def test_build_run_returns_none_for_unknown_run():

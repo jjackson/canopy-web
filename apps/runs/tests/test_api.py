@@ -67,7 +67,8 @@ def test_run_package(client, owner):
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert body["video"]["id"] == str(vid.id)
-    assert body["deck"] is not None
+    assert body["documentation"] is not None  # role=docs
+    assert body["slides"] is None  # no role=deck slideshow in this run
     assert body["narrative"]["story"] == "Story line one."
     assert body["narrative"]["review_id"]  # deep-links to /review/<id> for editing
     assert len(body["all_artifacts"]) == 2

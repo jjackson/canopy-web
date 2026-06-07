@@ -116,6 +116,53 @@ def test_upload_walkthrough_html(auth_client, fake_drive, owner):
     assert out.share_token is not None
 
 
+@pytest.mark.django_db
+@override_settings(
+    WALKTHROUGHS_ENABLED=True,
+    CANOPY_DRIVE_ROOT_FOLDER_ID="root-folder",
+    CANOPY_DRIVE_SA_KEY_JSON='{"x":"y"}',
+)
+def test_upload_replaces_same_run_id_and_role(auth_client, fake_drive, owner):
+    """Re-uploading the same (run_id, role) supersedes the prior one, so a run
+    never holds two of the same role. A different role under the same run is
+    untouched."""
+    from apps.walkthroughs.models import Walkthrough
+
+    def _upload(role: str, title: str):
+        return auth_client.post(
+            f"{BASE}/",
+            data={
+                "file": _file_part("a.html", b"<html>x</html>", "text/html"),
+                "title": title,
+                "kind": "html",
+                "visibility": "link",
+                "run_id": "feat-2026-06-01-001",
+                "role": role,
+            },
+            format="multipart",
+        )
+
+    # role=deck (slides) — not narrative-gated, so it exercises the replace path.
+    first = _upload("deck", "slides v1")
+    assert first.status_code == 201
+    first_id = first.json()["id"]
+
+    # Same role, same run → replaces.
+    second = _upload("deck", "slides v2")
+    assert second.status_code == 201
+    second_id = second.json()["id"]
+
+    # Different role, same run → coexists.
+    clip = _upload("clip", "a clip")
+    assert clip.status_code == 201
+
+    rows = Walkthrough.objects.filter(run_id="feat-2026-06-01-001")
+    assert not rows.filter(pk=first_id).exists()  # v1 superseded
+    assert rows.filter(pk=second_id).exists()  # v2 kept
+    assert rows.filter(role="deck").count() == 1
+    assert rows.filter(role="clip").count() == 1
+
+
 # ---------------------------------------------------------------------------
 # 1b. test_upload_with_links round-trips the companion links
 # ---------------------------------------------------------------------------
