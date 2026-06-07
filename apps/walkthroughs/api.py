@@ -263,6 +263,34 @@ def upload_walkthrough(
     if visibility == Walkthrough.VISIBILITY_LINK:
         w.ensure_share_token()
 
+    # Enforce one artifact per (run_id, role): a re-upload of the same role into
+    # the same run REPLACES the prior one (e.g. healing a docs page), so a run
+    # can never accumulate two videos / two slideshows / two docs pages. Genuine
+    # re-renders mint a fresh run_id upstream and are unaffected. Only applies
+    # when both run_id and role are set — roleless / orphan uploads aren't
+    # first-class run objects and are left alone. Runs only after the new row is
+    # safely stored, so a failed upload never destroys the prior good artifact.
+    if resolved_run_id and resolved_role:
+        superseded = Walkthrough.objects.filter(
+            run_id=resolved_run_id, role=resolved_role
+        ).exclude(pk=w.pk)
+        for old in superseded:
+            if old.drive_file_id:
+                try:
+                    storage.delete_stored(
+                        file_id=old.drive_file_id, folder_id=old.drive_folder_id
+                    )
+                except Exception:
+                    # Don't block on a Drive hiccup — an orphan Drive file is
+                    # cheap to sweep later; log loudly.
+                    log.exception(
+                        "upload replace: drive cleanup failed (walkthrough_id=%s, "
+                        "drive_file_id=%s)",
+                        old.id,
+                        old.drive_file_id,
+                    )
+            old.delete()
+
     return Status(201, WalkthroughDetailOut.model_validate(_detail_payload(w, is_owner=True)))
 
 

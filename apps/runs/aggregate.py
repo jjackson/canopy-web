@@ -192,11 +192,17 @@ def build_run(run_id: str) -> dict | None:
         lambda w: w.role == Walkthrough.ROLE_CLIP,
         lambda w: w.kind == Walkthrough.KIND_VIDEO,
     )
-    deck = _pick(
+    # First-class, single-valued outputs (newest of each role). `slides` is the
+    # canopy:walkthrough HTML slideshow (role=deck); `documentation` is the
+    # feature docs page (role=docs). An unroled HTML artifact falls back to
+    # documentation so legacy uploads still surface somewhere, but a role=deck
+    # artifact never leaks into documentation (and vice-versa).
+    slides = _pick(wts, lambda w: w.role == Walkthrough.ROLE_DECK)
+    documentation = _pick(
         wts,
         lambda w: w.role == Walkthrough.ROLE_DOCS,
-        lambda w: w.role == Walkthrough.ROLE_DECK,
-        lambda w: w.kind == Walkthrough.KIND_HTML,
+        lambda w: w.kind == Walkthrough.KIND_HTML
+        and w.role != Walkthrough.ROLE_DECK,
     )
 
     # Explicit narrative_slug (uploaded by the plugin) wins; run_id parsing is fallback.
@@ -274,7 +280,8 @@ def build_run(run_id: str) -> dict | None:
         "latest_at": latest_at,
         "phase": phase,
         "video": _artifact_payload(video),
-        "deck": _artifact_payload(deck),
+        "slides": _artifact_payload(slides),
+        "documentation": _artifact_payload(documentation),
         "narrative": narrative_payload,
         "links": links,
         "all_artifacts": all_artifacts,

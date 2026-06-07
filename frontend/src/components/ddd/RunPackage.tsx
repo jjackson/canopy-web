@@ -20,16 +20,37 @@ import {
  * at something that isn't on the page.
  */
 function presentSections(run: DddRunPackage): RunSection[] {
+  // Video, Walkthrough slides, and Documentation are first-class run objects —
+  // always listed (each shows an empty state when absent), so they're
+  // discoverable and the rail mirrors the object model.
   const out: RunSection[] = [
     { id: 'video', label: 'Video' },
-    { id: 'walkthrough', label: 'Walkthrough' },
+    { id: 'slides', label: 'Walkthrough slides' },
+    { id: 'documentation', label: 'Documentation' },
     { id: 'narrative', label: 'Narrative' },
   ]
   if (run.links.length > 0) out.push({ id: 'links', label: 'Links' })
-  out.push({ id: 'artifacts', label: 'All artifacts' })
+  out.push({ id: 'outputs', label: 'Outputs' })
   if (run.previous_runs.length > 0)
     out.push({ id: 'previous', label: 'Previous runs' })
   return out
+}
+
+/** Human label for an artifact role, so Outputs reads in product terms rather
+ *  than raw role/kind codes. */
+function roleLabel(role: string | null, kind: string): string {
+  switch (role) {
+    case 'hero_video':
+      return 'Video'
+    case 'deck':
+      return 'Walkthrough slides'
+    case 'docs':
+      return 'Documentation'
+    case 'clip':
+      return 'Clip'
+    default:
+      return kind === 'video' ? 'Video' : 'Document'
+  }
 }
 
 function fmtDate(iso: string | null): string {
@@ -76,6 +97,48 @@ function Empty({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-dashed border-stone-800 px-4 py-6 text-center text-xs text-stone-600">
       {children}
+    </div>
+  )
+}
+
+/** A clear, visitable URL — opens the artifact's own page in a new tab. */
+function OpenLink({ href, label = 'Open' }: { href: string; label?: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 rounded-md border border-stone-800 px-2 py-0.5 text-[11px] text-stone-400 transition-colors hover:border-stone-700 hover:text-orange-300"
+    >
+      <span className="truncate font-mono">{href}</span>
+      <span aria-hidden>↗</span>
+      <span className="sr-only">{label}</span>
+    </a>
+  )
+}
+
+/** Embed a self-contained HTML artifact (slideshow or docs page) in a sandboxed
+ *  iframe, with a clear open-in-new-tab URL above it. */
+function HtmlEmbed({
+  contentUrl,
+  viewerUrl,
+  title,
+}: {
+  contentUrl: string
+  viewerUrl: string
+  title: string
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <OpenLink href={viewerUrl} />
+      <div className="overflow-hidden rounded-xl border border-stone-800 bg-white">
+        <iframe
+          src={contentUrl}
+          title={title}
+          sandbox="allow-scripts allow-same-origin"
+          className="h-[70vh] w-full bg-white"
+        />
+      </div>
     </div>
   )
 }
@@ -285,30 +348,46 @@ export function RunPackage({ runId }: { runId: string }) {
 
       <Section id="video" title="Video">
         {run.video ? (
-          <div className="overflow-hidden rounded-xl border border-stone-800 bg-black">
-            <video
-              src={run.video.content_url}
-              controls
-              className="max-h-[70vh] w-full bg-black"
-            />
+          <div className="flex flex-col gap-2">
+            <OpenLink href={run.video.viewer_url} />
+            <div className="overflow-hidden rounded-xl border border-stone-800 bg-black">
+              <video
+                src={run.video.content_url}
+                controls
+                className="max-h-[70vh] w-full bg-black"
+              />
+            </div>
           </div>
         ) : (
           <Empty>No video for this run.</Empty>
         )}
       </Section>
 
-      <Section id="walkthrough" title="Walkthrough">
-        {run.deck ? (
-          <div className="overflow-hidden rounded-xl border border-stone-800 bg-white">
-            <iframe
-              src={run.deck.content_url}
-              title={run.deck.title}
-              sandbox="allow-scripts allow-same-origin"
-              className="h-[70vh] w-full bg-white"
-            />
-          </div>
+      <Section
+        id="slides"
+        title="Walkthrough slides"
+        subtitle="canopy:walkthrough slideshow"
+      >
+        {run.slides ? (
+          <HtmlEmbed
+            contentUrl={run.slides.content_url}
+            viewerUrl={run.slides.viewer_url}
+            title={run.slides.title}
+          />
         ) : (
-          <Empty>No walkthrough deck for this run.</Empty>
+          <Empty>No walkthrough slides for this run.</Empty>
+        )}
+      </Section>
+
+      <Section id="documentation" title="Documentation" subtitle="feature docs page">
+        {run.documentation ? (
+          <HtmlEmbed
+            contentUrl={run.documentation.content_url}
+            viewerUrl={run.documentation.viewer_url}
+            title={run.documentation.title}
+          />
+        ) : (
+          <Empty>No documentation page for this run.</Empty>
         )}
       </Section>
 
@@ -341,28 +420,31 @@ export function RunPackage({ runId }: { runId: string }) {
       )}
 
       <Section
-        id="artifacts"
-        title="All artifacts"
-        subtitle={`${run.all_artifacts.length} uploaded`}
+        id="outputs"
+        title="Outputs"
+        subtitle={`${run.all_artifacts.length} file${run.all_artifacts.length === 1 ? '' : 's'} · every output we made, with a link`}
       >
         <div className="flex flex-col gap-1">
           {run.all_artifacts.map((a) => (
-            <Link
+            <a
               key={a.id}
-              to={a.viewer_url}
+              href={a.viewer_url}
+              target="_blank"
+              rel="noopener noreferrer"
               className="group flex items-center gap-3 rounded-lg border border-stone-800 bg-stone-950/40 px-3 py-1.5 text-xs transition-colors hover:border-stone-700 hover:bg-stone-950/70"
             >
-              <span className="w-12 shrink-0 font-mono text-[10px] text-stone-600">
-                {a.kind}
+              <span className="w-28 shrink-0 text-[10px] font-medium text-stone-400">
+                {roleLabel(a.role, a.kind)}
               </span>
-              {a.role && (
-                <span className="shrink-0 rounded bg-stone-800 px-1.5 py-0.5 text-[9px] text-stone-400">
-                  {a.role}
-                </span>
-              )}
               <span className="flex-1 truncate text-stone-300">{a.title}</span>
               <span className="shrink-0 text-stone-600">{fmtDate(a.created_at)}</span>
-            </Link>
+              <span
+                aria-hidden
+                className="shrink-0 font-mono text-[11px] text-stone-600 transition-colors group-hover:text-orange-300"
+              >
+                {a.viewer_url} ↗
+              </span>
+            </a>
           ))}
         </div>
       </Section>
