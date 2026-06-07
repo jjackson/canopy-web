@@ -1,5 +1,7 @@
 # Walkthrough Sharing Implementation Plan
 
+> **⚠️ Shipped, but auth + transport superseded — annotated 2026-06-07.** The walkthrough feature shipped, but two mechanisms in this plan are RETIRED: the DRF serializers/views (migrated to Django Ninja, PR #42) and the `/api/auth/e2e-login/` + `CANOPY_E2E_AUTH_TOKEN` auth flow (replaced by Personal Access Tokens, PR #45). **Do not follow this plan's auth instructions** — they point at a dead endpoint. Current API + auth are in `/CLAUDE.md`; the still-accurate design intent is in `docs/superpowers/specs/2026-05-26-walkthrough-sharing-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let canopy-web host HTML slideshows + MP4 videos produced by `/canopy:walkthrough`, with per-walkthrough visibility (private/dimagi-OAuth vs link-token) and Drive-backed storage.

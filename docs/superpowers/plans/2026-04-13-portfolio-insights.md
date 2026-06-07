@@ -1,5 +1,7 @@
 # Portfolio Insights Implementation Plan
 
+> **ℹ️ Shipped — historical record (annotated 2026-06-07).** The `/insights` feed shipped and its core mechanism still holds: insights are `ProjectContext` entries with `context_type="insight"`. The API is now a Django Ninja router (`insights_router` in `apps/projects/api.py`), not the DRF `views_insights.py` / serializers named here (migrated in PR #42). See `/CLAUDE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a cross-portfolio insights feed to canopy-web — an `/insights` page showing actionable AI observations across all projects, plus the API to power it and a canopy skill to generate insights.
