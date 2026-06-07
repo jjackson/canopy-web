@@ -14,18 +14,6 @@
 **Priority:** P1
 **Depends on:** V1 workspace validated with real users
 
-### MCP Layer for AI Session Auto-Submit
-
-**What:** Expose the canopy-web API as MCP tools so Claude Code, open claws, and canopy can interface programmatically.
-
-**Why:** Closes the loop — successful AI sessions can automatically submit themselves for extraction without human intervention. Key tools: create_collection, suggest_skill, run_skill, run_eval, report_success.
-
-**Context:** Deferred from CEO review. The API facade already exists; MCP is a thin adapter over it. Follow Scout's FastMCP standalone process pattern. This enables canopy's existing automation to feed the skill extraction system, creating a self-improving ecosystem.
-
-**Effort:** S-M (human) → S with CC
-**Priority:** P1
-**Depends on:** V1 API being stable
-
 ### Prompt Injection Hardening
 
 **What:** Add input sanitization and prompt separation for source content before LLM calls.
@@ -104,3 +92,6 @@
 **Depends on:** V1 backend in production, real usage feedback
 
 ## Completed
+
+### MCP Layer — shipped (PR #71)
+Exposed canopy-web as a FastMCP 3.x Streamable-HTTP server at `/api/mcp/` (`apps/mcp/`), authenticated per-user via Personal Access Tokens, with audit logging and write rate-limiting. Tools reuse the REST service layer. Tools today: `list_insights`, `clear_insights`. See `docs/architecture/mcp-surface.md`.

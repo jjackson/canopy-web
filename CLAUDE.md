@@ -217,11 +217,8 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 ## Reference Docs
 
 - `docs/architecture/mcp-surface.md` — MCP server surface: module layout, dual-auth model, audit + rate-limit, tool inventory
-- `docs/superpowers/plans/2026-03-27-canopy-web-implementation.md` — Original implementation plan and file structure
-- `docs/superpowers/plans/2026-04-10-project-workbench.md` — Project workbench dashboard plan
-- `docs/superpowers/plans/2026-04-13-portfolio-insights.md` — Cross-portfolio insights feed plan
-- `docs/superpowers/plans/2026-05-26-api-modernization.md` — Django Ninja + Pydantic + OpenAPI migration plan (DRF retired, FastMCP layer)
-- `docs/superpowers/plans/2026-05-26-walkthrough-sharing.md` — Walkthrough sharing plan
+- `docs/superpowers/plans/2026-04-13-portfolio-insights.md` — Cross-portfolio insights feed plan (shipped; historical)
+- `docs/superpowers/plans/2026-05-26-api-modernization.md` — Django Ninja + Pydantic + OpenAPI migration plan (shipped; DRF retired, FastMCP layer)
 - `docs/superpowers/specs/2026-04-10-project-workbench-design.md` — Workbench design spec
 - `docs/superpowers/specs/2026-04-14-google-oauth-auth-gate-design.md` — OAuth gate design spec
 - `docs/superpowers/specs/2026-05-26-walkthrough-sharing-design.md` — Walkthrough sharing design spec
@@ -233,4 +230,4 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 - `docs/walkthroughs/project-workbench.yaml` — Project workbench walkthrough spec
 - `docs/case-studies/workbench-self-improvement.md` — Self-improvement case study
 - `docs/personas/jonathan.md` — Primary user persona
-- `TODOS.md` — Deferred V2 work (proactive detection, prompt hardening, OAuth integrations, multi-tenant auth, cowork adapter). NOTE: its "MCP Layer" section is stale — the MCP server shipped (`apps/mcp/`, PR #71); that entry should be retired in TODOS.md.
+- `TODOS.md` — Deferred V2 work (proactive detection, prompt hardening, OAuth integrations, multi-tenant auth, cowork adapter)
