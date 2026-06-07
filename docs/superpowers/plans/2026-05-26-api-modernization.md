@@ -3319,7 +3319,7 @@ Expected: every contract test passes AND every PR #40 test still passes.
 
 - [ ] **2.7.10** Commit each endpoint individually.
 
-> **Forward-looking note for Phase 4 (frontend cutover):** The walkthroughs frontend client (Task 10 of `docs/superpowers/plans/2026-05-26-walkthrough-sharing.md`, **not yet shipped**) will land as `frontend/src/api/walkthroughs.ts`. When it does, add a Phase 4 task — `frontend/src/api/walkthroughs.ts` migration — using the Task 4.1 pattern. Multipart upload from the frontend uses native `FormData` + the typed client's `bodySerializer` override; example will live in the walkthrough plan.
+> **Forward-looking note for Phase 4 (frontend cutover):** _(Historical — both this plan and the walkthrough-sharing work it referenced have since shipped; the walkthrough-sharing plan was retired 2026-06-07.)_ The walkthroughs frontend client landed as `frontend/src/api/walkthroughs.ts`. Multipart upload from the frontend uses native `FormData` + the typed client's `bodySerializer` override.
 
 > **Forward-looking note for Tasks 8-14 (future walkthrough plan tasks):** Task 8 introduces `GET /w/<uuid>/content` (HTTP Range streaming for the public viewer) — this is mounted **outside** `/api/walkthroughs/`. When it lands, port it as a streaming Ninja handler with `response=None` (same SSE-style declaration as `POST /workspace/start/`). Token-based public access requires `LoginRequiredMiddleware` allowlist updates parallel to the existing Bearer bypass.
 
