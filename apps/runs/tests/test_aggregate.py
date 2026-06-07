@@ -116,17 +116,6 @@ def test_build_run_dedupes_links_across_artifacts():
     assert urls == [("https://x/repo", "reference"), ("https://x/spec", "narrative")]
 
 
-def test_build_run_lists_previous_runs_in_same_narrative():
-    u = make_user()
-    make_walkthrough(u, kind="video", run_id="feat-2026-05-01-001", narrative_slug="feat")
-    make_walkthrough(u, kind="video", run_id="feat-2026-06-01-002", narrative_slug="feat")
-    make_walkthrough(u, kind="video", run_id="other-2026-06-01-001", narrative_slug="other")
-
-    run = aggregate.build_run("feat-2026-06-01-002")
-    prev_ids = {p["run_id"] for p in run["previous_runs"]}
-    assert prev_ids == {"feat-2026-05-01-001"}
-
-
 # ---------------------------------------------------------------------------
 # Narrative list + detail
 # ---------------------------------------------------------------------------

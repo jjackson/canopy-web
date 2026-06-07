@@ -108,11 +108,6 @@ export interface DddLink {
   kind: DddLinkKind
 }
 
-export interface DddPreviousRun {
-  run_id: string
-  latest_at: string | null
-}
-
 export interface DddRunPackage {
   run_id: string
   narrative_slug: string
@@ -127,7 +122,6 @@ export interface DddRunPackage {
   narrative: DddRunNarrative | null
   links: DddLink[]
   all_artifacts: DddRunArtifactRef[]
-  previous_runs: DddPreviousRun[]
 }
 
 async function getJson<T>(url: string): Promise<T> {

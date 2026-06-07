@@ -259,16 +259,6 @@ def build_run(run_id: str) -> dict | None:
         for w in sorted(wts, key=lambda x: x.created_at)
     ]
 
-    # Previous runs in the same narrative (excluding this one), newest first.
-    sibling = _runs_in_narrative(narrative_slug)
-    previous_runs = [
-        {"run_id": rid, "latest_at": latest}
-        for rid, latest in sorted(
-            sibling.items(), key=lambda kv: kv[1], reverse=True
-        )
-        if rid != run_id
-    ]
-
     timestamps = [w.created_at for w in wts] + [r.created_at for r in revs]
     created_at = min(timestamps) if timestamps else None
     latest_at = max(timestamps) if timestamps else None
@@ -285,36 +275,7 @@ def build_run(run_id: str) -> dict | None:
         "narrative": narrative_payload,
         "links": links,
         "all_artifacts": all_artifacts,
-        "previous_runs": previous_runs,
     }
-
-
-def _runs_in_narrative(slug: str) -> dict[str, datetime]:
-    """Map run_id -> latest activity timestamp for every run under ``slug``."""
-    out: dict[str, datetime] = {}
-    feature_map: dict[str, str] = {}
-    wq = (
-        Walkthrough.objects.exclude(run_id__isnull=True)
-        .exclude(run_id="")
-        .values_list("run_id", "narrative_slug", "created_at")
-    )
-    for run_id, narrative_slug, created_at in wq:
-        feat = (narrative_slug or "").strip()
-        if run_id and feat:
-            feature_map.setdefault(run_id, feat)
-        s = feat or narrative_slug_from_run_id(run_id)
-        if s != slug:
-            continue
-        if run_id not in out or created_at > out[run_id]:
-            out[run_id] = created_at
-    for run_id, created_at in ReviewRequest.objects.values_list(
-        "run_id", "created_at"
-    ):
-        if narrative_for_run_id(run_id, feature_map) != slug:
-            continue
-        if run_id not in out or created_at > out[run_id]:
-            out[run_id] = created_at
-    return out
 
 
 # ---------------------------------------------------------------------------
