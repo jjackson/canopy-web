@@ -7,6 +7,30 @@ import {
   type DddRunNarrative,
   type DddRunPackage,
 } from '@/api/ddd'
+import {
+  runSectionDomId,
+  useRunSectionNav,
+  type RunSection,
+} from './runSectionNav'
+
+/**
+ * Which sections a loaded run actually renders, in display order. Drives both
+ * the anchored DOM ids here and the jump list in the left rail — empty
+ * sections (no links, no previous runs) are omitted so the rail never points
+ * at something that isn't on the page.
+ */
+function presentSections(run: DddRunPackage): RunSection[] {
+  const out: RunSection[] = [
+    { id: 'video', label: 'Video' },
+    { id: 'walkthrough', label: 'Walkthrough' },
+    { id: 'narrative', label: 'Narrative' },
+  ]
+  if (run.links.length > 0) out.push({ id: 'links', label: 'Links' })
+  out.push({ id: 'artifacts', label: 'All artifacts' })
+  if (run.previous_runs.length > 0)
+    out.push({ id: 'previous', label: 'Previous runs' })
+  return out
+}
 
 function fmtDate(iso: string | null): string {
   if (!iso) return ''
@@ -24,16 +48,18 @@ function fmtDate(iso: string | null): string {
 }
 
 function Section({
+  id,
   title,
   subtitle,
   children,
 }: {
+  id: string
   title: string
   subtitle?: string
   children: React.ReactNode
 }) {
   return (
-    <section className="mt-6">
+    <section id={runSectionDomId(id)} className="mt-6 scroll-mt-4">
       <div className="mb-2 flex items-baseline gap-2">
         <h2 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
           {title}
@@ -150,6 +176,12 @@ export function RunPackage({ runId }: { runId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  const nav = useRunSectionNav()
+  // useState setters and the memoized jump are referentially stable, so pulling
+  // them out keeps the scroll-spy effect from re-running on every active change.
+  const setSections = nav?.setSections
+  const setActiveId = nav?.setActiveId
+
   useEffect(() => {
     let cancelled = false
     setRun(null)
@@ -161,6 +193,41 @@ export function RunPackage({ runId }: { runId: string }) {
       cancelled = true
     }
   }, [runId])
+
+  // Publish the run's sections to the rail and scroll-spy the active one. A
+  // section is "active" once it crosses into the top third of the scroll
+  // container; the topmost such section in display order wins.
+  useEffect(() => {
+    if (!run || !setSections || !setActiveId) return
+    const sections = presentSections(run)
+    setSections(sections)
+
+    const root = document.querySelector('[data-ddd-scroll]')
+    const els = sections
+      .map((s) => document.getElementById(runSectionDomId(s.id)))
+      .filter((el): el is HTMLElement => el != null)
+
+    const visible = new Set<string>()
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          const id = e.target.id.replace('run-section-', '')
+          if (e.isIntersecting) visible.add(id)
+          else visible.delete(id)
+        }
+        const top = sections.find((s) => visible.has(s.id))
+        if (top) setActiveId(top.id)
+      },
+      { root, rootMargin: '0px 0px -66% 0px', threshold: 0 },
+    )
+    els.forEach((el) => observer.observe(el))
+
+    return () => {
+      observer.disconnect()
+      setSections([])
+      setActiveId(null)
+    }
+  }, [run, setSections, setActiveId])
 
   async function onDeleteRun() {
     if (!run) return
@@ -216,7 +283,7 @@ export function RunPackage({ runId }: { runId: string }) {
         </div>
       </header>
 
-      <Section title="Video">
+      <Section id="video" title="Video">
         {run.video ? (
           <div className="overflow-hidden rounded-xl border border-stone-800 bg-black">
             <video
@@ -230,7 +297,7 @@ export function RunPackage({ runId }: { runId: string }) {
         )}
       </Section>
 
-      <Section title="Walkthrough">
+      <Section id="walkthrough" title="Walkthrough">
         {run.deck ? (
           <div className="overflow-hidden rounded-xl border border-stone-800 bg-white">
             <iframe
@@ -246,6 +313,7 @@ export function RunPackage({ runId }: { runId: string }) {
       </Section>
 
       <Section
+        id="narrative"
         title="Narrative"
         subtitle={run.narrative?.version != null ? `v${run.narrative.version}` : undefined}
       >
@@ -267,12 +335,16 @@ export function RunPackage({ runId }: { runId: string }) {
       </Section>
 
       {run.links.length > 0 && (
-        <Section title="Links">
+        <Section id="links" title="Links">
           <LinksBlock links={run.links} />
         </Section>
       )}
 
-      <Section title="All artifacts" subtitle={`${run.all_artifacts.length} uploaded`}>
+      <Section
+        id="artifacts"
+        title="All artifacts"
+        subtitle={`${run.all_artifacts.length} uploaded`}
+      >
         <div className="flex flex-col gap-1">
           {run.all_artifacts.map((a) => (
             <Link
@@ -296,7 +368,7 @@ export function RunPackage({ runId }: { runId: string }) {
       </Section>
 
       {run.previous_runs.length > 0 && (
-        <Section title="Previous runs">
+        <Section id="previous" title="Previous runs">
           <div className="flex flex-wrap gap-2">
             {run.previous_runs.map((p) => (
               <Link
