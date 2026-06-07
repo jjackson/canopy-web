@@ -12,6 +12,7 @@ Collaborative web workspace for building reusable AI skills from conversations.
 - **Frontend:** React 19 + Vite + Tailwind CSS 4 + shadcn/ui
 - **AI:** Anthropic Claude API via SSE streaming. Dual backend — direct API key (`AI_BACKEND=api`) or Claude Code CLI subscription (`AI_BACKEND=cli`), switchable at runtime via `/api/ai/switch/`.
 - **Runtime adapters:** `apps/skills/adapters/` produces skill artifacts for `web`, `claude_code`, and `open_claw` runtimes.
+- **MCP server:** `apps/mcp/` is a FastMCP 3.x Streamable-HTTP server mounted into the ASGI app at `/api/mcp/` (wired in `config/asgi.py`). Tools run **as the authenticated user** via per-user PAT (`CanopyPATVerifier`) and reuse the same service functions as the REST views, so the two surfaces can't drift. See `docs/architecture/mcp-surface.md`.
 - **Deployment:** GCP Cloud Run + Cloud SQL on the `canopy-494811` project. `./deploy.sh` builds via Cloud Build (`cloudbuild.yaml`) and `gcloud run deploy`s — no local Docker daemon required. Production settings in `config/settings/production.py`.
 
 ## Development
@@ -68,9 +69,11 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/skills/:skillId` — Skill detail + eval history
 - `/guide` — Interactive walkthrough using a "Discovery Call Debrief" sample collection (try-it / how-it-works / review / eval / deploy sections)
 - `/insights` — Cross-portfolio AI insights feed
-- `/shareouts` — Dated, teammate-facing work briefings (what shipped, why, how to leverage) posted by `/canopy:shareout`
+- `/shareouts` (+ `/shareouts/:period`) — Dated, teammate-facing work briefings (what shipped, why, how to leverage) posted by `/canopy:shareout`; `:period` is a copy-linkable permalink to one briefing
 - `/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
 - `/w/:id` — Single walkthrough viewer (HTML iframe or video player)
+- `/ddd` (+ `/ddd/:narrative`, `/ddd/:narrative/:runId`) — Demo-driven-development (DDD) views: narrative → version → run → package (video + deck + narrative + links). `/ddd-plans` and `/reviews` redirect here
+- `/review/:id` — Editable narrative review surface for DDD (approve / redraft a story before build); token-shareable to anonymous viewers
 - `/settings` — AI backend status, switch backends, headless Claude CLI auth, debug-session minting
 - `/api/` — REST API
 - `/admin/` — Django admin
@@ -83,6 +86,7 @@ All endpoints are served by Django Ninja (Pydantic v2 typed) under `/api/`. Erro
 ### Auth + session (root)
 - `GET /api/me/` — Current authenticated user
 - `GET /api/csrf/` — CSRF token bootstrap
+- `GET|POST /auth/cli/authorize/` — gh-style loopback flow: an authenticated browser mints a `PersonalToken` and 302-redirects it to a local CLI callback (validates the callback is a safe loopback target). Pairs with `/canopy:canopy-web-pat-mint`. Bare Django view (`apps/tokens/cli_authorize_views.py`).
 
 ### Projects
 - `GET /api/projects/` — List projects with latest context
@@ -169,11 +173,39 @@ Settings:
 ### Debug access (`apps/common/views_debug`)
 - `POST /api/debug/mint-session/` — authenticated user mints a short-lived Django session cookie (body: `{ttl_seconds: int}`, clamped to 60s–1w). Returns cookie + curl example. Used to hand access to an AI assistant without going through OAuth. UI lives at `/settings` → "Debug access".
 
+### Reviews (`apps/reviews`) — DDD narrative review surface
+- `GET /api/reviews/` — List review requests (the `/ddd` dashboard)
+- `POST /api/reviews/` — Create a review request (DDD orchestrator)
+- `GET /api/reviews/{rid}/` — Get review detail or poll for resolution
+- `POST /api/reviews/{rid}/submit/` — Submit approve/redraft decisions + narration edits (human → server)
+- `DELETE /api/reviews/{rid}/` — Delete a review request (dashboard cleanup)
+
+Per-token review links render without a Dimagi session (`/review/:id`), so the auth middleware lets anonymous holders through for read + submit.
+
+### DDD runs (`apps/runs`, mounted at `/api/ddd`)
+- `GET /api/ddd/narratives/` — List DDD narratives
+- `GET /api/ddd/narratives/{slug}/` — Get a narrative + its runs (grouped by version)
+- `GET /api/ddd/runs/{run_id}/` — Get a run package (video + deck + narrative + links)
+- `DELETE /api/ddd/runs/{run_id}/` — Delete a run (cascades its walkthroughs + reviews)
+- `DELETE /api/ddd/narratives/{slug}/versions/{version}/` — Delete a narrative version (and its runs)
+- `DELETE /api/ddd/narratives/{slug}/` — Delete an entire narrative (all versions + runs)
+
+The narrative is identified by `narrative_slug` (decoupled from `run_id`); a server backstop rejects narrative-less package artifacts.
+
+### Shareouts (`apps/shareouts`)
+- `GET /api/shareouts/` — List shareouts (teammate-facing work briefings, timestamped per window)
+- `POST /api/shareouts/` — Create shareouts (batch; idempotent per `period`+`source`)
+- `POST /api/shareouts/clear/` — Clear shareouts by source / project / date (AND-combined)
+
+### MCP (`apps/mcp`, mounted at `/api/mcp/`)
+Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config/asgi.py`. Auth is enforced inside the server via `MultiAuth` (per-user PAT `CanopyPATVerifier`, always on; interactive Google OAuth is an env-gated seam, `MCP_OAUTH_ENABLED`). Every tool call writes an `MCPAuditLog` row; mutating tools are rate-limited per user. Tools today: `list_insights` (read) + `clear_insights` (write). The legacy single-shared `CANOPY_MCP_BEARER` and the hand-rolled ASGI gate are gone. See `docs/architecture/mcp-surface.md`.
+
 ## Design Decisions
 
 - **API is Pydantic-first via Django Ninja**: every request/response is a Pydantic v2 model declared in `apps/<app>/schemas.py`. Routes live in `apps/<app>/api.py`, registered on the single `NinjaAPI` instance in `apps/api/api.py`. Errors are RFC 7807 `application/problem+json`. Frontend types are generated from the OpenAPI 3.1 schema by `openapi-typescript` into `frontend/src/api/generated.ts` and consumed via `openapi-fetch`. The `regen-openapi.yml` GitHub workflow auto-commits regenerated types on PRs touching `apps/**/api.py` or `apps/**/schemas.py`.
 - **Streaming endpoints stay on Django**: `POST /api/workspace/start/<id>/` returns `StreamingHttpResponse` directly from a Ninja handler (declared as `response=None`); the SSE event format is the contract. `GET /w/<uuid>/content` (the walkthrough viewer) stays as a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range + token-based public-link auth don't fit the Ninja contract.
-- **Bare Django views**: `/api/csrf/`, `/api/debug/mint-session/`, and `/health/` (the last is also Ninja-mountable via `public_router`) — they manipulate sessions/cookies directly. Matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
+- **Bare Django views**: `/api/csrf/`, `/api/debug/mint-session/`, `/auth/cli/authorize/`, and `/health/` (the last is also Ninja-mountable via `public_router`) — they manipulate sessions/cookies/redirects directly. Matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
+- **MCP is in-process FastMCP, not OpenAPI-derived**: `apps/mcp/` mounts a FastMCP 3.x Streamable-HTTP server at `/api/mcp/` whose tools are explicit Python functions calling the same service layer as the REST views (no HTTP self-loopback). Auth is per-user PAT inside the server (fail-closed), every call is audited, and writes are rate-limited.
 - APP UI: dense, readable, tables not cards
 - Workspace flow: Ingest → AI proposes Approach + Eval → Review/Edit → Test → Publish
 - SSE streaming for AI responses (Scout pattern)
@@ -184,15 +216,21 @@ Settings:
 
 ## Reference Docs
 
+- `docs/architecture/mcp-surface.md` — MCP server surface: module layout, dual-auth model, audit + rate-limit, tool inventory
 - `docs/superpowers/plans/2026-03-27-canopy-web-implementation.md` — Original implementation plan and file structure
 - `docs/superpowers/plans/2026-04-10-project-workbench.md` — Project workbench dashboard plan
 - `docs/superpowers/plans/2026-04-13-portfolio-insights.md` — Cross-portfolio insights feed plan
+- `docs/superpowers/plans/2026-05-26-api-modernization.md` — Django Ninja + Pydantic + OpenAPI migration plan (DRF retired, FastMCP layer)
+- `docs/superpowers/plans/2026-05-26-walkthrough-sharing.md` — Walkthrough sharing plan
 - `docs/superpowers/specs/2026-04-10-project-workbench-design.md` — Workbench design spec
 - `docs/superpowers/specs/2026-04-14-google-oauth-auth-gate-design.md` — OAuth gate design spec
+- `docs/superpowers/specs/2026-05-26-walkthrough-sharing-design.md` — Walkthrough sharing design spec
+- `docs/superpowers/specs/2026-06-02-ddd-run-views-design.md` — DDD run views (narrative → run → package) design spec
+- `docs/superpowers/specs/2026-06-03-ddd-narrative-run-versioning-design.md` — DDD narrative/version/run model design spec
 - `docs/designs/canopy-web-design.md` — Product design + glossary (open claw, skill, collection, eval suite, workspace session)
 - `docs/designs/ceo-plan-conversation-to-agent.md` — CEO review, scope decisions, deferred work
 - `docs/walkthroughs/canopy-web-demo.yaml` — Walkthrough QA spec (5 skills, varied scores)
 - `docs/walkthroughs/project-workbench.yaml` — Project workbench walkthrough spec
 - `docs/case-studies/workbench-self-improvement.md` — Self-improvement case study
 - `docs/personas/jonathan.md` — Primary user persona
-- `TODOS.md` — Deferred V2 work (proactive detection, MCP layer, prompt hardening, OAuth integrations, multi-tenant auth, cowork adapter)
+- `TODOS.md` — Deferred V2 work (proactive detection, prompt hardening, OAuth integrations, multi-tenant auth, cowork adapter). NOTE: its "MCP Layer" section is stale — the MCP server shipped (`apps/mcp/`, PR #71); that entry should be retired in TODOS.md.
