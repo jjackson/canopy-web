@@ -1,7 +1,7 @@
 # DDD Run Views — design spec
 
 **Date:** 2026-06-02
-**Status:** Approved (implementing)
+**Status:** Shipped — historical record (annotated 2026-06-07). Its run/grouping model was superseded by `2026-06-03-ddd-narrative-run-versioning-design.md` (versions now nest runs), and the `feature` field was renamed `narrative_slug` (PR #95). Read for context, not current state.
 **Author:** Jonathan + Claude
 
 ## Problem

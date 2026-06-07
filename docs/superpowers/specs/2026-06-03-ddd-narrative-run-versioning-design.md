@@ -1,7 +1,7 @@
 # DDD Narrative / Run / Version model — design spec
 
 **Date:** 2026-06-03
-**Status:** Draft for review (not yet implementing)
+**Status:** Shipped (annotated 2026-06-07) — PRs #80, #82, #95. The narrative → version → run model described here is the current implementation (`apps/runs/`, `narrative_slug`).
 **Author:** Jonathan + Claude
 **Supersedes the grouping model in:** `2026-06-02-ddd-run-views-design.md`
 

@@ -1,5 +1,7 @@
 # Canopy Web Implementation Plan
 
+> **⚠️ Historical (shipped, pre-Ninja) — annotated 2026-06-07.** This plan shipped, but its code-level mechanics are superseded: the API was migrated DRF → Django Ninja + Pydantic + OpenAPI (PR #42). Treat the code snippets here (DRF serializers/views, the `{success, data}` envelope) as a historical record; the high-level data model is still broadly accurate. For current state see `/CLAUDE.md` and `docs/superpowers/plans/2026-05-26-api-modernization.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a collaborative web workspace where non-technical users co-author reusable skills from conversations, with living eval suites that prove skills improve over time.

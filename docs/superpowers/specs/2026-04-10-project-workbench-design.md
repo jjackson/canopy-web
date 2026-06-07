@@ -1,7 +1,7 @@
 # Project Workbench — Design Spec
 
 **Date:** 2026-04-10
-**Status:** Draft
+**Status:** Shipped — historical record (annotated 2026-06-07). One stale detail: the `{success, data, error}` envelope referenced below is gone — the API now returns RFC 7807 `application/problem+json` via Django Ninja (PR #42). Design + data model otherwise accurate.
 **Scope:** Canopy-web expansion — project registry + workbench homepage
 
 ## Problem

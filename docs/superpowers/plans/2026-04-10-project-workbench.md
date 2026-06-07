@@ -1,5 +1,7 @@
 # Project Workbench Implementation Plan
 
+> **⚠️ Historical (shipped, pre-Ninja) — annotated 2026-06-07.** Shipped as `apps/projects/`, but via Django Ninja, not the DRF function-based views / `{success, data}` envelope described here (API migrated in PR #42). The data model is still accurate; the transport details are stale. See `/CLAUDE.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a project registry with public API and dense tile-grid homepage to canopy-web, replacing the skill discovery feed as the landing page.
