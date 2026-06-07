@@ -702,6 +702,10 @@ interface BuildSequenceSectionProps {
   onReorder: (orderedIds: string[]) => void
   /** Submitted build order (readOnly mode). */
   resolvedBuildOrder: string[] | null
+  /** scene id → frontier (true = New feature / to-build, false = Existing feature).
+   *  Same `sceneIsFrontier` the scene cards use, so the build sequence labels
+   *  already-built beats instead of presenting everything as undifferentiated to-do. */
+  frontierById: Map<string, boolean>
 }
 
 function BuildSequenceSection({
@@ -710,6 +714,7 @@ function BuildSequenceSection({
   readOnly,
   onReorder,
   resolvedBuildOrder,
+  frontierById,
 }: BuildSequenceSectionProps) {
   // Build a lookup from scene id → title (only active scenes)
   const sceneById = new Map(
@@ -774,6 +779,9 @@ function BuildSequenceSection({
                   </p>
                 )}
               </div>
+
+              {/* Built vs to-build — so the reviewer isn't asked to "build" what's already live */}
+              <StatusBadge frontier={frontierById.get(scene.id) ?? false} />
 
               {/* Up / Down controls — edit mode only */}
               {!readOnly && (
@@ -1016,6 +1024,9 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
     (s.provenance ? (spineById.get(s.provenance)?.status ?? 'grounded') : 'grounded') !== 'grounded' ||
     (s.provenance ? (gapsByRef.get(s.provenance)?.length ?? 0) : 0) > 0
   const frontierScenes = liveScenes.filter(sceneIsFrontier)
+  // scene id → frontier, so the BUILD SEQUENCE panel can label built vs to-build
+  // using the exact same rule as the scene cards.
+  const frontierById = new Map(liveScenes.map((s) => [s.id, sceneIsFrontier(s)]))
   const frontierCount = frontierScenes.length
   const builtSceneCount = liveScenes.length - frontierCount
   const toBuildFeatures = frontierScenes.flatMap((s) => (s.features ?? []).filter((f) => !f.deleted))
@@ -1526,6 +1537,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
               ? review.response_json.build_order
               : null
           }
+          frontierById={frontierById}
         />
       )}
 
