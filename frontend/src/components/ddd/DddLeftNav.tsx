@@ -7,11 +7,50 @@ import {
   type DddNarrativeDetail,
   type DddNarrativeListItem,
 } from '@/api/ddd'
+import { useRunSectionNav } from './runSectionNav'
 
 function runStamp(runId: string): string {
   // "microplans-2026-06-02-001" -> "2026-06-02-001"
   const m = runId.match(/(\d{4}-\d{2}-\d{2}-\d+)$/)
   return m ? m[1] : runId
+}
+
+/**
+ * Jump-list of the active run's sections, nested under its run entry. The run
+ * package registers these and reports the active one via scroll-spy (see
+ * runSectionNav); clicking scrolls the package to that section so the rail
+ * navigates a run instead of forcing one long scroll. Renders nothing until the
+ * package has mounted and published its sections.
+ */
+function RunSectionList() {
+  const nav = useRunSectionNav()
+  if (!nav || nav.sections.length === 0) return null
+  return (
+    <div className="ml-6 mt-0.5 flex flex-col gap-0.5 border-l border-stone-800/70 pl-1">
+      {nav.sections.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          onClick={() => nav.jump(s.id)}
+          className={clsx(
+            'flex items-center gap-2 rounded-md px-3 py-0.5 text-left text-[11px] transition-colors',
+            s.id === nav.activeId
+              ? 'text-orange-300'
+              : 'text-stone-500 hover:text-stone-300',
+          )}
+        >
+          <span
+            aria-hidden
+            className={clsx(
+              'h-1 w-1 shrink-0 rounded-full',
+              s.id === nav.activeId ? 'bg-orange-400' : 'bg-stone-700',
+            )}
+          />
+          <span className="truncate">{s.label}</span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
 /**
@@ -75,21 +114,23 @@ function NarrativeRuns({
             ) : (
               <div className="ml-3 flex flex-col gap-0.5 border-l border-stone-800/70 pl-1">
                 {runs.map((r) => (
-                  <Link
-                    key={r.run_id}
-                    to={`/ddd/${encodeURIComponent(slug)}/${encodeURIComponent(r.run_id)}`}
-                    className={clsx(
-                      'flex items-center gap-2 rounded-md px-3 py-1 text-xs transition-colors',
-                      r.run_id === activeRunId
-                        ? 'bg-orange-500/10 text-orange-300 border border-orange-500/30'
-                        : 'text-stone-400 hover:bg-stone-800/60 hover:text-stone-200 border border-transparent',
-                    )}
-                  >
-                    <span aria-hidden className="text-stone-600">
-                      {r.run_id === activeRunId ? '●' : '○'}
-                    </span>
-                    <span className="truncate font-mono">{runStamp(r.run_id)}</span>
-                  </Link>
+                  <div key={r.run_id} className="flex flex-col gap-0.5">
+                    <Link
+                      to={`/ddd/${encodeURIComponent(slug)}/${encodeURIComponent(r.run_id)}`}
+                      className={clsx(
+                        'flex items-center gap-2 rounded-md px-3 py-1 text-xs transition-colors',
+                        r.run_id === activeRunId
+                          ? 'bg-orange-500/10 text-orange-300 border border-orange-500/30'
+                          : 'text-stone-400 hover:bg-stone-800/60 hover:text-stone-200 border border-transparent',
+                      )}
+                    >
+                      <span aria-hidden className="text-stone-600">
+                        {r.run_id === activeRunId ? '●' : '○'}
+                      </span>
+                      <span className="truncate font-mono">{runStamp(r.run_id)}</span>
+                    </Link>
+                    {r.run_id === activeRunId && <RunSectionList />}
+                  </div>
                 ))}
               </div>
             )}
