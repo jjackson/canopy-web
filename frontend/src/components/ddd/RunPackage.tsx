@@ -19,20 +19,18 @@ import {
  * sections (no links, no previous runs) are omitted so the rail never points
  * at something that isn't on the page.
  */
-function presentSections(run: DddRunPackage): RunSection[] {
-  // Video, Walkthrough slides, and Documentation are first-class run objects —
-  // always listed (each shows an empty state when absent), so they're
-  // discoverable and the rail mirrors the object model.
+function presentSections(): RunSection[] {
+  // The run's first-class objects, in display order. All are always listed —
+  // each section shows its own empty state when absent — so the rail mirrors
+  // the object model and never points at something missing.
   const out: RunSection[] = [
     { id: 'video', label: 'Video' },
     { id: 'slides', label: 'Walkthrough slides' },
     { id: 'documentation', label: 'Documentation' },
     { id: 'narrative', label: 'Narrative' },
+    { id: 'external', label: 'External systems' },
+    { id: 'outputs', label: 'Outputs' },
   ]
-  if (run.links.length > 0) out.push({ id: 'links', label: 'Links' })
-  out.push({ id: 'outputs', label: 'Outputs' })
-  if (run.previous_runs.length > 0)
-    out.push({ id: 'previous', label: 'Previous runs' })
   return out
 }
 
@@ -186,9 +184,13 @@ function NarrativeBlock({ narrative }: { narrative: DddRunNarrative }) {
   )
 }
 
-function LinksBlock({ links }: { links: DddLink[] }) {
-  const sibling = links.filter((l) => l.kind === 'narrative' || l.kind === 'companion')
-  const reference = links.filter((l) => l.kind === 'reference')
+/** The external systems the run used or created — the live app pages, created
+ *  entities, and any related docs/companions — each as a clean, visitable URL.
+ *  Sourced from the run's links (reference = systems we touched; narrative /
+ *  companion = related material). */
+function ExternalSystemsBlock({ links }: { links: DddLink[] }) {
+  const systems = links.filter((l) => l.kind === 'reference')
+  const related = links.filter((l) => l.kind === 'narrative' || l.kind === 'companion')
   const row = (l: DddLink) => (
     <a
       key={`${l.kind}:${l.url}`}
@@ -202,7 +204,10 @@ function LinksBlock({ links }: { links: DddLink[] }) {
           {l.kind === 'narrative' ? '📖' : '🎞️'}
         </span>
       )}
-      <span className="flex-1 truncate text-xs text-stone-300">{l.label}</span>
+      <span className="shrink-0 text-xs text-stone-300">{l.label}</span>
+      <span className="flex-1 truncate text-right font-mono text-[11px] text-stone-600 transition-colors group-hover:text-orange-300">
+        {l.url}
+      </span>
       <span
         aria-hidden
         className="shrink-0 text-[11px] text-stone-600 transition-colors group-hover:text-orange-400"
@@ -212,21 +217,12 @@ function LinksBlock({ links }: { links: DddLink[] }) {
     </a>
   )
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {sibling.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <h3 className="text-[9px] uppercase tracking-wider text-stone-600">
-            Narrative &amp; companion
-          </h3>
-          {sibling.map(row)}
-        </div>
-      )}
-      {reference.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <h3 className="text-[9px] uppercase tracking-wider text-stone-600">
-            Explore in the app
-          </h3>
-          {reference.map(row)}
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">{systems.map(row)}</div>
+      {related.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <h3 className="text-[9px] uppercase tracking-wider text-stone-600">Related</h3>
+          {related.map(row)}
         </div>
       )}
     </div>
@@ -262,7 +258,7 @@ export function RunPackage({ runId }: { runId: string }) {
   // container; the topmost such section in display order wins.
   useEffect(() => {
     if (!run || !setSections || !setActiveId) return
-    const sections = presentSections(run)
+    const sections = presentSections()
     setSections(sections)
 
     const root = document.querySelector('[data-ddd-scroll]')
@@ -413,11 +409,17 @@ export function RunPackage({ runId }: { runId: string }) {
         )}
       </Section>
 
-      {run.links.length > 0 && (
-        <Section id="links" title="Links">
-          <LinksBlock links={run.links} />
-        </Section>
-      )}
+      <Section
+        id="external"
+        title="External systems"
+        subtitle="live systems this run used or created"
+      >
+        {run.links.length > 0 ? (
+          <ExternalSystemsBlock links={run.links} />
+        ) : (
+          <Empty>No external systems recorded for this run.</Empty>
+        )}
+      </Section>
 
       <Section
         id="outputs"
@@ -449,21 +451,6 @@ export function RunPackage({ runId }: { runId: string }) {
         </div>
       </Section>
 
-      {run.previous_runs.length > 0 && (
-        <Section id="previous" title="Previous runs">
-          <div className="flex flex-wrap gap-2">
-            {run.previous_runs.map((p) => (
-              <Link
-                key={p.run_id}
-                to={`/ddd/${encodeURIComponent(run.narrative_slug)}/${encodeURIComponent(p.run_id)}`}
-                className="rounded-md border border-stone-800 bg-stone-900 px-2.5 py-1 font-mono text-[11px] text-stone-400 transition-colors hover:border-stone-700 hover:text-stone-200"
-              >
-                {p.run_id}
-              </Link>
-            ))}
-          </div>
-        </Section>
-      )}
     </div>
   )
 }

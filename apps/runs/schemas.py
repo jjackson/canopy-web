@@ -94,11 +94,6 @@ class RunNarrativeOut(StrictModel):
     why_brief: dict[str, Any] | None = None
 
 
-class PreviousRunOut(StrictModel):
-    run_id: str
-    latest_at: dt.datetime | None = None
-
-
 class RunPackageOut(StrictModel):
     run_id: str
     narrative_slug: str
@@ -115,4 +110,3 @@ class RunPackageOut(StrictModel):
     narrative: RunNarrativeOut | None = None
     links: list[WalkthroughLink] = []
     all_artifacts: list[RunArtifactRefOut] = []
-    previous_runs: list[PreviousRunOut] = []
