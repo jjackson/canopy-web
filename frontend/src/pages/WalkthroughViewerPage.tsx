@@ -8,6 +8,7 @@ import {
   walkthroughContentUrl,
   type WalkthroughDetail,
 } from '../api/walkthroughs'
+import { withSceneHash } from '../lib/sceneHash'
 
 export function WalkthroughViewerPage() {
   const { id } = useParams<{ id: string }>()
@@ -90,7 +91,13 @@ export function WalkthroughViewerPage() {
 
   const params = new URLSearchParams(window.location.search)
   const viewerToken = params.get('t') ?? w.share_token ?? null
-  const contentSrc = walkthroughContentUrl(w.id, viewerToken)
+  // Forward a `#scene-N` deep-link (e.g. /w/<id>?t=<tok>#scene-3) into the deck
+  // iframe so it opens on that scene; the deck's own JS reads its hash. Videos
+  // ignore it. Non-scene hashes normalize to '' and pass through unchanged.
+  const contentSrc = withSceneHash(
+    walkthroughContentUrl(w.id, viewerToken),
+    window.location.hash,
+  )
 
   const links = w.links ?? []
   // narrative + companion are provenance / sibling-artifact nav; reference
