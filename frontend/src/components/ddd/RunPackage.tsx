@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   deleteRun,
   getRun,
@@ -7,6 +7,7 @@ import {
   type DddRunNarrative,
   type DddRunPackage,
 } from '@/api/ddd'
+import { sceneHashFragment, withSceneHash } from '@/lib/sceneHash'
 import {
   runSectionDomId,
   useRunSectionNav,
@@ -116,22 +117,27 @@ function OpenLink({ href, label = 'Open' }: { href: string; label?: string }) {
 }
 
 /** Embed a self-contained HTML artifact (slideshow or docs page) in a sandboxed
- *  iframe, with a clear open-in-new-tab URL above it. */
+ *  iframe, with a clear open-in-new-tab URL above it. When `sceneHash` is a
+ *  `#scene-N` deep-link, it's forwarded into both the embedded iframe and the
+ *  open-in-new-tab URL so the deck opens on that scene (the deck's own JS reads
+ *  its hash). Non-scene hashes are ignored by withSceneHash. */
 function HtmlEmbed({
   contentUrl,
   viewerUrl,
   title,
+  sceneHash = '',
 }: {
   contentUrl: string
   viewerUrl: string
   title: string
+  sceneHash?: string
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <OpenLink href={viewerUrl} />
+      <OpenLink href={withSceneHash(viewerUrl, sceneHash)} />
       <div className="overflow-hidden rounded-xl border border-stone-800 bg-white">
         <iframe
-          src={contentUrl}
+          src={withSceneHash(contentUrl, sceneHash)}
           title={title}
           sandbox="allow-scripts allow-same-origin"
           className="h-[70vh] w-full bg-white"
@@ -231,9 +237,15 @@ function ExternalSystemsBlock({ links }: { links: DddLink[] }) {
 
 export function RunPackage({ runId }: { runId: string }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [run, setRun] = useState<DddRunPackage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // A `#scene-N` deep-link on the run page (e.g. surfaced findings linking to
+  // /ddd/<slug>/<runId>#scene-3) is forwarded into the embedded slides deck.
+  // Non-scene hashes (the rail's own section anchors) normalize to '' here.
+  const sceneHash = sceneHashFragment(location.hash)
 
   const nav = useRunSectionNav()
   // useState setters and the memoized jump are referentially stable, so pulling
@@ -287,6 +299,15 @@ export function RunPackage({ runId }: { runId: string }) {
       setActiveId(null)
     }
   }, [run, setSections, setActiveId])
+
+  // On a `#scene-N` deep-link, bring the slides deck into view once the run has
+  // rendered — otherwise the reviewer lands at the top (video) with the deck's
+  // forwarded scene below the fold. Runs once per (run, sceneHash) pair.
+  useEffect(() => {
+    if (!run || !sceneHash) return
+    const el = document.getElementById(runSectionDomId('slides'))
+    el?.scrollIntoView({ block: 'start' })
+  }, [run, sceneHash])
 
   async function onDeleteRun() {
     if (!run) return
@@ -369,6 +390,7 @@ export function RunPackage({ runId }: { runId: string }) {
             contentUrl={run.slides.content_url}
             viewerUrl={run.slides.viewer_url}
             title={run.slides.title}
+            sceneHash={sceneHash}
           />
         ) : (
           <Empty>No walkthrough slides for this run.</Empty>
