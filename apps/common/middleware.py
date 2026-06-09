@@ -26,13 +26,6 @@ def _is_public(path: str) -> bool:
     return any(path == p or path.startswith(p) for p in PUBLIC_PATH_PREFIXES)
 
 
-def _is_walkthrough_content(path: str) -> bool:
-    # /w/<uuid>/content — the view itself enforces token-or-session auth.
-    # We let it through the middleware so the per-token public link can
-    # be served without a session cookie.
-    return path.startswith("/w/") and path.endswith("/content")
-
-
 def _is_review_link(path: str) -> bool:
     # /review/<uuid>/  (SPA shell) and the per-review API read/submit endpoints
     # self-enforce token-or-session auth, so let the per-token public link
@@ -41,6 +34,22 @@ def _is_review_link(path: str) -> bool:
     if path.startswith("/review/"):
         return True
     return path.startswith("/api/reviews/") and path != "/api/reviews/"
+
+
+def _is_walkthrough_link(request) -> bool:
+    # Everything under /w/ — the viewer SPA shell (/w/<uuid>) and the content
+    # stream (/w/<uuid>/content) — plus the per-walkthrough detail GET
+    # self-enforce tokenless public access, so let anonymous callers through
+    # the middleware. The bare collection (/api/walkthroughs/) is NOT included —
+    # list/upload still require auth.
+    path = request.path
+    if path.startswith("/w/"):
+        return True
+    return (
+        request.method == "GET"
+        and path.startswith("/api/walkthroughs/")
+        and path != "/api/walkthroughs/"
+    )
 
 
 class LoginRequiredMiddleware:
@@ -67,7 +76,7 @@ class LoginRequiredMiddleware:
         if (
             request.user.is_authenticated
             or _is_public(request.path)
-            or _is_walkthrough_content(request.path)
+            or _is_walkthrough_link(request)
             or _is_review_link(request.path)
         ):
             return self.get_response(request)

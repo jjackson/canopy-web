@@ -85,3 +85,37 @@ def test_detail_handler_404s_private_for_anonymous(owner):
     req.user = AnonymousUser()
     with pytest.raises(Exception):  # Http404 / ProblemError → not found
         get_walkthrough(req, w.id)
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_public_detail_api_reachable_anonymous(owner):
+    w = _make(owner, visibility="link")
+    resp = Client().get(f"/api/walkthroughs/{w.id}/")
+    assert resp.status_code == 200
+    assert resp.json()["id"] == str(w.id)
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_private_detail_api_404s_anonymous(owner):
+    w = _make(owner, visibility="private")
+    resp = Client().get(f"/api/walkthroughs/{w.id}/")
+    # Reaches the handler (allowlisted) and the handler hides it.
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_walkthrough_shell_served_to_anonymous(owner):
+    w = _make(owner, visibility="link")
+    resp = Client().get(f"/w/{w.id}")
+    # Middleware passes the request through (not a login redirect).
+    # spa_view returns 200 when the frontend is built, 503 when it isn't
+    # (test environment has no build output). Either way, auth did not block it.
+    assert resp.status_code != 302, "Anonymous user was redirected to login"
+    assert resp.status_code in (200, 503)
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_walkthrough_collection_still_gated(db):
+    # The list/upload collection must NOT be public.
+    resp = Client().get("/api/walkthroughs/")
+    assert resp.status_code == 401
