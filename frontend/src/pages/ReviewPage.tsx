@@ -1123,7 +1123,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
   // Video embed
   let videoElement: React.ReactNode = null
   if (req.video?.walkthrough_id) {
-    const contentSrc = walkthroughContentUrl(req.video.walkthrough_id, shareToken)
+    const contentSrc = walkthroughContentUrl(req.video.walkthrough_id)
     videoElement = (
       <iframe
         src={contentSrc}

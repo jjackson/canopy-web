@@ -73,19 +73,6 @@ export async function deleteWalkthrough(id: string): Promise<void> {
   if (error) throw new Error("Failed to delete walkthrough");
 }
 
-export async function rotateWalkthroughToken(
-  id: string,
-): Promise<{ share_token: string }> {
-  const { data, error } = await apiV2.POST(
-    "/api/walkthroughs/{wid}/rotate-token/",
-    {
-      params: { path: { wid: id } },
-    },
-  );
-  if (error) throw new Error("Failed to rotate token");
-  return data;
-}
-
 // Multipart upload — openapi-fetch's bodySerializer is used to pass FormData
 // directly rather than JSON-encoding the body.
 // Note: openapi-fetch types the body as the schema type; we override with
@@ -104,10 +91,6 @@ export async function uploadWalkthrough(
   return data as unknown as WalkthroughDetail;
 }
 
-export function walkthroughContentUrl(
-  id: string,
-  shareToken: string | null,
-): string {
-  const t = shareToken ? `?t=${encodeURIComponent(shareToken)}` : "";
-  return `/w/${id}/content${t}`;
+export function walkthroughContentUrl(id: string): string {
+  return `/w/${id}/content`;
 }
