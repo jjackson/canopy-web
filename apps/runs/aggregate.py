@@ -293,6 +293,7 @@ def _blank_narrative(slug: str) -> dict[str, Any]:
         "run_ids": set(),
         "project_slugs": set(),
         "owner_ids": set(),
+        "visibilities": set(),
         "latest_at": None,
         "has_video": False,
         "has_deck": False,
@@ -332,6 +333,7 @@ def _aggregate(project: str | None, owner_id: int | None) -> dict[str, dict]:
             if a["project_slug"] is None:
                 a["project_slug"] = w.project_slug
         a["owner_ids"].add(w.owner_id)
+        a["visibilities"].add(w.visibility)
         a["latest_at"] = _max(a["latest_at"], w.created_at)
         if _is_video(w):
             a["has_video"] = True
@@ -344,6 +346,7 @@ def _aggregate(project: str | None, owner_id: int | None) -> dict[str, dict]:
         a["run_ids"].add(r.run_id)
         if r.owner_id:
             a["owner_ids"].add(r.owner_id)
+        a["visibilities"].add(r.visibility)
         a["latest_at"] = _max(a["latest_at"], r.created_at)
         # Latest review overall drives the phase label.
         if a["_latest_rev_at"] is None or r.created_at > a["_latest_rev_at"]:
@@ -408,6 +411,15 @@ def _run_summary(run_id, run_wts, run_revs) -> dict:
         "has_video": any(_is_video(w) for w in run_wts),
         "has_deck": any(_is_deck(w) for w in run_wts),
     }
+
+
+def _agg_visibility(visibilities: set[str]) -> str:
+    """Collapse a set of row visibilities into the narrative's status."""
+    if visibilities == {Walkthrough.VISIBILITY_LINK}:
+        return "public"
+    if visibilities <= {Walkthrough.VISIBILITY_PRIVATE}:  # all private or empty
+        return "private"
+    return "mixed"
 
 
 def build_narrative(slug: str) -> dict | None:
@@ -511,6 +523,33 @@ def build_narrative(slug: str) -> dict | None:
         "story": a["story"],
         "phase": a["phase"],
         "project_slug": a["project_slug"],
+        "visibility": _agg_visibility(a["visibilities"]),
         "current_version": current_payload,
         "versions": versions_payload,
     }
+
+
+def set_narrative_visibility(slug: str, visibility: str) -> tuple[int, int]:
+    """Set visibility on every walkthrough + review grouped under ``slug``.
+
+    Matches the exact same rows the narrative aggregate displays (explicit
+    narrative_slug wins; run_id-derived slug is the fallback). Returns
+    (walkthroughs_updated, reviews_updated).
+    """
+    slug = (slug or "").strip()
+    wts = list(
+        Walkthrough.objects.exclude(run_id__isnull=True).exclude(run_id="")
+    )
+    # Resolve membership exactly as build_narrative does for the /ddd page:
+    # walkthroughs via narrative_of_walkthrough, reviews via narrative_of_review
+    # (the review's own narrative_slug wins). Keeps the cascade flipping precisely
+    # the rows the narrative page shows.
+    wt_pks = [w.pk for w in wts if narrative_of_walkthrough(w) == slug]
+    rev_pks = [
+        r.pk
+        for r in ReviewRequest.objects.all()
+        if narrative_of_review(r) == slug
+    ]
+    wt_n = Walkthrough.objects.filter(pk__in=wt_pks).update(visibility=visibility)
+    rev_n = ReviewRequest.objects.filter(pk__in=rev_pks).update(visibility=visibility)
+    return wt_n, rev_n

@@ -14,7 +14,13 @@ from apps.api.auth import session_auth
 from apps.api.errors import TYPE_NOT_FOUND, ProblemError
 
 from . import aggregate, delete
-from .schemas import NarrativeDetailOut, NarrativeListItemOut, RunPackageOut
+from .schemas import (
+    NarrativeDetailOut,
+    NarrativeListItemOut,
+    NarrativeVisibilityIn,
+    NarrativeVisibilityOut,
+    RunPackageOut,
+)
 
 router = Router(auth=session_auth, tags=["ddd"])
 
@@ -58,6 +64,27 @@ def get_run(request: HttpRequest, run_id: str) -> RunPackageOut:
     if data is None:
         raise ProblemError(404, "Run not found", type_=TYPE_NOT_FOUND)
     return RunPackageOut.model_validate(data)
+
+
+@router.patch(
+    "/narratives/{slug}/visibility/",
+    response=NarrativeVisibilityOut,
+    summary="Set visibility for an entire narrative (cascades to all artifacts + reviews)",
+)
+def set_narrative_visibility(
+    request: HttpRequest, slug: str, payload: NarrativeVisibilityIn
+) -> NarrativeVisibilityOut:
+    wt_n, rev_n = aggregate.set_narrative_visibility(slug, payload.visibility)
+    detail = aggregate.build_narrative(slug)
+    status = detail["visibility"] if detail else (
+        "public" if payload.visibility == "link" else "private"
+    )
+    return NarrativeVisibilityOut(
+        slug=slug,
+        visibility=status,
+        walkthroughs_updated=wt_n,
+        reviews_updated=rev_n,
+    )
 
 
 # ---------------------------------------------------------------------------
