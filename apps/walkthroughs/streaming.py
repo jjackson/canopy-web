@@ -62,14 +62,12 @@ def walkthrough_content(request, wid):
     if w is None:
         raise Http404("walkthrough not found")
 
-    token = request.GET.get("t", "")
-    is_authed = request.user.is_authenticated
-    token_ok = (
-        w.visibility == Walkthrough.VISIBILITY_LINK
-        and bool(w.share_token)
-        and token == w.share_token
-    )
-    if not (is_authed or token_ok):
+    # Tokenless public access: visibility=link means anyone with the URL.
+    # The UUID is the only secret. Private stays session-gated.
+    if not (
+        request.user.is_authenticated
+        or w.visibility == Walkthrough.VISIBILITY_LINK
+    ):
         raise Http404("walkthrough not found")
 
     range_hdr = request.META.get("HTTP_RANGE", "")
