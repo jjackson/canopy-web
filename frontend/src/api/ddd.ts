@@ -56,6 +56,7 @@ export interface DddNarrativeDetail {
   story: string | null
   phase: string | null
   project_slug: string | null
+  visibility: 'public' | 'private' | 'mixed'
   current_version: DddNarrativeStory | null
   versions: DddNarrativeVersion[]
 }
@@ -161,6 +162,30 @@ async function del(url: string): Promise<void> {
   }
 }
 
+async function patchJson<T>(url: string, body: unknown): Promise<T> {
+  const csrf = csrfToken()
+  const resp = await fetch(url, {
+    method: 'PATCH',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrf ? { 'X-CSRFToken': decodeURIComponent(csrf) } : {}),
+    },
+    body: JSON.stringify(body),
+  })
+  if (!resp.ok) {
+    let detail = ''
+    try {
+      const b = await resp.json()
+      detail = b?.detail ?? b?.title ?? ''
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || `Request failed (${resp.status})`)
+  }
+  return resp.json() as Promise<T>
+}
+
 export interface ListNarrativesParams {
   project?: string
   mine?: boolean
@@ -178,6 +203,23 @@ export function listNarratives(
 
 export function getNarrative(slug: string): Promise<DddNarrativeDetail> {
   return getJson(`/api/ddd/narratives/${encodeURIComponent(slug)}/`)
+}
+
+export interface SetNarrativeVisibilityResult {
+  slug: string
+  visibility: 'public' | 'private' | 'mixed'
+  walkthroughs_updated: number
+  reviews_updated: number
+}
+
+/** Make an entire narrative public or private (cascades to all artifacts + reviews). */
+export function setNarrativeVisibility(
+  slug: string,
+  makePublic: boolean,
+): Promise<SetNarrativeVisibilityResult> {
+  return patchJson(`/api/ddd/narratives/${encodeURIComponent(slug)}/visibility/`, {
+    visibility: makePublic ? 'link' : 'private',
+  })
 }
 
 export function getRun(runId: string): Promise<DddRunPackage> {
