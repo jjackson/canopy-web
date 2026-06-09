@@ -57,3 +57,18 @@ def test_owner_sees_private_content(owner):
     with _stub_download():
         resp = client.get(f"/w/{w.id}/content")
     assert resp.status_code == 200
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_authed_non_owner_sees_private_content(owner):
+    # The tokenless gate grants any authenticated Dimagi user access,
+    # not just the owner.
+    w = _make(owner, visibility="private")
+    other = get_user_model().objects.create_user(
+        username="other@dimagi.com", email="other@dimagi.com",
+    )
+    client = Client()
+    client.force_login(other)
+    with _stub_download():
+        resp = client.get(f"/w/{w.id}/content")
+    assert resp.status_code == 200
