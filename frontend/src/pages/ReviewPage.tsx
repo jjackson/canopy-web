@@ -1740,7 +1740,9 @@ export function ReviewPage() {
     >
       <ReviewEditorInner
         review={review}
-        readOnly={isResolved}
+        // Submitting requires a Dimagi login (public reviews are read-only to
+        // anonymous viewers); also read-only once resolved.
+        readOnly={isResolved || auth.status !== 'authenticated'}
         onResolved={(updated) => setReview(updated)}
       />
     </ReviewEditorProvider>,

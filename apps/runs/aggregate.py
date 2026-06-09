@@ -111,8 +111,8 @@ def _narrative_slug_map(walkthroughs) -> dict[str, str]:
 
 
 def _content_url(w: Walkthrough) -> str:
-    """In-app viewer stream. Session auth covers private artifacts for the
-    dimagi-gated app; share tokens are managed on the /w/<id> viewer page."""
+    """In-app viewer stream. Session auth covers private artifacts; public
+    (visibility=link) artifacts stream tokenlessly to anyone with the URL."""
     return f"/w/{w.id}/content"
 
 
