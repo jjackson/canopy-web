@@ -333,11 +333,17 @@ def list_walkthroughs(
 @router.get(
     "/{wid}/",
     response=WalkthroughDetailOut,
+    auth=None,  # Public (visibility=link) walkthroughs load without a session.
     summary="Get walkthrough detail",
 )
 def get_walkthrough(request: HttpRequest, wid: UUID) -> WalkthroughDetailOut:
     _require_enabled()
     w = _get_or_404(wid)
+    if not (
+        request.user.is_authenticated
+        or w.visibility == Walkthrough.VISIBILITY_LINK
+    ):
+        raise Http404("walkthrough not found")  # don't leak private existence
     is_owner = request.user.is_authenticated and w.owner_id == request.user.id
     return WalkthroughDetailOut.model_validate(_detail_payload(w, is_owner=is_owner))
 

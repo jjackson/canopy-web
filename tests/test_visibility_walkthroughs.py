@@ -72,3 +72,16 @@ def test_authed_non_owner_sees_private_content(owner):
     with _stub_download():
         resp = client.get(f"/w/{w.id}/content")
     assert resp.status_code == 200
+
+
+def test_detail_handler_404s_private_for_anonymous(owner):
+    """With auth=None the handler itself must hide private rows from anonymous."""
+    from django.test import RequestFactory
+    from django.contrib.auth.models import AnonymousUser
+    from apps.walkthroughs.api import get_walkthrough
+
+    w = _make(owner, visibility="private")
+    req = RequestFactory().get(f"/api/walkthroughs/{w.id}/")
+    req.user = AnonymousUser()
+    with pytest.raises(Exception):  # Http404 / ProblemError → not found
+        get_walkthrough(req, w.id)
