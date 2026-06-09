@@ -36,7 +36,6 @@ from .schemas import (
     WalkthroughLink,
     WalkthroughListItemOut,
     WalkthroughPatchIn,
-    WalkthroughRotateTokenOut,
     WalkthroughVisibility,
 )
 
@@ -92,7 +91,6 @@ def _detail_payload(w: Walkthrough, *, is_owner: bool) -> dict:
         "owner_email": w.owner.email,
         "size_bytes": w.size_bytes,
         "duration_sec": w.duration_sec,
-        "share_token": w.share_token if is_owner else None,
         "content_type": w.content_type,
         "is_owner": is_owner,
         "links": w.links or [],
@@ -260,9 +258,6 @@ def upload_walkthrough(
     w.drive_folder_id = stored.folder_id
     w.save(update_fields=["drive_file_id", "drive_folder_id", "updated_at"])
 
-    if visibility == Walkthrough.VISIBILITY_LINK:
-        w.ensure_share_token()
-
     # Enforce one artifact per (run_id, role): a re-upload of the same role into
     # the same run REPLACES the prior one (e.g. healing a docs page), so a run
     # can never accumulate two videos / two slideshows / two docs pages. Genuine
@@ -375,9 +370,6 @@ def patch_walkthrough(
     w.save()
     w.refresh_from_db()
 
-    if w.visibility == Walkthrough.VISIBILITY_LINK and not w.share_token:
-        w.ensure_share_token()
-
     return WalkthroughDetailOut.model_validate(_detail_payload(w, is_owner=True))
 
 
@@ -420,23 +412,3 @@ def delete_walkthrough(request: HttpRequest, wid: UUID) -> Status:
     w.delete()
     return Status(204, None)
 
-
-# ---------------------------------------------------------------------------
-# Rotate token
-# ---------------------------------------------------------------------------
-
-
-@router.post(
-    "/{wid}/rotate-token/",
-    response=WalkthroughRotateTokenOut,
-    summary="Rotate share token (owner only)",
-)
-def rotate_token(request: HttpRequest, wid: UUID) -> WalkthroughRotateTokenOut:
-    _require_enabled()
-    w = _get_or_404(wid)
-
-    if not (request.user.is_authenticated and w.owner_id == request.user.id):
-        raise ProblemError(403, "Forbidden — owner only", type_=TYPE_FORBIDDEN)
-
-    new_token = w.rotate_share_token()
-    return WalkthroughRotateTokenOut(share_token=new_token)

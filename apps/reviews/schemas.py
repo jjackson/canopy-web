@@ -24,7 +24,6 @@ class ReviewRequestOut(StrictModel):
     visibility: ReviewVisibility
     request_json: dict[str, Any]
     response_json: dict[str, Any] | None = None
-    share_token: str | None = None
     is_owner: bool
     created_at: dt.datetime
     resolved_at: dt.datetime | None = None
@@ -46,7 +45,6 @@ class ReviewListItemOut(StrictModel):
     resolved_at: dt.datetime | None = None
     # resolved_at when resolved, else created_at — the "last edit" the dashboard sorts by.
     last_activity_at: dt.datetime
-    share_token: str | None = None
     is_owner: bool
 
 
@@ -70,4 +68,3 @@ class ReviewCreateOut(StrictModel):
 
     id: uuid.UUID
     url: str
-    share_token: str

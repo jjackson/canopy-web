@@ -52,9 +52,8 @@ class WalkthroughListItemOut(StrictModel):
 
 
 class WalkthroughDetailOut(WalkthroughListItemOut):
-    """Detail view adds share_token (owner only), content_type, is_owner."""
+    """Detail view adds content_type and is_owner."""
 
-    share_token: str | None = None
     content_type: str
     is_owner: bool
     links: list[WalkthroughLink] = []
@@ -86,5 +85,3 @@ class WalkthroughPatchIn(StrictModel):
     links: list[WalkthroughLink] | None = None
 
 
-class WalkthroughRotateTokenOut(StrictModel):
-    share_token: str

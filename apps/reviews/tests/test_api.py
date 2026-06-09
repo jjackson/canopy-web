@@ -1,9 +1,9 @@
 """Contract tests for the reviews Ninja surface (/api/reviews/).
 
 Covers:
-  POST   /api/reviews/              — create; returns id + url + share_token
-  GET    /api/reviews/<id>/         — owner sees share_token; ?t= unauth OK; bad token → 404
-  POST   /api/reviews/<id>/submit/  — writes response_json, flips status, stamps resolved_at
+  POST   /api/reviews/              — create; returns id + url
+  GET    /api/reviews/<id>/         — authenticated users see all; link-visibility readable by anyone
+  POST   /api/reviews/<id>/submit/  — writes response_json, flips status, stamps resolved_at (auth required)
   Round-trip: create → get reflects request_json correctly
   Submit gate: already-resolved → 403
 """
@@ -97,12 +97,12 @@ def _make_review(owner, **kwargs) -> ReviewRequest:
 
 
 # ---------------------------------------------------------------------------
-# 1. create returns id + url + share_token
+# 1. create returns id + url
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_create_returns_id_url_share_token(auth_client):
+def test_create_returns_id_and_url(auth_client):
     resp = auth_client.post(
         f"{BASE}/",
         data={"request_json": SAMPLE_REQUEST_JSON, "visibility": "link"},
@@ -112,87 +112,56 @@ def test_create_returns_id_url_share_token(auth_client):
     body = resp.json()
     assert "id" in body
     assert "url" in body
-    assert "share_token" in body
-    assert body["share_token"] is not None
-    # URL should reference the review id and include the token
+    assert "share_token" not in body
+    # URL should reference the review id
     assert body["id"] in body["url"]
-    assert body["share_token"] in body["url"]
 
 
 # ---------------------------------------------------------------------------
-# 2. GET by owner returns full record including share_token
+# 2. GET by owner returns full record
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_get_by_owner_includes_share_token(auth_client, owner):
+def test_get_by_owner_returns_full_record(auth_client, owner):
     review = _make_review(owner, visibility="link")
-    review.ensure_share_token()
 
     resp = auth_client.get(f"{BASE}/{review.id}/")
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert body["id"] == str(review.id)
     assert body["is_owner"] is True
-    assert body["share_token"] == review.share_token
     assert body["status"] == "pending"
 
 
 # ---------------------------------------------------------------------------
-# 3. GET with valid ?t= (unauthenticated) returns data WITHOUT share_token
+# 3. GET unauthenticated on a link-visibility review returns data
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_get_with_valid_token_unauth_share_token_exposed(owner):
+def test_get_link_visibility_unauth_returns_data(owner):
+    """Unauthenticated callers can read link-visibility reviews without a token."""
     review = _make_review(owner, visibility="link")
-    token = review.ensure_share_token()
 
     c = Client()  # unauthenticated
-    resp = c.get(f"{BASE}/{review.id}/?t={token}")
+    resp = c.get(f"{BASE}/{review.id}/")
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert body["status"] == "pending"
-    # share_token is exposed to link-token holders (they demonstrably have it
-    # and need it to re-poll or submit)
-    assert body["share_token"] == token
-    # is_owner is False — they are not the DB owner, just a link-token holder
     assert body["is_owner"] is False
-
-
-@pytest.mark.django_db
-def test_get_with_valid_token_unauth_returns_data(owner):
-    """An unauthenticated caller with a valid ?t= can read the review."""
-    review = _make_review(owner, visibility="link")
-    token = review.ensure_share_token()
-
-    c = Client()
-    resp = c.get(f"{BASE}/{review.id}/?t={token}")
-    assert resp.status_code == 200, resp.content
-    body = resp.json()
     assert body["run_id"] == review.run_id
     assert body["gate"] == review.gate
 
 
 # ---------------------------------------------------------------------------
-# 4. GET with bad / no token (unauthenticated) → 404
+# 4. GET unauthenticated on a private review → 404
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_get_bad_token_unauth_returns_404(owner):
-    review = _make_review(owner, visibility="link")
-    review.ensure_share_token()
-
-    c = Client()
-    resp = c.get(f"{BASE}/{review.id}/?t=WRONG_TOKEN")
-    assert resp.status_code == 404, resp.content
-
-
-@pytest.mark.django_db
-def test_get_no_token_unauth_returns_404(owner):
-    review = _make_review(owner, visibility="link")
-    review.ensure_share_token()
+def test_get_private_review_unauth_returns_404(owner):
+    review = _make_review(owner, visibility="private")
 
     c = Client()
     resp = c.get(f"{BASE}/{review.id}/")
@@ -216,7 +185,6 @@ def test_get_nonexistent_review_404(auth_client):
 @pytest.mark.django_db
 def test_submit_resolves_review(auth_client, owner):
     review = _make_review(owner, visibility="link")
-    review.ensure_share_token()
 
     resp = auth_client.post(
         f"{BASE}/{review.id}/submit/",
@@ -237,43 +205,22 @@ def test_submit_resolves_review(auth_client, owner):
 
 
 # ---------------------------------------------------------------------------
-# 6. submit via valid ?t= (unauth) also works
+# 6. submit requires authentication — unauthenticated → 403
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_submit_via_link_token_works(owner):
+def test_submit_unauth_returns_403(owner):
+    """Unauthenticated callers can read link-visibility reviews but cannot submit."""
     review = _make_review(owner, visibility="link")
-    token = review.ensure_share_token()
 
     c = Client()
     resp = c.post(
-        f"{BASE}/{review.id}/submit/?t={token}",
+        f"{BASE}/{review.id}/submit/",
         data={"response_json": SAMPLE_RESPONSE_JSON},
         content_type="application/json",
     )
-    assert resp.status_code == 200, resp.content
-    body = resp.json()
-    assert body["status"] == "resolved"
-
-
-# ---------------------------------------------------------------------------
-# 7. submit is gated — bad/no token unauth → 404
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_submit_bad_token_unauth_returns_404(owner):
-    review = _make_review(owner, visibility="link")
-    review.ensure_share_token()
-
-    c = Client()
-    resp = c.post(
-        f"{BASE}/{review.id}/submit/?t=WRONG",
-        data={"response_json": SAMPLE_RESPONSE_JSON},
-        content_type="application/json",
-    )
-    assert resp.status_code == 404, resp.content
+    assert resp.status_code == 403, resp.content
 
 
 # ---------------------------------------------------------------------------
@@ -330,48 +277,37 @@ def test_request_json_round_trips(auth_client, owner):
 @pytest.mark.django_db
 def test_non_owner_authenticated_can_read(other_client, owner):
     review = _make_review(owner, visibility="private")
-    review.ensure_share_token()
 
     resp = other_client.get(f"{BASE}/{review.id}/")
     assert resp.status_code == 200, resp.content
     body = resp.json()
     assert body["is_owner"] is False
-    # Non-owner does not see share_token
-    assert body["share_token"] is None
 
 
 # ---------------------------------------------------------------------------
-# 11. submit on a private review by an authenticated NON-owner is blocked
+# 11. submit by an authenticated NON-owner is allowed (team-internal write)
 #
-#     Write gate semantics: private visibility means the review is readable
-#     by any dimagi-authenticated user, but submit (write) requires being the
-#     owner OR holding a valid ?t= share token.  A non-owner authenticated
-#     session without a token must not be able to resolve the review.
+#     Write gate semantics: any authenticated user may submit, just like
+#     any authenticated user may read — reviews are team-internal resources.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_submit_private_review_by_non_owner_is_blocked(other_client, owner):
-    """Authenticated non-owner without ?t= cannot submit a private review."""
+def test_submit_by_authenticated_non_owner_is_allowed(other_client, owner):
+    """Authenticated non-owner can submit a review (team-internal write access)."""
     review = _make_review(owner, visibility="private")
-    review.ensure_share_token()
 
     resp = other_client.post(
         f"{BASE}/{review.id}/submit/",
         data={"response_json": SAMPLE_RESPONSE_JSON},
         content_type="application/json",
     )
-    # Must be blocked — 403 or 404 (endpoint returns 404 to avoid leaking existence)
-    assert resp.status_code in (403, 404), (
-        f"Expected 403 or 404 but got {resp.status_code}: {resp.content}"
-    )
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["status"] == "resolved"
 
-    # Review must NOT have been resolved in the database
     review.refresh_from_db()
-    assert review.status == ReviewRequest.STATUS_PENDING, (
-        "Review should still be pending after blocked submit attempt"
-    )
-    assert review.response_json is None
+    assert review.status == ReviewRequest.STATUS_RESOLVED
 
 
 # ---------------------------------------------------------------------------

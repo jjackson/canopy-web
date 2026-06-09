@@ -112,8 +112,6 @@ def test_upload_walkthrough_html(auth_client, fake_drive, owner):
     assert out.kind == "html"
     assert out.is_owner is True
     assert out.visibility == "link"
-    # share_token minted when visibility=link
-    assert out.share_token is not None
 
 
 @pytest.mark.django_db
@@ -386,13 +384,11 @@ def test_list_filter_mine(auth_client, owner, other_user):
 @override_settings(WALKTHROUGHS_ENABLED=True)
 def test_get_detail_owner_sees_token(auth_client, owner):
     w = _make_walkthrough(owner, visibility="link")
-    w.ensure_share_token()
     resp = auth_client.get(f"{BASE}/{w.id}/")
     assert resp.status_code == 200
     body = resp.json()
     out = WalkthroughDetailOut.model_validate(body)
     assert out.is_owner is True
-    assert out.share_token == w.share_token
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +400,6 @@ def test_get_detail_owner_sees_token(auth_client, owner):
 @override_settings(WALKTHROUGHS_ENABLED=True)
 def test_get_detail_non_owner_no_token(owner, other_user):
     w = _make_walkthrough(owner, visibility="link")
-    w.ensure_share_token()
     c = Client()
     c.force_login(other_user)
     resp = c.get(f"{BASE}/{w.id}/")
@@ -412,7 +407,6 @@ def test_get_detail_non_owner_no_token(owner, other_user):
     body = resp.json()
     out = WalkthroughDetailOut.model_validate(body)
     assert out.is_owner is False
-    assert out.share_token is None
 
 
 # ---------------------------------------------------------------------------
@@ -452,15 +446,14 @@ def test_patch_owner_only(owner, other_user):
 
 
 # ---------------------------------------------------------------------------
-# 12. test_patch_to_link_mints_token
+# 12. test_patch_to_link_changes_visibility
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 @override_settings(WALKTHROUGHS_ENABLED=True)
-def test_patch_to_link_mints_token(auth_client, owner):
+def test_patch_to_link_changes_visibility(auth_client, owner):
     w = _make_walkthrough(owner, visibility="private")
-    assert w.share_token is None
     resp = auth_client.patch(
         f"{BASE}/{w.id}/",
         data=json.dumps({"visibility": "link"}),
@@ -470,7 +463,6 @@ def test_patch_to_link_mints_token(auth_client, owner):
     body = resp.json()
     out = WalkthroughDetailOut.model_validate(body)
     assert out.visibility == "link"
-    assert out.share_token is not None
 
 
 # ---------------------------------------------------------------------------
@@ -526,26 +518,6 @@ def test_delete_non_owner_403(owner, other_user):
 
 
 # ---------------------------------------------------------------------------
-# 15. test_rotate_token_owner_only
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-@override_settings(WALKTHROUGHS_ENABLED=True)
-def test_rotate_token_owner_only(auth_client, owner):
-    w = _make_walkthrough(owner, visibility="link")
-    w.ensure_share_token()
-    old_token = w.share_token
-
-    resp = auth_client.post(f"{BASE}/{w.id}/rotate-token/")
-    assert resp.status_code == 200
-    body = resp.json()
-    new_token = body["share_token"]
-    assert new_token
-    assert new_token != old_token
-
-
-# ---------------------------------------------------------------------------
 # 16. test_endpoints_404_when_disabled
 # ---------------------------------------------------------------------------
 
@@ -581,10 +553,6 @@ def test_endpoints_404_when_disabled(auth_client, owner):
 
     # DELETE /{wid}/
     resp = auth_client.delete(f"{BASE}/{w.id}/")
-    assert resp.status_code == 404
-
-    # POST /{wid}/rotate-token/
-    resp = auth_client.post(f"{BASE}/{w.id}/rotate-token/")
     assert resp.status_code == 404
 
 
