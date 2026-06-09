@@ -4,7 +4,6 @@ import {
   deleteWalkthrough,
   getWalkthrough,
   patchWalkthrough,
-  rotateWalkthroughToken,
   walkthroughContentUrl,
   type WalkthroughDetail,
 } from '../api/walkthroughs'
@@ -42,31 +41,6 @@ export function WalkthroughViewerPage() {
     }
   }
 
-  async function copyShareLink() {
-    if (!w) return
-    let token = w.share_token
-    if (!token || w.visibility !== 'link') {
-      const updated = await patchWalkthrough(w.id, { visibility: 'link' })
-      setW(updated)
-      token = updated.share_token
-    }
-    const url = `${window.location.origin}/w/${w.id}?t=${encodeURIComponent(token!)}`
-    await navigator.clipboard.writeText(url)
-  }
-
-  async function rotate() {
-    if (!w) return
-    setBusy(true)
-    try {
-      const { share_token } = await rotateWalkthroughToken(w.id)
-      setW({ ...w, share_token })
-      const url = `${window.location.origin}/w/${w.id}?t=${encodeURIComponent(share_token)}`
-      await navigator.clipboard.writeText(url)
-    } finally {
-      setBusy(false)
-    }
-  }
-
   async function destroy() {
     if (!w) return
     if (!confirm(`Delete "${w.title}"? This cannot be undone.`)) return
@@ -89,13 +63,11 @@ export function WalkthroughViewerPage() {
     return <div className="max-w-4xl mx-auto p-6 text-stone-500">Loading…</div>
   }
 
-  const params = new URLSearchParams(window.location.search)
-  const viewerToken = params.get('t') ?? w.share_token ?? null
-  // Forward a `#scene-N` deep-link (e.g. /w/<id>?t=<tok>#scene-3) into the deck
+  // Forward a `#scene-N` deep-link (e.g. /w/<id>#scene-3) into the deck
   // iframe so it opens on that scene; the deck's own JS reads its hash. Videos
   // ignore it. Non-scene hashes normalize to '' and pass through unchanged.
   const contentSrc = withSceneHash(
-    walkthroughContentUrl(w.id, viewerToken),
+    walkthroughContentUrl(w.id),
     window.location.hash,
   )
 
@@ -127,7 +99,7 @@ export function WalkthroughViewerPage() {
               : 'text-stone-400 bg-stone-800/60 border-stone-700'
           }`}
         >
-          {w.visibility === 'link' ? 'Shareable link' : 'Private (dimagi)'}
+          {w.visibility === 'link' ? 'Public' : 'Private (dimagi)'}
         </span>
       </header>
 
@@ -138,24 +110,8 @@ export function WalkthroughViewerPage() {
             onClick={toggleVisibility}
             disabled={busy}
           >
-            {w.visibility === 'link' ? 'Make private' : 'Enable link'}
+            {w.visibility === 'link' ? 'Make private' : 'Make public'}
           </button>
-          <button
-            className="px-3 py-1 rounded-lg border border-stone-800 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:border-stone-700 transition-colors disabled:opacity-50"
-            onClick={copyShareLink}
-            disabled={busy}
-          >
-            Copy share link
-          </button>
-          {w.visibility === 'link' && (
-            <button
-              className="px-3 py-1 rounded-lg border border-stone-800 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:border-stone-700 transition-colors disabled:opacity-50"
-              onClick={rotate}
-              disabled={busy}
-            >
-              Rotate token
-            </button>
-          )}
           <button
             className="px-3 py-1 rounded-lg border border-red-500/30 text-red-400/90 bg-red-500/5 hover:bg-red-500/10 transition-colors disabled:opacity-50 ml-auto"
             onClick={destroy}
