@@ -1123,7 +1123,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
   // Video embed
   let videoElement: React.ReactNode = null
   if (req.video?.walkthrough_id) {
-    const contentSrc = walkthroughContentUrl(req.video.walkthrough_id, shareToken)
+    const contentSrc = walkthroughContentUrl(req.video.walkthrough_id)
     videoElement = (
       <iframe
         src={contentSrc}
@@ -1740,7 +1740,9 @@ export function ReviewPage() {
     >
       <ReviewEditorInner
         review={review}
-        readOnly={isResolved}
+        // Submitting requires a Dimagi login (public reviews are read-only to
+        // anonymous viewers); also read-only once resolved.
+        readOnly={isResolved || auth.status !== 'authenticated'}
         onResolved={(updated) => setReview(updated)}
       />
     </ReviewEditorProvider>,

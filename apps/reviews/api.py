@@ -13,7 +13,8 @@ create_token) and sends `Authorization: Bearer <raw>` on every call.
 BearerTokenAuthMiddleware resolves the token to a real Django user, so all
 three endpoints see an authenticated request.user — no special allowlist
 hacks needed. The human review page uses the same session_auth (already
-logged in via Google OAuth) or, if visibility=="link", the ?t= query token.
+logged in via Google OAuth) or, if visibility=="link", the review is readable
+by anyone with the URL (no ?t= token required).
 """
 from __future__ import annotations
 
@@ -62,31 +63,21 @@ def _is_owner(request: HttpRequest, review: ReviewRequest) -> bool:
     )
 
 
-def _token_ok(request: HttpRequest, review: ReviewRequest) -> bool:
-    """True when the ?t= query param matches the review's share_token."""
-    t = request.GET.get("t", "")
-    return bool(t and review.share_token and t == review.share_token)
-
-
 def _can_read(request: HttpRequest, review: ReviewRequest) -> bool:
-    """Authenticated users always see all reviews; link-visibility also allows ?t= bearer."""
-    if request.user.is_authenticated:
-        return True
-    if review.visibility == ReviewRequest.VISIBILITY_LINK and _token_ok(request, review):
-        return True
-    return False
+    """Authenticated users see all reviews; public (link) reviews are readable by anyone."""
+    return (
+        request.user.is_authenticated
+        or review.visibility == ReviewRequest.VISIBILITY_LINK
+    )
 
 
 def _can_write(request: HttpRequest, review: ReviewRequest) -> bool:
-    """Submit and token-rotation require owner or a valid ?t= bearer."""
-    if _is_owner(request, review):
-        return True
-    if review.visibility == ReviewRequest.VISIBILITY_LINK and _token_ok(request, review):
-        return True
-    return False
+    """Submitting a decision (approve/redraft) requires a Dimagi login —
+    public-readable does NOT grant anonymous write."""
+    return request.user.is_authenticated
 
 
-def _detail_payload(review: ReviewRequest, *, is_owner: bool, expose_token: bool) -> dict:
+def _detail_payload(review: ReviewRequest, *, is_owner: bool) -> dict:
     return {
         "id": review.id,
         "run_id": review.run_id,
@@ -97,9 +88,6 @@ def _detail_payload(review: ReviewRequest, *, is_owner: bool, expose_token: bool
         or narrative_slug_from_run_id(review.run_id),
         "request_json": review.request_json,
         "response_json": review.response_json,
-        # share_token exposed to owner OR link-token holders (they demonstrably
-        # have it and need it to re-poll / re-submit).
-        "share_token": review.share_token if expose_token else None,
         "is_owner": is_owner,
         "created_at": review.created_at,
         "resolved_at": review.resolved_at,
@@ -135,11 +123,6 @@ def _list_item_payload(request: HttpRequest, review: ReviewRequest) -> dict:
         "created_at": review.created_at,
         "resolved_at": review.resolved_at,
         "last_activity_at": review.resolved_at or review.created_at,
-        # Owners and link-visibility reviews expose the token so the dashboard can
-        # build a working /review/<id>?t= link without a second round-trip.
-        "share_token": review.share_token
-        if (is_own or review.visibility == ReviewRequest.VISIBILITY_LINK)
-        else None,
         "is_owner": is_own,
     }
 
@@ -245,16 +228,12 @@ def create_review(request: HttpRequest, payload: ReviewCreateIn) -> Status:
         owner=request.user if request.user.is_authenticated else None,
     )
 
-    # Always mint a share token: the orchestrator posts the URL to Slack /
-    # wherever humans pick it up, and they may not be logged in.
-    token = review.ensure_share_token()
-
     # Build the hosted-review URL.  The frontend SPA handles /review/<id>.
-    url = f"/review/{review.id}/?t={token}"
+    url = f"/review/{review.id}/"
 
     return Status(
         201,
-        ReviewCreateOut(id=review.id, url=url, share_token=token),
+        ReviewCreateOut(id=review.id, url=url),
     )
 
 
@@ -266,7 +245,7 @@ def create_review(request: HttpRequest, payload: ReviewCreateIn) -> Status:
 @router.get(
     "/{rid}/",
     response=ReviewRequestOut,
-    auth=None,  # Allow unauthenticated access when ?t= matches share_token
+    auth=None,  # Public (visibility=link) reviews are readable without a session.
     summary="Get review request detail or poll for resolution",
 )
 def get_review(request: HttpRequest, rid: UUID) -> ReviewRequestOut:
@@ -275,7 +254,7 @@ def get_review(request: HttpRequest, rid: UUID) -> ReviewRequestOut:
 
     Access rules:
     - Any authenticated user can read any review (they're team-internal).
-    - Unauthenticated callers may read if visibility=="link" and ?t= matches.
+    - Unauthenticated callers may read if visibility=="link" (no token required).
     - Otherwise → 404 (don't leak existence).
     """
     review = _get_or_404(rid)
@@ -284,12 +263,9 @@ def get_review(request: HttpRequest, rid: UUID) -> ReviewRequestOut:
         raise ProblemError(404, "Review request not found", type_=TYPE_NOT_FOUND)
 
     is_own = _is_owner(request, review)
-    # For link-token callers we still include the token in the payload —
-    # they demonstrably have it already and need it to re-poll.
-    expose_token = is_own or _token_ok(request, review)
 
     return ReviewRequestOut.model_validate(
-        _detail_payload(review, is_owner=is_own, expose_token=expose_token)
+        _detail_payload(review, is_owner=is_own)
     )
 
 
@@ -301,7 +277,7 @@ def get_review(request: HttpRequest, rid: UUID) -> ReviewRequestOut:
 @router.post(
     "/{rid}/submit/",
     response=ReviewRequestOut,
-    auth=None,  # Allow unauthenticated submit when ?t= matches share_token
+    auth=None,  # handler enforces _can_write (auth required); 403 not 401 for readable-but-anonymous
     summary="Submit decisions + narration edits (human → server)",
 )
 def submit_review(request: HttpRequest, rid: UUID, payload: ReviewSubmitIn) -> ReviewRequestOut:
@@ -313,8 +289,13 @@ def submit_review(request: HttpRequest, rid: UUID, payload: ReviewSubmitIn) -> R
     """
     review = _get_or_404(rid)
 
-    if not _can_write(request, review):
+    # Give a 404 (not 403) when the caller can't even read the review, so we don't
+    # leak existence.  When they CAN read but lack write permission (e.g. anonymous
+    # caller on a public review), return 403.
+    if not _can_read(request, review):
         raise ProblemError(404, "Review request not found", type_=TYPE_NOT_FOUND)
+    if not _can_write(request, review):
+        raise ProblemError(403, "Authentication required to submit a review", type_=TYPE_FORBIDDEN)
 
     if review.status == ReviewRequest.STATUS_RESOLVED:
         raise ProblemError(
@@ -330,9 +311,8 @@ def submit_review(request: HttpRequest, rid: UUID, payload: ReviewSubmitIn) -> R
     review.save(update_fields=["response_json", "status", "resolved_at"])
 
     is_own = _is_owner(request, review)
-    expose_token = is_own or _token_ok(request, review)
     return ReviewRequestOut.model_validate(
-        _detail_payload(review, is_owner=is_own, expose_token=expose_token)
+        _detail_payload(review, is_owner=is_own)
     )
 
 

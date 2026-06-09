@@ -1,7 +1,7 @@
 """Streaming endpoint for the public walkthrough viewer.
 
-Preserved as a bare Django view (NOT ported to Ninja) — HTTP Range +
-token-based public-link auth don't fit cleanly into Ninja's contract.
+Preserved as a bare Django view (NOT ported to Ninja) — HTTP Range support
+(for ``<video>`` scrubbing) doesn't fit cleanly into Ninja's contract.
 
 Mounted at /w/<uuid:wid>/content in config/urls.py.
 """
@@ -46,9 +46,10 @@ def _get_or_404(wid):
 def walkthrough_content(request, wid):
     """GET /w/<id>/content — stream the file bytes from Drive.
 
-    Auth: caller is the authenticated owner OR visibility=link with a
-    valid ?t=<share_token>. Mismatch returns 404 (don't leak existence
-    of private walkthroughs).
+    Auth (tokenless): any authenticated session user OR a walkthrough with
+    visibility=link (the UUID in the URL is the only access secret). A
+    private walkthrough returns 404 to unauthenticated callers so its
+    existence isn't leaked.
 
     Django's SecurityMiddleware sets ``X-Frame-Options: DENY`` globally,
     which breaks our own viewer page (``/w/<id>``) when it tries to embed
@@ -62,14 +63,12 @@ def walkthrough_content(request, wid):
     if w is None:
         raise Http404("walkthrough not found")
 
-    token = request.GET.get("t", "")
-    is_authed = request.user.is_authenticated
-    token_ok = (
-        w.visibility == Walkthrough.VISIBILITY_LINK
-        and bool(w.share_token)
-        and token == w.share_token
-    )
-    if not (is_authed or token_ok):
+    # Tokenless public access: visibility=link means anyone with the URL.
+    # The UUID is the only secret. Private stays session-gated.
+    if not (
+        request.user.is_authenticated
+        or w.visibility == Walkthrough.VISIBILITY_LINK
+    ):
         raise Http404("walkthrough not found")
 
     range_hdr = request.META.get("HTTP_RANGE", "")

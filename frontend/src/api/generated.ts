@@ -774,23 +774,6 @@ export interface paths {
         readonly patch: operations["apps_walkthroughs_api_patch_walkthrough"];
         readonly trace?: never;
     };
-    readonly "/api/walkthroughs/{wid}/rotate-token/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Rotate share token (owner only) */
-        readonly post: operations["apps_walkthroughs_api_rotate_token"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/tokens/": {
         readonly parameters: {
             readonly query?: never;
@@ -872,7 +855,7 @@ export interface paths {
          *
          *     Access rules:
          *     - Any authenticated user can read any review (they're team-internal).
-         *     - Unauthenticated callers may read if visibility=="link" and ?t= matches.
+         *     - Unauthenticated callers may read if visibility=="link" (no token required).
          *     - Otherwise → 404 (don't leak existence).
          */
         readonly get: operations["apps_reviews_api_get_review"];
@@ -967,6 +950,23 @@ export interface paths {
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/ddd/narratives/{slug}/visibility/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** Set visibility for an entire narrative (cascades to all artifacts + reviews) */
+        readonly patch: operations["apps_runs_api_set_narrative_visibility"];
         readonly trace?: never;
     };
     readonly "/api/ddd/narratives/{slug}/versions/{version}/": {
@@ -1934,7 +1934,7 @@ export interface components {
         };
         /**
          * WalkthroughDetailOut
-         * @description Detail view adds share_token (owner only), content_type, is_owner.
+         * @description Detail view adds content_type and is_owner.
          */
         readonly WalkthroughDetailOut: {
             /**
@@ -1986,8 +1986,6 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
-            /** Share Token */
-            readonly share_token?: string | null;
             /** Content Type */
             readonly content_type: string;
             /** Is Owner */
@@ -2084,11 +2082,6 @@ export interface components {
             /** Links */
             readonly links?: readonly components["schemas"]["WalkthroughLink"][] | null;
         };
-        /** WalkthroughRotateTokenOut */
-        readonly WalkthroughRotateTokenOut: {
-            /** Share Token */
-            readonly share_token: string;
-        };
         /**
          * PersonalTokenOut
          * @description A token as listed to its owner. Never contains the raw value.
@@ -2179,8 +2172,6 @@ export interface components {
              * Format: date-time
              */
             readonly last_activity_at: string;
-            /** Share Token */
-            readonly share_token?: string | null;
             /** Is Owner */
             readonly is_owner: boolean;
         };
@@ -2196,8 +2187,6 @@ export interface components {
             readonly id: string;
             /** Url */
             readonly url: string;
-            /** Share Token */
-            readonly share_token: string;
         };
         /**
          * ReviewCreateIn
@@ -2249,8 +2238,6 @@ export interface components {
             readonly response_json?: {
                 readonly [key: string]: unknown;
             } | null;
-            /** Share Token */
-            readonly share_token?: string | null;
             /** Is Owner */
             readonly is_owner: boolean;
             /**
@@ -2316,6 +2303,12 @@ export interface components {
             readonly phase?: string | null;
             /** Project Slug */
             readonly project_slug?: string | null;
+            /**
+             * Visibility
+             * @default private
+             * @enum {string}
+             */
+            readonly visibility: "public" | "private" | "mixed";
             readonly current_version?: components["schemas"]["NarrativeStoryOut"] | null;
             /**
              * Versions
@@ -2493,6 +2486,28 @@ export interface components {
              * @default []
              */
             readonly all_artifacts: readonly components["schemas"]["RunArtifactRefOut"][];
+        };
+        /** NarrativeVisibilityOut */
+        readonly NarrativeVisibilityOut: {
+            /** Slug */
+            readonly slug: string;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "public" | "private" | "mixed";
+            /** Walkthroughs Updated */
+            readonly walkthroughs_updated: number;
+            /** Reviews Updated */
+            readonly reviews_updated: number;
+        };
+        /** NarrativeVisibilityIn */
+        readonly NarrativeVisibilityIn: {
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
         };
         /** Page[ShareoutOut] */
         readonly Page_ShareoutOut_: {
@@ -3859,28 +3874,6 @@ export interface operations {
             };
         };
     };
-    readonly apps_walkthroughs_api_rotate_token: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly wid: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["WalkthroughRotateTokenOut"];
-                };
-            };
-        };
-    };
     readonly apps_tokens_api_list_tokens: {
         readonly parameters: {
             readonly query?: never;
@@ -4165,6 +4158,32 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly apps_runs_api_set_narrative_visibility: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["NarrativeVisibilityIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NarrativeVisibilityOut"];
+                };
             };
         };
     };

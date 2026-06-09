@@ -6,7 +6,6 @@ from apps.walkthroughs.schemas import (
     WalkthroughDetailOut,
     WalkthroughListItemOut,
     WalkthroughPatchIn,
-    WalkthroughRotateTokenOut,
     WalkthroughUploadIn,
 )
 
@@ -41,7 +40,6 @@ def test_walkthrough_detail_out_owner_shape():
         "owner_email": "alice@dimagi.com",
         "size_bytes": 9999,
         "duration_sec": 42,
-        "share_token": "abc123",
         "content_type": "video/mp4",
         "is_owner": True,
         "created_at": "2026-05-26T10:00:00Z",
@@ -49,10 +47,9 @@ def test_walkthrough_detail_out_owner_shape():
     }
     parsed = WalkthroughDetailOut.model_validate(raw)
     assert parsed.is_owner is True
-    assert parsed.share_token == "abc123"
 
 
-def test_walkthrough_detail_out_non_owner_null_token():
+def test_walkthrough_detail_out_non_owner_shape():
     parsed = WalkthroughDetailOut.model_validate(
         {
             "id": str(uuid.uuid4()),
@@ -64,14 +61,13 @@ def test_walkthrough_detail_out_non_owner_null_token():
             "owner_email": "bob@dimagi.com",
             "size_bytes": 1,
             "duration_sec": None,
-            "share_token": None,
             "content_type": "text/html",
             "is_owner": False,
             "created_at": "2026-05-26T10:00:00Z",
             "updated_at": "2026-05-26T10:00:00Z",
         }
     )
-    assert parsed.share_token is None
+    assert parsed.is_owner is False
 
 
 def test_walkthrough_kind_literal():
@@ -106,6 +102,3 @@ def test_walkthrough_patch_partial():
     assert dumped == {"visibility": "link"}
 
 
-def test_rotate_token_out():
-    obj = WalkthroughRotateTokenOut(share_token="newtok")
-    assert obj.share_token == "newtok"

@@ -5,6 +5,7 @@ import {
   deleteNarrativeVersion,
   deleteRun,
   getNarrative,
+  setNarrativeVisibility,
   type DddNarrativeDetail,
   type DddNarrativeRun,
   type DddNarrativeVersion,
@@ -219,6 +220,7 @@ export function NarrativeLanding({ slug }: { slug: string }) {
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [deletingNarrative, setDeletingNarrative] = useState(false)
+  const [vizBusy, setVizBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -251,6 +253,20 @@ export function NarrativeLanding({ slug }: { slug: string }) {
     }
   }
 
+  async function toggleVisibility() {
+    if (!detail) return
+    const makePublic = detail.visibility !== 'public'
+    setVizBusy(true)
+    try {
+      const res = await setNarrativeVisibility(slug, makePublic)
+      setDetail({ ...detail, visibility: res.visibility })
+    } catch (err) {
+      window.alert(`Could not change visibility: ${(err as Error).message || err}`)
+    } finally {
+      setVizBusy(false)
+    }
+  }
+
   if (error) return <div className="p-8 text-sm text-red-400/90">Error: {error}</div>
   if (!detail) return <div className="p-8 text-sm text-stone-500">Loading…</div>
 
@@ -272,14 +288,35 @@ export function NarrativeLanding({ slug }: { slug: string }) {
             {detail.project_slug && <span>· {detail.project_slug}</span>}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onDeleteNarrative}
-          disabled={deletingNarrative}
-          className="shrink-0 rounded-md border border-stone-800 px-2.5 py-1 text-xs text-stone-500 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
-        >
-          {deletingNarrative ? 'Deleting…' : 'Delete narrative'}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleVisibility}
+            disabled={vizBusy}
+            title="Toggle whether this whole narrative (video, deck, docs, reviews) is public"
+            className={`rounded-lg border px-3 py-1 text-sm transition-colors disabled:opacity-50 ${
+              detail.visibility === 'public'
+                ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-400/90 hover:bg-emerald-400/20'
+                : 'border-stone-700 bg-stone-800/60 text-stone-300 hover:bg-stone-800'
+            }`}
+          >
+            {vizBusy
+              ? '…'
+              : detail.visibility === 'public'
+                ? 'Public'
+                : detail.visibility === 'mixed'
+                  ? 'Mixed — make public'
+                  : 'Private'}
+          </button>
+          <button
+            type="button"
+            onClick={onDeleteNarrative}
+            disabled={deletingNarrative}
+            className="rounded-md border border-stone-800 px-2.5 py-1 text-xs text-stone-500 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+          >
+            {deletingNarrative ? 'Deleting…' : 'Delete narrative'}
+          </button>
+        </div>
       </header>
 
       <div className="mt-6 flex items-baseline gap-2">

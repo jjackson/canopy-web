@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from apps.common.schemas import StrictModel
 from apps.walkthroughs.schemas import WalkthroughKind, WalkthroughLink
@@ -58,6 +58,7 @@ class NarrativeDetailOut(StrictModel):
     story: str | None = None
     phase: str | None = None
     project_slug: str | None = None
+    visibility: Literal["public", "private", "mixed"] = "private"
     current_version: NarrativeStoryOut | None = None
     versions: list[NarrativeVersionOut] = []
 
@@ -110,3 +111,14 @@ class RunPackageOut(StrictModel):
     narrative: RunNarrativeOut | None = None
     links: list[WalkthroughLink] = []
     all_artifacts: list[RunArtifactRefOut] = []
+
+
+class NarrativeVisibilityIn(StrictModel):
+    visibility: Literal["private", "link"]
+
+
+class NarrativeVisibilityOut(StrictModel):
+    slug: str
+    visibility: Literal["public", "private", "mixed"]
+    walkthroughs_updated: int
+    reviews_updated: int
