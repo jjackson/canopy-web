@@ -1,5 +1,7 @@
 # Tokenless Narrative-Level Visibility Implementation Plan
 
+**Status:** Shipped (PR #105, 2026-06-09) — historical record of the build, not current-state. All 12 tasks executed; checkboxes left unticked as a build artifact.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace per-artifact share tokens with a tokenless Public/Private model, and add a narrative-level toggle that cascades visibility to every walkthrough and review under a narrative.

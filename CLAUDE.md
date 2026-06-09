@@ -73,7 +73,7 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
 - `/w/:id` — Single walkthrough viewer (HTML iframe or video player)
 - `/ddd` (+ `/ddd/:narrative`, `/ddd/:narrative/:runId`) — Demo-driven-development (DDD) views: narrative → version → run → package (video + deck + narrative + links). `/ddd-plans` and `/reviews` redirect here
-- `/review/:id` — Editable narrative review surface for DDD (approve / redraft a story before build); token-shareable to anonymous viewers
+- `/review/:id` — Editable narrative review surface for DDD (approve / redraft a story before build); public (link-visibility) reviews are readable by anyone with the URL, but submitting a decision requires a Dimagi login
 - `/settings` — AI backend status, switch backends, headless Claude CLI auth, debug-session minting
 - `/api/` — REST API
 - `/admin/` — Django admin
@@ -157,12 +157,13 @@ uv run python manage.py create_token --email ace@dimagi-ai.com --label "canopy p
 
 ### Walkthroughs
 - `GET /api/walkthroughs/` — List. Filters: `?project=<slug>`, `?kind=html|video`, `?mine=true`
-- `POST /api/walkthroughs/` — Upload (multipart). Fields: `file`, `title`, `kind` (html|video), optional `description`, `project_slug`, `visibility` (private|link)
-- `GET /api/walkthroughs/<uuid>/` — Detail. Returns `share_token` only to owner; `is_owner` flag tells the UI which toolbar to render
-- `PATCH /api/walkthroughs/<uuid>/` — Owner-only update of title/description/project_slug/visibility. Switching to `visibility=link` auto-mints `share_token`
+- `POST /api/walkthroughs/` — Upload (multipart). Fields: `file`, `title`, `kind` (html|video), optional `description`, `project_slug`, `visibility` (`private` | `link`; `link` = public/tokenless)
+- `GET /api/walkthroughs/<uuid>/` — Detail. `auth=None`: public (`visibility=link`) walkthroughs are readable by anyone with the URL; private ones 404 to anonymous (no existence leak). `is_owner` flag tells the UI which toolbar to render
+- `PATCH /api/walkthroughs/<uuid>/` — Owner-only update of title/description/project_slug/visibility
 - `DELETE /api/walkthroughs/<uuid>/` — Owner-only. Deletes Drive file and the row
-- `POST /api/walkthroughs/<uuid>/rotate-token/` — Owner-only. Mints a fresh `share_token`, invalidating the old one
-- `GET /w/<uuid>/content?t=<token>` — Streams file bytes. Session-auth OR valid token. Range-aware (supports `<video>` scrubbing)
+- `GET /w/<uuid>/content` — Streams file bytes. Session-auth OR `visibility=link` (tokenless — anyone with the URL; the UUID is the only secret). Range-aware (supports `<video>` scrubbing)
+
+Visibility is **tokenless**: `link` means "anyone with the link". The `share_token` column + model methods are retained but dormant (no rotate endpoint, never minted/returned) so the model is reversible.
 
 Settings:
 - `WALKTHROUGHS_ENABLED` (default `True`) — `/api/walkthroughs/` and `/w/<id>/content` 404 when off
@@ -180,12 +181,13 @@ Settings:
 - `POST /api/reviews/{rid}/submit/` — Submit approve/redraft decisions + narration edits (human → server)
 - `DELETE /api/reviews/{rid}/` — Delete a review request (dashboard cleanup)
 
-Per-token review links render without a Dimagi session (`/review/:id`), so the auth middleware lets anonymous holders through for read + submit.
+Reviews are tokenless. `visibility=link` reviews are readable by anyone with the URL — the auth middleware lets anonymous holders through the `/review/:id` shell + the per-review read API (which self-enforce). **Submitting** a decision always requires a Dimagi login (public-readable never grants anonymous write).
 
 ### DDD runs (`apps/runs`, mounted at `/api/ddd`)
 - `GET /api/ddd/narratives/` — List DDD narratives
 - `GET /api/ddd/narratives/{slug}/` — Get a narrative + its runs (grouped by version)
 - `GET /api/ddd/runs/{run_id}/` — Get a run package (video + deck + narrative + links)
+- `PATCH /api/ddd/narratives/{slug}/visibility/` — Set Public/Private for an entire narrative; cascades visibility to every walkthrough + review under the slug (auth required). The narrative detail response carries a computed `visibility` (`public` / `private` / `mixed`)
 - `DELETE /api/ddd/runs/{run_id}/` — Delete a run (cascades its walkthroughs + reviews)
 - `DELETE /api/ddd/narratives/{slug}/versions/{version}/` — Delete a narrative version (and its runs)
 - `DELETE /api/ddd/narratives/{slug}/` — Delete an entire narrative (all versions + runs)
@@ -203,9 +205,10 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 ## Design Decisions
 
 - **API is Pydantic-first via Django Ninja**: every request/response is a Pydantic v2 model declared in `apps/<app>/schemas.py`. Routes live in `apps/<app>/api.py`, registered on the single `NinjaAPI` instance in `apps/api/api.py`. Errors are RFC 7807 `application/problem+json`. Frontend types are generated from the OpenAPI 3.1 schema by `openapi-typescript` into `frontend/src/api/generated.ts` and consumed via `openapi-fetch`. The `regen-openapi.yml` GitHub workflow auto-commits regenerated types on PRs touching `apps/**/api.py` or `apps/**/schemas.py`.
-- **Streaming endpoints stay on Django**: `POST /api/workspace/start/<id>/` returns `StreamingHttpResponse` directly from a Ninja handler (declared as `response=None`); the SSE event format is the contract. `GET /w/<uuid>/content` (the walkthrough viewer) stays as a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range + token-based public-link auth don't fit the Ninja contract.
+- **Streaming endpoints stay on Django**: `POST /api/workspace/start/<id>/` returns `StreamingHttpResponse` directly from a Ninja handler (declared as `response=None`); the SSE event format is the contract. `GET /w/<uuid>/content` (the walkthrough viewer) stays as a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range support (for `<video>` scrubbing) doesn't fit the Ninja contract.
 - **Bare Django views**: `/api/csrf/`, `/api/debug/mint-session/`, `/auth/cli/authorize/`, and `/health/` (the last is also Ninja-mountable via `public_router`) — they manipulate sessions/cookies/redirects directly. Matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
 - **MCP is in-process FastMCP, not OpenAPI-derived**: `apps/mcp/` mounts a FastMCP 3.x Streamable-HTTP server at `/api/mcp/` whose tools are explicit Python functions calling the same service layer as the REST views (no HTTP self-loopback). Auth is per-user PAT inside the server (fail-closed), every call is audited, and writes are rate-limited.
+- **Visibility is tokenless Public/Private:** `visibility=link` means "anyone with the URL" (the UUID is the only secret) for walkthroughs + reviews; `private` is Dimagi-OAuth-gated and 404s to anonymous. Walkthrough content/detail and review *read* are public when `link`; review *submit* and all mutations require auth. The login middleware allowlists the `/w/` shell + walkthrough detail GET (alongside the review-link allowlist). The narrative-level toggle (`PATCH /api/ddd/narratives/{slug}/visibility/`) cascades to every artifact + review under a narrative; the dormant `share_token` column is retained for reversibility. See `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md`.
 - APP UI: dense, readable, tables not cards
 - Workspace flow: Ingest → AI proposes Approach + Eval → Review/Edit → Test → Publish
 - SSE streaming for AI responses (Scout pattern)
@@ -224,6 +227,8 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 - `docs/superpowers/specs/2026-05-26-walkthrough-sharing-design.md` — Walkthrough sharing design spec
 - `docs/superpowers/specs/2026-06-02-ddd-run-views-design.md` — DDD run views (narrative → run → package) design spec
 - `docs/superpowers/specs/2026-06-03-ddd-narrative-run-versioning-design.md` — DDD narrative/version/run model design spec
+- `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md` — Tokenless Public/Private + narrative-level visibility design spec (shipped, PR #105)
+- `docs/superpowers/plans/2026-06-09-tokenless-narrative-visibility.md` — Tokenless visibility implementation plan (shipped, PR #105)
 - `docs/designs/canopy-web-design.md` — Product design + glossary (open claw, skill, collection, eval suite, workspace session)
 - `docs/designs/ceo-plan-conversation-to-agent.md` — CEO review, scope decisions, deferred work
 - `docs/walkthroughs/canopy-web-demo.yaml` — Walkthrough QA spec (5 skills, varied scores)
