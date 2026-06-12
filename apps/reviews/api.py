@@ -42,6 +42,11 @@ log = logging.getLogger(__name__)
 
 router = Router(auth=session_auth, tags=["reviews"])
 
+# Gates whose reviews hang off the RUN, not the narrative timeline. These never get a
+# narrative_slug or a monotonic narrative version (see create_review) — so they don't
+# pollute the version numbering or show up as narrative-version rows in the DDD shell.
+RUN_CHILD_GATES = ("product_findings",)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -96,6 +101,13 @@ def _detail_payload(review: ReviewRequest, *, is_owner: bool) -> dict:
 
 def _list_title(request_json: dict) -> str | None:
     """A short human label: the narrative's first line, else the first scene title."""
+    # Run-child product-findings reviews have no narrative — label by cluster count.
+    if request_json.get("gate") == "product_findings":
+        clusters = request_json.get("clusters") or []
+        iteration = request_json.get("iteration")
+        n = len(clusters) if isinstance(clusters, list) else 0
+        label = f"Findings review — {n} finding{'s' if n != 1 else ''}"
+        return f"{label} (iter {iteration})" if iteration is not None else label
     narrative = (request_json.get("narrative") or "").strip()
     if narrative:
         first = narrative.splitlines()[0].strip()
@@ -111,6 +123,11 @@ def _list_item_payload(request: HttpRequest, review: ReviewRequest) -> dict:
     rj = review.request_json if isinstance(review.request_json, dict) else {}
     narration = rj.get("narration") or []
     is_own = _is_owner(request, review)
+    if review.gate == "product_findings":
+        clusters = rj.get("clusters") or []
+        item_count = len(clusters) if isinstance(clusters, list) else 0
+    else:
+        item_count = len(narration) if isinstance(narration, list) else 0
     return {
         "id": review.id,
         "run_id": review.run_id,
@@ -119,7 +136,7 @@ def _list_item_payload(request: HttpRequest, review: ReviewRequest) -> dict:
         "visibility": review.visibility,
         "narrative_slug": narrative_slug_from_run_id(review.run_id),
         "title": _list_title(rj),
-        "scene_count": len(narration) if isinstance(narration, list) else 0,
+        "scene_count": item_count,
         "created_at": review.created_at,
         "resolved_at": review.resolved_at,
         "last_activity_at": review.resolved_at or review.created_at,
@@ -207,14 +224,23 @@ def create_review(request: HttpRequest, payload: ReviewCreateIn) -> Status:
 
     # Narrative identity + version. `narrative_slug` (narrative_id) is explicit when the
     # plugin sends it, else derived from the run_id slug. A narrative-agreement
-    # review (gate concept_change) opens a NEW version; other gates attach to the
-    # current version so version numbers stay clean (1, 2, 3, …).
-    narrative_slug = (request_json.get("narrative_slug") or narrative_slug_from_run_id(run_id)) or None
+    # review (gate concept_change) opens a NEW version; other narrative gates attach to
+    # the current version so version numbers stay clean (1, 2, 3, …).
+    #
+    # RUN-CHILD gates (product_findings) are NOT narrative versions — they hang off the
+    # run, not the narrative timeline. Carrying a narrative_slug here is what made the
+    # findings review surface as a bogus "v3" row, so run-child gates get
+    # narrative_slug=None and version=0 (the sentinel for "not a narrative version").
     is_narrative_gate = gate in ("concept_change", "narrative-agreement")
-    if is_narrative_gate:
-        version = ReviewRequest.next_version(narrative_slug)
+    if gate in RUN_CHILD_GATES:
+        narrative_slug = None
+        version = 0
     else:
-        version = max(ReviewRequest.next_version(narrative_slug) - 1, 1)
+        narrative_slug = (request_json.get("narrative_slug") or narrative_slug_from_run_id(run_id)) or None
+        if is_narrative_gate:
+            version = ReviewRequest.next_version(narrative_slug)
+        else:
+            version = max(ReviewRequest.next_version(narrative_slug) - 1, 1)
 
     review = ReviewRequest.objects.create(
         run_id=run_id,

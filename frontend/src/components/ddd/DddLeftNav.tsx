@@ -7,7 +7,48 @@ import {
   type DddNarrativeDetail,
   type DddNarrativeListItem,
 } from '@/api/ddd'
+import { listReviews, type ReviewListItem } from '@/api/reviews'
 import { useRunSectionNav } from './runSectionNav'
+
+/**
+ * Run-child product-findings review entry, nested under its run. These are NOT
+ * narrative-version rows (the backend forces narrative_slug=None / version=0);
+ * we surface them here so a run with an open findings review reads as "needs
+ * input" right in the rail. Distinguished purely by gate === 'product_findings'.
+ */
+function FindingsReviewEntry({
+  review,
+  active,
+}: {
+  review: ReviewListItem
+  active: boolean
+}) {
+  const pending = review.status !== 'resolved'
+  return (
+    <Link
+      to={`/review/${encodeURIComponent(review.id)}`}
+      className={clsx(
+        'flex items-center gap-2 rounded-md px-3 py-0.5 text-[11px] transition-colors',
+        active
+          ? 'text-orange-300'
+          : pending
+            ? 'text-amber-300/90 hover:text-amber-200'
+            : 'text-stone-500 hover:text-stone-300',
+      )}
+    >
+      <span
+        aria-hidden
+        className={clsx(
+          'h-1 w-1 shrink-0 rounded-full',
+          pending ? 'bg-amber-400' : 'bg-stone-700',
+        )}
+      />
+      <span className="truncate">
+        Findings review · {pending ? 'needs input' : 'resolved'}
+      </span>
+    </Link>
+  )
+}
 
 function runStamp(runId: string): string {
   // "microplans-2026-06-02-001" -> "2026-06-02-001"
@@ -66,6 +107,10 @@ function NarrativeRuns({
   activeRunId?: string
 }) {
   const [detail, setDetail] = useState<DddNarrativeDetail | null>(null)
+  // Run-child product-findings reviews for this narrative, grouped by run_id.
+  // Sourced from the reviews list (the narrative API doesn't carry run-children),
+  // filtered to gate === 'product_findings' so they never show as version rows.
+  const [findingsByRun, setFindingsByRun] = useState<Map<string, ReviewListItem[]>>(new Map())
 
   useEffect(() => {
     let cancelled = false
@@ -78,9 +123,34 @@ function NarrativeRuns({
     }
   }, [slug])
 
+  useEffect(() => {
+    let cancelled = false
+    listReviews({ q: slug })
+      .then((reviews) => {
+        if (cancelled) return
+        const byRun = new Map<string, ReviewListItem[]>()
+        for (const r of reviews) {
+          if (r.gate !== 'product_findings') continue
+          if (r.narrative_slug !== slug) continue
+          const list = byRun.get(r.run_id) ?? []
+          list.push(r)
+          byRun.set(r.run_id, list)
+        }
+        setFindingsByRun(byRun)
+      })
+      .catch(() => !cancelled && setFindingsByRun(new Map()))
+    return () => {
+      cancelled = true
+    }
+  }, [slug])
+
   if (!detail) {
     return <div className="px-3 py-1 text-[11px] text-stone-600">Loading runs…</div>
   }
+
+  // Highlight a findings-review entry when its /review/:id page is open.
+  const reviewMatch = window.location.pathname.match(/^\/review\/([^/]+)/)
+  const activeReviewId = reviewMatch ? decodeURIComponent(reviewMatch[1]) : undefined
 
   const currentVersion = detail.current_version?.version ?? null
   // Newest version first, matching the narrative page ordering.
@@ -130,6 +200,17 @@ function NarrativeRuns({
                       <span className="truncate font-mono">{runStamp(r.run_id)}</span>
                     </Link>
                     {r.run_id === activeRunId && <RunSectionList />}
+                    {(findingsByRun.get(r.run_id) ?? []).length > 0 && (
+                      <div className="ml-6 mt-0.5 flex flex-col gap-0.5 border-l border-stone-800/70 pl-1">
+                        {(findingsByRun.get(r.run_id) ?? []).map((fr) => (
+                          <FindingsReviewEntry
+                            key={fr.id}
+                            review={fr}
+                            active={activeReviewId === fr.id}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

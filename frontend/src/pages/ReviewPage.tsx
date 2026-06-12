@@ -5,6 +5,7 @@ import { useAuth } from '@/auth/AuthProvider'
 import {
   getReview,
   submitReview,
+  submitFindingsReview,
   type ReviewDetail,
   type ReviewDecision,
   type ReviewSceneActionability,
@@ -13,12 +14,15 @@ import {
   type ReviewPersona,
   type ReviewWhySpineItem,
   type ReviewWhyGap,
+  type ProductFindingsRequestJson,
+  type ProductFindingsResponseJson,
 } from '../api/reviews'
 import { walkthroughContentUrl } from '../api/walkthroughs'
 import {
   ReviewEditorProvider,
   useReviewEditor,
 } from '../components/reviews/ReviewEditorContext'
+import { ProductFindingsReview } from '../components/reviews/ProductFindingsReview'
 
 // ---------------------------------------------------------------------------
 // AutoTextarea — a textarea that grows to fit its content (never internally
@@ -1155,7 +1159,9 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 ? 'Approve the story before we build it'
                 : req.gate === 'external_release'
                   ? 'Approve for release'
-                  : `Review: ${req.gate}`}
+                  : req.gate === 'product_findings'
+                    ? 'Findings review'
+                    : `Review: ${req.gate}`}
             </h1>
             <p className="text-sm text-stone-500 mt-0.5">{req.run_id}</p>
           </div>
@@ -1730,6 +1736,27 @@ export function ReviewPage() {
   }
 
   const isResolved = review.status === 'resolved'
+
+  // Product-findings reviews are run-children with their own first-class
+  // surface — they don't use the narrative editor machinery. Branch before the
+  // ReviewEditorProvider so none of the narration/scene scaffolding mounts.
+  if (review.request_json.gate === 'product_findings') {
+    const findingsReq = review.request_json as unknown as ProductFindingsRequestJson
+    const findingsResolved = review.response_json as unknown as ProductFindingsResponseJson | null
+    const findingsReadOnly = isResolved || auth.status !== 'authenticated'
+    return withChrome(
+      <ProductFindingsReview
+        review={findingsReq}
+        readOnly={findingsReadOnly}
+        resolved={findingsResolved}
+        resolvedAt={review.resolved_at}
+        onSubmit={async (response) => {
+          const updated = await submitFindingsReview(review.id, response, shareToken)
+          setReview(updated)
+        }}
+      />,
+    )
+  }
 
   return withChrome(
     <ReviewEditorProvider
