@@ -13,7 +13,7 @@
  * saves allowed); on save it produces { decisions: { <id>: { decision, comment } } }
  * and then instructs the reviewer to have their AI agent retrieve + apply it.
  */
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import type {
   FindingsCluster,
   FindingsDecision,
@@ -205,7 +205,11 @@ function EvidenceCard({
 // Cluster card
 // ---------------------------------------------------------------------------
 
-function ClusterCard({
+// Memoized so a decision/comment on ONE finding re-renders only that card —
+// NOT all 24 image-heavy cards + the embedded clip. Re-rendering the whole tree
+// on every click caused a Chromium paint catastrophe (page goes black until scroll).
+// onChoose/onComment are id-aware so the parent can pass stable (memo-safe) callbacks.
+const ClusterCard = memo(function ClusterCard({
   cluster,
   index,
   chosen,
@@ -222,8 +226,8 @@ function ClusterCard({
   comment: string
   readOnly: boolean
   deckUrl?: string
-  onChoose: (value: FindingsDecision) => void
-  onComment: (value: string) => void
+  onChoose: (clusterId: string, value: FindingsDecision) => void
+  onComment: (clusterId: string, value: string) => void
   onWatch: (videoT: number) => void
 }) {
   const evidence = cluster.evidence ?? []
@@ -297,7 +301,7 @@ function ClusterCard({
           clusterId={cluster.id}
           chosen={chosen}
           readOnly={readOnly}
-          onChange={onChoose}
+          onChange={(v) => onChoose(cluster.id, v)}
         />
         {readOnly ? (
           comment ? (
@@ -311,7 +315,7 @@ function ClusterCard({
         ) : (
           <textarea
             value={comment}
-            onChange={(e) => onComment(e.target.value)}
+            onChange={(e) => onComment(cluster.id, e.target.value)}
             rows={2}
             placeholder="Comment on this finding (optional) — what to change, or why skip…"
             aria-label={`Comment on finding ${index + 1}`}
@@ -321,7 +325,7 @@ function ClusterCard({
       </div>
     </div>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -387,6 +391,18 @@ export function ProductFindingsReview({
       }
     },
     [review.video],
+  )
+
+  // Stable, id-aware handlers so memoized cards don't re-render on every parent
+  // update (the inline-arrow versions allocated a fresh fn per card per render,
+  // defeating React.memo and re-rendering all 24 cards on each click).
+  const handleChoose = useCallback(
+    (id: string, value: FindingsDecision) => setDecisions((prev) => ({ ...prev, [id]: value })),
+    [],
+  )
+  const handleComment = useCallback(
+    (id: string, value: string) => setComments((prev) => ({ ...prev, [id]: value })),
+    [],
   )
 
   // Partial saves allowed — enable once the reviewer has touched anything
@@ -522,12 +538,8 @@ export function ProductFindingsReview({
               comment={comments[cluster.id] ?? ''}
               readOnly={readOnly}
               deckUrl={review.deck_url}
-              onChoose={(value) =>
-                setDecisions((prev) => ({ ...prev, [cluster.id]: value }))
-              }
-              onComment={(value) =>
-                setComments((prev) => ({ ...prev, [cluster.id]: value }))
-              }
+              onChoose={handleChoose}
+              onComment={handleComment}
               onWatch={handleWatch}
             />
           ))
