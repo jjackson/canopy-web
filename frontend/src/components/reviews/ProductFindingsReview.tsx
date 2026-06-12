@@ -233,7 +233,14 @@ const ClusterCard = memo(function ClusterCard({
   const evidence = cluster.evidence ?? []
   const scenes = cluster.scenes ?? []
   return (
-    <div className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3">
+    // content-visibility:auto + intrinsic-size isolate each card's layout/paint/style:
+    // a decision/comment change can no longer invalidate the whole page (the bug where
+    // clicking Skip blanked the left rail + half the page until a scroll forced a repaint),
+    // and offscreen cards (24 image-heavy ones) skip painting entirely.
+    <div
+      className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3"
+      style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 420px' }}
+    >
       {/* Chips */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[11px] font-semibold text-stone-500 tabular-nums">
