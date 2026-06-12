@@ -1,7 +1,7 @@
 # Tokenless narrative-level visibility — design
 
 **Date:** 2026-06-08
-**Status:** Approved (design)
+**Status:** Shipped (PR #105, 2026-06-09) — historical record, not current-state. Implemented as designed; the dormant `share_token` column was retained for reversibility.
 **Author:** Jonathan Jackson (+ Claude)
 
 ## Problem
