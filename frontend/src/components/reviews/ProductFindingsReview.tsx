@@ -6,20 +6,19 @@
  * the top, then renders one CARD per finding cluster: severity / fix_kind /
  * route / scene chips, the suggested fix, inline evidence thumbnails, a
  * "Watch @ m:ss" button that seeks the embedded clip to the evidence's
- * video_t, a deck deep-link, and a 3-way implement / skip / defer control.
+ * video_t, a deck deep-link, and a per-finding implement / skip control with an
+ * always-visible comment box.
  *
- * The footer carries an overall proceed/discuss choice + notes + Submit. Submit
- * is disabled until every cluster has a decision; on submit it produces the
- * response_json shape from CONTRACT-product-findings-review.md and hands it to
- * the caller (which reuses the existing review-submit endpoint).
+ * Nothing is pre-selected. The footer is a single "Save Edits" button (partial
+ * saves allowed); on save it produces { decisions: { <id>: { decision, comment } } }
+ * and then instructs the reviewer to have their AI agent retrieve + apply it.
  */
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type {
   FindingsCluster,
   FindingsDecision,
   FindingsEvidence,
-  FindingsFixKind,
-  FindingsOverall,
+  FindingsResolution,
   FindingsSeverity,
   ProductFindingsRequestJson,
   ProductFindingsResponseJson,
@@ -35,11 +34,6 @@ function fmtTime(totalSeconds: number): string {
   const m = Math.floor(s / 60)
   const sec = s % 60
   return `${m}:${String(sec).padStart(2, '0')}`
-}
-
-/** mechanical → implement; options/redesign → no default (force a pick). */
-function defaultDecisionFor(fixKind?: FindingsFixKind): FindingsDecision | '' {
-  return fixKind === 'mechanical' ? 'implement' : ''
 }
 
 const SEVERITY_STYLES: Record<FindingsSeverity, string> = {
@@ -61,11 +55,6 @@ const DECISION_META: Record<
     label: 'Skip',
     hint: "Don't act on this finding.",
     accent: 'stone',
-  },
-  defer: {
-    label: 'Defer',
-    hint: 'Revisit later — not this iteration.',
-    accent: 'sky',
   },
 }
 
@@ -116,7 +105,7 @@ function DecisionControl({
   readOnly: boolean
   onChange: (value: FindingsDecision) => void
 }) {
-  const options: FindingsDecision[] = ['implement', 'skip', 'defer']
+  const options: FindingsDecision[] = ['implement', 'skip']
   return (
     <fieldset className="flex flex-col gap-1.5">
       <legend className="sr-only">Decision for {clusterId}</legend>
@@ -174,7 +163,7 @@ function EvidenceCard({
         <img
           src={evidence.thumb}
           alt={`Scene ${evidence.scene} evidence`}
-          className="w-full rounded border border-stone-800 bg-black object-contain"
+          className="h-40 w-full rounded border border-stone-800 bg-black object-cover object-top"
           loading="lazy"
         />
       ) : (
@@ -220,17 +209,21 @@ function ClusterCard({
   cluster,
   index,
   chosen,
+  comment,
   readOnly,
   deckUrl,
   onChoose,
+  onComment,
   onWatch,
 }: {
   cluster: FindingsCluster
   index: number
   chosen: FindingsDecision | ''
+  comment: string
   readOnly: boolean
   deckUrl?: string
   onChoose: (value: FindingsDecision) => void
+  onComment: (value: string) => void
   onWatch: (videoT: number) => void
 }) {
   const evidence = cluster.evidence ?? []
@@ -295,9 +288,9 @@ function ClusterCard({
         </div>
       )}
 
-      {/* Decision */}
-      <div className="pt-1">
-        <p className="text-[10px] uppercase tracking-wider text-stone-600 mb-1.5">
+      {/* Decision + per-finding comment */}
+      <div className="pt-1 space-y-2">
+        <p className="text-[10px] uppercase tracking-wider text-stone-600">
           {readOnly ? 'Decision' : 'What should we do?'}
         </p>
         <DecisionControl
@@ -306,6 +299,25 @@ function ClusterCard({
           readOnly={readOnly}
           onChange={onChoose}
         />
+        {readOnly ? (
+          comment ? (
+            <p className="text-sm text-stone-300 rounded border border-stone-800 bg-stone-900/60 px-3 py-2 whitespace-pre-wrap">
+              <span className="text-[10px] uppercase tracking-wider text-stone-600 block mb-0.5">
+                Your comment
+              </span>
+              {comment}
+            </p>
+          ) : null
+        ) : (
+          <textarea
+            value={comment}
+            onChange={(e) => onComment(e.target.value)}
+            rows={2}
+            placeholder="Comment on this finding (optional) — what to change, or why skip…"
+            aria-label={`Comment on finding ${index + 1}`}
+            className="w-full rounded border border-stone-800 bg-stone-900 px-3 py-2 text-sm text-stone-200 placeholder:text-stone-600 focus:border-stone-500 focus:outline-none transition-colors"
+          />
+        )}
       </div>
     </div>
   )
@@ -337,19 +349,23 @@ export function ProductFindingsReview({
   const clusters = useMemo(() => review.clusters ?? [], [review.clusters])
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
-  // Per-cluster decision. Resolved reviews show the submitted decisions; live
-  // reviews seed mechanical → implement and leave the rest blank (force a pick).
+  // Per-cluster decision — NOTHING is pre-selected. Resolved reviews show the
+  // submitted picks.
   const [decisions, setDecisions] = useState<Record<string, FindingsDecision | ''>>(() => {
     const initial: Record<string, FindingsDecision | ''> = {}
-    for (const c of clusters) {
-      initial[c.id] = resolved?.decisions?.[c.id] ?? defaultDecisionFor(c.fix_kind)
-    }
+    for (const c of clusters) initial[c.id] = resolved?.decisions?.[c.id]?.decision ?? ''
     return initial
   })
 
-  const [overall, setOverall] = useState<FindingsOverall | ''>(resolved?.overall ?? '')
-  const [notes, setNotes] = useState<string>(resolved?.notes ?? '')
+  // Per-cluster comment.
+  const [comments, setComments] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {}
+    for (const c of clusters) initial[c.id] = resolved?.decisions?.[c.id]?.comment ?? ''
+    return initial
+  })
+
   const [busy, setBusy] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Seek the embedded clip; fall back to opening the clip at #t when no element.
@@ -373,32 +389,42 @@ export function ProductFindingsReview({
     [review.video],
   )
 
-  const allDecided = useMemo(
-    () => clusters.length > 0 && clusters.every((c) => !!decisions[c.id]),
-    [clusters, decisions],
+  // Partial saves allowed — enable once the reviewer has touched anything
+  // (a decision or a comment on any finding).
+  const touchedCount = useMemo(
+    () => clusters.filter((c) => decisions[c.id] || (comments[c.id] ?? '').trim()).length,
+    [clusters, decisions, comments],
   )
-  const canSubmit = !busy && !readOnly && allDecided && !!overall
+  const canSubmit = !busy && !readOnly && touchedCount > 0
 
   const handleSubmit = useCallback(async () => {
-    if (!overall) return
     setBusy(true)
     setError(null)
     try {
-      const cleanDecisions: Record<string, FindingsDecision> = {}
+      // Only findings the reviewer acted on (a decision or a comment) are sent.
+      const out: Record<string, FindingsResolution> = {}
       for (const c of clusters) {
         const d = decisions[c.id]
-        if (d) cleanDecisions[c.id] = d
+        const cm = (comments[c.id] ?? '').trim()
+        if (d || cm) out[c.id] = { decision: d || null, comment: cm }
       }
-      await onSubmit({ decisions: cleanDecisions, overall, notes })
+      await onSubmit({ decisions: out })
+      setSubmitted(true)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
-  }, [clusters, decisions, overall, notes, onSubmit])
+  }, [clusters, decisions, comments, onSubmit])
 
   const summary = review.summary
-  const undecidedCount = clusters.filter((c) => !decisions[c.id]).length
+  const decidedCount = clusters.filter((c) => !!decisions[c.id]).length
+
+  // What the reviewer hands their AI agent after saving, to apply the picks.
+  const applyPrompt =
+    `Retrieve the resolved product_findings review for ${review.feature || review.run_id} ` +
+    `(run ${review.run_id}) and implement my picks — apply the findings I marked "implement" ` +
+    `(honoring my per-finding comments) and skip the rest.`
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">
@@ -493,10 +519,14 @@ export function ProductFindingsReview({
               cluster={cluster}
               index={i}
               chosen={decisions[cluster.id] ?? ''}
+              comment={comments[cluster.id] ?? ''}
               readOnly={readOnly}
               deckUrl={review.deck_url}
               onChoose={(value) =>
                 setDecisions((prev) => ({ ...prev, [cluster.id]: value }))
+              }
+              onComment={(value) =>
+                setComments((prev) => ({ ...prev, [cluster.id]: value }))
               }
               onWatch={handleWatch}
             />
@@ -511,100 +541,38 @@ export function ProductFindingsReview({
         </p>
       )}
 
-      {/* Footer — overall + notes + submit */}
+      {/* Footer — Save Edits + apply instruction */}
       <section className="space-y-4 border-t border-stone-800 pt-6">
-        <div>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
-            {readOnly ? 'Overall (submitted)' : 'Overall'}
-          </h2>
-          <div className="flex flex-col sm:flex-row gap-3">
-            {(['proceed', 'discuss'] as const).map((opt) => {
-              const isSelected = overall === opt
-              const accent = opt === 'proceed' ? 'emerald' : 'amber'
-              const selectedStyles: Record<string, string> = {
-                emerald:
-                  'border-emerald-500/60 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30',
-                amber:
-                  'border-amber-500/60 bg-amber-500/15 text-amber-200 ring-1 ring-amber-500/30',
-              }
-              return (
-                <button
-                  key={opt}
-                  type="button"
-                  disabled={readOnly}
-                  onClick={() => !readOnly && setOverall(opt)}
-                  className={[
-                    'flex-1 text-left rounded-lg border px-4 py-3 transition-all',
-                    isSelected
-                      ? selectedStyles[accent]
-                      : 'border-stone-700 text-stone-400 hover:border-stone-500 hover:text-stone-200 hover:bg-stone-800/50',
-                    readOnly ? 'pointer-events-none opacity-80' : 'cursor-pointer',
-                  ].join(' ')}
-                >
-                  <p className="font-semibold text-sm leading-tight">
-                    {opt === 'proceed' ? 'Proceed' : 'Discuss'}
-                  </p>
-                  <p
-                    className={[
-                      'mt-1 text-xs leading-snug',
-                      isSelected ? 'opacity-80' : 'text-stone-500',
-                    ].join(' ')}
-                  >
-                    {opt === 'proceed'
-                      ? 'Apply the implement decisions and continue the loop.'
-                      : "Let's talk before acting on these findings."}
-                  </p>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        <div>
-          <label
-            htmlFor="findings-notes"
-            className="block text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2"
-          >
-            Notes
-          </label>
-          <textarea
-            id="findings-notes"
-            value={notes}
-            readOnly={readOnly}
-            onChange={(e) => !readOnly && setNotes(e.target.value)}
-            rows={3}
-            placeholder="Optional notes for the iteration…"
-            className={[
-              'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 min-h-[3rem]',
-              'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-              readOnly ? 'opacity-70 cursor-default' : '',
-            ].join(' ')}
-          />
-        </div>
-
-        {readOnly ? (
-          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+        {readOnly || submitted ? (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 space-y-2">
             <p className="text-sm text-emerald-300 font-medium">
-              Findings review resolved — the loop will continue.
+              ✓ Edits saved
+              {resolvedAt ? ` · ${new Date(resolvedAt).toLocaleString()}` : ''}
             </p>
-            {resolvedAt && (
-              <p className="text-xs text-emerald-500 mt-0.5">
-                Submitted {new Date(resolvedAt).toLocaleString()}
-              </p>
-            )}
+            <p className="text-sm text-stone-300">
+              To apply them, tell your AI agent to retrieve this review and implement what you said:
+            </p>
+            <div className="flex items-start gap-2">
+              <code className="flex-1 rounded border border-stone-700 bg-stone-900 px-3 py-2 text-xs text-stone-200 whitespace-pre-wrap">
+                {applyPrompt}
+              </code>
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard?.writeText(applyPrompt)}
+                className="shrink-0 rounded border border-stone-700 px-2 py-1 text-xs text-stone-300 hover:border-stone-500 hover:text-stone-100 transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+            <p className="text-[11px] text-stone-500">
+              It reads your implement / skip picks and per-finding comments from this review.
+            </p>
           </div>
         ) : (
-          <div className="flex flex-col items-end gap-1">
-            {!allDecided && (
-              <p className="text-[11px] text-amber-300/90 text-right">
-                {undecidedCount} finding{undecidedCount === 1 ? '' : 's'} still need a decision.
-              </p>
-            )}
-            {allDecided && !overall && (
-              <p className="text-[11px] text-amber-300/90 text-right">
-                Pick an overall outcome to submit.
-              </p>
-            )}
+          <div className="flex flex-col items-end gap-1.5">
+            <p className="text-[11px] text-stone-500 text-right">
+              {decidedCount} of {clusters.length} decided · partial saves are fine.
+            </p>
             <button
               type="button"
               onClick={() => void handleSubmit()}
@@ -616,7 +584,7 @@ export function ProductFindingsReview({
                   : 'bg-orange-500 hover:bg-orange-400 text-white',
               ].join(' ')}
             >
-              {busy ? 'Submitting…' : 'Submit findings review'}
+              {busy ? 'Saving…' : 'Save Edits'}
             </button>
           </div>
         )}

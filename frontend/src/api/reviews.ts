@@ -180,13 +180,18 @@ export interface ProductFindingsRequestJson {
   clusters: FindingsCluster[]
 }
 
-export type FindingsDecision = 'implement' | 'skip' | 'defer'
-export type FindingsOverall = 'proceed' | 'discuss'
+export type FindingsDecision = 'implement' | 'skip'
+
+/** Per-finding resolution: a decision (null = commented but not explicitly picked)
+ *  + an optional reviewer comment. */
+export interface FindingsResolution {
+  decision: FindingsDecision | null
+  comment: string
+}
 
 export interface ProductFindingsResponseJson {
-  decisions: Record<string, FindingsDecision>
-  overall: FindingsOverall
-  notes: string
+  /** Keyed by cluster id. Only findings the reviewer acted on are present. */
+  decisions: Record<string, FindingsResolution>
 }
 
 // ---------------------------------------------------------------------------
