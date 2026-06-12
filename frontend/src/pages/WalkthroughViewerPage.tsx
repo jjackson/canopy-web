@@ -8,6 +8,7 @@ import {
   type WalkthroughDetail,
 } from '../api/walkthroughs'
 import { withSceneHash } from '../lib/sceneHash'
+import { timeHashSeconds, withTimeFragment } from '../lib/timeHash'
 
 export function WalkthroughViewerPage() {
   const { id } = useParams<{ id: string }>()
@@ -71,6 +72,16 @@ export function WalkthroughViewerPage() {
     window.location.hash,
   )
 
+  // Video time deep-link: a `#t=<seconds>` fragment (e.g. /w/<id>#t=83) seeks
+  // the video to that offset on load. DDD findings reviews link evidence as
+  // `<clip_url>#t=<scene start>` so the reviewer lands on the exact moment.
+  // The fragment never collides with the `?t=<share_token>` query param.
+  // Two mechanisms, belt-and-braces: a Media Fragments `#t=` on the src
+  // (native seek; the content endpoint supports Range) plus a
+  // `loadedmetadata` fallback that sets currentTime directly.
+  const startAt = w.kind === 'video' ? timeHashSeconds(window.location.hash) : null
+  const videoSrc = startAt != null ? withTimeFragment(contentSrc, startAt) : contentSrc
+
   const links = w.links ?? []
   // narrative + companion are provenance / sibling-artifact nav; reference
   // links are destinations the demo visited that the viewer can go open live.
@@ -125,8 +136,13 @@ export function WalkthroughViewerPage() {
       <div className="rounded-xl border border-stone-800 bg-black overflow-hidden">
         {w.kind === 'video' ? (
           <video
-            src={contentSrc}
+            src={videoSrc}
             controls
+            onLoadedMetadata={(e) => {
+              if (startAt != null && Math.abs(e.currentTarget.currentTime - startAt) > 0.5) {
+                e.currentTarget.currentTime = startAt
+              }
+            }}
             className="w-full max-h-[80vh] bg-black"
           />
         ) : (
