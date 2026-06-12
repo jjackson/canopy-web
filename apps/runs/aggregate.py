@@ -42,10 +42,18 @@ def narrative_of_review(r: ReviewRequest) -> str:
     return (getattr(r, "narrative_slug", None) or "").strip() or narrative_slug_from_run_id(r.run_id)
 
 
+#: Gates that carry a one-line narration but are NOT a narrative version — they hang
+#: off the run, not the narrative timeline. ``external_release`` is an approval gate;
+#: ``product_findings`` is a run-child findings review (its narration is a degradation
+#: mirror). Including either pollutes the version list and lets it drive the narrative's
+#: title/phase (the "v0 findings review" bug).
+_NON_NARRATIVE_GATES = ("external_release", "product_findings")
+
+
 def _is_narrative_version(r: ReviewRequest) -> bool:
-    """A narrative version = a story-bearing review that isn't the external
-    release gate (which also carries a one-line narration but is not the story)."""
-    return _review_has_narrative(r) and r.gate != "external_release"
+    """A narrative version = a story-bearing review on a narrative gate (not an
+    external-release approval or a run-child product-findings review)."""
+    return _review_has_narrative(r) and r.gate not in _NON_NARRATIVE_GATES
 
 
 def _narrative_versions_for(narrative_slug: str) -> list[ReviewRequest]:

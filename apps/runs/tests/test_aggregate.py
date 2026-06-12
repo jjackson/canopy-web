@@ -210,3 +210,44 @@ def test_build_run_resolves_version_from_stamp():
 
 def test_build_narrative_unknown_slug_is_none():
     assert aggregate.build_narrative("nope") is None
+
+
+def test_product_findings_review_is_not_a_narrative_version():
+    """A run-child product_findings review carries a narration *mirror*, but it must
+    NOT be counted as a narrative version — otherwise it shows as a bogus 'v0' row in
+    the DDD shell and hijacks the narrative's title/phase from the real story."""
+    u = make_user()
+    rid = "program-admin-report-2026-06-11-001"
+    # The real narrative.
+    make_review(
+        u,
+        run_id=rid,
+        gate="narrative-agreement",
+        request_json={
+            "run_id": rid,
+            "gate": "narrative-agreement",
+            "narrative": "Amani opens the weekly nutrition review.\nThe table has already flagged a worker.",
+            "narration": [{"scene": 1, "id": "n1", "text": "Scene one"}],
+        },
+    )
+    # A run-child findings review (carries a narration mirror + a one-line title).
+    make_review(
+        u,
+        run_id=rid,
+        gate="product_findings",
+        request_json={
+            "run_id": rid,
+            "gate": "product_findings",
+            "clusters": [{"id": "c1", "title": "x"}],
+            "narration": [{"scene": 1, "id": "f1", "title": "The interaction model is coherent"}],
+        },
+    )
+
+    feature = feature_from_run_id(rid)
+    versions = aggregate._narrative_versions_for(feature)
+    # Only the narrative-agreement review is a version — the findings review is excluded.
+    assert [v.gate for v in versions] == ["narrative-agreement"]
+
+    run = aggregate.build_run(rid)
+    # Title/current_version come from the real narrative, not the findings cluster text.
+    assert run["narrative"]["title"] == "Amani opens the weekly nutrition review."
