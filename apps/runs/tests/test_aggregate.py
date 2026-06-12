@@ -243,7 +243,7 @@ def test_product_findings_review_is_not_a_narrative_version():
         },
     )
 
-    feature = feature_from_run_id(rid)
+    feature = narrative_slug_from_run_id(rid)
     versions = aggregate._narrative_versions_for(feature)
     # Only the narrative-agreement review is a version — the findings review is excluded.
     assert [v.gate for v in versions] == ["narrative-agreement"]
