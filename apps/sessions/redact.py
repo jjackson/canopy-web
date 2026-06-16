@@ -92,11 +92,17 @@ _PATTERNS: list[tuple[re.Pattern[str], Callable[[re.Match], str]]] = [
 
 
 def redact_text(text: str) -> tuple[str, int]:
-    """Return (scrubbed_text, redaction_count)."""
+    """Return (scrubbed_text, redaction_count).
+
+    Also strips NUL bytes (``\\x00``): Postgres ``jsonb`` rejects the ``\\u0000``
+    code point and ``text`` columns reject raw NULs, so a transcript carrying one
+    (common in tool output) would 500 the whole upload at ``bulk_create``. NUL
+    removal is not counted as a redaction — it's data sanitation, not a secret.
+    """
     if not text:
         return text, 0
+    out = text.replace("\x00", "")
     total = 0
-    out = text
     for pattern, sub in _PATTERNS:
         out, n = pattern.subn(sub, out)
         total += n
