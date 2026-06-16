@@ -69,6 +69,7 @@ echo "==> Deploying to Cloud Run..."
 # --allow-unauthenticated is correct: the app's LoginRequiredMiddleware
 # enforces the Google OAuth gate at the application layer.
 gcloud run deploy "${SERVICE_NAME}" \
+  --project="${PROJECT_ID}" \
   --image="${REPO}/${SERVICE_NAME}:${TAG}" \
   --region="${REGION}" \
   --platform=managed \
@@ -87,7 +88,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --allow-unauthenticated \
   --quiet
 
-SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --format="value(status.url)")
+SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --project="${PROJECT_ID}" --region="${REGION}" --format="value(status.url)")
 echo ""
 echo "==> Deployment complete!"
 echo "    URL: ${SERVICE_URL}"
@@ -96,4 +97,4 @@ echo "    Authorized redirect URI in Google OAuth must include:"
 echo "    ${SERVICE_URL}/accounts/google/login/callback/"
 echo ""
 echo "    To run migrations:"
-echo "    gcloud run jobs execute canopy-web-migrate --region=${REGION}"
+echo "    gcloud run jobs execute canopy-web-migrate --project=${PROJECT_ID} --region=${REGION}"
