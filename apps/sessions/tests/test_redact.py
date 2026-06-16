@@ -59,6 +59,23 @@ def test_ordinary_prose_and_code_not_mangled():
     assert out == text
 
 
+def test_nul_bytes_stripped_not_counted():
+    # Postgres jsonb/text reject \x00 — it must be removed (but not counted as
+    # a secret redaction) or bulk_create 500s the whole upload.
+    out, n = redact.redact_text("before\x00after")
+    assert out == "beforeafter"
+    assert n == 0
+
+
+def test_redact_turn_strips_nul_in_nested_content():
+    _, content, n = redact.redact_turn(
+        "ok", {"type": "tool_result", "content": [{"type": "text", "text": "a\x00b"}]}
+    )
+    import json as _json
+
+    assert "\x00" not in _json.dumps(content)
+
+
 def test_redact_turn_walks_nested_content():
     content = {
         "type": "tool_result",
