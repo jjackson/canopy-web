@@ -1031,6 +1031,93 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/sessions/upload": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Upload a Claude .jsonl transcript (multipart) */
+        readonly post: operations["apps_sessions_api_upload_session"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/sessions/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List my shared sessions */
+        readonly get: operations["apps_sessions_api_list_sessions"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/sessions/{slug}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get one session (owner) */
+        readonly get: operations["apps_sessions_api_get_session"];
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete a session (owner) */
+        readonly delete: operations["apps_sessions_api_delete_session"];
+        readonly options?: never;
+        readonly head?: never;
+        /** Update a session (owner) */
+        readonly patch: operations["apps_sessions_api_patch_session"];
+        readonly trace?: never;
+    };
+    readonly "/api/sessions/{slug}/rotate-token": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Rotate share token (owner) */
+        readonly post: operations["apps_sessions_api_rotate_token"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/share/{token}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Public read-only view of a shared session */
+        readonly get: operations["apps_sessions_api_public_share_view"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2657,6 +2744,166 @@ export interface components {
             /** Date To */
             readonly date_to?: string | null;
         };
+        /**
+         * SessionUploadOut
+         * @description Result of POST /api/sessions/upload.
+         */
+        readonly SessionUploadOut: {
+            /** Slug */
+            readonly slug: string;
+            /** Message Count */
+            readonly message_count: number;
+            /** Redaction Count */
+            readonly redaction_count: number;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+            /** Share Token */
+            readonly share_token?: string | null;
+            /**
+             * Duplicate
+             * @default false
+             */
+            readonly duplicate: boolean;
+        };
+        /** SessionListItemOut */
+        readonly SessionListItemOut: {
+            /** Slug */
+            readonly slug: string;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+            /**
+             * Owner Email
+             * Format: email
+             */
+            readonly owner_email: string;
+            /** Message Count */
+            readonly message_count: number;
+            /** Redaction Count */
+            readonly redaction_count: number;
+            /** Share Token */
+            readonly share_token?: string | null;
+            /** Is Owner */
+            readonly is_owner: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /** SessionDetailOut */
+        readonly SessionDetailOut: {
+            /** Slug */
+            readonly slug: string;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+            /**
+             * Owner Email
+             * Format: email
+             */
+            readonly owner_email: string;
+            /** Message Count */
+            readonly message_count: number;
+            /** Redaction Count */
+            readonly redaction_count: number;
+            /** Share Token */
+            readonly share_token?: string | null;
+            /** Is Owner */
+            readonly is_owner: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+            /**
+             * Messages
+             * @default []
+             */
+            readonly messages: readonly components["schemas"]["SessionMessageOut"][];
+        };
+        /** SessionMessageOut */
+        readonly SessionMessageOut: {
+            /** Turn Index */
+            readonly turn_index: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            readonly role: "user" | "assistant" | "system" | "tool_use" | "tool_result";
+            /** Content */
+            readonly content: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Plaintext
+             * @default
+             */
+            readonly plaintext: string;
+        };
+        /** SessionPatchIn */
+        readonly SessionPatchIn: {
+            /** Title */
+            readonly title?: string | null;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /** Visibility */
+            readonly visibility?: ("private" | "link") | null;
+        };
+        /** SessionRotateTokenOut */
+        readonly SessionRotateTokenOut: {
+            /** Share Token */
+            readonly share_token: string;
+        };
+        /**
+         * SharedSessionOut
+         * @description Public, read-only payload for /api/share/{token}. No owner identity.
+         */
+        readonly SharedSessionOut: {
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /** Redaction Count */
+            readonly redaction_count: number;
+            /**
+             * Messages
+             * @default []
+             */
+            readonly messages: readonly components["schemas"]["SessionMessageOut"][];
+        };
     };
     responses: never;
     parameters: never;
@@ -4277,6 +4524,186 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ShareoutsClearOut"];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_upload_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "multipart/form-data": {
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    readonly file: string;
+                    /**
+                     * Title
+                     * @default
+                     */
+                    readonly title?: string;
+                    /**
+                     * Project Slug
+                     * @default
+                     */
+                    readonly project_slug?: string;
+                    /**
+                     * Visibility
+                     * @default link
+                     * @enum {string}
+                     */
+                    readonly visibility?: "private" | "link";
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionUploadOut"];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_list_sessions: {
+        readonly parameters: {
+            readonly query?: {
+                readonly project?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["SessionListItemOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_get_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionDetailOut"];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_delete_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly apps_sessions_api_patch_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SessionPatchIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionListItemOut"];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_rotate_token: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionRotateTokenOut"];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_public_share_view: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly token: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SharedSessionOut"];
                 };
             };
         };
