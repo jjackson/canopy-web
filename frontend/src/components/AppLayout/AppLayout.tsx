@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { path: '/shareouts', label: 'Shareouts' },
   { path: '/skills', label: 'Skills' },
   { path: '/walkthroughs', label: 'Walkthroughs' },
+  { path: '/sessions', label: 'Sessions' },
   { path: '/ddd', label: 'DDD' },
   { path: '/workspaces', label: 'Workspaces' },
   { path: '/guide', label: 'Guide' },

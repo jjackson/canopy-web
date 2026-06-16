@@ -16,7 +16,8 @@ function redirectToLogin(): never {
 // token, so a 401 from an incidental authenticated call (e.g. /api/me) must NOT
 // bounce an anonymous visitor to login. Keep in sync with AuthProvider.
 function isPublicLinkRoute(): boolean {
-  return window.location.pathname.startsWith("/review/");
+  const p = window.location.pathname;
+  return p.startsWith("/review/") || p.startsWith("/share/");
 }
 
 export const apiV2 = createClient<paths>({
