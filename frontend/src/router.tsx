@@ -14,6 +14,8 @@ import { WalkthroughsPage } from './pages/WalkthroughsPage'
 import { WalkthroughViewerPage } from './pages/WalkthroughViewerPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { DddPage } from './pages/DddPage'
+import { SessionsPage } from './pages/SessionsPage'
+import SessionSharePage from './pages/SessionSharePage'
 
 export const router = createBrowserRouter([
   {
@@ -26,6 +28,7 @@ export const router = createBrowserRouter([
       { path: '/skills', element: <DiscoveryPage /> },
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:id', element: <WalkthroughViewerPage /> },
+      { path: '/sessions', element: <SessionsPage /> },
       { path: '/ddd', element: <DddPage /> },
       { path: '/ddd/:narrative', element: <DddPage /> },
       { path: '/ddd/:narrative/:runId', element: <DddPage /> },
@@ -40,4 +43,7 @@ export const router = createBrowserRouter([
       { path: '/settings', element: <SettingsPage /> },
     ],
   },
+  // Public, chrome-less route — mounted OUTSIDE AppLayout so anonymous
+  // visitors aren't bounced to login by the app shell's authed calls.
+  { path: '/share/:token', element: <SessionSharePage /> },
 ])
