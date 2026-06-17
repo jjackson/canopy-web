@@ -44,19 +44,19 @@ export function AgentWorkspacePage() {
   if (loading) {
     return (
       <WorkbenchShell>
-        <aside className="w-64 shrink-0 border-r border-stone-800 bg-stone-950/40 p-4">
+        <aside className="w-64 shrink-0 border-r border-border bg-background/40 p-4">
           <div className="animate-pulse space-y-3">
-            <div className="h-10 w-10 rounded-full bg-stone-800" />
-            <div className="h-4 bg-stone-800 rounded w-2/3" />
-            <div className="h-3 bg-stone-800/70 rounded w-1/2" />
+            <div className="h-10 w-10 rounded-full bg-muted" />
+            <div className="h-4 bg-muted rounded w-2/3" />
+            <div className="h-3 bg-muted/70 rounded w-1/2" />
           </div>
         </aside>
         <WorkbenchMain className="px-6 py-8">
           <div className="max-w-4xl animate-pulse space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="bg-stone-900 border border-stone-800 rounded-xl p-5">
-                <div className="h-4 bg-stone-800 rounded w-2/3 mb-2" />
-                <div className="h-3 bg-stone-800/70 rounded w-full" />
+              <div key={i} className="bg-card border border-border rounded-xl p-5">
+                <div className="h-4 bg-muted rounded w-2/3 mb-2" />
+                <div className="h-3 bg-muted/70 rounded w-full" />
               </div>
             ))}
           </div>
