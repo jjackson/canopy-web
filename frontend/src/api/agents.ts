@@ -70,6 +70,28 @@ export interface AgentSkillOut {
   updated_at: string
 }
 
+export type AgentTaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done'
+
+export interface AgentTaskLink {
+  label: string
+  url: string
+}
+
+export interface AgentTaskOut {
+  id: number
+  agent_slug: string
+  ext_id: string
+  title: string
+  status: AgentTaskStatus
+  priority: string
+  owner: string
+  due: string | null
+  links: AgentTaskLink[]
+  notes: string
+  position: number
+  updated_at: string
+}
+
 // Mirrors client.v2's auth: anonymous 401s on a non-public route bounce to the
 // Google login flow; everything else surfaces as a thrown Error.
 function redirectToLogin(): never {
@@ -139,5 +161,13 @@ export async function listAgentSkills(slug: string): Promise<AgentSkillOut[]> {
   return getJson<AgentSkillOut[]>(
     `/api/agents/${encodeURIComponent(slug)}/skills/`,
     'agent skills',
+  )
+}
+
+// Plain array, not paginated.
+export async function listAgentTasks(slug: string): Promise<AgentTaskOut[]> {
+  return getJson<AgentTaskOut[]>(
+    `/api/agents/${encodeURIComponent(slug)}/tasks/`,
+    'agent tasks',
   )
 }

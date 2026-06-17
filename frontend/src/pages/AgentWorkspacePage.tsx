@@ -4,12 +4,15 @@ import {
   getAgent,
   listAgentSkills,
   listAgentSyncs,
+  listAgentTasks,
   listAgentWorkProducts,
   type AgentDetailOut,
   type AgentSkillOut,
   type AgentSyncOut,
+  type AgentTaskOut,
   type AgentWorkProductOut,
 } from '@/api/agents'
+import { TasksBoard } from '@/components/TasksBoard'
 
 function formatDate(s: string): string {
   return new Date(s).toLocaleDateString(undefined, {
@@ -156,6 +159,7 @@ export function AgentWorkspacePage() {
   const [syncs, setSyncs] = useState<AgentSyncOut[]>([])
   const [workProducts, setWorkProducts] = useState<AgentWorkProductOut[]>([])
   const [skills, setSkills] = useState<AgentSkillOut[]>([])
+  const [tasks, setTasks] = useState<AgentTaskOut[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -166,17 +170,19 @@ export function AgentWorkspacePage() {
     setError(null)
     void (async () => {
       try {
-        const [detail, syncPage, wpPage, skillList] = await Promise.all([
+        const [detail, syncPage, wpPage, skillList, taskList] = await Promise.all([
           getAgent(slug),
           listAgentSyncs(slug, { limit: 200 }),
           listAgentWorkProducts(slug, { limit: 200 }),
           listAgentSkills(slug),
+          listAgentTasks(slug),
         ])
         if (cancelled) return
         setAgent(detail)
         setSyncs(syncPage.items)
         setWorkProducts(wpPage.items)
         setSkills(skillList)
+        setTasks(taskList)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load agent')
       } finally {
@@ -267,6 +273,15 @@ export function AgentWorkspacePage() {
           <CountStat value={agent.skill_count} label="Skills" />
         </div>
       </header>
+
+      <section>
+        <SectionHeading label="Task board" count={tasks.length} />
+        {tasks.length === 0 ? (
+          <p className="text-[13px] text-stone-600">No tasks yet.</p>
+        ) : (
+          <TasksBoard tasks={tasks} />
+        )}
+      </section>
 
       <section>
         <SectionHeading label="Syncs" count={syncs.length} />
