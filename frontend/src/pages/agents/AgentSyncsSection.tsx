@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { listAgentSyncs, type AgentSyncOut } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { SyncCard } from '@/components/agents/cards'
-import { SectionSubHeader, SectionSkeleton } from '@/components/agents/SectionSubHeader'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
 
 export function AgentSyncsSection() {
   const { agent } = useOutletContext<AgentOutletContext>()
@@ -22,9 +22,9 @@ export function AgentSyncsSection() {
 
   return (
     <div className="max-w-4xl px-6 py-8">
-      <SectionSubHeader title="Syncs" count={syncs?.length} />
+      <WorkbenchSubHeader title="Syncs" count={syncs?.length} />
       {syncs === null ? (
-        <SectionSkeleton />
+        <WorkbenchSkeleton />
       ) : syncs.length === 0 ? (
         <p className="text-[13px] text-stone-600">No syncs yet.</p>
       ) : (

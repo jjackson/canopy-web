@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { listAgentSkills, type AgentSkillOut } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { SkillCard } from '@/components/agents/cards'
-import { SectionSubHeader, SectionSkeleton } from '@/components/agents/SectionSubHeader'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
 
 export function AgentSkillsSection() {
   const { agent } = useOutletContext<AgentOutletContext>()
@@ -22,9 +22,9 @@ export function AgentSkillsSection() {
 
   return (
     <div className="max-w-4xl px-6 py-8">
-      <SectionSubHeader title="Skills" count={skills?.length} />
+      <WorkbenchSubHeader title="Skills" count={skills?.length} />
       {skills === null ? (
-        <SectionSkeleton />
+        <WorkbenchSkeleton />
       ) : skills.length === 0 ? (
         <p className="text-[13px] text-stone-600">No skills yet.</p>
       ) : (
