@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "apps.shareouts",
     "apps.mcp",
     "apps.sessions",
+    "apps.agents",
 ]
 
 MIDDLEWARE = [

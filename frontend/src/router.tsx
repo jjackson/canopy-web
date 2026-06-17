@@ -15,6 +15,8 @@ import { WalkthroughViewerPage } from './pages/WalkthroughViewerPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { DddPage } from './pages/DddPage'
 import { SessionsPage } from './pages/SessionsPage'
+import { AgentsPage } from './pages/AgentsPage'
+import { AgentWorkspacePage } from './pages/AgentWorkspacePage'
 import SessionSharePage from './pages/SessionSharePage'
 
 export const router = createBrowserRouter([
@@ -29,6 +31,8 @@ export const router = createBrowserRouter([
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:id', element: <WalkthroughViewerPage /> },
       { path: '/sessions', element: <SessionsPage /> },
+      { path: '/agents', element: <AgentsPage /> },
+      { path: '/agents/:slug', element: <AgentWorkspacePage /> },
       { path: '/ddd', element: <DddPage /> },
       { path: '/ddd/:narrative', element: <DddPage /> },
       { path: '/ddd/:narrative/:runId', element: <DddPage /> },
