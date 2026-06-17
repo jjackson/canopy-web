@@ -9,7 +9,7 @@ import {
 } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { CountStat, SyncCard } from '@/components/agents/cards'
-import { SectionSubHeader, SectionSkeleton } from '@/components/agents/SectionSubHeader'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
 
 const TASK_COLUMNS: { status: AgentTaskStatus; label: string; dot: string }[] = [
   { status: 'todo', label: 'To do', dot: 'bg-stone-500' },
@@ -64,7 +64,7 @@ export function AgentOverviewSection() {
 
   return (
     <div className="max-w-4xl px-6 py-8">
-      <SectionSubHeader title="Overview" />
+      <WorkbenchSubHeader title="Overview" />
 
       {/* Persona / description */}
       {(agent.persona || agent.description) && (
@@ -141,7 +141,7 @@ export function AgentOverviewSection() {
           </Link>
         </div>
         {latestSync === null && tasksLoading ? (
-          <SectionSkeleton rows={1} />
+          <WorkbenchSkeleton rows={1} />
         ) : latestSync ? (
           <SyncCard sync={latestSync} />
         ) : (

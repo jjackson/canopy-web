@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { listAgentTasks, type AgentTaskOut } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { TasksBoard } from '@/components/TasksBoard'
-import { SectionSubHeader, SectionSkeleton } from '@/components/agents/SectionSubHeader'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
 
 export function AgentTasksSection() {
   const { agent } = useOutletContext<AgentOutletContext>()
@@ -22,9 +22,9 @@ export function AgentTasksSection() {
 
   return (
     <div className="max-w-4xl px-6 py-8">
-      <SectionSubHeader title="Task board" count={tasks?.length} />
+      <WorkbenchSubHeader title="Task board" count={tasks?.length} />
       {tasks === null ? (
-        <SectionSkeleton />
+        <WorkbenchSkeleton />
       ) : tasks.length === 0 ? (
         <p className="text-[13px] text-stone-600">No tasks yet.</p>
       ) : (

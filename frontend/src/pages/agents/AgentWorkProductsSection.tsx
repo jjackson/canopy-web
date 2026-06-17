@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { listAgentWorkProducts, type AgentWorkProductOut } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { WorkProductCard } from '@/components/agents/cards'
-import { SectionSubHeader, SectionSkeleton } from '@/components/agents/SectionSubHeader'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
 
 export function AgentWorkProductsSection() {
   const { agent } = useOutletContext<AgentOutletContext>()
@@ -22,9 +22,9 @@ export function AgentWorkProductsSection() {
 
   return (
     <div className="max-w-4xl px-6 py-8">
-      <SectionSubHeader title="Work products" count={items?.length} />
+      <WorkbenchSubHeader title="Work products" count={items?.length} />
       {items === null ? (
-        <SectionSkeleton />
+        <WorkbenchSkeleton />
       ) : items.length === 0 ? (
         <p className="text-[13px] text-stone-600">No work products yet.</p>
       ) : (
