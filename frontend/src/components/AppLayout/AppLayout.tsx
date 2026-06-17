@@ -230,7 +230,11 @@ export function AppLayout() {
           </div>
         </div>
       </header>
-      {location.pathname.startsWith('/ddd') || location.pathname.startsWith('/review') ? (
+      {location.pathname.startsWith('/ddd') ||
+      location.pathname.startsWith('/review') ||
+      // An individual Agent Workspace (/agents/<slug>) is a full-bleed workbench
+      // like DDD; the bare /agents LIST stays in the standard container.
+      /^\/agents\/[^/]+/.test(location.pathname) ? (
         // DDD (and the narrative editor at /review) is a full-bleed workspace:
         // persistent left rail + wide main. The page owns its own scroll.
         <main className="h-[calc(100vh-53px)]"><Outlet /></main>

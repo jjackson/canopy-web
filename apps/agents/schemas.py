@@ -36,6 +36,7 @@ class AgentDetailOut(AgentOut):
     sync_count: int = 0
     work_product_count: int = 0
     skill_count: int = 0
+    task_count: int = 0
     latest_sync_at: dt.datetime | None = None
 
 

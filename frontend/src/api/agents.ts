@@ -32,6 +32,7 @@ export interface AgentDetailOut extends AgentOut {
   sync_count: number
   work_product_count: number
   skill_count: number
+  task_count: number
   latest_sync_at: string | null
 }
 

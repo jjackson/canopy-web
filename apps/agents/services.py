@@ -57,6 +57,7 @@ def agent_detail(agent: Agent) -> dict:
         "sync_count": agent.syncs.count(),
         "work_product_count": agent.work_products.count(),
         "skill_count": agent.skills.count(),
+        "task_count": agent.tasks.count(),
         "latest_sync_at": latest.period_end if latest else None,
     }
 
