@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { path: '/skills', label: 'Skills' },
   { path: '/walkthroughs', label: 'Walkthroughs' },
   { path: '/sessions', label: 'Sessions' },
+  { path: '/agents', label: 'Agents' },
   { path: '/ddd', label: 'DDD' },
   { path: '/workspaces', label: 'Workspaces' },
   { path: '/guide', label: 'Guide' },
