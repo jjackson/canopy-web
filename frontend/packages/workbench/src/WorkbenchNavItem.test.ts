@@ -14,4 +14,15 @@ describe('workbenchNavItemClass', () => {
     expect(c).toContain('hover:bg-accent')
     expect(c).not.toContain('bg-primary/10')
   })
+  it('uses the neutral grey highlight when variant is neutral and active', () => {
+    const c = workbenchNavItemClass({ active: true, variant: 'neutral' })
+    expect(c).toContain('bg-accent')
+    expect(c).toContain('text-foreground')
+    expect(c).not.toContain('bg-primary/10')
+  })
+  it('defaults to the accent variant', () => {
+    expect(workbenchNavItemClass({ active: true })).toBe(
+      workbenchNavItemClass({ active: true, variant: 'accent' }),
+    )
+  })
 })

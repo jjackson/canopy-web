@@ -1,6 +1,7 @@
 import type { JSX, ReactNode } from 'react'
 import { cn } from './cn'
 
+/** Shipped for the deferred ace-web adoption; not yet consumed in canopy. */
 /** A generic bordered side panel (e.g. a detail or chat column). */
 export function WorkbenchPane({
   width,

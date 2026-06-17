@@ -1,5 +1,6 @@
 import type { JSX, ReactNode } from 'react'
 
+/** LoadingSpinner/EmptyState/ErrorState are shipped for consumers (e.g. deferred ace-web); WorkbenchSkeleton is used by the Agent sections today. */
 export function LoadingSpinner({ label = 'Loading…' }: { label?: string }): JSX.Element {
   return (
     <div className="flex items-center gap-3 p-6 text-muted-foreground">

@@ -293,7 +293,7 @@ export function DddLeftNav({
             return (
               <div key={n.slug}>
                 <Link to={`/ddd/${encodeURIComponent(n.slug)}`}>
-                  <WorkbenchNavItem active={isActive} count={n.run_count}>
+                  <WorkbenchNavItem active={isActive} count={n.run_count} variant="neutral">
                     {n.slug}
                   </WorkbenchNavItem>
                 </Link>

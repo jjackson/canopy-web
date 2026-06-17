@@ -1,17 +1,29 @@
 import { cloneElement, isValidElement, type JSX, type ReactElement, type ReactNode } from 'react'
 import { cn } from './cn'
 
-export function workbenchNavItemClass({ active }: { active?: boolean }): string {
+export function workbenchNavItemClass({
+  active,
+  variant = 'accent',
+}: {
+  active?: boolean
+  variant?: 'accent' | 'neutral'
+}): string {
+  const activeClass =
+    variant === 'neutral'
+      ? 'bg-accent border-transparent text-foreground font-medium'
+      : 'bg-primary/10 border-primary/30 text-primary font-medium'
   return cn(
     'flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors',
     active
-      ? 'bg-primary/10 border-primary/30 text-primary font-medium'
+      ? activeClass
       : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
   )
 }
 
 interface WorkbenchNavItemProps {
   active?: boolean
+  /** Active-state accent: 'accent' = orange primary tint (default), 'neutral' = grey highlight. */
+  variant?: 'accent' | 'neutral'
   count?: number
   /** When true, merge styling onto the single child element (e.g. a router Link). */
   asChild?: boolean
@@ -27,16 +39,18 @@ interface WorkbenchNavItemProps {
  */
 export function WorkbenchNavItem({
   active,
+  variant,
   count,
   asChild,
   children,
 }: WorkbenchNavItemProps): JSX.Element {
-  const className = workbenchNavItemClass({ active })
+  const className = workbenchNavItemClass({ active, variant })
   const badge =
     count !== undefined ? (
       <span className="shrink-0 text-[11px] text-muted-foreground">{count}</span>
     ) : null
 
+  // asChild requires a single valid element; a non-element child falls back to the div form.
   if (asChild && isValidElement(children)) {
     const el = children as ReactElement<{ className?: string; children?: ReactNode }>
     return cloneElement(
