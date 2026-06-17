@@ -7,7 +7,9 @@ import datetime as dt
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Agent, AgentSkill, AgentSync, AgentWorkProduct
+from .models import Agent, AgentSkill, AgentSync, AgentTask, AgentWorkProduct
+
+_VALID_TASK_STATUS = {AgentTask.TODO, AgentTask.IN_PROGRESS, AgentTask.BLOCKED, AgentTask.DONE}
 
 
 def _aware(value):
@@ -135,3 +137,33 @@ def replace_skills(agent: Agent, items: list) -> int:
 
 def list_skills(agent: Agent) -> list[AgentSkill]:
     return list(agent.skills.select_related("agent"))
+
+
+# ---- tasks ----
+@transaction.atomic
+def sync_tasks(agent: Agent, items: list) -> dict:
+    """Replace the agent's task board from the source sheet."""
+    agent.tasks.all().delete()
+    AgentTask.objects.bulk_create(
+        [
+            AgentTask(
+                agent=agent,
+                ext_id=t.ext_id,
+                title=t.title,
+                status=t.status if t.status in _VALID_TASK_STATUS else AgentTask.TODO,
+                priority=t.priority,
+                owner=t.owner,
+                due=t.due,
+                links=[l.model_dump() for l in t.links],
+                notes=t.notes,
+                position=t.position,
+                source=t.source,
+            )
+            for t in items
+        ]
+    )
+    return {"count": agent.tasks.count()}
+
+
+def list_tasks(agent: Agent) -> list[AgentTask]:
+    return list(agent.tasks.select_related("agent"))

@@ -18,6 +18,8 @@ from .schemas import (
     AgentSkillOut,
     AgentSyncIn,
     AgentSyncOut,
+    AgentTaskOut,
+    AgentTaskSyncIn,
     AgentWorkProductBatchIn,
     AgentWorkProductOut,
     CountOut,
@@ -108,3 +110,19 @@ def replace_skills(request: HttpRequest, slug: str, payload: AgentSkillCatalogIn
     agent = _get_agent_or_404(slug)
     count = services.replace_skills(agent, payload.skills)
     return CountOut(count=count)
+
+
+# ---- tasks (board) ----
+@router.get("/{slug}/tasks/", response=list[AgentTaskOut], summary="List the agent's tasks (board)",
+            openapi_extra={"x-mcp-expose": True})
+def list_tasks(request: HttpRequest, slug: str) -> list[AgentTaskOut]:
+    agent = _get_agent_or_404(slug)
+    return [AgentTaskOut.model_validate(t) for t in services.list_tasks(agent)]
+
+
+@router.post("/{slug}/tasks/sync", response=CountOut,
+             summary="Sync (replace) the agent's task board from the source sheet",
+             openapi_extra={"x-mcp-expose": True})
+def sync_tasks(request: HttpRequest, slug: str, payload: AgentTaskSyncIn) -> CountOut:
+    agent = _get_agent_or_404(slug)
+    return CountOut(**services.sync_tasks(agent, payload.tasks))

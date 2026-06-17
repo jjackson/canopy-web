@@ -119,3 +119,47 @@ class AgentSkill(models.Model):
     @property
     def agent_slug(self) -> str:
         return self.agent.slug
+
+
+class AgentTask(models.Model):
+    """A task in the agent's tracker. Source of truth is a Google Sheet the
+    agent maintains; Echo syncs rows here so canopy-web can render a board.
+    `status` is normalized to one of the board columns. Synced wholesale per
+    agent, keyed by `ext_id` (stable sheet-row id) so edits/removals
+    propagate."""
+
+    TODO, IN_PROGRESS, BLOCKED, DONE = "todo", "in_progress", "blocked", "done"
+    STATUS_CHOICES = [
+        (TODO, "To do"),
+        (IN_PROGRESS, "In progress"),
+        (BLOCKED, "Blocked"),
+        (DONE, "Done"),
+    ]
+
+    agent = models.ForeignKey(Agent, on_delete=models.CASCADE, related_name="tasks")
+    ext_id = models.CharField(max_length=64, help_text="Stable id from the source sheet.")
+    title = models.CharField(max_length=300)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=TODO)
+    priority = models.CharField(max_length=20, blank=True, default="", help_text="high / medium / low")
+    owner = models.CharField(max_length=120, blank=True, default="", help_text="Owner / requester.")
+    due = models.DateField(null=True, blank=True)
+    links = models.JSONField(default=list, blank=True)
+    notes = models.TextField(blank=True, default="")
+    position = models.IntegerField(default=0, help_text="Order within a status column.")
+    source = models.CharField(max_length=100, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["status", "position", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["agent", "ext_id"], name="uniq_agent_task_extid"),
+        ]
+        indexes = [models.Index(fields=["agent", "status"])]
+
+    def __str__(self):
+        return f"task:{self.agent.slug}:{self.ext_id}:{self.status}"
+
+    @property
+    def agent_slug(self) -> str:
+        return self.agent.slug

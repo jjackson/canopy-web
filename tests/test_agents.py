@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from apps.agents import services
-from apps.agents.models import Agent, AgentSkill, AgentSync, AgentWorkProduct
+from apps.agents.models import Agent, AgentSkill, AgentSync, AgentTask, AgentWorkProduct
 
 pytestmark = pytest.mark.django_db
 
@@ -66,3 +66,20 @@ def test_replace_skills_mirrors_catalog():
     ])
     assert agent.skills.count() == 1
     assert AgentSkill.objects.get(agent=agent).description == "email v2"
+
+
+def test_sync_tasks_replaces_board_and_normalizes_status():
+    agent = _agent()
+    link = SimpleNamespace(model_dump=lambda: {"label": "doc", "url": "https://d/1"})
+    tasks = [
+        SimpleNamespace(ext_id="t1", title="Ship PRIDE guide", status="in_progress", priority="high",
+                        owner="Sarvesh", due=dt.date(2026, 6, 20), links=[link], notes="", position=0, source="sheet"),
+        SimpleNamespace(ext_id="t2", title="Weird status", status="banana", priority="", owner="",
+                        due=None, links=[], notes="", position=1, source="sheet"),
+    ]
+    assert services.sync_tasks(agent, tasks) == {"count": 2}
+    assert AgentTask.objects.get(agent=agent, ext_id="t2").status == "todo"  # normalized
+    assert AgentTask.objects.get(agent=agent, ext_id="t1").links == [{"label": "doc", "url": "https://d/1"}]
+    # re-sync with fewer tasks replaces the whole board
+    assert services.sync_tasks(agent, tasks[:1]) == {"count": 1}
+    assert AgentTask.objects.filter(agent=agent).count() == 1

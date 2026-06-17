@@ -113,6 +113,46 @@ class AgentSkillOut(StrictModel):
     updated_at: dt.datetime
 
 
+# ---- tasks (source: a Google Sheet; rendered as a board) ----
+class AgentTaskLink(StrictModel):
+    label: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1, max_length=500)
+
+
+class AgentTaskIn(StrictModel):
+    ext_id: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=300)
+    status: str = "todo"  # normalized server-side to a board column
+    priority: str = Field(default="", max_length=20)
+    owner: str = Field(default="", max_length=120)
+    due: dt.date | None = None
+    links: list[AgentTaskLink] = Field(default_factory=list)
+    notes: str = ""
+    position: int = 0
+    source: str = Field(default="", max_length=100)
+
+
+class AgentTaskSyncIn(StrictModel):
+    """Full replacement of the agent's task board from the source sheet."""
+
+    tasks: list[AgentTaskIn] = Field(default_factory=list)
+
+
+class AgentTaskOut(StrictModel):
+    id: int
+    agent_slug: str
+    ext_id: str
+    title: str
+    status: str
+    priority: str
+    owner: str
+    due: dt.date | None = None
+    links: list[AgentTaskLink] = Field(default_factory=list)
+    notes: str
+    position: int
+    updated_at: dt.datetime
+
+
 # ---- shared ----
 class CountOut(StrictModel):
     created: int = 0
