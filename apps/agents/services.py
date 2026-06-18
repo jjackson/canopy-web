@@ -7,7 +7,7 @@ import datetime as dt
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Agent, AgentSkill, AgentSync, AgentTask, AgentWorkProduct
+from .models import Agent, AgentSkill, AgentSync, AgentTask, AgentTaskCommand, AgentWorkProduct
 
 _VALID_TASK_STATUS = {AgentTask.SUGGESTED, AgentTask.IN_PROGRESS, AgentTask.DONE, AgentTask.DECLINED}
 
@@ -141,18 +141,24 @@ def list_skills(agent: Agent) -> list[AgentSkill]:
 
 
 # ---- tasks ----
+def _norm_status(s: str) -> str:
+    return s if s in _VALID_TASK_STATUS else AgentTask.SUGGESTED
+
+
 @transaction.atomic
 def sync_tasks(agent: Agent, items: list) -> dict:
-    """Replace the agent's task board from the source sheet."""
-    agent.tasks.all().delete()
-    AgentTask.objects.bulk_create(
-        [
-            AgentTask(
-                agent=agent,
-                ext_id=t.ext_id,
+    """Upsert tasks from the (legacy) source sheet by ext_id. NON-destructive:
+    the DB is now the source of truth, so DB-only fields (rationale/plan/…) and
+    DB-only tasks are preserved; the sheet just sets the columns it carries."""
+    created = updated = 0
+    for t in items:
+        _, was_created = AgentTask.objects.update_or_create(
+            agent=agent,
+            ext_id=t.ext_id,
+            defaults=dict(
                 title=t.title,
                 next_action=t.next_action,
-                status=t.status if t.status in _VALID_TASK_STATUS else AgentTask.SUGGESTED,
+                status=_norm_status(t.status),
                 owner=t.owner,
                 assigned=t.assigned,
                 confidence=t.confidence,
@@ -161,12 +167,99 @@ def sync_tasks(agent: Agent, items: list) -> dict:
                 notes=t.notes,
                 position=t.position,
                 source=t.source,
-            )
-            for t in items
-        ]
-    )
-    return {"count": agent.tasks.count()}
+            ),
+        )
+        created += int(was_created)
+        updated += int(not was_created)
+    return {"created": created, "count": agent.tasks.count()}
+
+
+_TASK_FIELDS = ("title", "next_action", "status", "owner", "assigned", "confidence",
+                "rationale", "source_url", "plan", "due", "notes", "position")
+
+
+def create_task(agent: Agent, data) -> AgentTask:
+    payload = {f: getattr(data, f) for f in _TASK_FIELDS if getattr(data, f, None) is not None}
+    payload["status"] = _norm_status(payload.get("status", AgentTask.SUGGESTED))
+    if getattr(data, "links", None):
+        payload["links"] = [l.model_dump() for l in data.links]
+    return AgentTask.objects.create(agent=agent, ext_id=data.ext_id, **payload)
+
+
+def patch_task(task: AgentTask, data) -> AgentTask:
+    """Partial update — only fields present in `data` (a dict) are written."""
+    for f in _TASK_FIELDS:
+        if f in data:
+            setattr(task, f, _norm_status(data[f]) if f == "status" else data[f])
+    if "links" in data:
+        task.links = data["links"]
+    task.save()
+    return task
+
+
+def get_task(agent: Agent, task_id: int) -> AgentTask | None:
+    return agent.tasks.filter(id=task_id).select_related("agent").first()
 
 
 def list_tasks(agent: Agent) -> list[AgentTask]:
     return list(agent.tasks.select_related("agent"))
+
+
+# ---- task commands (the board's action queue) ----
+@transaction.atomic
+def create_command(agent: Agent, task, kind: str, payload: dict, created_by: str) -> AgentTaskCommand:
+    """Record a board action. Some kinds apply immediately to the task; accept
+    and dispatch also leave a PENDING command for the agent to drain."""
+    C = AgentTaskCommand
+    payload = payload or {}
+    cmd = C(agent=agent, task=task, kind=kind, payload=payload, created_by=created_by)
+    applied_now = True  # most kinds need no agent follow-up
+    if task is not None:
+        if kind == C.ACCEPT:
+            task.status, task.assigned = AgentTask.IN_PROGRESS, "Echo"
+            task.save(update_fields=["status", "assigned", "updated_at"])
+            applied_now = False  # the agent still has to do the work
+        elif kind == C.DECLINE:
+            task.status = AgentTask.DECLINED
+            reason = payload.get("reason", "").strip()
+            if reason:
+                task.notes = f"{task.notes}\nDeclined: {reason}".strip()
+            task.save(update_fields=["status", "notes", "updated_at"])
+        elif kind == C.REASSIGN:
+            task.assigned = payload.get("assignee", task.assigned)
+            task.save(update_fields=["assigned", "updated_at"])
+        elif kind == C.EDIT:
+            for f in ("title", "next_action", "plan", "owner", "assigned"):
+                if f in payload:
+                    setattr(task, f, payload[f])
+            task.save()
+        elif kind == C.DONE:
+            task.status = AgentTask.DONE
+            task.save(update_fields=["status", "updated_at"])
+        elif kind == C.COMMENT:
+            note = payload.get("note", "").strip()
+            if note:
+                task.notes = f"{task.notes}\n{note}".strip()
+                task.save(update_fields=["notes", "updated_at"])
+        elif kind == C.DISPATCH:
+            applied_now = False  # pure agent work
+    if applied_now:
+        cmd.status, cmd.applied_at = C.APPLIED, timezone.now()
+    cmd.save()
+    return cmd
+
+
+def list_commands(agent: Agent, status: str | None = None) -> list[AgentTaskCommand]:
+    qs = agent.commands.select_related("task", "agent")
+    if status:
+        qs = qs.filter(status=status)
+    return list(qs)
+
+
+def apply_command(cmd: AgentTaskCommand, result_note: str = "") -> AgentTaskCommand:
+    cmd.status = AgentTaskCommand.APPLIED
+    cmd.applied_at = timezone.now()
+    if result_note:
+        cmd.result_note = result_note
+    cmd.save(update_fields=["status", "applied_at", "result_note"])
+    return cmd

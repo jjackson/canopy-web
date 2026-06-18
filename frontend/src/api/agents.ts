@@ -91,8 +91,40 @@ export interface AgentTaskOut {
   due: string | null
   links: AgentTaskLink[]
   notes: string
+  rationale: string // why this task is on the board — shown as a muted "Why: …" line
+  source_url: string // the originating thread/doc, surfaced as a "source ↗" chip
+  plan: string // Echo's intended approach, if any
   position: number
   updated_at: string
+}
+
+// ── Command queue ────────────────────────────────────────────────────────────
+// Actions a human takes on a task POST a command; Echo drains pending commands
+// on its next turn. `created_by` is filled server-side — never send it.
+
+export type AgentCommandKind =
+  | 'accept'
+  | 'decline'
+  | 'dispatch'
+  | 'done'
+  | 'reassign'
+  | 'edit'
+  | 'comment'
+
+export interface AgentCommandOut {
+  id: number
+  agent_slug: string
+  task_id: number
+  kind: AgentCommandKind
+  payload: Record<string, unknown>
+  status: string
+  created_by: string
+  created_at: string
+}
+
+export interface PostCommandResult {
+  command: AgentCommandOut
+  task: AgentTaskOut
 }
 
 // Mirrors client.v2's auth: anonymous 401s on a non-public route bounce to the
@@ -116,6 +148,18 @@ async function getJson<T>(path: string, what: string): Promise<T> {
   })
   if (res.status === 401 && !isPublicLinkRoute()) redirectToLogin()
   if (!res.ok) throw new Error(`Failed to load ${what}`)
+  return (await res.json()) as T
+}
+
+async function postJson<T>(path: string, body: unknown, what: string): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (res.status === 401 && !isPublicLinkRoute()) redirectToLogin()
+  if (!res.ok) throw new Error(`Failed to ${what}`)
   return (await res.json()) as T
 }
 
@@ -172,5 +216,29 @@ export async function listAgentTasks(slug: string): Promise<AgentTaskOut[]> {
   return getJson<AgentTaskOut[]>(
     `/api/agents/${encodeURIComponent(slug)}/tasks/`,
     'agent tasks',
+  )
+}
+
+// POST an action onto a task's command queue. `created_by` is server-filled.
+// accept/dispatch/done take no payload; decline → {reason}; reassign →
+// {assignee}; edit → {next_action}; comment → {note}.
+export async function postTaskCommand(
+  slug: string,
+  taskId: number,
+  kind: AgentCommandKind,
+  payload?: Record<string, unknown>,
+): Promise<PostCommandResult> {
+  return postJson<PostCommandResult>(
+    `/api/agents/${encodeURIComponent(slug)}/tasks/${taskId}/commands`,
+    { kind, payload: payload ?? {} },
+    `${kind} task`,
+  )
+}
+
+// Pending commands queued for the agent to drain next turn.
+export async function listPendingCommands(slug: string): Promise<AgentCommandOut[]> {
+  return getJson<AgentCommandOut[]>(
+    `/api/agents/${encodeURIComponent(slug)}/commands?status=pending`,
+    'pending commands',
   )
 }

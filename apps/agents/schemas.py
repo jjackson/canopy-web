@@ -128,6 +128,9 @@ class AgentTaskIn(StrictModel):
     owner: str = Field(default="", max_length=120)
     assigned: str = Field(default="", max_length=120)
     confidence: str = Field(default="", max_length=10)
+    rationale: str = ""
+    source_url: str = Field(default="", max_length=500)
+    plan: str = ""
     due: dt.date | None = None
     links: list[AgentTaskLink] = Field(default_factory=list)
     notes: str = ""
@@ -151,11 +154,66 @@ class AgentTaskOut(StrictModel):
     owner: str
     assigned: str
     confidence: str
+    rationale: str
+    source_url: str
+    plan: str
     due: dt.date | None = None
     links: list[AgentTaskLink] = Field(default_factory=list)
     notes: str
     position: int
     updated_at: dt.datetime
+
+
+class AgentTaskPatch(StrictModel):
+    """Partial update — only the fields sent are written."""
+
+    title: str | None = Field(default=None, max_length=300)
+    next_action: str | None = Field(default=None, max_length=300)
+    status: str | None = None
+    owner: str | None = Field(default=None, max_length=120)
+    assigned: str | None = Field(default=None, max_length=120)
+    confidence: str | None = Field(default=None, max_length=10)
+    rationale: str | None = None
+    source_url: str | None = Field(default=None, max_length=500)
+    plan: str | None = None
+    due: dt.date | None = None
+    notes: str | None = None
+    position: int | None = None
+    links: list[AgentTaskLink] | None = None
+
+
+# ---- task commands (the board's action queue) ----
+class AgentTaskCommandIn(StrictModel):
+    kind: str = Field(pattern=r"^(accept|decline|dispatch|reassign|edit|comment|done)$")
+    payload: dict = Field(default_factory=dict)  # reason / assignee / next_action / note
+    created_by: str = Field(default="", max_length=200)
+
+
+class AgentCommandApplyIn(StrictModel):
+    result_note: str = ""
+
+
+class AgentTaskCommandOut(StrictModel):
+    id: int
+    agent_slug: str
+    task_id: int | None = None
+    task_ext_id: str
+    task_title: str
+    kind: str
+    payload: dict = Field(default_factory=dict)
+    status: str
+    created_by: str
+    result_note: str
+    created_at: dt.datetime
+    applied_at: dt.datetime | None = None
+
+
+class CommandResultOut(StrictModel):
+    """Returned when the UI posts a command: the queued command + the (maybe
+    immediately-updated) task."""
+
+    command: AgentTaskCommandOut
+    task: AgentTaskOut | None = None
 
 
 # ---- shared ----
