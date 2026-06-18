@@ -183,6 +183,14 @@ function VersionBlock({
               {version.story}
             </p>
           )}
+          {version.video_url && (
+            <video
+              src={version.video_url}
+              controls
+              preload="metadata"
+              className="mb-3 w-full max-w-2xl rounded-lg border border-stone-800 bg-black"
+            />
+          )}
           {version.review_id && (
             <a
               href={`/review/${version.review_id}`}

@@ -1190,6 +1190,40 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/tasks/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List the agent's tasks (board) */
+        readonly get: operations["apps_agents_api_list_tasks"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/tasks/sync": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Sync (replace) the agent's task board from the source sheet */
+        readonly post: operations["apps_agents_api_sync_tasks"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/share/{token}": {
         readonly parameters: {
             readonly query?: never;
@@ -2533,6 +2567,10 @@ export interface components {
             readonly title?: string | null;
             /** Story */
             readonly story?: string | null;
+            /** Video Url */
+            readonly video_url?: string | null;
+            /** Video Viewer Url */
+            readonly video_viewer_url?: string | null;
         };
         /** NarrativeVersionOut */
         readonly NarrativeVersionOut: {
@@ -2550,6 +2588,10 @@ export interface components {
             readonly gate?: string | null;
             /** Status */
             readonly status?: string | null;
+            /** Video Url */
+            readonly video_url?: string | null;
+            /** Video Viewer Url */
+            readonly video_viewer_url?: string | null;
             /**
              * Runs
              * @default []
@@ -3084,6 +3126,11 @@ export interface components {
              * @default 0
              */
             readonly skill_count: number;
+            /**
+             * Task Count
+             * @default 0
+             */
+            readonly task_count: number;
             /** Latest Sync At */
             readonly latest_sync_at?: string | null;
         };
@@ -3289,6 +3336,106 @@ export interface components {
              * @default
              */
             readonly improvement_note: string;
+        };
+        /** AgentTaskLink */
+        readonly AgentTaskLink: {
+            /** Label */
+            readonly label: string;
+            /** Url */
+            readonly url: string;
+        };
+        /** AgentTaskOut */
+        readonly AgentTaskOut: {
+            /** Id */
+            readonly id: number;
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Ext Id */
+            readonly ext_id: string;
+            /** Title */
+            readonly title: string;
+            /** Next Action */
+            readonly next_action: string;
+            /** Status */
+            readonly status: string;
+            /** Owner */
+            readonly owner: string;
+            /** Assigned */
+            readonly assigned: string;
+            /** Confidence */
+            readonly confidence: string;
+            /** Due */
+            readonly due?: string | null;
+            /** Links */
+            readonly links?: readonly components["schemas"]["AgentTaskLink"][];
+            /** Notes */
+            readonly notes: string;
+            /** Position */
+            readonly position: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /** AgentTaskIn */
+        readonly AgentTaskIn: {
+            /** Ext Id */
+            readonly ext_id: string;
+            /** Title */
+            readonly title: string;
+            /**
+             * Next Action
+             * @default
+             */
+            readonly next_action: string;
+            /**
+             * Status
+             * @default suggested
+             */
+            readonly status: string;
+            /**
+             * Owner
+             * @default
+             */
+            readonly owner: string;
+            /**
+             * Assigned
+             * @default
+             */
+            readonly assigned: string;
+            /**
+             * Confidence
+             * @default
+             */
+            readonly confidence: string;
+            /** Due */
+            readonly due?: string | null;
+            /** Links */
+            readonly links?: readonly components["schemas"]["AgentTaskLink"][];
+            /**
+             * Notes
+             * @default
+             */
+            readonly notes: string;
+            /**
+             * Position
+             * @default 0
+             */
+            readonly position: number;
+            /**
+             * Source
+             * @default
+             */
+            readonly source: string;
+        };
+        /**
+         * AgentTaskSyncIn
+         * @description Full replacement of the agent's task board from the source sheet.
+         */
+        readonly AgentTaskSyncIn: {
+            /** Tasks */
+            readonly tasks?: readonly components["schemas"]["AgentTaskIn"][];
         };
         /**
          * SharedSessionOut
@@ -5292,6 +5439,54 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": components["schemas"]["AgentSkillCatalogIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CountOut"];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_list_tasks: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["AgentTaskOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_sync_tasks: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AgentTaskSyncIn"];
             };
         };
         readonly responses: {
