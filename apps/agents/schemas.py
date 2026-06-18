@@ -123,9 +123,11 @@ class AgentTaskLink(StrictModel):
 class AgentTaskIn(StrictModel):
     ext_id: str = Field(min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=300)
-    status: str = "todo"  # normalized server-side to a board column
-    priority: str = Field(default="", max_length=20)
+    next_action: str = Field(default="", max_length=300)
+    status: str = "suggested"  # normalized server-side
     owner: str = Field(default="", max_length=120)
+    assigned: str = Field(default="", max_length=120)
+    confidence: str = Field(default="", max_length=10)
     due: dt.date | None = None
     links: list[AgentTaskLink] = Field(default_factory=list)
     notes: str = ""
@@ -144,9 +146,11 @@ class AgentTaskOut(StrictModel):
     agent_slug: str
     ext_id: str
     title: str
+    next_action: str
     status: str
-    priority: str
     owner: str
+    assigned: str
+    confidence: str
     due: dt.date | None = None
     links: list[AgentTaskLink] = Field(default_factory=list)
     notes: str

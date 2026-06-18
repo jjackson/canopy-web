@@ -29,5 +29,5 @@ class AgentSkillAdmin(admin.ModelAdmin):
 
 @admin.register(AgentTask)
 class AgentTaskAdmin(admin.ModelAdmin):
-    list_display = ("agent", "title", "status", "priority", "owner", "due", "updated_at")
-    list_filter = ("agent", "status", "priority")
+    list_display = ("agent", "title", "status", "owner", "assigned", "due", "updated_at")
+    list_filter = ("agent", "status")

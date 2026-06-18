@@ -71,7 +71,7 @@ export interface AgentSkillOut {
   updated_at: string
 }
 
-export type AgentTaskStatus = 'todo' | 'in_progress' | 'blocked' | 'done'
+export type AgentTaskStatus = 'suggested' | 'in_progress' | 'done' | 'declined'
 
 export interface AgentTaskLink {
   label: string
@@ -82,10 +82,12 @@ export interface AgentTaskOut {
   id: number
   agent_slug: string
   ext_id: string
-  title: string
+  title: string // the OUTCOME
+  next_action: string // the single concrete next step, verb-first
   status: AgentTaskStatus
-  priority: string
-  owner: string
+  owner: string // the human stakeholder — NEVER the agent
+  assigned: string // who the next action waits on — the agent ("Echo") OR a person
+  confidence: string // 'high' | 'low' | '' (for suggested items)
   due: string | null
   links: AgentTaskLink[]
   notes: string

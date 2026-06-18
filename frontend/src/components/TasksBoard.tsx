@@ -1,18 +1,18 @@
-import type { AgentTaskOut, AgentTaskStatus } from '@/api/agents'
+import type { JSX } from 'react'
+import type { AgentTaskOut } from '@/api/agents'
 
-const COLUMNS: { status: AgentTaskStatus; label: string }[] = [
-  { status: 'todo', label: 'To do' },
-  { status: 'in_progress', label: 'In progress' },
-  { status: 'blocked', label: 'Blocked' },
-  { status: 'done', label: 'Done' },
-]
+// ── "Who has the ball" model ───────────────────────────────────────────────
+// The board is organized by whose court the next action sits in, not by equal
+// status columns. `assigned` names who the next step waits on: the agent
+// ("Echo") or a human. Empty or case-insensitive 'echo' means the agent.
 
-// A small dot per column so the board reads at a glance.
-const COLUMN_DOT: Record<AgentTaskStatus, string> = {
-  todo: 'bg-stone-500',
-  in_progress: 'bg-orange-400',
-  blocked: 'bg-red-400',
-  done: 'bg-emerald-400',
+function isEcho(assigned: string): boolean {
+  const a = (assigned || '').trim().toLowerCase()
+  return a === '' || a === 'echo'
+}
+
+function headline(task: AgentTaskOut): string {
+  return (task.next_action || '').trim() || (task.title || '').trim()
 }
 
 function formatDue(s: string): string {
@@ -30,122 +30,266 @@ function isPastDue(due: string): boolean {
   return d.getTime() < today.getTime()
 }
 
-// high → red/amber, medium → neutral, low → muted, anything else → muted/quiet.
-function priorityChipClass(priority: string): string {
-  switch ((priority || '').trim().toLowerCase()) {
-    case 'high':
-    case 'urgent':
-    case 'critical':
-      return 'text-red-300 bg-red-950/50 border-red-500/40'
-    case 'medium':
-    case 'normal':
-      return 'text-stone-300 bg-stone-800 border-stone-700/60'
-    case 'low':
-      return 'text-stone-500 bg-stone-950/60 border-stone-800'
-    default:
-      return 'text-stone-500 bg-stone-950/60 border-stone-800'
+// ── Small primitives ────────────────────────────────────────────────────────
+
+// confidence: 'high' = solid dot, 'low' = hollow/hatched, '' = nothing.
+function ConfidenceDot({ confidence }: { confidence: string }): JSX.Element | null {
+  const c = (confidence || '').trim().toLowerCase()
+  if (c === 'high') {
+    return (
+      <span
+        className="h-2 w-2 shrink-0 rounded-full bg-primary"
+        title="High confidence"
+        aria-label="High confidence"
+      />
+    )
   }
+  if (c === 'low') {
+    return (
+      <span
+        className="h-2 w-2 shrink-0 rounded-full border border-dashed border-muted-foreground/70"
+        title="Low confidence"
+        aria-label="Low confidence"
+      />
+    )
+  }
+  return null
 }
 
-function PriorityChip({ priority }: { priority: string }) {
-  const label = (priority || '').trim()
-  if (!label) return null
+// The "ball is in the agent's court" affordance: Echo + a pulsing dot.
+function EchoWorking(): JSX.Element {
   return (
-    <span
-      className={`inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${priorityChipClass(
-        priority,
-      )}`}
-    >
-      {label}
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-primary">
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+      </span>
+      Echo
     </span>
   )
 }
 
-function TaskLinkChip({ label, url }: { label: string; url: string }) {
+// The "ball is in a human's court" affordance: an amber waiting chip.
+function WaitingChip({ who }: { who: string }): JSX.Element {
+  return (
+    <span className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-300">
+      Waiting on {who}
+    </span>
+  )
+}
+
+function OwnerTag({ owner }: { owner: string }): JSX.Element | null {
+  const o = (owner || '').trim()
+  if (!o) return null
+  return (
+    <span className="text-[10px] text-muted-foreground" title={`Owner: ${o}`}>
+      Owner · {o}
+    </span>
+  )
+}
+
+function DueChip({ due, done }: { due: string; done: boolean }): JSX.Element {
+  const pastDue = !done && isPastDue(due)
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
+        pastDue
+          ? 'border-destructive/40 bg-destructive/10 text-destructive'
+          : 'border-border bg-muted text-muted-foreground'
+      }`}
+      title={pastDue ? 'Past due' : undefined}
+    >
+      {pastDue && <span aria-hidden>⚠</span>}
+      {formatDue(due)}
+    </span>
+  )
+}
+
+function TaskLinkChip({ label, url }: { label: string; url: string }): JSX.Element | null {
   if (!url) return null
   return (
     <a
       href={url}
       target="_blank"
       rel="noreferrer"
-      className="inline-flex items-center gap-1 text-[10px] font-medium text-stone-300 hover:text-orange-300 bg-stone-950/80 border border-stone-700/60 hover:border-orange-400/50 px-2 py-0.5 rounded transition-colors"
+      className="inline-flex items-center gap-1 rounded border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
     >
-      <span className="text-orange-400/70">↗</span>
+      <span className="text-primary/70">↗</span>
       {label || url}
     </a>
   )
 }
 
-function TaskCard({ task }: { task: AgentTaskOut }) {
-  const pastDue = task.due ? task.status !== 'done' && isPastDue(task.due) : false
-  return (
-    <div className="bg-stone-900/70 border border-stone-800 rounded-lg p-3 hover:border-orange-400/40 transition-colors">
-      <p className="text-[13px] font-semibold text-stone-100 leading-snug">{task.title}</p>
+// ── Card ────────────────────────────────────────────────────────────────────
 
-      <div className="flex flex-wrap items-center gap-1.5 mt-2">
-        <PriorityChip priority={task.priority} />
-        {task.owner && (
-          <span className="inline-flex items-center text-[10px] text-stone-400 bg-stone-950/60 border border-stone-800 px-1.5 py-0.5 rounded">
-            {task.owner}
-          </span>
-        )}
-        {task.due && (
-          <span
-            className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
-              pastDue
-                ? 'text-red-300 bg-red-950/40 border-red-500/40'
-                : 'text-stone-500 bg-stone-950/60 border-stone-800'
-            }`}
-            title={pastDue ? 'Past due' : undefined}
-          >
-            {pastDue && <span aria-hidden>⚠</span>}
-            {formatDue(task.due)}
-          </span>
-        )}
+function TaskCard({ task }: { task: AgentTaskOut }): JSX.Element {
+  const head = headline(task)
+  const outcome = (task.title || '').trim()
+  const showOutcome = outcome && outcome !== head
+  const echo = isEcho(task.assigned)
+  const isSuggested = task.status === 'suggested'
+  const isDone = task.status === 'done'
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40">
+      <div className="flex items-start gap-2">
+        {isSuggested && <ConfidenceDot confidence={task.confidence} />}
+        <p className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-foreground">
+          {head}
+        </p>
       </div>
 
-      {task.links && task.links.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {task.links.map((l, i) => (
+      {/* Whose court: the single ball signal — Echo working, or waiting on a human. */}
+      {!isSuggested && !isDone && task.status === 'in_progress' && (
+        <div className="mt-1.5">
+          {echo ? <EchoWorking /> : <WaitingChip who={task.assigned.trim()} />}
+        </div>
+      )}
+
+      {/* Secondary line: the outcome, only when it differs from the headline. */}
+      {showOutcome && (
+        <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">{outcome}</p>
+      )}
+
+      {(task.owner || task.due || (task.links && task.links.length > 0)) && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <OwnerTag owner={task.owner} />
+          {task.due && <DueChip due={task.due} done={isDone} />}
+          {task.links?.map((l, i) => (
             <TaskLinkChip key={`${l.url}-${i}`} label={l.label} url={l.url} />
           ))}
         </div>
+      )}
+
+      {task.notes && task.notes.trim() && (
+        <p
+          className="mt-2 truncate text-[10px] text-muted-foreground/80"
+          title={task.notes}
+        >
+          {task.notes}
+        </p>
       )}
     </div>
   )
 }
 
-export function TasksBoard({ tasks }: { tasks: AgentTaskOut[] }) {
-  const byStatus = (status: AgentTaskStatus) =>
-    tasks
-      .filter((t) => t.status === status)
-      .sort((a, b) => a.position - b.position)
+// ── Sections ────────────────────────────────────────────────────────────────
+
+function SectionHeader({
+  label,
+  count,
+  dotClass,
+  accent,
+}: {
+  label: string
+  count: number
+  dotClass?: string
+  accent?: boolean
+}): JSX.Element {
+  return (
+    <div
+      className={`mb-2 flex items-center gap-2 border-b pb-1.5 ${
+        accent ? 'border-amber-500/30' : 'border-border'
+      }`}
+    >
+      {dotClass && <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />}
+      <span
+        className={`text-[11px] font-bold uppercase tracking-[0.06em] ${
+          accent ? 'text-amber-300' : 'text-foreground'
+        }`}
+      >
+        {label}
+      </span>
+      <span className="ml-auto text-[11px] text-muted-foreground">{count}</span>
+    </div>
+  )
+}
+
+function CardGrid({ tasks }: { tasks: AgentTaskOut[] }): JSX.Element {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {tasks.map((t) => (
+        <TaskCard key={t.id} task={t} />
+      ))}
+    </div>
+  )
+}
+
+function byPosition(a: AgentTaskOut, b: AgentTaskOut): number {
+  return a.position - b.position
+}
+
+export function TasksBoard({ tasks }: { tasks: AgentTaskOut[] }): JSX.Element {
+  const suggested = tasks.filter((t) => t.status === 'suggested').sort(byPosition)
+  const inProgress = tasks.filter((t) => t.status === 'in_progress')
+  const waitingHuman = inProgress.filter((t) => !isEcho(t.assigned)).sort(byPosition)
+  const echoWorking = inProgress.filter((t) => isEcho(t.assigned)).sort(byPosition)
+  const done = tasks.filter((t) => t.status === 'done').sort(byPosition)
+  const declined = tasks.filter((t) => t.status === 'declined').sort(byPosition)
+
+  if (tasks.length === 0) {
+    return (
+      <p className="text-[13px] text-muted-foreground">No tasks yet — nothing on the board.</p>
+    )
+  }
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {COLUMNS.map(({ status, label }) => {
-        const items = byStatus(status)
-        return (
-          <div key={status} className="flex flex-col min-w-0">
-            <div className="flex items-center gap-2 px-1 pb-2 mb-2 border-b border-stone-800">
-              <span className={`h-1.5 w-1.5 rounded-full ${COLUMN_DOT[status]}`} />
-              <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-stone-300">
-                {label}
-              </span>
-              <span className="text-[11px] text-stone-600 ml-auto">{items.length}</span>
-            </div>
-            {items.length === 0 ? (
-              <p className="text-[11px] text-stone-600 italic px-1 py-3">No tasks</p>
-            ) : (
-              <div className="space-y-2">
-                {items.map((t) => (
-                  <TaskCard key={t.id} task={t} />
-                ))}
+    <div className="space-y-7">
+      {suggested.length > 0 && (
+        <section>
+          <SectionHeader
+            label="Suggested"
+            count={suggested.length}
+            dotClass="bg-muted-foreground"
+          />
+          <CardGrid tasks={suggested} />
+        </section>
+      )}
+
+      {waitingHuman.length > 0 && (
+        <section className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3">
+          <SectionHeader label="Waiting on a human" count={waitingHuman.length} accent />
+          <CardGrid tasks={waitingHuman} />
+        </section>
+      )}
+
+      {echoWorking.length > 0 && (
+        <section>
+          <SectionHeader
+            label="Echo working"
+            count={echoWorking.length}
+            dotClass="bg-primary"
+          />
+          <CardGrid tasks={echoWorking} />
+        </section>
+      )}
+
+      {done.length > 0 && (
+        <section>
+          <SectionHeader label="Done" count={done.length} dotClass="bg-primary/40" />
+          <CardGrid tasks={done} />
+        </section>
+      )}
+
+      {declined.length > 0 && (
+        <section className="opacity-60">
+          <SectionHeader label="Declined" count={declined.length} />
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            {declined.map((t) => (
+              <div
+                key={t.id}
+                className="rounded-md border border-border bg-card/50 px-3 py-1.5 text-[11px] text-muted-foreground"
+                title={t.notes || undefined}
+              >
+                <span className="line-through decoration-muted-foreground/40">
+                  {headline(t)}
+                </span>
+                {t.owner && <span className="ml-1.5 text-muted-foreground/70">· {t.owner}</span>}
               </div>
-            )}
+            ))}
           </div>
-        )
-      })}
+        </section>
+      )}
     </div>
   )
 }

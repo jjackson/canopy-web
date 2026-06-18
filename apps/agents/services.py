@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from .models import Agent, AgentSkill, AgentSync, AgentTask, AgentWorkProduct
 
-_VALID_TASK_STATUS = {AgentTask.TODO, AgentTask.IN_PROGRESS, AgentTask.BLOCKED, AgentTask.DONE}
+_VALID_TASK_STATUS = {AgentTask.SUGGESTED, AgentTask.IN_PROGRESS, AgentTask.DONE, AgentTask.DECLINED}
 
 
 def _aware(value):
@@ -151,9 +151,11 @@ def sync_tasks(agent: Agent, items: list) -> dict:
                 agent=agent,
                 ext_id=t.ext_id,
                 title=t.title,
-                status=t.status if t.status in _VALID_TASK_STATUS else AgentTask.TODO,
-                priority=t.priority,
+                next_action=t.next_action,
+                status=t.status if t.status in _VALID_TASK_STATUS else AgentTask.SUGGESTED,
                 owner=t.owner,
+                assigned=t.assigned,
+                confidence=t.confidence,
                 due=t.due,
                 links=[l.model_dump() for l in t.links],
                 notes=t.notes,
