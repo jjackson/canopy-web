@@ -37,6 +37,8 @@ export interface DddNarrativeStory {
   version: number | null
   title: string | null
   story: string | null
+  video_url: string | null
+  video_viewer_url: string | null
 }
 
 export interface DddNarrativeVersion {
@@ -47,6 +49,8 @@ export interface DddNarrativeVersion {
   created_at: string | null
   gate: string | null
   status: string | null
+  video_url: string | null
+  video_viewer_url: string | null
   runs: DddNarrativeRun[]
 }
 
