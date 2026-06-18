@@ -1,0 +1,30 @@
+name: Publish @canopy/workbench
+
+# Publishes the shared front-end workbench package to GitHub Packages.
+# Trigger by pushing a tag like `workbench-v0.1.0`, or manually via the
+# Actions tab (workflow_dispatch). Bump the version in
+# frontend/packages/workbench/package.json to match the tag before tagging.
+on:
+  push:
+    tags: ['workbench-v*']
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: Publish to GitHub Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@canopy'
+      - name: Publish
+        run: npm publish
+        working-directory: frontend/packages/workbench
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
