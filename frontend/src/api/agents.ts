@@ -151,11 +151,31 @@ async function getJson<T>(path: string, what: string): Promise<T> {
   return (await res.json()) as T
 }
 
+function readCookie(name: string): string {
+  return document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))?.[1] ?? ''
+}
+
+// Django's session auth (Ninja) enforces CSRF on unsafe methods. Read the
+// csrftoken cookie (bootstrapping it from /api/csrf/ if absent) and send it.
+async function csrfToken(): Promise<string> {
+  let token = readCookie('csrftoken')
+  if (!token) {
+    await fetch('/api/csrf/', { credentials: 'same-origin' })
+    token = readCookie('csrftoken')
+  }
+  return token ? decodeURIComponent(token) : ''
+}
+
 async function postJson<T>(path: string, body: unknown, what: string): Promise<T> {
+  const token = await csrfToken()
   const res = await fetch(path, {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...(token ? { 'X-CSRFToken': token } : {}),
+    },
     body: JSON.stringify(body),
   })
   if (res.status === 401 && !isPublicLinkRoute()) redirectToLogin()

@@ -312,7 +312,8 @@ function TaskCard({
   const isDone = task.status === 'done'
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40">
+    <div data-testid={`task-${task.ext_id}`} data-status={task.status}
+         className="rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40">
       <div className="flex items-start gap-2">
         {isSuggested && <ConfidenceDot confidence={task.confidence} />}
         <p className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-foreground">
@@ -503,6 +504,8 @@ export function TasksBoard({
             {declined.map((t) => (
               <div
                 key={t.id}
+                data-testid={`task-${t.ext_id}`}
+                data-status={t.status}
                 className="rounded-md border border-border bg-card/50 px-3 py-1.5 text-[11px] text-muted-foreground"
                 title={t.notes || undefined}
               >
