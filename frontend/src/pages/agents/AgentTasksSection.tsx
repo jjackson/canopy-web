@@ -23,13 +23,7 @@ export function AgentTasksSection() {
   return (
     <div className="max-w-4xl px-6 py-8">
       <WorkbenchSubHeader title="Task board" count={tasks?.length} />
-      {tasks === null ? (
-        <WorkbenchSkeleton />
-      ) : tasks.length === 0 ? (
-        <p className="text-[13px] text-stone-600">No tasks yet.</p>
-      ) : (
-        <TasksBoard tasks={tasks} />
-      )}
+      {tasks === null ? <WorkbenchSkeleton /> : <TasksBoard tasks={tasks} />}
     </div>
   )
 }

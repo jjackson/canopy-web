@@ -128,20 +128,25 @@ class AgentTask(models.Model):
     agent, keyed by `ext_id` (stable sheet-row id) so edits/removals
     propagate."""
 
-    TODO, IN_PROGRESS, BLOCKED, DONE = "todo", "in_progress", "blocked", "done"
+    # Suggested = the agent proposed it; a human must validate (Linear "Triage").
+    # No "To do" (the agent would just do it) and no "Blocked" column — "waiting
+    # on a person" is expressed by `assigned` being a human, shown as an overlay.
+    SUGGESTED, IN_PROGRESS, DONE, DECLINED = "suggested", "in_progress", "done", "declined"
     STATUS_CHOICES = [
-        (TODO, "To do"),
+        (SUGGESTED, "Suggested"),
         (IN_PROGRESS, "In progress"),
-        (BLOCKED, "Blocked"),
         (DONE, "Done"),
+        (DECLINED, "Declined"),
     ]
 
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE, related_name="tasks")
     ext_id = models.CharField(max_length=64, help_text="Stable id from the source sheet.")
-    title = models.CharField(max_length=300)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=TODO)
-    priority = models.CharField(max_length=20, blank=True, default="", help_text="high / medium / low")
-    owner = models.CharField(max_length=120, blank=True, default="", help_text="Owner / requester.")
+    title = models.CharField(max_length=300, help_text="The outcome.")
+    next_action = models.CharField(max_length=300, blank=True, default="", help_text="The single concrete next step (verb-first).")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=SUGGESTED)
+    owner = models.CharField(max_length=120, blank=True, default="", help_text="Human stakeholder who owns the outcome — never the agent.")
+    assigned = models.CharField(max_length=120, blank=True, default="", help_text="Who the next action waits on — the agent or a person.")
+    confidence = models.CharField(max_length=10, blank=True, default="", help_text="high / low — how sure the agent is about a suggestion.")
     due = models.DateField(null=True, blank=True)
     links = models.JSONField(default=list, blank=True)
     notes = models.TextField(blank=True, default="")

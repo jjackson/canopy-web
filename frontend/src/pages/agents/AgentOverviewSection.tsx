@@ -12,10 +12,10 @@ import { CountStat, SyncCard } from '@/components/agents/cards'
 import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
 
 const TASK_COLUMNS: { status: AgentTaskStatus; label: string; dot: string }[] = [
-  { status: 'todo', label: 'To do', dot: 'bg-stone-500' },
-  { status: 'in_progress', label: 'In progress', dot: 'bg-orange-400' },
-  { status: 'blocked', label: 'Blocked', dot: 'bg-red-400' },
-  { status: 'done', label: 'Done', dot: 'bg-emerald-400' },
+  { status: 'suggested', label: 'Suggested', dot: 'bg-muted-foreground' },
+  { status: 'in_progress', label: 'In progress', dot: 'bg-primary' },
+  { status: 'done', label: 'Done', dot: 'bg-primary/40' },
+  { status: 'declined', label: 'Declined', dot: 'bg-muted-foreground/40' },
 ]
 
 const QUICK_LINKS: { to: string; label: string }[] = [

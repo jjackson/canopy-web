@@ -71,15 +71,23 @@ def test_replace_skills_mirrors_catalog():
 def test_sync_tasks_replaces_board_and_normalizes_status():
     agent = _agent()
     link = SimpleNamespace(model_dump=lambda: {"label": "doc", "url": "https://d/1"})
+
+    def task(**kw):
+        base = dict(ext_id="t", title="T", next_action="", status="suggested", owner="",
+                    assigned="", confidence="", due=None, links=[], notes="", position=0, source="sheet")
+        base.update(kw)
+        return SimpleNamespace(**base)
+
     tasks = [
-        SimpleNamespace(ext_id="t1", title="Ship PRIDE guide", status="in_progress", priority="high",
-                        owner="Sarvesh", due=dt.date(2026, 6, 20), links=[link], notes="", position=0, source="sheet"),
-        SimpleNamespace(ext_id="t2", title="Weird status", status="banana", priority="", owner="",
-                        due=None, links=[], notes="", position=1, source="sheet"),
+        task(ext_id="t1", title="PRIDE story", next_action="Run the interview", status="in_progress",
+             owner="Sarvesh", assigned="Sarvesh", due=dt.date(2026, 6, 20), links=[link], position=0),
+        task(ext_id="t2", title="Weird status", status="banana", position=1),  # invalid -> suggested
     ]
     assert services.sync_tasks(agent, tasks) == {"count": 2}
-    assert AgentTask.objects.get(agent=agent, ext_id="t2").status == "todo"  # normalized
-    assert AgentTask.objects.get(agent=agent, ext_id="t1").links == [{"label": "doc", "url": "https://d/1"}]
+    assert AgentTask.objects.get(agent=agent, ext_id="t2").status == "suggested"  # normalized
+    t1 = AgentTask.objects.get(agent=agent, ext_id="t1")
+    assert t1.next_action == "Run the interview" and t1.assigned == "Sarvesh"
+    assert t1.links == [{"label": "doc", "url": "https://d/1"}]
     # re-sync with fewer tasks replaces the whole board
     assert services.sync_tasks(agent, tasks[:1]) == {"count": 1}
     assert AgentTask.objects.filter(agent=agent).count() == 1
