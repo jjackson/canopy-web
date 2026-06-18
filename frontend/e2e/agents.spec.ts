@@ -15,6 +15,27 @@ test('workspace rail exposes the sections', async ({ page }) => {
   await expect(page.locator('a[href$="/agents/echo/skills"]')).toBeVisible()
 })
 
+test('needs-you is the default landing with typed, ranked actionable items', async ({ page }) => {
+  await page.goto('/agents/echo')
+  await expect(page).toHaveURL(/\/agents\/echo\/needs-you$/)
+  await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible()
+  // review band: a suggested task awaiting validate/decline
+  await expect(page.getByTestId('needsyou-band-review')).toContainText('ZEGCAWIS polio AFP story')
+  // question band: the in-progress task blocked on a human
+  await expect(page.getByTestId('needsyou-band-question')).toContainText('PRIDE cholera story')
+  // notify band: a recent FYI (the sync)
+  await expect(page.getByTestId('needsyou-band-notify')).toContainText('Manager sync 1')
+  // nothing Echo is actively working appears in the inbox
+  await expect(page.getByText('Ideas backlog upkeep')).toHaveCount(0)
+  // the badge counts the gated items only (t1 + t2 suggested, t3 waiting = 3)
+  await expect(page.getByText(/3 waiting on you/)).toBeVisible()
+})
+
+test('the rail exposes the Needs you inbox', async ({ page }) => {
+  await page.goto('/agents/echo/tasks')
+  await expect(page.locator('a[href$="/agents/echo/needs-you"]')).toBeVisible()
+})
+
 test('overview shows the latest sync', async ({ page }) => {
   await page.goto('/agents/echo/overview')
   await expect(page.getByText('Manager sync 1')).toBeVisible()
@@ -45,6 +66,30 @@ test('task board groups by who has the ball, with context + queue badge', async 
   await expect(page.getByTestId('task-t3')).toHaveAttribute('data-status', 'in_progress')
   await expect(page.getByText(/Strong near-miss/)).toBeVisible() // rationale on the card
   await expect(page.getByText(/queued for Echo/i)).toBeVisible() // the seeded pending command
+})
+
+test('an applied command surfaces its result + timestamp on the task card', async ({ page }) => {
+  await page.goto('/agents/echo/tasks')
+  const card = page.getByTestId('task-t5') // done, with a seeded applied command
+  await expect(card.getByTestId('task-last-activity')).toContainText('Shipped the agent workspace board.')
+  await expect(card.getByTestId('task-last-activity')).toContainText(/Jun 17/)
+})
+
+test('the queue badge expands to the pending commands; activity stream lists history', async ({ page }) => {
+  await page.goto('/agents/echo/tasks')
+  // The badge starts as a count; clicking reveals which commands are pending.
+  await page.getByRole('button', { name: /queued for Echo/i }).click()
+  await expect(page.getByText(/dispatched/i).first()).toBeVisible()
+  // The activity disclosure lists recent commands across the agent.
+  await page.getByRole('button', { name: /^Activity/i }).click()
+  await expect(page.getByTestId('agent-activity')).toContainText('completed')
+})
+
+test('a suggested card links its grounded source next to the rationale', async ({ page }) => {
+  await page.goto('/agents/echo/tasks')
+  const card = page.getByTestId('task-t1')
+  const source = card.getByRole('link', { name: /source/i })
+  await expect(source).toHaveAttribute('href', 'https://example.com/zegcawis')
 })
 
 test('accept flips a suggested task to in progress and clears its Accept button', async ({ page }) => {

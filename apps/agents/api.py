@@ -29,6 +29,7 @@ from .schemas import (
     AgentWorkProductOut,
     CommandResultOut,
     CountOut,
+    NeedsYouOut,
 )
 
 router = Router(auth=session_auth, tags=["agents"])
@@ -61,6 +62,14 @@ def upsert_agent(request: HttpRequest, payload: AgentIn) -> Status:
 def get_agent(request: HttpRequest, slug: str) -> AgentDetailOut:
     agent = _get_agent_or_404(slug)
     return AgentDetailOut.model_validate(services.agent_detail(agent))
+
+
+@router.get("/{slug}/needs-you", response=NeedsYouOut,
+            summary="What the human needs to act on — typed (review/question/notify) + ranked",
+            openapi_extra={"x-mcp-expose": True})
+def needs_you(request: HttpRequest, slug: str) -> NeedsYouOut:
+    agent = _get_agent_or_404(slug)
+    return NeedsYouOut.model_validate(services.needs_you(agent))
 
 
 # ---- syncs (Google-Doc backed) ----

@@ -95,6 +95,39 @@ def test_sync_tasks_upserts_and_normalizes_status():
     assert AgentTask.objects.get(agent=agent, ext_id="t1").title == "PRIDE story v2"
 
 
+def test_needs_you_types_ranks_and_excludes_echo():
+    agent = _agent()
+    # review: a suggested task — the human must validate/decline it
+    services.create_task(agent, _task(ext_id="r1", title="Polio story", status="suggested",
+                                      owner="Matt", assigned="Matt", position=0))
+    # question: an in-progress task blocked on a human (Echo needs a decision)
+    services.create_task(agent, _task(ext_id="q1", title="Cholera story", status="in_progress",
+                                      owner="Matt", assigned="Sarvesh", position=1))
+    # excluded: in-progress assigned to Echo — Echo has the ball, not the human
+    services.create_task(agent, _task(ext_id="e1", title="Backlog upkeep", status="in_progress",
+                                      owner="Matt", assigned="Echo", position=2))
+    # excluded: a done task is no longer actionable
+    services.create_task(agent, _task(ext_id="d1", title="Shipped", status="done", position=3))
+    # notify: a recent FYI sync (no gate)
+    services.upsert_sync(agent, SimpleNamespace(
+        period_start=dt.datetime(2026, 6, 3, tzinfo=dt.timezone.utc),
+        period_end=dt.datetime(2026, 6, 17, tzinfo=dt.timezone.utc),
+        title="Sync 1", summary="", doc_url="https://d/sync", self_grades={}, source="manager-sync"))
+
+    res = services.needs_you(agent)
+    pairs = [(i["type"], i["title"]) for i in res["items"]]
+    assert pairs[0] == ("review", "Polio story")        # review band leads
+    assert ("question", "Cholera story") in pairs
+    assert ("notify", "Sync 1") in pairs
+    titles = [t for _, t in pairs]
+    assert "Backlog upkeep" not in titles               # nothing Echo is working
+    assert "Shipped" not in titles                       # nothing done
+    rank = {"review": 0, "question": 1, "notify": 2}
+    order = [rank[i["type"]] for i in res["items"]]
+    assert order == sorted(order)                        # typed bands, ranked
+    assert res["waiting_count"] == 2                      # gated (review+question) only
+
+
 def test_command_flow_accept_then_apply_and_decline():
     agent = _agent()
     t = services.create_task(agent, _task(ext_id="t1", title="ZEGCAWIS story", next_action="Get consent",

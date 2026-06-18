@@ -1,11 +1,26 @@
+import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { WorkbenchRail, WorkbenchNavItem } from '@canopy/workbench'
-import type { AgentDetailOut } from '@/api/agents'
+import { getNeedsYou, type AgentDetailOut } from '@/api/agents'
 
 type NavItem = { to: string; label: string; count?: number }
 
 export function AgentLeftNav({ agent }: { agent: AgentDetailOut }) {
+  // The "N waiting on you" count for the inbox badge — computed server-side.
+  const [waiting, setWaiting] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    setWaiting(undefined)
+    getNeedsYou(agent.slug)
+      .then((d) => !cancelled && setWaiting(d.waiting_count))
+      .catch(() => !cancelled && setWaiting(undefined))
+    return () => {
+      cancelled = true
+    }
+  }, [agent.slug])
+
   const items: NavItem[] = [
+    { to: 'needs-you', label: 'Needs you', count: waiting },
     { to: 'overview', label: 'Overview' },
     { to: 'tasks', label: 'Tasks', count: agent.task_count },
     { to: 'syncs', label: 'Syncs', count: agent.sync_count },

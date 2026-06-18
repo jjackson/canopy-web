@@ -114,17 +114,44 @@ export type AgentCommandKind =
 export interface AgentCommandOut {
   id: number
   agent_slug: string
-  task_id: number
+  task_id: number | null
+  task_ext_id: string // the task's stable sheet id ('' if the task was deleted)
+  task_title: string // the task's outcome, for activity rows
   kind: AgentCommandKind
   payload: Record<string, unknown>
-  status: string
-  created_by: string
+  status: string // 'pending' | 'applied' | 'dismissed'
+  created_by: string // who clicked it (email)
+  result_note: string // what Echo actually did, set when the command is applied
   created_at: string
+  applied_at: string | null // when Echo drained/applied it
 }
 
 export interface PostCommandResult {
   command: AgentCommandOut
   task: AgentTaskOut
+}
+
+// ── "Needs you" supervisor inbox ─────────────────────────────────────────────
+// The typed/ranked list of what the human must act on, computed server-side so
+// CLI agents / open claws can query "what needs the human" the same way the UI
+// does. Bands: review → question → notify.
+
+export type NeedsYouType = 'review' | 'question' | 'notify'
+
+export interface NeedsYouItem {
+  type: NeedsYouType
+  ref_kind: 'task' | 'sync' | 'work_product'
+  ref_id: number
+  title: string
+  subtitle: string
+  url: string
+  created_at: string
+}
+
+export interface NeedsYouOut {
+  agent_slug: string
+  waiting_count: number // gated (review + question) items — the "N waiting on you" badge
+  items: NeedsYouItem[]
 }
 
 // Mirrors client.v2's auth: anonymous 401s on a non-public route bounce to the
@@ -204,6 +231,14 @@ export async function getAgent(slug: string): Promise<AgentDetailOut> {
   return getJson<AgentDetailOut>(`/api/agents/${encodeURIComponent(slug)}/`, 'agent')
 }
 
+// The typed/ranked "what needs the human" list (review → question → notify).
+export async function getNeedsYou(slug: string): Promise<NeedsYouOut> {
+  return getJson<NeedsYouOut>(
+    `/api/agents/${encodeURIComponent(slug)}/needs-you`,
+    'needs-you inbox',
+  )
+}
+
 export async function listAgentSyncs(
   slug: string,
   params: ListAgentsParams = {},
@@ -255,10 +290,20 @@ export async function postTaskCommand(
   )
 }
 
+// List the agent's commands. Pass `status` to filter ('pending' for the queue
+// Echo will drain; omit for the full activity stream — newest first).
+export async function listAgentCommands(
+  slug: string,
+  status?: string,
+): Promise<AgentCommandOut[]> {
+  const q = status ? `?status=${encodeURIComponent(status)}` : ''
+  return getJson<AgentCommandOut[]>(
+    `/api/agents/${encodeURIComponent(slug)}/commands${q}`,
+    'agent commands',
+  )
+}
+
 // Pending commands queued for the agent to drain next turn.
 export async function listPendingCommands(slug: string): Promise<AgentCommandOut[]> {
-  return getJson<AgentCommandOut[]>(
-    `/api/agents/${encodeURIComponent(slug)}/commands?status=pending`,
-    'pending commands',
-  )
+  return listAgentCommands(slug, 'pending')
 }

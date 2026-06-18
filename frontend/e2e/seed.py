@@ -41,6 +41,12 @@ t(ext_id="t5", title="Agent workspace shipped", next_action="", status="done",
   owner="Jonathan", assigned="Echo", position=4)
 AgentTaskCommand.objects.create(agent=a, task=a.tasks.get(ext_id="t4"), kind="dispatch",
                                 status="pending", created_by="jonathan@dimagi.com")
+# An applied command carries the outcome Echo recorded — surfaced on the card's
+# "last:" line and in the activity stream.
+AgentTaskCommand.objects.create(
+    agent=a, task=a.tasks.get(ext_id="t5"), kind="done", status="applied",
+    created_by="jonathan@dimagi.com", result_note="Shipped the agent workspace board.",
+    applied_at=dt.datetime(2026, 6, 17, 14, 30, tzinfo=dt.timezone.utc))
 
 a.syncs.all().delete()
 a.work_products.all().delete()

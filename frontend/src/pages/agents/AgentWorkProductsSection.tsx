@@ -26,7 +26,7 @@ export function AgentWorkProductsSection() {
       {items === null ? (
         <WorkbenchSkeleton />
       ) : items.length === 0 ? (
-        <p className="text-[13px] text-stone-600">No work products yet.</p>
+        <p className="text-[13px] text-muted-foreground">No work products yet.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {items.map((wp) => (
