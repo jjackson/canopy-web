@@ -1136,6 +1136,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/needs-you": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** What the human needs to act on — typed (review/question/notify) + ranked */
+        readonly get: operations["apps_agents_api_needs_you"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/agents/{slug}/syncs/": {
         readonly parameters: {
             readonly query?: never;
@@ -1200,7 +1217,8 @@ export interface paths {
         /** List the agent's tasks (board) */
         readonly get: operations["apps_agents_api_list_tasks"];
         readonly put?: never;
-        readonly post?: never;
+        /** Create a task */
+        readonly post: operations["apps_agents_api_create_task"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1216,8 +1234,76 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Sync (replace) the agent's task board from the source sheet */
+        /** Upsert the agent's tasks from the (legacy) source sheet */
         readonly post: operations["apps_agents_api_sync_tasks"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/tasks/{task_id}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** Update a task */
+        readonly patch: operations["apps_agents_api_patch_task"];
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/tasks/{task_id}/commands": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Post a board action (accept/decline/dispatch/…) on a task */
+        readonly post: operations["apps_agents_api_post_command"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/commands": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List commands (the agent reads ?status=pending) */
+        readonly get: operations["apps_agents_api_list_commands"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/commands/{cmd_id}/apply": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Mark a command applied (the agent calls this after acting) */
+        readonly post: operations["apps_agents_api_apply_command"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -3134,6 +3220,41 @@ export interface components {
             /** Latest Sync At */
             readonly latest_sync_at?: string | null;
         };
+        /** NeedsYouItem */
+        readonly NeedsYouItem: {
+            /** Type */
+            readonly type: string;
+            /** Ref Kind */
+            readonly ref_kind: string;
+            /** Ref Id */
+            readonly ref_id: number;
+            /** Title */
+            readonly title: string;
+            /**
+             * Subtitle
+             * @default
+             */
+            readonly subtitle: string;
+            /**
+             * Url
+             * @default
+             */
+            readonly url: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** NeedsYouOut */
+        readonly NeedsYouOut: {
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Waiting Count */
+            readonly waiting_count: number;
+            /** Items */
+            readonly items?: readonly components["schemas"]["NeedsYouItem"][];
+        };
         /** AgentSyncOut */
         readonly AgentSyncOut: {
             /** Id */
@@ -3364,6 +3485,12 @@ export interface components {
             readonly assigned: string;
             /** Confidence */
             readonly confidence: string;
+            /** Rationale */
+            readonly rationale: string;
+            /** Source Url */
+            readonly source_url: string;
+            /** Plan */
+            readonly plan: string;
             /** Due */
             readonly due?: string | null;
             /** Links */
@@ -3409,6 +3536,21 @@ export interface components {
              * @default
              */
             readonly confidence: string;
+            /**
+             * Rationale
+             * @default
+             */
+            readonly rationale: string;
+            /**
+             * Source Url
+             * @default
+             */
+            readonly source_url: string;
+            /**
+             * Plan
+             * @default
+             */
+            readonly plan: string;
             /** Due */
             readonly due?: string | null;
             /** Links */
@@ -3436,6 +3578,101 @@ export interface components {
         readonly AgentTaskSyncIn: {
             /** Tasks */
             readonly tasks?: readonly components["schemas"]["AgentTaskIn"][];
+        };
+        /**
+         * AgentTaskPatch
+         * @description Partial update — only the fields sent are written.
+         */
+        readonly AgentTaskPatch: {
+            /** Title */
+            readonly title?: string | null;
+            /** Next Action */
+            readonly next_action?: string | null;
+            /** Status */
+            readonly status?: string | null;
+            /** Owner */
+            readonly owner?: string | null;
+            /** Assigned */
+            readonly assigned?: string | null;
+            /** Confidence */
+            readonly confidence?: string | null;
+            /** Rationale */
+            readonly rationale?: string | null;
+            /** Source Url */
+            readonly source_url?: string | null;
+            /** Plan */
+            readonly plan?: string | null;
+            /** Due */
+            readonly due?: string | null;
+            /** Notes */
+            readonly notes?: string | null;
+            /** Position */
+            readonly position?: number | null;
+            /** Links */
+            readonly links?: readonly components["schemas"]["AgentTaskLink"][] | null;
+        };
+        /** AgentTaskCommandOut */
+        readonly AgentTaskCommandOut: {
+            /** Id */
+            readonly id: number;
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Task Id */
+            readonly task_id?: number | null;
+            /** Task Ext Id */
+            readonly task_ext_id: string;
+            /** Task Title */
+            readonly task_title: string;
+            /** Kind */
+            readonly kind: string;
+            /** Payload */
+            readonly payload?: {
+                readonly [key: string]: unknown;
+            };
+            /** Status */
+            readonly status: string;
+            /** Created By */
+            readonly created_by: string;
+            /** Result Note */
+            readonly result_note: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Applied At */
+            readonly applied_at?: string | null;
+        };
+        /**
+         * CommandResultOut
+         * @description Returned when the UI posts a command: the queued command + the (maybe
+         *     immediately-updated) task.
+         */
+        readonly CommandResultOut: {
+            readonly command: components["schemas"]["AgentTaskCommandOut"];
+            readonly task?: components["schemas"]["AgentTaskOut"] | null;
+        };
+        /** AgentTaskCommandIn */
+        readonly AgentTaskCommandIn: {
+            /** Kind */
+            readonly kind: string;
+            /** Payload */
+            readonly payload?: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Created By
+             * @default
+             */
+            readonly created_by: string;
+        };
+        /** AgentCommandApplyIn */
+        readonly AgentCommandApplyIn: {
+            /**
+             * Result Note
+             * @default
+             */
+            readonly result_note: string;
         };
         /**
          * SharedSessionOut
@@ -5305,6 +5542,28 @@ export interface operations {
             };
         };
     };
+    readonly apps_agents_api_needs_you: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NeedsYouOut"];
+                };
+            };
+        };
+    };
     readonly apps_agents_api_list_syncs: {
         readonly parameters: {
             readonly query?: {
@@ -5475,6 +5734,32 @@ export interface operations {
             };
         };
     };
+    readonly apps_agents_api_create_task: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AgentTaskIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentTaskOut"];
+                };
+            };
+        };
+    };
     readonly apps_agents_api_sync_tasks: {
         readonly parameters: {
             readonly query?: never;
@@ -5497,6 +5782,111 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["CountOut"];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_patch_task: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly task_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AgentTaskPatch"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentTaskOut"];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_post_command: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly task_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AgentTaskCommandIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CommandResultOut"];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_list_commands: {
+        readonly parameters: {
+            readonly query?: {
+                readonly status?: string | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["AgentTaskCommandOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_apply_command: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly cmd_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AgentCommandApplyIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentTaskCommandOut"];
                 };
             };
         };
