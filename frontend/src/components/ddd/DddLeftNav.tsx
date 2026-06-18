@@ -167,19 +167,42 @@ function NarrativeRuns({
       {versions.map((v) => {
         const isCurrent = v.version != null && v.version === currentVersion
         const label = v.version != null ? `v${v.version}` : 'no narrative'
+        // The version's edit/review page — same destination as the "Edit
+        // narrative" button on the narrative landing page. The null/"no
+        // narrative" bucket has no review_id and stays non-clickable.
+        const isVersionActive = v.review_id != null && activeReviewId === v.review_id
         const runs = [...v.runs].sort((a, b) =>
           (b.latest_at || '').localeCompare(a.latest_at || ''),
         )
+        const versionRow = (
+          <>
+            <span className="font-mono text-[11px] font-medium">{label}</span>
+            {isCurrent && (
+              <span className="rounded bg-primary/10 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-primary">
+                current
+              </span>
+            )}
+          </>
+        )
         return (
           <div key={v.review_id ?? `v${v.version ?? 'none'}`} className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-1.5 px-3 py-0.5">
-              <span className="font-mono text-[11px] font-medium text-foreground">{label}</span>
-              {isCurrent && (
-                <span className="rounded bg-primary/10 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-primary">
-                  current
-                </span>
-              )}
-            </div>
+            {v.review_id != null ? (
+              <Link
+                to={`/review/${encodeURIComponent(v.review_id)}`}
+                className={clsx(
+                  'flex items-center gap-1.5 rounded-md px-3 py-0.5 transition-colors',
+                  isVersionActive
+                    ? 'bg-primary/10 text-primary border border-primary/30'
+                    : 'text-foreground hover:bg-accent border border-transparent',
+                )}
+              >
+                {versionRow}
+              </Link>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-0.5 text-foreground">
+                {versionRow}
+              </div>
+            )}
             {runs.length === 0 ? (
               <div className="px-3 py-0.5 pl-5 text-[11px] text-muted-foreground">No runs</div>
             ) : (
