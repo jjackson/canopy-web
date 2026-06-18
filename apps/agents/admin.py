@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Agent, AgentSkill, AgentSync, AgentTask, AgentWorkProduct
+from .models import Agent, AgentSkill, AgentSync, AgentTask, AgentTaskCommand, AgentWorkProduct
 
 
 @admin.register(Agent)
@@ -31,3 +31,9 @@ class AgentSkillAdmin(admin.ModelAdmin):
 class AgentTaskAdmin(admin.ModelAdmin):
     list_display = ("agent", "title", "status", "owner", "assigned", "due", "updated_at")
     list_filter = ("agent", "status")
+
+
+@admin.register(AgentTaskCommand)
+class AgentTaskCommandAdmin(admin.ModelAdmin):
+    list_display = ("agent", "kind", "task", "status", "created_by", "created_at")
+    list_filter = ("agent", "kind", "status")

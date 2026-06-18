@@ -147,6 +147,11 @@ class AgentTask(models.Model):
     owner = models.CharField(max_length=120, blank=True, default="", help_text="Human stakeholder who owns the outcome — never the agent.")
     assigned = models.CharField(max_length=120, blank=True, default="", help_text="Who the next action waits on — the agent or a person.")
     confidence = models.CharField(max_length=10, blank=True, default="", help_text="high / low — how sure the agent is about a suggestion.")
+    # Context the agent stores when it suggests a task, so it doesn't re-derive
+    # from email when a human says "go do it."
+    rationale = models.TextField(blank=True, default="", help_text="Why the agent suggested this / why now.")
+    source_url = models.URLField(max_length=500, blank=True, default="", help_text="Originating thread / report / link.")
+    plan = models.TextField(blank=True, default="", help_text="Proposed first steps.")
     due = models.DateField(null=True, blank=True)
     links = models.JSONField(default=list, blank=True)
     notes = models.TextField(blank=True, default="")
@@ -168,3 +173,46 @@ class AgentTask(models.Model):
     @property
     def agent_slug(self) -> str:
         return self.agent.slug
+
+
+class AgentTaskCommand(models.Model):
+    """A human action from the board that the agent drains on its next turn.
+
+    Some kinds apply immediately server-side (decline/reassign/edit/done) AND/OR
+    queue agent work (accept/dispatch). The agent reads `status=pending`, does the
+    work under its normal guardrails, then marks the command applied."""
+
+    ACCEPT, DECLINE, DISPATCH, REASSIGN, EDIT, COMMENT, DONE = (
+        "accept", "decline", "dispatch", "reassign", "edit", "comment", "done")
+    KIND_CHOICES = [(k, k) for k in (ACCEPT, DECLINE, DISPATCH, REASSIGN, EDIT, COMMENT, DONE)]
+    PENDING, APPLIED, DISMISSED = "pending", "applied", "dismissed"
+    STATUS_CHOICES = [(PENDING, "Pending"), (APPLIED, "Applied"), (DISMISSED, "Dismissed")]
+
+    agent = models.ForeignKey(Agent, on_delete=models.CASCADE, related_name="commands")
+    task = models.ForeignKey(AgentTask, on_delete=models.SET_NULL, null=True, blank=True, related_name="commands")
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    payload = models.JSONField(default=dict, blank=True, help_text="reason / assignee / next_action / note …")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
+    created_by = models.CharField(max_length=200, blank=True, default="", help_text="Who clicked it (email).")
+    result_note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["agent", "status"])]
+
+    def __str__(self):
+        return f"cmd:{self.agent.slug}:{self.kind}:{self.status}"
+
+    @property
+    def agent_slug(self) -> str:
+        return self.agent.slug
+
+    @property
+    def task_ext_id(self) -> str:
+        return self.task.ext_id if self.task_id else ""
+
+    @property
+    def task_title(self) -> str:
+        return self.task.title if self.task_id else ""

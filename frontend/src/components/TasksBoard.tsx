@@ -1,5 +1,9 @@
-import type { JSX } from 'react'
-import type { AgentTaskOut } from '@/api/agents'
+import { useState, type JSX, type ReactNode } from 'react'
+import {
+  postTaskCommand,
+  type AgentCommandKind,
+  type AgentTaskOut,
+} from '@/api/agents'
 
 // ── "Who has the ball" model ───────────────────────────────────────────────
 // The board is organized by whose court the next action sits in, not by equal
@@ -120,9 +124,186 @@ function TaskLinkChip({ label, url }: { label: string; url: string }): JSX.Eleme
   )
 }
 
+// A "source ↗" chip linking the originating thread/doc.
+function SourceChip({ url }: { url: string }): JSX.Element | null {
+  if (!url || !url.trim()) return null
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 rounded border border-border bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+      title={url}
+    >
+      source <span className="text-primary/70">↗</span>
+    </a>
+  )
+}
+
+// A muted "Why: …" rationale line — expandable when long. Lets a human validate
+// a suggested task before accepting it.
+function RationaleLine({ rationale }: { rationale: string }): JSX.Element | null {
+  const text = (rationale || '').trim()
+  const [expanded, setExpanded] = useState(false)
+  if (!text) return null
+  const long = text.length > 120
+  return (
+    <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground/90">
+      <span className="text-muted-foreground/70">Why: </span>
+      {long && !expanded ? `${text.slice(0, 120).trimEnd()}…` : text}
+      {long && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="ml-1 text-primary/80 hover:text-primary"
+        >
+          {expanded ? 'less' : 'more'}
+        </button>
+      )}
+    </p>
+  )
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+// Secondary, muted affordances that POST a command to the queue. Deliberately
+// quieter than the next-action headline.
+
+// A small text button used for muted in-card actions.
+function ActionButton({
+  children,
+  onClick,
+  disabled,
+  tone = 'muted',
+}: {
+  children: ReactNode
+  onClick: () => void
+  disabled?: boolean
+  tone?: 'muted' | 'primary' | 'destructive'
+}): JSX.Element {
+  const toneClass =
+    tone === 'primary'
+      ? 'text-primary hover:text-primary/80'
+      : tone === 'destructive'
+        ? 'text-destructive/90 hover:text-destructive'
+        : 'text-muted-foreground hover:text-foreground'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${toneClass}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+// Hosts a card's command-posting state: in-flight lock, error surfacing, and a
+// decline reason input. Renders the actions appropriate to the task's status.
+function TaskActions({
+  task,
+  onChanged,
+}: {
+  task: AgentTaskOut
+  onChanged?: () => void
+}): JSX.Element | null {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [declining, setDeclining] = useState(false)
+  const [reason, setReason] = useState('')
+
+  async function run(kind: AgentCommandKind, payload?: Record<string, unknown>) {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await postTaskCommand(task.agent_slug, task.id, kind, payload)
+      onChanged?.()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Action failed')
+      setBusy(false)
+    }
+    // On success we leave `busy` true: the board is about to refetch and this
+    // card will be replaced, so re-enabling would only flash.
+  }
+
+  const isSuggested = task.status === 'suggested'
+  const isInProgress = task.status === 'in_progress'
+  if (!isSuggested && !isInProgress) return null
+
+  return (
+    <div className="mt-2.5 border-t border-border/60 pt-2">
+      {isSuggested && !declining && (
+        <div className="flex items-center gap-3">
+          <ActionButton tone="primary" disabled={busy} onClick={() => run('accept')}>
+            Accept
+          </ActionButton>
+          <ActionButton
+            tone="muted"
+            disabled={busy}
+            onClick={() => {
+              setError(null)
+              setDeclining(true)
+            }}
+          >
+            Decline
+          </ActionButton>
+        </div>
+      )}
+
+      {isSuggested && declining && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            autoFocus
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason (optional)"
+            disabled={busy}
+            className="h-7 min-w-0 flex-1 rounded border border-border bg-muted px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-primary/50"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') run('decline', { reason: reason.trim() })
+              if (e.key === 'Escape') setDeclining(false)
+            }}
+          />
+          <ActionButton
+            tone="destructive"
+            disabled={busy}
+            onClick={() => run('decline', { reason: reason.trim() })}
+          >
+            Confirm decline
+          </ActionButton>
+          <ActionButton tone="muted" disabled={busy} onClick={() => setDeclining(false)}>
+            Cancel
+          </ActionButton>
+        </div>
+      )}
+
+      {isInProgress && (
+        <div className="flex items-center gap-3">
+          <ActionButton tone="primary" disabled={busy} onClick={() => run('dispatch')}>
+            Echo, do this now
+          </ActionButton>
+          <ActionButton tone="muted" disabled={busy} onClick={() => run('done')}>
+            Mark done
+          </ActionButton>
+        </div>
+      )}
+
+      {error && <p className="mt-1.5 text-[10px] text-destructive">{error}</p>}
+    </div>
+  )
+}
+
 // ── Card ────────────────────────────────────────────────────────────────────
 
-function TaskCard({ task }: { task: AgentTaskOut }): JSX.Element {
+function TaskCard({
+  task,
+  onChanged,
+}: {
+  task: AgentTaskOut
+  onChanged?: () => void
+}): JSX.Element {
   const head = headline(task)
   const outcome = (task.title || '').trim()
   const showOutcome = outcome && outcome !== head
@@ -151,10 +332,17 @@ function TaskCard({ task }: { task: AgentTaskOut }): JSX.Element {
         <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">{outcome}</p>
       )}
 
-      {(task.owner || task.due || (task.links && task.links.length > 0)) && (
+      {/* Context: why this is here (esp. for validating suggested tasks). */}
+      <RationaleLine rationale={task.rationale} />
+
+      {(task.owner ||
+        task.due ||
+        task.source_url ||
+        (task.links && task.links.length > 0)) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <OwnerTag owner={task.owner} />
           {task.due && <DueChip due={task.due} done={isDone} />}
+          <SourceChip url={task.source_url} />
           {task.links?.map((l, i) => (
             <TaskLinkChip key={`${l.url}-${i}`} label={l.label} url={l.url} />
           ))}
@@ -169,6 +357,8 @@ function TaskCard({ task }: { task: AgentTaskOut }): JSX.Element {
           {task.notes}
         </p>
       )}
+
+      <TaskActions task={task} onChanged={onChanged} />
     </div>
   )
 }
@@ -205,13 +395,34 @@ function SectionHeader({
   )
 }
 
-function CardGrid({ tasks }: { tasks: AgentTaskOut[] }): JSX.Element {
+function CardGrid({
+  tasks,
+  onChanged,
+}: {
+  tasks: AgentTaskOut[]
+  onChanged?: () => void
+}): JSX.Element {
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       {tasks.map((t) => (
-        <TaskCard key={t.id} task={t} />
+        <TaskCard key={t.id} task={t} onChanged={onChanged} />
       ))}
     </div>
+  )
+}
+
+// Subtle "N queued for Echo" indicator — accept/dispatch commands Echo will
+// drain on its next turn.
+function QueuedForEcho({ count }: { count: number }): JSX.Element | null {
+  if (count <= 0) return null
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+      title="Commands queued for Echo to act on next turn"
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+      {count} queued for Echo
+    </span>
   )
 }
 
@@ -219,7 +430,15 @@ function byPosition(a: AgentTaskOut, b: AgentTaskOut): number {
   return a.position - b.position
 }
 
-export function TasksBoard({ tasks }: { tasks: AgentTaskOut[] }): JSX.Element {
+export function TasksBoard({
+  tasks,
+  onChanged,
+  pendingCount = 0,
+}: {
+  tasks: AgentTaskOut[]
+  onChanged?: () => void
+  pendingCount?: number
+}): JSX.Element {
   const suggested = tasks.filter((t) => t.status === 'suggested').sort(byPosition)
   const inProgress = tasks.filter((t) => t.status === 'in_progress')
   const waitingHuman = inProgress.filter((t) => !isEcho(t.assigned)).sort(byPosition)
@@ -235,6 +454,12 @@ export function TasksBoard({ tasks }: { tasks: AgentTaskOut[] }): JSX.Element {
 
   return (
     <div className="space-y-7">
+      {pendingCount > 0 && (
+        <div className="flex justify-end">
+          <QueuedForEcho count={pendingCount} />
+        </div>
+      )}
+
       {suggested.length > 0 && (
         <section>
           <SectionHeader
@@ -242,14 +467,14 @@ export function TasksBoard({ tasks }: { tasks: AgentTaskOut[] }): JSX.Element {
             count={suggested.length}
             dotClass="bg-muted-foreground"
           />
-          <CardGrid tasks={suggested} />
+          <CardGrid tasks={suggested} onChanged={onChanged} />
         </section>
       )}
 
       {waitingHuman.length > 0 && (
         <section className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3">
           <SectionHeader label="Waiting on a human" count={waitingHuman.length} accent />
-          <CardGrid tasks={waitingHuman} />
+          <CardGrid tasks={waitingHuman} onChanged={onChanged} />
         </section>
       )}
 
@@ -260,14 +485,14 @@ export function TasksBoard({ tasks }: { tasks: AgentTaskOut[] }): JSX.Element {
             count={echoWorking.length}
             dotClass="bg-primary"
           />
-          <CardGrid tasks={echoWorking} />
+          <CardGrid tasks={echoWorking} onChanged={onChanged} />
         </section>
       )}
 
       {done.length > 0 && (
         <section>
           <SectionHeader label="Done" count={done.length} dotClass="bg-primary/40" />
-          <CardGrid tasks={done} />
+          <CardGrid tasks={done} onChanged={onChanged} />
         </section>
       )}
 

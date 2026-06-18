@@ -16,12 +16,18 @@ from .schemas import (
     AgentOut,
     AgentSkillCatalogIn,
     AgentSkillOut,
+    AgentCommandApplyIn,
     AgentSyncIn,
     AgentSyncOut,
+    AgentTaskCommandIn,
+    AgentTaskCommandOut,
+    AgentTaskIn,
     AgentTaskOut,
+    AgentTaskPatch,
     AgentTaskSyncIn,
     AgentWorkProductBatchIn,
     AgentWorkProductOut,
+    CommandResultOut,
     CountOut,
 )
 
@@ -121,8 +127,65 @@ def list_tasks(request: HttpRequest, slug: str) -> list[AgentTaskOut]:
 
 
 @router.post("/{slug}/tasks/sync", response=CountOut,
-             summary="Sync (replace) the agent's task board from the source sheet",
+             summary="Upsert the agent's tasks from the (legacy) source sheet",
              openapi_extra={"x-mcp-expose": True})
 def sync_tasks(request: HttpRequest, slug: str, payload: AgentTaskSyncIn) -> CountOut:
     agent = _get_agent_or_404(slug)
     return CountOut(**services.sync_tasks(agent, payload.tasks))
+
+
+def _get_task_or_404(agent, task_id: int):
+    task = services.get_task(agent, task_id)
+    if task is None:
+        raise HttpError(404, f"task {task_id} not found")
+    return task
+
+
+@router.post("/{slug}/tasks/", response={201: AgentTaskOut}, summary="Create a task",
+             openapi_extra={"x-mcp-expose": True})
+def create_task(request: HttpRequest, slug: str, payload: AgentTaskIn) -> Status:
+    agent = _get_agent_or_404(slug)
+    return Status(201, AgentTaskOut.model_validate(services.create_task(agent, payload)))
+
+
+@router.patch("/{slug}/tasks/{task_id}/", response=AgentTaskOut, summary="Update a task",
+              openapi_extra={"x-mcp-expose": True})
+def patch_task(request: HttpRequest, slug: str, task_id: int, payload: AgentTaskPatch) -> AgentTaskOut:
+    agent = _get_agent_or_404(slug)
+    task = _get_task_or_404(agent, task_id)
+    data = payload.model_dump(exclude_unset=True)
+    return AgentTaskOut.model_validate(services.patch_task(task, data))
+
+
+# ---- task commands (the board's action queue) ----
+@router.post("/{slug}/tasks/{task_id}/commands", response={201: CommandResultOut},
+             summary="Post a board action (accept/decline/dispatch/…) on a task",
+             openapi_extra={"x-mcp-expose": True})
+def post_command(request: HttpRequest, slug: str, task_id: int, payload: AgentTaskCommandIn) -> Status:
+    agent = _get_agent_or_404(slug)
+    task = _get_task_or_404(agent, task_id)
+    created_by = payload.created_by or getattr(request.user, "email", "")
+    cmd = services.create_command(agent, task, payload.kind, payload.payload, created_by)
+    return Status(201, CommandResultOut(
+        command=AgentTaskCommandOut.model_validate(cmd),
+        task=AgentTaskOut.model_validate(cmd.task) if cmd.task_id else None,
+    ))
+
+
+@router.get("/{slug}/commands", response=list[AgentTaskCommandOut],
+            summary="List commands (the agent reads ?status=pending)",
+            openapi_extra={"x-mcp-expose": True})
+def list_commands(request: HttpRequest, slug: str, status: str | None = None) -> list[AgentTaskCommandOut]:
+    agent = _get_agent_or_404(slug)
+    return [AgentTaskCommandOut.model_validate(c) for c in services.list_commands(agent, status)]
+
+
+@router.post("/{slug}/commands/{cmd_id}/apply", response=AgentTaskCommandOut,
+             summary="Mark a command applied (the agent calls this after acting)",
+             openapi_extra={"x-mcp-expose": True})
+def apply_command(request: HttpRequest, slug: str, cmd_id: int, payload: AgentCommandApplyIn) -> AgentTaskCommandOut:
+    agent = _get_agent_or_404(slug)
+    cmd = agent.commands.filter(id=cmd_id).select_related("task", "agent").first()
+    if cmd is None:
+        raise HttpError(404, f"command {cmd_id} not found")
+    return AgentTaskCommandOut.model_validate(services.apply_command(cmd, payload.result_note))
