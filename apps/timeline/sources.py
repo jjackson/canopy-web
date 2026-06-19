@@ -53,17 +53,28 @@ def gather(
     *,
     subsystem: str | None,
     limit: int,
-    before: dt.datetime | None,
+    before: tuple[dt.datetime, str] | None,
     user,
 ) -> list[ActivityEvent]:
-    """Merged, newest-first events across the enabled sources, capped at ``limit``."""
+    """Merged, newest-first events across the enabled sources, capped at ``limit``.
+
+    ``before`` is a compound ``(at, id)`` cursor. Sources fetch inclusively
+    (``at <= before_at``) so events whose timestamps tie at the cursor aren't
+    lost; the aggregator then applies the exact ``(at, id)`` tuple bound. This
+    keeps "show more" from silently skipping events that share a timestamp (e.g.
+    two day-aligned shareouts both stamped 23:59:59).
+    """
+    before_at = before[0] if before else None
     entries = [e for e in _REGISTRY if subsystem is None or e[0] == subsystem]
     events: list[ActivityEvent] = []
     for key, _label, module_path, attr in entries:
         try:
             fn = _resolve(module_path, attr)
-            events.extend(fn(limit=limit, before=before, user=user) or [])
+            events.extend(fn(limit=limit, before=before_at, user=user) or [])
         except Exception:  # one bad source must not blank the feed
             logger.exception("timeline source %r failed", key)
-    events.sort(key=lambda ev: ev.at, reverse=True)
+    # Total order with id as the tiebreak so the compound cursor is exact.
+    events.sort(key=lambda ev: (ev.at, ev.id), reverse=True)
+    if before is not None:
+        events = [ev for ev in events if (ev.at, ev.id) < before]
     return events[:limit]

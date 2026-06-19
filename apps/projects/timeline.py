@@ -4,6 +4,9 @@ Two subsystems land here: ``insights`` (the cross-portfolio AI insight cards,
 stored as ``ProjectContext`` rows with ``context_type="insight"``) and
 ``projects`` (the other context pushes + skill actions). They're separate filter
 keys, so they're separate callables.
+
+Each returns *candidates* (newest ``limit`` per component plus cursor-instant
+ties); :func:`apps.timeline.sources.gather` does the final merge/order/slice.
 """
 from __future__ import annotations
 
@@ -13,15 +16,13 @@ from .models import ProjectAction, ProjectContext
 
 
 def insight_events(*, limit: int, before: dt.datetime | None, user) -> list:
-    from apps.timeline.types import ActivityEvent, first_line
+    from apps.timeline.types import ActivityEvent, cursor_page, first_line
 
     qs = (
         ProjectContext.objects.filter(context_type="insight")
         .select_related("project")
         .order_by("-created_at")
     )
-    if before is not None:
-        qs = qs.filter(created_at__lt=before)
     return [
         ActivityEvent(
             subsystem="insights",
@@ -35,12 +36,12 @@ def insight_events(*, limit: int, before: dt.datetime | None, user) -> list:
             id=f"insight:{c.id}",
             icon="insight",
         )
-        for c in qs[:limit]
+        for c in cursor_page(qs, "created_at", before=before, limit=limit)
     ]
 
 
 def project_events(*, limit: int, before: dt.datetime | None, user) -> list:
-    from apps.timeline.types import ActivityEvent, first_line
+    from apps.timeline.types import ActivityEvent, cursor_page, first_line
 
     events: list[ActivityEvent] = []
 
@@ -49,9 +50,7 @@ def project_events(*, limit: int, before: dt.datetime | None, user) -> list:
         .select_related("project")
         .order_by("-created_at")
     )
-    if before is not None:
-        ctx = ctx.filter(created_at__lt=before)
-    for c in ctx[:limit]:
+    for c in cursor_page(ctx, "created_at", before=before, limit=limit):
         label = dict(ProjectContext.CONTEXT_TYPES).get(c.context_type, c.context_type)
         events.append(
             ActivityEvent(
@@ -68,9 +67,7 @@ def project_events(*, limit: int, before: dt.datetime | None, user) -> list:
         )
 
     acts = ProjectAction.objects.select_related("project").order_by("-started_at")
-    if before is not None:
-        acts = acts.filter(started_at__lt=before)
-    for a in acts[:limit]:
+    for a in cursor_page(acts, "started_at", before=before, limit=limit):
         events.append(
             ActivityEvent(
                 subsystem="projects",
@@ -84,5 +81,4 @@ def project_events(*, limit: int, before: dt.datetime | None, user) -> list:
             )
         )
 
-    events.sort(key=lambda e: e.at, reverse=True)
-    return events[:limit]
+    return events

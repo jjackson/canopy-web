@@ -8,22 +8,31 @@ from __future__ import annotations
 
 import datetime as dt
 
-from .models import Session
+from django.db.models import Prefetch
+
+from .models import Session, ShareToken
 
 
 def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
-    from apps.timeline.types import ActivityEvent, actor_name
+    from apps.timeline.types import ActivityEvent, actor_name, cursor_page
 
-    qs = Session.objects.select_related("owner").order_by("-created_at")
-    if before is not None:
-        qs = qs.filter(created_at__lt=before)
+    # Prefetch active share tokens (newest first) so the link-out href doesn't
+    # fire a per-row active_token() query — one extra query for the whole page.
+    active_tokens = Prefetch(
+        "share_tokens",
+        queryset=ShareToken.objects.filter(revoked_at__isnull=True).order_by("-created_at"),
+        to_attr="active_tokens",
+    )
+    qs = (
+        Session.objects.select_related("owner")
+        .prefetch_related(active_tokens)
+        .order_by("-created_at")
+    )
     out: list[ActivityEvent] = []
-    for s in qs[:limit]:
+    for s in cursor_page(qs, "created_at", before=before, limit=limit):
         href = "/sessions"
-        if s.visibility == Session.VISIBILITY_LINK:
-            token = s.active_token()
-            if token is not None:
-                href = f"/share/{token.token}"
+        if s.visibility == Session.VISIBILITY_LINK and s.active_tokens:
+            href = f"/share/{s.active_tokens[0].token}"
         out.append(
             ActivityEvent(
                 subsystem="sessions",

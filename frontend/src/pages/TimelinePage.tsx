@@ -70,7 +70,7 @@ function groupByDay(events: TimelineEvent[]): Array<{ day: string; events: Timel
   return groups
 }
 
-function EventRow({ ev }: { ev: TimelineEvent }) {
+function EventRow({ ev, label }: { ev: TimelineEvent; label: string }) {
   const navigate = useNavigate()
   const glyph = (ev.icon && ICON[ev.icon]) || '•'
 
@@ -87,8 +87,8 @@ function EventRow({ ev }: { ev: TimelineEvent }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-            {ev.subsystem}
+          <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {label}
           </span>
           <span className="truncate text-[13px] font-medium text-foreground">{ev.title}</span>
         </div>
@@ -164,6 +164,12 @@ export function TimelinePage() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [moreError, setMoreError] = useState<string | null>(null)
+
+  const labelOf = useCallback(
+    (key: string) => subsystems.find((s) => s.key === key)?.label ?? key,
+    [subsystems],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -187,6 +193,7 @@ export function TimelinePage() {
   async function loadMore() {
     if (!nextBefore) return
     setLoadingMore(true)
+    setMoreError(null)
     try {
       const data = await listTimeline({
         subsystem: subsystem || undefined,
@@ -195,8 +202,8 @@ export function TimelinePage() {
       })
       setEvents((prev) => [...prev, ...data.events])
       setNextBefore(data.next_before)
-    } catch {
-      /* keep what we have */
+    } catch (e) {
+      setMoreError(e instanceof Error ? e.message : 'Failed to load more')
     } finally {
       setLoadingMore(false)
     }
@@ -230,11 +237,11 @@ export function TimelinePage() {
                     {g.day}
                   </div>
                   {g.events.map((ev) => (
-                    <EventRow key={ev.id} ev={ev} />
+                    <EventRow key={ev.id} ev={ev} label={labelOf(ev.subsystem)} />
                   ))}
                 </section>
               ))}
-              <div className="flex justify-center p-4">
+              <div className="flex flex-col items-center gap-2 p-4">
                 {nextBefore ? (
                   <button
                     type="button"
@@ -245,11 +252,12 @@ export function TimelinePage() {
                       loadingMore && 'opacity-60',
                     )}
                   >
-                    {loadingMore ? 'Loading…' : 'Show more'}
+                    {loadingMore ? 'Loading…' : moreError ? 'Retry' : 'Show more'}
                   </button>
                 ) : (
                   <span className="text-[11px] text-muted-foreground">End of recent activity</span>
                 )}
+                {moreError && <span className="text-[11px] text-destructive">{moreError}</span>}
               </div>
             </>
           )}

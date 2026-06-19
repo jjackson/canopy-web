@@ -7,11 +7,9 @@ from .models import Skill
 
 
 def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
-    from apps.timeline.types import ActivityEvent, truncate
+    from apps.timeline.types import ActivityEvent, cursor_page, truncate
 
     qs = Skill.objects.order_by("-created_at")
-    if before is not None:
-        qs = qs.filter(created_at__lt=before)
     return [
         ActivityEvent(
             subsystem="skills",
@@ -23,5 +21,5 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
             id=f"skill:{sk.id}",
             icon="skill",
         )
-        for sk in qs[:limit]
+        for sk in cursor_page(qs, "created_at", before=before, limit=limit)
     ]

@@ -32,6 +32,11 @@ def _run_stamp(run_id: str) -> str:
 def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
     from apps.timeline.types import ActivityEvent, actor_name
 
+    # Full rollup over both tables, exactly like apps.runs.aggregate (the /ddd
+    # views load the same way). A run's timeline timestamp is max(artifact,
+    # review) so it can't be pushed to a per-row `before` filter without
+    # splitting a run across the boundary; we filter run events by `before` in
+    # Python below. Bounded by the team's DDD history (tens–hundreds of runs).
     wts = list(
         Walkthrough.objects.exclude(run_id__isnull=True)
         .exclude(run_id="")
@@ -40,10 +45,13 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
     revs = list(ReviewRequest.objects.all())
     feature_map = agg._narrative_slug_map(wts)
 
-    # Latest story-bearing review per narrative drives the run title.
+    # Latest narrative-version review per narrative drives the run title. Gated on
+    # _is_narrative_version (not _review_has_narrative) so a product_findings /
+    # external_release review can't hijack the run title — same guard the /ddd
+    # views use (aggregate._NON_NARRATIVE_GATES).
     title_by_narrative: dict[str, tuple[dt.datetime, str | None]] = {}
     for r in revs:
-        if not agg._review_has_narrative(r):
+        if not agg._is_narrative_version(r):
             continue
         slug = agg.narrative_for_run_id(r.run_id, feature_map)
         prev = title_by_narrative.get(slug)
@@ -104,7 +112,15 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
             )
         )
 
-    if before is not None:
-        events = [e for e in events if e.at < before]
-    events.sort(key=lambda e: e.at, reverse=True)
-    return events[:limit]
+    # Return candidates (newest `limit` strictly-older + all cursor-instant ties);
+    # sources.gather applies the exact (at, id) cursor and the final slice.
+    if before is None:
+        events.sort(key=lambda e: (e.at, e.id), reverse=True)
+        return events[:limit]
+    older = sorted(
+        (e for e in events if e.at < before),
+        key=lambda e: (e.at, e.id),
+        reverse=True,
+    )
+    ties = [e for e in events if e.at == before]
+    return older[:limit] + ties

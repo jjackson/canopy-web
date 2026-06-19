@@ -14,7 +14,7 @@ from .models import Walkthrough
 
 
 def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
-    from apps.timeline.types import ActivityEvent, actor_name, truncate
+    from apps.timeline.types import ActivityEvent, actor_name, cursor_page, truncate
 
     qs = (
         Walkthrough.objects.filter(Q(run_id__isnull=True) | Q(run_id=""))
@@ -22,8 +22,6 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
         .select_related("owner")
         .order_by("-created_at")
     )
-    if before is not None:
-        qs = qs.filter(created_at__lt=before)
     return [
         ActivityEvent(
             subsystem="walkthroughs",
@@ -37,5 +35,5 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
             id=f"walkthrough:{w.id}",
             icon="video" if w.kind == Walkthrough.KIND_VIDEO else "deck",
         )
-        for w in qs[:limit]
+        for w in cursor_page(qs, "created_at", before=before, limit=limit)
     ]

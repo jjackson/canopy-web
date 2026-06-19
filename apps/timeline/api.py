@@ -17,6 +17,7 @@ from apps.api.auth import session_auth
 
 from . import sources
 from .schemas import ActivityEventOut, SubsystemOut, TimelineOut
+from .types import ActivityEvent
 
 router = Router(auth=session_auth, tags=["timeline"])
 
@@ -24,24 +25,45 @@ _MAX_LIMIT = 200
 _DEFAULT_LIMIT = 50
 
 
+def _encode_cursor(event: ActivityEvent) -> str:
+    """Opaque ``"<iso8601>|<id>"`` cursor — a compound (at, id) keyset."""
+    return f"{event.at.isoformat()}|{event.id}"
+
+
+def _parse_cursor(raw: str | None) -> tuple[dt.datetime, str] | None:
+    """Decode the opaque cursor; ``None`` (or anything malformed) → first page."""
+    if not raw:
+        return None
+    at_str, sep, event_id = raw.partition("|")
+    if not sep:
+        return None
+    try:
+        at = dt.datetime.fromisoformat(at_str)
+    except ValueError:
+        return None
+    return (at, event_id)
+
+
 @router.get("/", response=TimelineOut, summary="Team activity timeline")
 def list_timeline(
     request: HttpRequest,
     subsystem: str | None = None,
     limit: int = _DEFAULT_LIMIT,
-    before: dt.datetime | None = None,
+    before: str | None = None,
 ) -> TimelineOut:
     """Recent activity across all subsystems, newest first.
 
     - ``subsystem``: restrict to one filter key (unknown keys → all).
     - ``limit``: page size, clamped to 1..200.
-    - ``before``: cursor — return only events older than this timestamp.
+    - ``before``: opaque cursor from a prior page's ``next_before`` — return only
+      events older than it.
     """
     limit = max(1, min(limit, _MAX_LIMIT))
     sub = sources.valid_subsystem(subsystem)
-    events = sources.gather(subsystem=sub, limit=limit, before=before, user=request.user)
-    # A full page means there may be more; the tail's timestamp is the next cursor.
-    next_before = events[-1].at if len(events) == limit else None
+    cursor = _parse_cursor(before)
+    events = sources.gather(subsystem=sub, limit=limit, before=cursor, user=request.user)
+    # A full page means there may be more; the tail event seeds the next cursor.
+    next_before = _encode_cursor(events[-1]) if len(events) == limit else None
     return TimelineOut(
         events=[ActivityEventOut(**dataclasses.asdict(e)) for e in events],
         subsystems=[SubsystemOut(**s) for s in sources.subsystem_catalog()],

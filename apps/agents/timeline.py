@@ -3,6 +3,9 @@
 Three ``kind``s merge under ``agents``: ``sync`` (a periodic manager sync),
 ``work_product`` (a deliverable — links off-site to the doc/form), and ``task``
 (a board task as it first appears).
+
+Returns *candidates* (newest ``limit`` per component plus cursor-instant ties);
+:func:`apps.timeline.sources.gather` does the final merge/order/slice.
 """
 from __future__ import annotations
 
@@ -12,14 +15,12 @@ from .models import AgentSync, AgentTask, AgentWorkProduct
 
 
 def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
-    from apps.timeline.types import ActivityEvent, truncate
+    from apps.timeline.types import ActivityEvent, cursor_page, truncate
 
     events: list[ActivityEvent] = []
 
     syncs = AgentSync.objects.select_related("agent").order_by("-period_end")
-    if before is not None:
-        syncs = syncs.filter(period_end__lt=before)
-    for s in syncs[:limit]:
+    for s in cursor_page(syncs, "period_end", before=before, limit=limit):
         events.append(
             ActivityEvent(
                 subsystem="agents",
@@ -34,9 +35,7 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
         )
 
     wps = AgentWorkProduct.objects.select_related("agent").order_by("-created_at")
-    if before is not None:
-        wps = wps.filter(created_at__lt=before)
-    for w in wps[:limit]:
+    for w in cursor_page(wps, "created_at", before=before, limit=limit):
         events.append(
             ActivityEvent(
                 subsystem="agents",
@@ -52,9 +51,7 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
         )
 
     tasks = AgentTask.objects.select_related("agent").order_by("-created_at")
-    if before is not None:
-        tasks = tasks.filter(created_at__lt=before)
-    for t in tasks[:limit]:
+    for t in cursor_page(tasks, "created_at", before=before, limit=limit):
         events.append(
             ActivityEvent(
                 subsystem="agents",
@@ -68,5 +65,4 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
             )
         )
 
-    events.sort(key=lambda e: e.at, reverse=True)
-    return events[:limit]
+    return events

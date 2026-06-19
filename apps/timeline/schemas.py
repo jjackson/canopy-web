@@ -29,5 +29,6 @@ class TimelineOut(StrictModel):
     events: list[ActivityEventOut]
     # The filter catalog for the rail (stable order, labels live server-side).
     subsystems: list[SubsystemOut]
-    # Cursor for "show more": pass back as ?before=. Null when the page is the tail.
-    next_before: dt.datetime | None = None
+    # Opaque compound cursor for "show more": pass back verbatim as ?before=.
+    # Null when the page is the tail.
+    next_before: str | None = None

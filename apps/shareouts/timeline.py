@@ -34,11 +34,9 @@ def _period_slug(start: dt.datetime, end: dt.datetime) -> str:
 
 
 def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
-    from apps.timeline.types import ActivityEvent, truncate
+    from apps.timeline.types import ActivityEvent, cursor_page, truncate
 
     qs = Shareout.objects.select_related("project").order_by("-period_end")
-    if before is not None:
-        qs = qs.filter(period_end__lt=before)
     return [
         ActivityEvent(
             subsystem="shareouts",
@@ -52,5 +50,5 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
             id=f"shareout:{s.id}",
             icon="doc",
         )
-        for s in qs[:limit]
+        for s in cursor_page(qs, "period_end", before=before, limit=limit)
     ]

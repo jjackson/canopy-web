@@ -120,6 +120,34 @@ def test_before_cursor_paginates(client, owner):
     assert titles1.isdisjoint(titles2)
 
 
+def test_cursor_no_loss_on_tied_timestamps(client, owner):
+    # Two shareouts stamped at the exact same instant — a strict `< at` cursor
+    # would drop one when paging. The compound (at, id) cursor must surface both.
+    project = Project.objects.create(name="Reef", slug="reef")
+    same = _aware(2026, 6, 11, 12)
+    for i in range(2):
+        Shareout.objects.create(
+            project=project,
+            period_start=same,
+            period_end=same,
+            title=f"tie-{i}",
+            content="body",
+            source="canopy:shareout",
+        )
+    seen: list[str] = []
+    before = None
+    for _ in range(4):  # page one-at-a-time; loop-guard well above 2 events
+        params = {"subsystem": "shareouts", "limit": 1}
+        if before:
+            params["before"] = before
+        body = client.get(BASE, params).json()
+        seen.extend(e["title"] for e in body["events"])
+        before = body["next_before"]
+        if not before:
+            break
+    assert sorted(seen) == ["tie-0", "tie-1"]
+
+
 # --- DDD source --------------------------------------------------------------
 
 
