@@ -1,7 +1,7 @@
 # `@canopy/workbench` — a shared two-pane Workbench primitive set
 
 **Date:** 2026-06-17
-**Status:** Approved design, pre-implementation
+**Status:** Shipped (PRs #123 / #124) — historical record, not current-state
 **Supersedes scope of:** GitHub #122 (extract a shared Workbench shell; migrate DDD + Agents onto it) — this design folds #122 into a cross-repo package rather than an in-repo `components/workbench/` directory.
 
 ## Context

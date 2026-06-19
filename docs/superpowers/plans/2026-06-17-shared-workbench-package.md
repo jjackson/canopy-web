@@ -1,5 +1,7 @@
 # `@canopy/workbench` Shared Workbench Package — Implementation Plan
 
+**Status: Shipped (PRs #123 / #124) — historical record, not current-state.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Extract canopy-web's duplicated DDD/Agents workbench chrome into a published, ACE-seeded, semantic-token-only `@canopy/workbench` package, and migrate DDD + Agents onto it.
