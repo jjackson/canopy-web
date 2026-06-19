@@ -361,7 +361,7 @@ function TaskActions({
 
 // ── Card ────────────────────────────────────────────────────────────────────
 
-function TaskCard({
+export function TaskCard({
   task,
   onChanged,
   lastApplied,
