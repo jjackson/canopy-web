@@ -1,17 +1,12 @@
 import type { ReactNode } from 'react'
+import { WorkbenchShell, WorkbenchMain } from '@canopy/workbench'
 import { DddLeftNav } from './DddLeftNav'
 import { RunSectionNavProvider } from './runSectionNav'
 
 /**
- * The DDD section chrome: the persistent left rail (narratives → versions →
- * runs) plus a wide scrolling main area. Every DDD screen — narrative landing,
- * run package, and the narrative editor — renders inside this so the rail
- * stays put and highlights wherever you are.
- *
- * Assumes a full-bleed parent (AppLayout renders /ddd and /review at full
- * viewport height); the main area owns its own scroll. ``data-ddd-scroll``
- * marks it as the scroll-spy root so the run package can observe its sections
- * against the right container.
+ * DDD section chrome: the narratives→versions→runs rail + a wide scrolling main.
+ * Wrapped in RunSectionNavProvider; the main carries data-ddd-scroll so the run
+ * package observes its sections against the right scroll container.
  */
 export function DddShell({
   activeSlug,
@@ -24,12 +19,10 @@ export function DddShell({
 }) {
   return (
     <RunSectionNavProvider>
-      <div className="flex h-full">
+      <WorkbenchShell>
         <DddLeftNav activeSlug={activeSlug} activeRunId={activeRunId} />
-        <main data-ddd-scroll className="flex-1 overflow-y-auto">
-          {children}
-        </main>
-      </div>
+        <WorkbenchMain data-ddd-scroll>{children}</WorkbenchMain>
+      </WorkbenchShell>
     </RunSectionNavProvider>
   )
 }

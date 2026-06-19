@@ -38,3 +38,9 @@ frontend/openapi.json
 .claude/tasks/
 .claude/settings.local.json
 scripts/qa/screenshots/
+
+# e2e
+e2e.sqlite3
+frontend/e2e/.auth/
+frontend/test-results/
+frontend/playwright-report/

@@ -42,10 +42,18 @@ def narrative_of_review(r: ReviewRequest) -> str:
     return (getattr(r, "narrative_slug", None) or "").strip() or narrative_slug_from_run_id(r.run_id)
 
 
+#: Gates that carry a one-line narration but are NOT a narrative version — they hang
+#: off the run, not the narrative timeline. ``external_release`` is an approval gate;
+#: ``product_findings`` is a run-child findings review (its narration is a degradation
+#: mirror). Including either pollutes the version list and lets it drive the narrative's
+#: title/phase (the "v0 findings review" bug).
+_NON_NARRATIVE_GATES = ("external_release", "product_findings")
+
+
 def _is_narrative_version(r: ReviewRequest) -> bool:
-    """A narrative version = a story-bearing review that isn't the external
-    release gate (which also carries a one-line narration but is not the story)."""
-    return _review_has_narrative(r) and r.gate != "external_release"
+    """A narrative version = a story-bearing review on a narrative gate (not an
+    external-release approval or a run-child product-findings review)."""
+    return _review_has_narrative(r) and r.gate not in _NON_NARRATIVE_GATES
 
 
 def _narrative_versions_for(narrative_slug: str) -> list[ReviewRequest]:
@@ -452,6 +460,19 @@ def build_narrative(slug: str) -> dict | None:
     versions_by_id = {str(r.id): r for r in versions}
     current = versions[-1] if versions else None
 
+    # Version-pinned narrative videos. A video walkthrough stamped with a
+    # version's review id (``narrative_review_id``) belongs to that exact story
+    # version — so a later narration edit can't leave a stale video on a newer
+    # version. Queried separately from ``wts`` above (which is run-scoped); a
+    # narrative-version video may carry no run_id. Ascending order → latest wins.
+    video_by_review: dict[str, Walkthrough] = {}
+    if versions:
+        for w in Walkthrough.objects.filter(
+            kind=Walkthrough.KIND_VIDEO,
+            narrative_review_id__in=[r.id for r in versions],
+        ).order_by("created_at"):
+            video_by_review[str(w.narrative_review_id)] = w
+
     # Resolve which version each run rendered.
     def _version_review_for(run_id) -> ReviewRequest | None:
         run_wts = wts_by_run.get(run_id, [])
@@ -480,6 +501,7 @@ def build_narrative(slug: str) -> dict | None:
     versions_payload = []
     for r in reversed(versions):  # newest version first
         np = _narrative_payload(r)
+        vid = video_by_review.get(str(r.id))
         versions_payload.append(
             {
                 "version": r.version,
@@ -489,6 +511,8 @@ def build_narrative(slug: str) -> dict | None:
                 "created_at": r.created_at,
                 "gate": r.gate,
                 "status": r.status,
+                "video_url": _content_url(vid) if vid else None,
+                "video_viewer_url": _viewer_url(vid) if vid else None,
                 "runs": _sorted_runs(buckets.get(str(r.id), [])),
             }
         )
@@ -510,11 +534,14 @@ def build_narrative(slug: str) -> dict | None:
     current_payload = None
     if current is not None:
         cp = _narrative_payload(current)
+        cvid = video_by_review.get(cp["review_id"])
         current_payload = {
             "review_id": cp["review_id"],
             "version": cp["version"],
             "title": cp["title"],
             "story": cp["story"],
+            "video_url": _content_url(cvid) if cvid else None,
+            "video_viewer_url": _viewer_url(cvid) if cvid else None,
         }
 
     return {

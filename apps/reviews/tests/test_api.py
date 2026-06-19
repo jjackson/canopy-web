@@ -438,3 +438,76 @@ def test_delete_by_non_owner_authenticated_allowed(other_client, owner):
 def test_delete_nonexistent_returns_404(auth_client):
     resp = auth_client.delete(f"{BASE}/{uuid.uuid4()}/")
     assert resp.status_code == 404, resp.content
+
+
+# ---------------------------------------------------------------------------
+# product_findings is a RUN-CHILD, not a narrative version
+# ---------------------------------------------------------------------------
+
+PRODUCT_FINDINGS_REQUEST_JSON = {
+    "schema_version": 1,
+    "run_id": "program-admin-report-2026-06-11-001",
+    "gate": "product_findings",
+    "feature": "program-admin-report",
+    "iteration": 3,
+    "video": {"url": "https://example.com/w/clip/content"},
+    "deck_url": "https://example.com/w/deck",
+    "summary": {"concept_score": 2, "user_score": 2, "verdict": "FAIL"},
+    "clusters": [
+        {
+            "id": "closed-record-readonly",
+            "title": "Completed audits show enabled mutation buttons",
+            "severity": "high",
+            "fix_kind": "mechanical",
+            "route": "PRODUCT",
+            "scenes": [9, 10],
+            "suggested_fix": "Lock state on completed audits.",
+            "count": 2,
+            "evidence": [
+                {"scene": 9, "thumb": "data:image/jpeg;base64,AAAA", "deck_anchor": "#scene-9", "video_t": 84}
+            ],
+        }
+    ],
+}
+
+
+@pytest.mark.django_db
+def test_product_findings_is_run_child_not_a_narrative_version(auth_client):
+    """A product_findings review must NOT pollute the narrative version timeline.
+
+    It posts with narrative_slug=None and version=0 (the run-child sentinel), even
+    though the run_id slug would otherwise derive a narrative_slug — so it never
+    shows up as a "v3" row in the DDD shell.
+    """
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={"request_json": PRODUCT_FINDINGS_REQUEST_JSON, "visibility": "link"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 201, resp.content
+    review = ReviewRequest.objects.get(id=resp.json()["id"])
+    assert review.gate == "product_findings"
+    assert review.narrative_slug is None
+    assert review.version == 0
+
+
+@pytest.mark.django_db
+def test_product_findings_does_not_bump_narrative_version(auth_client):
+    """Posting a product_findings review between narrative versions leaves the
+    narrative version counter untouched (1, 2 — not 1, skip, 3)."""
+    narrative_post = {**SAMPLE_REQUEST_JSON, "gate": "concept_change", "run_id": "feat-x-2026-01-01-001"}
+    first = auth_client.post(
+        f"{BASE}/", data={"request_json": narrative_post, "visibility": "link"}, content_type="application/json"
+    )
+    v1 = ReviewRequest.objects.get(id=first.json()["id"]).version
+
+    findings_post = {**PRODUCT_FINDINGS_REQUEST_JSON, "run_id": "feat-x-2026-01-01-001"}
+    auth_client.post(
+        f"{BASE}/", data={"request_json": findings_post, "visibility": "link"}, content_type="application/json"
+    )
+
+    second = auth_client.post(
+        f"{BASE}/", data={"request_json": narrative_post, "visibility": "link"}, content_type="application/json"
+    )
+    v2 = ReviewRequest.objects.get(id=second.json()["id"]).version
+    assert (v1, v2) == (1, 2)

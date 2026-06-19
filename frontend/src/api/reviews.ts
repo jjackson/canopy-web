@@ -125,6 +125,76 @@ export interface ReviewRequestJson {
 }
 
 // ---------------------------------------------------------------------------
+// Product-findings reviews (gate === 'product_findings')
+//
+// A run-child review (NOT a narrative version): the backend forces
+// narrative_slug=None / version=0. Its request_json carries an embeddable
+// iteration clip + a list of finding clusters; the human resolves it with a
+// per-cluster implement/skip/defer decision plus an overall proceed/discuss.
+// See CONTRACT-product-findings-review.md.
+// ---------------------------------------------------------------------------
+
+export interface FindingsVideo {
+  url: string
+}
+
+export interface FindingsSummary {
+  concept_score?: number
+  user_score?: number
+  verdict?: string
+}
+
+export interface FindingsEvidence {
+  scene: number
+  /** base64 data-URI JPEG (~480px wide) of the scene snapshot. */
+  thumb: string
+  /** Deck anchor fragment, e.g. "#scene-9". */
+  deck_anchor: string
+  /** Integer seconds into the iteration clip (scene start_seconds). */
+  video_t: number
+}
+
+export type FindingsSeverity = 'high' | 'medium' | 'low'
+export type FindingsFixKind = 'mechanical' | 'options' | 'redesign'
+
+export interface FindingsCluster {
+  id: string
+  title: string
+  severity?: FindingsSeverity
+  fix_kind?: FindingsFixKind
+  route?: string
+  scenes?: number[]
+  suggested_fix?: string
+  count?: number
+  evidence?: FindingsEvidence[]
+}
+
+export interface ProductFindingsRequestJson {
+  run_id: string
+  gate: 'product_findings'
+  feature?: string
+  iteration?: number
+  video?: FindingsVideo
+  deck_url?: string
+  summary?: FindingsSummary
+  clusters: FindingsCluster[]
+}
+
+export type FindingsDecision = 'implement' | 'skip'
+
+/** Per-finding resolution: a decision (null = commented but not explicitly picked)
+ *  + an optional reviewer comment. */
+export interface FindingsResolution {
+  decision: FindingsDecision | null
+  comment: string
+}
+
+export interface ProductFindingsResponseJson {
+  /** Keyed by cluster id. Only findings the reviewer acted on are present. */
+  decisions: Record<string, FindingsResolution>
+}
+
+// ---------------------------------------------------------------------------
 // Submit payload — new "edited_scenes" contract
 // ---------------------------------------------------------------------------
 
@@ -231,6 +301,29 @@ export async function getReview(id: string, token?: string | null): Promise<Revi
 export async function submitReview(
   id: string,
   payload: ReviewSubmitPayload,
+  token?: string | null,
+): Promise<ReviewDetail> {
+  const csrf = getCsrfToken()
+  const resp = await fetch(submitUrl(id, token), {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrf ? { 'X-CSRFToken': csrf } : {}),
+    },
+    body: JSON.stringify({ response_json: payload }),
+  })
+  return parseResponse<ReviewDetail>(resp)
+}
+
+/**
+ * Submit a product-findings review resolution. Reuses the SAME endpoint as
+ * submitReview — the backend stores response_json verbatim — but carries the
+ * product-findings response shape (per-cluster decisions + overall + notes).
+ */
+export async function submitFindingsReview(
+  id: string,
+  payload: ProductFindingsResponseJson,
   token?: string | null,
 ): Promise<ReviewDetail> {
   const csrf = getCsrfToken()

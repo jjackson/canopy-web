@@ -1,0 +1,41 @@
+email:
+  to: jjackson@dimagi.com
+  from: ace@dimagi-ai.com
+  subject_prefix: "[canopy-web]"
+  sender_skill: ace:email-communicator
+
+shipping:
+  branch_prefix: canopy-web/auto/
+  pr_label: autonomous
+  merge: squash
+  deploy_command: gh workflow run ci.yml --ref main
+  deploy_workflow: ci.yml
+  post_deploy_health:
+    - https://canopy-web-hhhi4yut3q-uc.a.run.app/health/
+
+testing:
+  prepare: bash -c "uv sync --extra dev && (cd frontend && npm install)"
+  unit:    uv run pytest -q
+  # Scope ruff to staged Python files only — repo lint is pre-existing red and
+  # CI doesn't run ruff, so the gate's job is "no new violations from this PR",
+  # not "fix the whole repo every sprint".
+  lint:    bash -c 'files=$(git diff --staged --name-only --diff-filter=ACMR | grep "\\.py$" || true); if [ -z "$files" ]; then echo "no staged python files"; exit 0; fi; uv run ruff check $files'
+  types:   bash -c "cd frontend && node_modules/.bin/tsc -b"
+  dogfood:
+    base_url: https://canopy-web-hhhi4yut3q-uc.a.run.app
+    start_command: uv run honcho start -f Procfile.dev
+    wait_for: http://localhost:8000/health/
+    headless_browser_skill: gstack
+
+guardrails:
+  one_pr_in_flight: true
+  diff_size_limit_lines: 1500
+  max_fix_forward_attempts: 3
+
+theme_detection:
+  lens_rotation:
+    - user-value
+    - adoption-blockers
+    - integration-depth
+    - trust-reliability
+    - tech-debt

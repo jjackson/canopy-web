@@ -145,6 +145,9 @@ from apps.runs.api import router as runs_router  # noqa: E402
 from apps.walkthroughs.api import router as walkthroughs_router  # noqa: E402
 from apps.workspace.api import router as workspace_router  # noqa: E402
 from apps.shareouts.api import router as shareouts_router  # noqa: E402
+from apps.sessions.api import router as sessions_router  # noqa: E402
+from apps.sessions.api import share_router as session_share_router  # noqa: E402
+from apps.agents.api import router as agents_router  # noqa: E402
 
 api.add_router("/projects", projects_router)
 api.add_router("/insights", insights_router)
@@ -160,3 +163,6 @@ api.add_router("/tokens", tokens_router)
 api.add_router("/reviews", reviews_router)
 api.add_router("/ddd", runs_router)
 api.add_router("/shareouts", shareouts_router)
+api.add_router("/sessions", sessions_router)
+api.add_router("/agents", agents_router)
+api.add_router("/share", session_share_router)

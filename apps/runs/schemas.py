@@ -40,6 +40,10 @@ class NarrativeVersionOut(StrictModel):
     created_at: dt.datetime | None = None
     gate: str | None = None
     status: str | None = None
+    # A narrated video pinned to THIS version (a video walkthrough stamped with
+    # this version's review id). None until one is uploaded for the version.
+    video_url: str | None = None
+    video_viewer_url: str | None = None
     runs: list[NarrativeRunOut] = []
 
 
@@ -50,6 +54,9 @@ class NarrativeStoryOut(StrictModel):
     version: int | None = None
     title: str | None = None
     story: str | None = None
+    # The narrated video pinned to the current version, if one was uploaded.
+    video_url: str | None = None
+    video_viewer_url: str | None = None
 
 
 class NarrativeDetailOut(StrictModel):

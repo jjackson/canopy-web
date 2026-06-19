@@ -26,6 +26,16 @@ def _is_public(path: str) -> bool:
     return any(path == p or path.startswith(p) for p in PUBLIC_PATH_PREFIXES)
 
 
+def _is_share_link(path: str) -> bool:
+    # /share/<token> (SPA shell) and the public read API (/api/share/<token>)
+    # self-gate on the opaque share token, so let anonymous visitors through
+    # the middleware. The owner-side /api/sessions/ surface is NOT included —
+    # it stays auth'd.
+    if path.startswith("/share/"):
+        return True
+    return path.startswith("/api/share/")
+
+
 def _is_review_link(path: str) -> bool:
     # /review/<uuid>/  (SPA shell) and the per-review API read/submit endpoints
     # self-enforce token-or-session auth, so let the per-token public link
@@ -78,6 +88,7 @@ class LoginRequiredMiddleware:
             or _is_public(request.path)
             or _is_walkthrough_link(request)
             or _is_review_link(request.path)
+            or _is_share_link(request.path)
         ):
             return self.get_response(request)
 
