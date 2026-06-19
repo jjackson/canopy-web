@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "apps.mcp",
     "apps.sessions",
     "apps.agents",
+    "apps.timeline",
 ]
 
 MIDDLEWARE = [

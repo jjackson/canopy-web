@@ -6,6 +6,7 @@ import { useAuth } from '@/auth/AuthProvider'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Projects' },
+  { path: '/timeline', label: 'Timeline' },
   { path: '/insights', label: 'Insights' },
   { path: '/shareouts', label: 'Shareouts' },
   { path: '/skills', label: 'Skills' },
@@ -232,6 +233,7 @@ export function AppLayout() {
       </header>
       {location.pathname.startsWith('/ddd') ||
       location.pathname.startsWith('/review') ||
+      location.pathname.startsWith('/timeline') ||
       // An individual Agent Workspace (/agents/<slug>) is a full-bleed workbench
       // like DDD; the bare /agents LIST stays in the standard container.
       /^\/agents\/[^/]+/.test(location.pathname) ? (

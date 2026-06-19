@@ -15,6 +15,7 @@ import { WalkthroughsPage } from './pages/WalkthroughsPage'
 import { WalkthroughViewerPage } from './pages/WalkthroughViewerPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { DddPage } from './pages/DddPage'
+import { TimelinePage } from './pages/TimelinePage'
 import { SessionsPage } from './pages/SessionsPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { AgentWorkspacePage } from './pages/AgentWorkspacePage'
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { path: '/', element: <ProjectsPage /> },
+      { path: '/timeline', element: <TimelinePage /> },
       { path: '/insights', element: <InsightsPage /> },
       { path: '/shareouts', element: <ShareoutsPage /> },
       { path: '/shareouts/:period', element: <ShareoutsPage /> },
