@@ -31,6 +31,17 @@ test('needs-you is the default landing with typed, ranked actionable items', asy
   await expect(page.getByText(/3 waiting on you/)).toBeVisible()
 })
 
+test('needs-you cards are the actionable board card, not a bounce link', async ({ page }) => {
+  await page.goto('/agents/echo/needs-you')
+  const review = page.getByTestId('needsyou-band-review')
+  // The real board card (rationale + inline Accept/Decline), so you act here...
+  await expect(review.getByText(/Why:/).first()).toBeVisible()
+  await expect(review.getByRole('button', { name: /^Accept$/ }).first()).toBeVisible()
+  await expect(review.getByRole('button', { name: /^Decline$/ }).first()).toBeVisible()
+  // ...and NOT a bare link that dumps you to the generic board.
+  await expect(review.locator('a[href$="/tasks"]')).toHaveCount(0)
+})
+
 test('the rail exposes the Needs you inbox', async ({ page }) => {
   await page.goto('/agents/echo/tasks')
   await expect(page.locator('a[href$="/agents/echo/needs-you"]')).toBeVisible()
