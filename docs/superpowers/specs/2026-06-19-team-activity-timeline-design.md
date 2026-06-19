@@ -154,13 +154,15 @@ counting.
 
 - Endpoint is session-authed (`session_auth`), like the rest of the API; also
   PAT-resolvable via the bearer middleware.
-- Each source filters by the requesting user where the model is owner- or
-  visibility-scoped:
-  - `Walkthrough` / `ReviewRequest` / `Session`: include if `visibility="link"`
-    OR `owner == user`.
-  - Owner-scoped-only models (e.g. `Session` private) excluded for non-owners.
-- Org-wide models (projects, insights, shareouts, skills) are visible to any
-  authenticated user (single-tenant V1, consistent with existing endpoints).
+- **No owner/visibility filtering.** In this codebase `visibility="private"`
+  means "dimagi-only" (the whole app is dimagi-OAuth-gated), not "owner-only" —
+  so every authenticated user already sees all `private` content, exactly as the
+  existing `/ddd`, `/walkthroughs`, and `/insights` list endpoints do. This is
+  what makes it a genuine *team* timeline: sources query and map without an owner
+  filter. (`visibility="link"` only changes link-out targets, e.g. a session
+  deep-links to its public `/share/<token>` viewer.) An earlier draft proposed
+  `link`-OR-`owner` filtering; that was dropped once the "private = dimagi-only"
+  semantics were confirmed.
 
 ## Testing
 
