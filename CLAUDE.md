@@ -74,6 +74,10 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/w/:id` — Single walkthrough viewer (HTML iframe or video player)
 - `/ddd` (+ `/ddd/:narrative`, `/ddd/:narrative/:runId`) — Demo-driven-development (DDD) views: narrative → version → run → package (video + deck + narrative + links). `/ddd-plans` and `/reviews` redirect here
 - `/review/:id` — Editable narrative review surface for DDD (approve / redraft a story before build); public (link-visibility) reviews are readable by anyone with the URL, but submitting a decision requires a Dimagi login
+- `/agents` — First-class AI agents list (e.g. "Echo")
+- `/agents/:slug` — Agent workspace: a full-bleed rail + scrolling main built on `@canopy/workbench`. Sub-routes (rail): **Needs you** (the default landing — a typed/ranked supervisor inbox), Overview, Tasks (the "who has the ball" board), Syncs, Work products, Skills
+- `/sessions` — My shared Claude Code sessions (transcripts uploaded via `/canopy:share-session`)
+- `/share/:token` — Public, chrome-less read-only viewer for a shared session (no login; mounted outside the app shell)
 - `/settings` — AI backend status, switch backends, headless Claude CLI auth, debug-session minting
 - `/api/` — REST API
 - `/admin/` — Django admin
@@ -199,6 +203,33 @@ The narrative is identified by `narrative_slug` (decoupled from `run_id`); a ser
 - `POST /api/shareouts/` — Create shareouts (batch; idempotent per `period`+`source`)
 - `POST /api/shareouts/clear/` — Clear shareouts by source / project / date (AND-combined)
 
+### Agents (`apps/agents`) — first-class AI-agent workspace
+An `Agent` (e.g. "Echo") is a first-class entity — distinct from a code Project — with its own Google-Doc syncs, work products, skill catalog, and an actionable task board. The **DB is the source of truth**; the board renders by "who has the ball" (the agent vs a human). A human's board action POSTs a *command*; the agent drains pending commands on its next turn and marks them applied (`result_note` + `applied_at`). All routes are session-authed and `x-mcp-expose`d.
+- `GET /api/agents/` — List agents
+- `POST /api/agents/` — Create or update an agent (upsert by slug)
+- `GET /api/agents/{slug}/` — Agent detail (with counts)
+- `GET /api/agents/{slug}/needs-you` — Typed/ranked supervisor inbox (`review` → `question` → `notify`) + a `waiting_count` badge — "what does the agent need from me right now?"
+- `GET|POST /api/agents/{slug}/syncs/` — List / post a Google-Doc manager sync (idempotent per period+source)
+- `GET|POST /api/agents/{slug}/work-products/` — List / upsert work products (by url)
+- `GET|PUT /api/agents/{slug}/skills/` — List / replace (PUT) the skill catalog so it mirrors the repo
+- `GET /api/agents/{slug}/tasks/` — List the board
+- `POST /api/agents/{slug}/tasks/sync` — Upsert tasks from the (legacy) source sheet (non-destructive)
+- `POST /api/agents/{slug}/tasks/` — Create a task
+- `PATCH /api/agents/{slug}/tasks/{task_id}/` — Update a task
+- `POST /api/agents/{slug}/tasks/{task_id}/commands` — Post a board action (`accept`/`decline`/`dispatch`/`reassign`/`edit`/`comment`/`done`); some apply immediately server-side, `accept`/`dispatch` also queue agent work
+- `GET /api/agents/{slug}/commands` — List commands (the agent reads `?status=pending`; each carries `result_note` + `applied_at`)
+- `POST /api/agents/{slug}/commands/{cmd_id}/apply` — Mark a command applied (the agent calls this after acting)
+
+### Sessions (`apps/sessions`) — shared Claude Code transcripts
+Token-based session sharing (the `/canopy:share-session` flow). Note this is a **separate** token model from the tokenless walkthrough/review visibility above — shared sessions carry a rotatable `share_token`.
+- `POST /api/sessions/upload` — Upload a Claude `.jsonl` transcript (multipart)
+- `GET /api/sessions/` — List my shared sessions
+- `GET /api/sessions/{slug}` — Get one session (owner)
+- `PATCH /api/sessions/{slug}` — Update a session (owner)
+- `DELETE /api/sessions/{slug}` — Delete a session (owner)
+- `POST /api/sessions/{slug}/rotate-token` — Rotate the share token (owner) — invalidates the old `/share/<token>` link
+- `GET /api/share/{token}` — Public read-only view of a shared session (no login; `share_router` mounted at `/api/share`, drives `/share/:token`)
+
 ### MCP (`apps/mcp`, mounted at `/api/mcp/`)
 Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config/asgi.py`. Auth is enforced inside the server via `MultiAuth` (per-user PAT `CanopyPATVerifier`, always on; interactive Google OAuth is an env-gated seam, `MCP_OAUTH_ENABLED`). Every tool call writes an `MCPAuditLog` row; mutating tools are rate-limited per user. Tools today: `list_insights` (read) + `clear_insights` (write). The legacy single-shared `CANOPY_MCP_BEARER` and the hand-rolled ASGI gate are gone. See `docs/architecture/mcp-surface.md`.
 
@@ -209,6 +240,7 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 - **Bare Django views**: `/api/csrf/`, `/api/debug/mint-session/`, `/auth/cli/authorize/`, and `/health/` (the last is also Ninja-mountable via `public_router`) — they manipulate sessions/cookies/redirects directly. Matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
 - **MCP is in-process FastMCP, not OpenAPI-derived**: `apps/mcp/` mounts a FastMCP 3.x Streamable-HTTP server at `/api/mcp/` whose tools are explicit Python functions calling the same service layer as the REST views (no HTTP self-loopback). Auth is per-user PAT inside the server (fail-closed), every call is audited, and writes are rate-limited.
 - **Visibility is tokenless Public/Private:** `visibility=link` means "anyone with the URL" (the UUID is the only secret) for walkthroughs + reviews; `private` is Dimagi-OAuth-gated and 404s to anonymous. Walkthrough content/detail and review *read* are public when `link`; review *submit* and all mutations require auth. The login middleware allowlists the `/w/` shell + walkthrough detail GET (alongside the review-link allowlist). The narrative-level toggle (`PATCH /api/ddd/narratives/{slug}/visibility/`) cascades to every artifact + review under a narrative; the dormant `share_token` column is retained for reversibility. See `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md`.
+- **Shared Workbench shell:** the DDD and Agent workspaces share a two-pane (left rail + scrolling main) shell extracted to `frontend/packages/workbench` (`@canopy/workbench`, published to GitHub Packages). Surfaces consume it instead of re-implementing chrome, and use semantic design tokens (`bg-card` / `border-border` / `text-foreground` / `text-muted-foreground` / `text-primary`) — not raw `stone-*`/`orange-*` palette literals. See `docs/superpowers/specs/2026-06-17-shared-workbench-package-design.md`.
 - APP UI: dense, readable, tables not cards
 - Workspace flow: Ingest → AI proposes Approach + Eval → Review/Edit → Test → Publish
 - SSE streaming for AI responses (Scout pattern)
@@ -229,6 +261,8 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 - `docs/superpowers/specs/2026-06-03-ddd-narrative-run-versioning-design.md` — DDD narrative/version/run model design spec
 - `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md` — Tokenless Public/Private + narrative-level visibility design spec (shipped, PR #105)
 - `docs/superpowers/plans/2026-06-09-tokenless-narrative-visibility.md` — Tokenless visibility implementation plan (shipped, PR #105)
+- `docs/superpowers/specs/2026-06-17-shared-workbench-package-design.md` — `@canopy/workbench` shared Workbench shell design (shipped, PRs #123/#124)
+- `docs/superpowers/plans/2026-06-17-shared-workbench-package.md` — `@canopy/workbench` extraction + migration plan (shipped, PRs #123/#124)
 - `docs/designs/canopy-web-design.md` — Product design + glossary (open claw, skill, collection, eval suite, workspace session)
 - `docs/designs/ceo-plan-conversation-to-agent.md` — CEO review, scope decisions, deferred work
 - `docs/walkthroughs/canopy-web-demo.yaml` — Walkthrough QA spec (5 skills, varied scores)
