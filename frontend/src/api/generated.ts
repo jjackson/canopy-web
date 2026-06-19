@@ -1310,6 +1310,31 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/timeline/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Team activity timeline
+         * @description Recent activity across all subsystems, newest first.
+         *
+         *     - ``subsystem``: restrict to one filter key (unknown keys → all).
+         *     - ``limit``: page size, clamped to 1..200.
+         *     - ``before``: opaque cursor from a prior page's ``next_before`` — return only
+         *       events older than it.
+         */
+        readonly get: operations["apps_timeline_api_list_timeline"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/share/{token}": {
         readonly parameters: {
             readonly query?: never;
@@ -3674,6 +3699,53 @@ export interface components {
              */
             readonly result_note: string;
         };
+        /** ActivityEventOut */
+        readonly ActivityEventOut: {
+            /** Subsystem */
+            readonly subsystem: string;
+            /** Kind */
+            readonly kind: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            readonly at: string;
+            /** Title */
+            readonly title: string;
+            /** Summary */
+            readonly summary?: string | null;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /** Actor */
+            readonly actor?: string | null;
+            /** Href */
+            readonly href: string;
+            /**
+             * External
+             * @default false
+             */
+            readonly external: boolean;
+            /** Icon */
+            readonly icon?: string | null;
+            /** Id */
+            readonly id: string;
+        };
+        /** SubsystemOut */
+        readonly SubsystemOut: {
+            /** Key */
+            readonly key: string;
+            /** Label */
+            readonly label: string;
+        };
+        /** TimelineOut */
+        readonly TimelineOut: {
+            /** Events */
+            readonly events: readonly components["schemas"]["ActivityEventOut"][];
+            /** Subsystems */
+            readonly subsystems: readonly components["schemas"]["SubsystemOut"][];
+            /** Next Before */
+            readonly next_before?: string | null;
+        };
         /**
          * SharedSessionOut
          * @description Public, read-only payload for /api/share/{token}. No owner identity.
@@ -5887,6 +5959,30 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AgentTaskCommandOut"];
+                };
+            };
+        };
+    };
+    readonly apps_timeline_api_list_timeline: {
+        readonly parameters: {
+            readonly query?: {
+                readonly subsystem?: string | null;
+                readonly limit?: number;
+                readonly before?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TimelineOut"];
                 };
             };
         };
