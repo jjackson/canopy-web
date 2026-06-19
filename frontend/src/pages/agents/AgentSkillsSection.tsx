@@ -26,7 +26,7 @@ export function AgentSkillsSection() {
       {skills === null ? (
         <WorkbenchSkeleton />
       ) : skills.length === 0 ? (
-        <p className="text-[13px] text-stone-600">No skills yet.</p>
+        <p className="text-[13px] text-muted-foreground">No skills yet.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {skills.map((sk) => (

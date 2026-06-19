@@ -22,6 +22,9 @@ import SessionSharePage from './pages/SessionSharePage'
 
 // Agent Workspace sections are lazy-loaded — each owns its data fetch and only
 // the active section's bundle is pulled in.
+const NeedsYouSection = lazy(() =>
+  import('./pages/agents/NeedsYouSection').then((m) => ({ default: m.NeedsYouSection })),
+)
 const AgentOverviewSection = lazy(() =>
   import('./pages/agents/AgentOverviewSection').then((m) => ({ default: m.AgentOverviewSection })),
 )
@@ -69,7 +72,8 @@ export const router = createBrowserRouter([
         path: '/agents/:slug',
         element: <AgentWorkspacePage />,
         children: [
-          { index: true, element: <Navigate to="overview" replace /> },
+          { index: true, element: <Navigate to="needs-you" replace /> },
+          { path: 'needs-you', element: <LazySection><NeedsYouSection /></LazySection> },
           { path: 'overview', element: <LazySection><AgentOverviewSection /></LazySection> },
           { path: 'tasks', element: <LazySection><AgentTasksSection /></LazySection> },
           { path: 'syncs', element: <LazySection><AgentSyncsSection /></LazySection> },

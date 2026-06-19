@@ -68,10 +68,10 @@ export function AgentWorkspacePage() {
   if (error || !agent) {
     return (
       <div className="px-6 py-8 max-w-4xl">
-        <Link to="/agents" className="text-[12px] text-stone-500 hover:text-orange-400 transition-colors">
+        <Link to="/agents" className="text-[12px] text-muted-foreground hover:text-primary transition-colors">
           ← Agents
         </Link>
-        <div className="flex items-center justify-center h-48 text-red-400 text-sm">
+        <div className="flex items-center justify-center h-48 text-destructive text-sm">
           {error ?? 'Agent not found'}
         </div>
       </div>

@@ -70,16 +70,16 @@ export function AgentOverviewSection() {
       {(agent.persona || agent.description) && (
         <div className="mb-6">
           {agent.persona && (
-            <p className="text-[14px] text-stone-300 leading-relaxed">{agent.persona}</p>
+            <p className="text-[14px] text-foreground leading-relaxed">{agent.persona}</p>
           )}
           {agent.description && (
-            <p className="text-[13px] text-stone-400 leading-relaxed mt-2">{agent.description}</p>
+            <p className="text-[13px] text-muted-foreground leading-relaxed mt-2">{agent.description}</p>
           )}
         </div>
       )}
 
       {/* Counts row */}
-      <div className="flex flex-wrap gap-6 pb-6 mb-6 border-b border-stone-800">
+      <div className="flex flex-wrap gap-6 pb-6 mb-6 border-b border-border">
         <CountStat value={agent.task_count} label="Tasks" />
         <CountStat value={agent.sync_count} label="Syncs" />
         <CountStat value={agent.work_product_count} label="Work" />
@@ -89,12 +89,12 @@ export function AgentOverviewSection() {
       {/* Task summary — counts per board column */}
       <div className="mb-8">
         <div className="flex items-baseline justify-between mb-3">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-orange-300">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-primary">
             Tasks
           </h2>
           <Link
             to="../tasks"
-            className="text-[11px] text-stone-500 hover:text-orange-400 transition-colors"
+            className="text-[11px] text-muted-foreground hover:text-primary transition-colors"
           >
             Open board →
           </Link>
@@ -102,7 +102,7 @@ export function AgentOverviewSection() {
         {tasksLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {TASK_COLUMNS.map((c) => (
-              <div key={c.status} className="h-16 rounded-lg bg-stone-900 border border-stone-800 animate-pulse" />
+              <div key={c.status} className="h-16 rounded-lg bg-muted border border-border animate-pulse" />
             ))}
           </div>
         ) : (
@@ -110,15 +110,15 @@ export function AgentOverviewSection() {
             {TASK_COLUMNS.map((c) => (
               <div
                 key={c.status}
-                className="rounded-lg bg-stone-900/70 border border-stone-800 px-3 py-3"
+                className="rounded-lg bg-card border border-border px-3 py-3"
               >
                 <div className="flex items-center gap-2">
                   <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-stone-400">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
                     {c.label}
                   </span>
                 </div>
-                <span className="block text-lg font-semibold text-stone-100 leading-none mt-2">
+                <span className="block text-lg font-semibold text-foreground leading-none mt-2">
                   {countFor(c.status)}
                 </span>
               </div>
@@ -130,12 +130,12 @@ export function AgentOverviewSection() {
       {/* Latest sync */}
       <div className="mb-8">
         <div className="flex items-baseline justify-between mb-3">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-orange-300">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.08em] text-primary">
             Latest sync
           </h2>
           <Link
             to="../syncs"
-            className="text-[11px] text-stone-500 hover:text-orange-400 transition-colors"
+            className="text-[11px] text-muted-foreground hover:text-primary transition-colors"
           >
             All syncs →
           </Link>
@@ -145,7 +145,7 @@ export function AgentOverviewSection() {
         ) : latestSync ? (
           <SyncCard sync={latestSync} />
         ) : (
-          <p className="text-[13px] text-stone-600">No syncs yet.</p>
+          <p className="text-[13px] text-muted-foreground">No syncs yet.</p>
         )}
       </div>
 
@@ -155,10 +155,10 @@ export function AgentOverviewSection() {
           <Link
             key={l.to}
             to={l.to}
-            className="inline-flex items-center gap-1 text-[12px] font-medium text-stone-300 hover:text-orange-300 bg-stone-900/70 border border-stone-800 hover:border-orange-400/40 px-3 py-1.5 rounded-md transition-colors"
+            className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-primary bg-card border border-border hover:border-primary/40 px-3 py-1.5 rounded-md transition-colors"
           >
             {l.label}
-            <span className="text-orange-400/70">→</span>
+            <span className="text-primary/70">→</span>
           </Link>
         ))}
       </div>

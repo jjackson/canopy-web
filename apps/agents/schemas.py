@@ -216,6 +216,23 @@ class CommandResultOut(StrictModel):
     task: AgentTaskOut | None = None
 
 
+# ---- "Needs you" supervisor inbox ----
+class NeedsYouItem(StrictModel):
+    type: str  # 'review' | 'question' | 'notify'
+    ref_kind: str  # 'task' | 'sync' | 'work_product'
+    ref_id: int
+    title: str
+    subtitle: str = ""
+    url: str = ""
+    created_at: dt.datetime
+
+
+class NeedsYouOut(StrictModel):
+    agent_slug: str
+    waiting_count: int  # gated (review + question) items — the "N waiting on you" badge
+    items: list[NeedsYouItem] = Field(default_factory=list)
+
+
 # ---- shared ----
 class CountOut(StrictModel):
     created: int = 0

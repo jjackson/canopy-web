@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { listAgentTasks, listPendingCommands, type AgentTaskOut } from '@/api/agents'
+import { listAgentTasks, listAgentCommands, type AgentCommandOut, type AgentTaskOut } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { TasksBoard } from '@/components/TasksBoard'
 import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
@@ -8,18 +8,19 @@ import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
 export function AgentTasksSection() {
   const { agent } = useOutletContext<AgentOutletContext>()
   const [tasks, setTasks] = useState<AgentTaskOut[] | null>(null)
-  const [pendingCount, setPendingCount] = useState(0)
+  const [commands, setCommands] = useState<AgentCommandOut[]>([])
 
-  // Refetch tasks + the pending-command count. Passed to the board as
-  // `onChanged` so an Accept/Decline/Dispatch/Done refreshes the whole board.
+  // Refetch tasks + the full command stream (queue + applied history). Passed to
+  // the board as `onChanged` so an Accept/Decline/Dispatch/Done refreshes both
+  // the cards and the activity surfaces.
   const reload = useCallback(() => {
     let cancelled = false
     listAgentTasks(agent.slug)
       .then((list) => !cancelled && setTasks(list))
       .catch(() => !cancelled && setTasks([]))
-    listPendingCommands(agent.slug)
-      .then((cmds) => !cancelled && setPendingCount(cmds.length))
-      .catch(() => !cancelled && setPendingCount(0))
+    listAgentCommands(agent.slug)
+      .then((cmds) => !cancelled && setCommands(cmds))
+      .catch(() => !cancelled && setCommands([]))
     return () => {
       cancelled = true
     }
@@ -27,7 +28,7 @@ export function AgentTasksSection() {
 
   useEffect(() => {
     setTasks(null)
-    setPendingCount(0)
+    setCommands([])
     const cleanup = reload()
     return cleanup
   }, [reload])
@@ -38,7 +39,7 @@ export function AgentTasksSection() {
       {tasks === null ? (
         <WorkbenchSkeleton />
       ) : (
-        <TasksBoard tasks={tasks} onChanged={reload} pendingCount={pendingCount} />
+        <TasksBoard tasks={tasks} onChanged={reload} commands={commands} />
       )}
     </div>
   )

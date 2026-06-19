@@ -26,7 +26,7 @@ export function AgentSyncsSection() {
       {syncs === null ? (
         <WorkbenchSkeleton />
       ) : syncs.length === 0 ? (
-        <p className="text-[13px] text-stone-600">No syncs yet.</p>
+        <p className="text-[13px] text-muted-foreground">No syncs yet.</p>
       ) : (
         <div className="space-y-3">
           {syncs.map((s) => (

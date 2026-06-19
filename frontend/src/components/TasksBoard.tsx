@@ -1,7 +1,8 @@
-import { useState, type JSX, type ReactNode } from 'react'
+import { useMemo, useState, type JSX, type ReactNode } from 'react'
 import {
   postTaskCommand,
   type AgentCommandKind,
+  type AgentCommandOut,
   type AgentTaskOut,
 } from '@/api/agents'
 
@@ -24,6 +25,33 @@ function formatDue(s: string): string {
     month: 'short',
     day: 'numeric',
   })
+}
+
+// A short, human "when" for command timestamps: "Jun 17, 2:30 PM".
+function formatWhen(s: string): string {
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+// A command's kind read as a past-tense verb for activity rows.
+const KIND_VERB: Record<string, string> = {
+  accept: 'accepted',
+  decline: 'declined',
+  dispatch: 'dispatched',
+  reassign: 'reassigned',
+  edit: 'edited',
+  comment: 'commented on',
+  done: 'completed',
+}
+
+function kindVerb(kind: string): string {
+  return KIND_VERB[kind] ?? kind
 }
 
 function isPastDue(due: string): boolean {
@@ -141,9 +169,17 @@ function SourceChip({ url }: { url: string }): JSX.Element | null {
 }
 
 // A muted "Why: …" rationale line — expandable when long. Lets a human validate
-// a suggested task before accepting it.
-function RationaleLine({ rationale }: { rationale: string }): JSX.Element | null {
+// a suggested task before accepting it. When `sourceUrl` is set, the grounded
+// source Echo read is linked inline right after the rationale — the trust signal.
+function RationaleLine({
+  rationale,
+  sourceUrl,
+}: {
+  rationale: string
+  sourceUrl?: string
+}): JSX.Element | null {
   const text = (rationale || '').trim()
+  const source = (sourceUrl || '').trim()
   const [expanded, setExpanded] = useState(false)
   if (!text) return null
   const long = text.length > 120
@@ -160,6 +196,34 @@ function RationaleLine({ rationale }: { rationale: string }): JSX.Element | null
           {expanded ? 'less' : 'more'}
         </button>
       )}
+      {source && (
+        <a
+          href={source}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-1.5 whitespace-nowrap font-medium text-primary/80 hover:text-primary"
+          title={source}
+        >
+          source <span className="text-primary/70">↗</span>
+        </a>
+      )}
+    </p>
+  )
+}
+
+// The outcome of the most recent command Echo applied to this task — surfaces
+// `result_note` + `applied_at` that the API already stores but nothing rendered.
+function LastActivityLine({ command }: { command: AgentCommandOut }): JSX.Element {
+  const note = (command.result_note || '').trim() || `${kindVerb(command.kind)}`
+  const when = command.applied_at ? formatWhen(command.applied_at) : ''
+  return (
+    <p
+      className="mt-1.5 text-[11px] leading-snug text-muted-foreground/90"
+      data-testid="task-last-activity"
+    >
+      <span className="text-muted-foreground/70">last: </span>
+      {note}
+      {when && <span className="text-muted-foreground/60"> · {when}</span>}
     </p>
   )
 }
@@ -300,9 +364,11 @@ function TaskActions({
 function TaskCard({
   task,
   onChanged,
+  lastApplied,
 }: {
   task: AgentTaskOut
   onChanged?: () => void
+  lastApplied?: AgentCommandOut
 }): JSX.Element {
   const head = headline(task)
   const outcome = (task.title || '').trim()
@@ -310,6 +376,7 @@ function TaskCard({
   const echo = isEcho(task.assigned)
   const isSuggested = task.status === 'suggested'
   const isDone = task.status === 'done'
+  const hasRationale = Boolean((task.rationale || '').trim())
 
   return (
     <div data-testid={`task-${task.ext_id}`} data-status={task.status}
@@ -333,17 +400,22 @@ function TaskCard({
         <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">{outcome}</p>
       )}
 
-      {/* Context: why this is here (esp. for validating suggested tasks). */}
-      <RationaleLine rationale={task.rationale} />
+      {/* Context: why this is here (esp. for validating suggested tasks). The
+          grounded source links inline with the rationale when both are present. */}
+      <RationaleLine rationale={task.rationale} sourceUrl={task.source_url} />
+
+      {/* What Echo last did on this task — the stored command outcome. */}
+      {lastApplied && <LastActivityLine command={lastApplied} />}
 
       {(task.owner ||
         task.due ||
-        task.source_url ||
+        (!hasRationale && task.source_url) ||
         (task.links && task.links.length > 0)) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <OwnerTag owner={task.owner} />
           {task.due && <DueChip due={task.due} done={isDone} />}
-          <SourceChip url={task.source_url} />
+          {/* Source rides the rationale line when there is one; otherwise show a chip. */}
+          {!hasRationale && <SourceChip url={task.source_url} />}
           {task.links?.map((l, i) => (
             <TaskLinkChip key={`${l.url}-${i}`} label={l.label} url={l.url} />
           ))}
@@ -399,31 +471,114 @@ function SectionHeader({
 function CardGrid({
   tasks,
   onChanged,
+  lastByTask,
 }: {
   tasks: AgentTaskOut[]
   onChanged?: () => void
+  lastByTask?: Map<number, AgentCommandOut>
 }): JSX.Element {
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       {tasks.map((t) => (
-        <TaskCard key={t.id} task={t} onChanged={onChanged} />
+        <TaskCard
+          key={t.id}
+          task={t}
+          onChanged={onChanged}
+          lastApplied={lastByTask?.get(t.id)}
+        />
       ))}
     </div>
   )
 }
 
-// Subtle "N queued for Echo" indicator — accept/dispatch commands Echo will
-// drain on its next turn.
-function QueuedForEcho({ count }: { count: number }): JSX.Element | null {
-  if (count <= 0) return null
+// One pending command, shown when the "N queued for Echo" badge is expanded:
+// what's actually waiting (kind · task · who · when) rather than just a count.
+function PendingCommandRow({ command }: { command: AgentCommandOut }): JSX.Element {
+  const who = (command.created_by || '').split('@')[0] || 'someone'
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
-      title="Commands queued for Echo to act on next turn"
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-      {count} queued for Echo
-    </span>
+    <li className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground">
+      <span className="font-medium text-foreground">{kindVerb(command.kind)}</span>
+      {command.task_title && <span className="truncate text-muted-foreground/90">{command.task_title}</span>}
+      <span className="text-muted-foreground/60">· {who}</span>
+      <span className="text-muted-foreground/60">· {formatWhen(command.created_at)}</span>
+    </li>
+  )
+}
+
+// "N queued for Echo" — accept/dispatch commands Echo will drain on its next
+// turn. Click to reveal *which* commands are pending, not just the number.
+function QueuedForEcho({ pending }: { pending: AgentCommandOut[] }): JSX.Element | null {
+  const [open, setOpen] = useState(false)
+  if (pending.length === 0) return null
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/15"
+        title="Commands queued for Echo to act on next turn"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+        {pending.length} queued for Echo
+        <span aria-hidden className="text-primary/70">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <ul className="w-full max-w-sm space-y-1 rounded-md border border-border bg-card p-2.5">
+          {pending.map((c) => (
+            <PendingCommandRow key={c.id} command={c} />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// A compact, collapsible activity stream of recent commands across the agent —
+// reuses the commands the board already fetched. Newest first (API order).
+function AgentActivity({ commands }: { commands: AgentCommandOut[] }): JSX.Element | null {
+  const [open, setOpen] = useState(false)
+  if (commands.length === 0) return null
+  const recent = commands.slice(0, 12)
+  return (
+    <section className="border-t border-border/60 pt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <span aria-hidden className="text-muted-foreground/70">{open ? '▾' : '▸'}</span>
+        Activity
+        <span className="font-normal lowercase tracking-normal text-muted-foreground/70">
+          {commands.length}
+        </span>
+      </button>
+      {open && (
+        <ul className="mt-2.5 space-y-1.5" data-testid="agent-activity">
+          {recent.map((c) => {
+            const who = (c.created_by || '').split('@')[0] || 'someone'
+            const when = c.applied_at || c.created_at
+            return (
+              <li key={c.id} className="flex flex-wrap items-baseline gap-x-1.5 text-[11px] leading-snug">
+                <span className="text-muted-foreground/60">{formatWhen(when)}</span>
+                <span className="font-medium text-foreground">{who}</span>
+                <span className="text-muted-foreground">{kindVerb(c.kind)}</span>
+                {c.task_title && <span className="truncate text-muted-foreground/90">{c.task_title}</span>}
+                {c.status === 'pending' && (
+                  <span className="rounded bg-primary/10 px-1 text-[10px] font-medium text-primary">queued</span>
+                )}
+                {c.result_note && (
+                  <span className="basis-full truncate pl-1 text-muted-foreground/80" title={c.result_note}>
+                    → {c.result_note}
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -434,11 +589,11 @@ function byPosition(a: AgentTaskOut, b: AgentTaskOut): number {
 export function TasksBoard({
   tasks,
   onChanged,
-  pendingCount = 0,
+  commands = [],
 }: {
   tasks: AgentTaskOut[]
   onChanged?: () => void
-  pendingCount?: number
+  commands?: AgentCommandOut[]
 }): JSX.Element {
   const suggested = tasks.filter((t) => t.status === 'suggested').sort(byPosition)
   const inProgress = tasks.filter((t) => t.status === 'in_progress')
@@ -446,6 +601,19 @@ export function TasksBoard({
   const echoWorking = inProgress.filter((t) => isEcho(t.assigned)).sort(byPosition)
   const done = tasks.filter((t) => t.status === 'done').sort(byPosition)
   const declined = tasks.filter((t) => t.status === 'declined').sort(byPosition)
+
+  const pending = useMemo(() => commands.filter((c) => c.status === 'pending'), [commands])
+  // Latest applied command per task — `commands` arrives newest-first, so the
+  // first applied one we see for a task is its most recent outcome.
+  const lastByTask = useMemo(() => {
+    const m = new Map<number, AgentCommandOut>()
+    for (const c of commands) {
+      if (c.status === 'applied' && c.task_id != null && !m.has(c.task_id)) {
+        m.set(c.task_id, c)
+      }
+    }
+    return m
+  }, [commands])
 
   if (tasks.length === 0) {
     return (
@@ -455,9 +623,9 @@ export function TasksBoard({
 
   return (
     <div className="space-y-7">
-      {pendingCount > 0 && (
+      {pending.length > 0 && (
         <div className="flex justify-end">
-          <QueuedForEcho count={pendingCount} />
+          <QueuedForEcho pending={pending} />
         </div>
       )}
 
@@ -468,14 +636,14 @@ export function TasksBoard({
             count={suggested.length}
             dotClass="bg-muted-foreground"
           />
-          <CardGrid tasks={suggested} onChanged={onChanged} />
+          <CardGrid tasks={suggested} onChanged={onChanged} lastByTask={lastByTask} />
         </section>
       )}
 
       {waitingHuman.length > 0 && (
         <section className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3">
           <SectionHeader label="Waiting on a human" count={waitingHuman.length} accent />
-          <CardGrid tasks={waitingHuman} onChanged={onChanged} />
+          <CardGrid tasks={waitingHuman} onChanged={onChanged} lastByTask={lastByTask} />
         </section>
       )}
 
@@ -486,14 +654,14 @@ export function TasksBoard({
             count={echoWorking.length}
             dotClass="bg-primary"
           />
-          <CardGrid tasks={echoWorking} onChanged={onChanged} />
+          <CardGrid tasks={echoWorking} onChanged={onChanged} lastByTask={lastByTask} />
         </section>
       )}
 
       {done.length > 0 && (
         <section>
           <SectionHeader label="Done" count={done.length} dotClass="bg-primary/40" />
-          <CardGrid tasks={done} onChanged={onChanged} />
+          <CardGrid tasks={done} onChanged={onChanged} lastByTask={lastByTask} />
         </section>
       )}
 
@@ -518,6 +686,8 @@ export function TasksBoard({
           </div>
         </section>
       )}
+
+      <AgentActivity commands={commands} />
     </div>
   )
 }

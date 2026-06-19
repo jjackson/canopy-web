@@ -256,6 +256,71 @@ def list_commands(agent: Agent, status: str | None = None) -> list[AgentTaskComm
     return list(qs)
 
 
+# ---- "Needs you" supervisor inbox ----
+def _is_human(assigned: str) -> bool:
+    """The task's next action waits on a person, not the agent. Mirrors the
+    board's `isEcho` rule: empty or 'echo' (any case) means the agent."""
+    a = (assigned or "").strip().lower()
+    return a not in ("", "echo")
+
+
+def _task_item(item_type: str, task: AgentTask) -> dict:
+    subtitle = (task.next_action or "").strip()
+    if item_type == "question" and not subtitle:
+        subtitle = f"Echo is blocked, waiting on {task.assigned.strip()}"
+    return {
+        "type": item_type,
+        "ref_kind": "task",
+        "ref_id": task.id,
+        "title": (task.title or task.next_action or "").strip(),
+        "subtitle": subtitle,
+        "url": (task.source_url or "").strip(),
+        "created_at": task.updated_at,
+    }
+
+
+def needs_you(agent: Agent, notify_limit: int = 5) -> dict:
+    """The supervisor's "what does the agent need from me right now?" view.
+
+    Aggregates human-actionable items across the board, typed and ranked:
+      - review:   Suggested tasks awaiting validate/decline.
+      - question: In-progress tasks blocked on a human (Echo needs a decision).
+      - notify:   Recent FYI with no gate (a sync posted, a work product shipped).
+    Ranked Review → Question → Notify. `waiting_count` counts only the gated
+    (review + question) items — the "N waiting on you" badge."""
+    items: list[dict] = []
+
+    # Review — every suggestion needs a human to validate or decline it.
+    for t in agent.tasks.filter(status=AgentTask.SUGGESTED).order_by("position", "id"):
+        items.append(_task_item("review", t))
+
+    # Question — Echo is mid-task but the next step waits on a named person.
+    for t in agent.tasks.filter(status=AgentTask.IN_PROGRESS).order_by("position", "id"):
+        if _is_human(t.assigned):
+            items.append(_task_item("question", t))
+
+    waiting_count = len(items)  # review + question are the gated items
+
+    # Notify — recent FYI, newest first, capped. Merge syncs + work products.
+    notify: list[dict] = []
+    for s in agent.syncs.all()[:notify_limit]:
+        notify.append({
+            "type": "notify", "ref_kind": "sync", "ref_id": s.id,
+            "title": s.title, "subtitle": "Sync posted", "url": s.doc_url,
+            "created_at": s.created_at,
+        })
+    for w in agent.work_products.all()[:notify_limit]:
+        notify.append({
+            "type": "notify", "ref_kind": "work_product", "ref_id": w.id,
+            "title": w.title, "subtitle": w.kind or "Work product", "url": w.url,
+            "created_at": w.created_at,
+        })
+    notify.sort(key=lambda i: i["created_at"], reverse=True)
+    items.extend(notify[:notify_limit])
+
+    return {"agent_slug": agent.slug, "waiting_count": waiting_count, "items": items}
+
+
 def apply_command(cmd: AgentTaskCommand, result_note: str = "") -> AgentTaskCommand:
     cmd.status = AgentTaskCommand.APPLIED
     cmd.applied_at = timezone.now()
