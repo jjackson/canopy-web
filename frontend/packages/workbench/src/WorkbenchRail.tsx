@@ -6,7 +6,10 @@ import { cn } from './cn'
  * scrollable body that takes arbitrary children (a tree or a flat list).
  */
 export function WorkbenchRail({
-  width = 'w-64',
+  // `width` must be a md-prefixed Tailwind width (e.g. `md:w-64`): on phones the
+  // rail spans full width and stacks above the main column, so the width only
+  // applies once the layout goes side-by-side at md+.
+  width = 'md:w-64',
   header,
   children,
   className,
@@ -19,7 +22,10 @@ export function WorkbenchRail({
   return (
     <aside
       className={cn(
-        'flex shrink-0 flex-col border-r border-border bg-background',
+        'flex shrink-0 flex-col bg-background',
+        // Phone: full-width strip with a capped height so the main column below
+        // stays reachable. Desktop: fixed-width left rail with a right border.
+        'w-full max-h-[42vh] border-b border-border md:max-h-none md:border-b-0 md:border-r',
         width,
         className,
       )}

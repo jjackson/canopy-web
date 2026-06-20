@@ -281,8 +281,8 @@ export function NarrativeLanding({ slug }: { slug: string }) {
   const currentVersion = detail.current_version?.version ?? null
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-6">
-      <header className="flex items-start justify-between gap-4">
+    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-wider text-stone-500">Narrative</div>
           <h1 className="text-2xl font-semibold text-stone-100">{detail.title || detail.slug}</h1>

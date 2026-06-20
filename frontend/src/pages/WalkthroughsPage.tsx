@@ -118,7 +118,8 @@ export function WalkthroughsPage() {
         <div className="text-slate-500 text-sm">No walkthroughs match.</div>
       )}
       {items && items.length > 0 && (
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[680px] text-sm">
           <thead className="text-left text-xs text-slate-500 border-b">
             <tr>
               <th className="py-2 pr-3">Title</th>
@@ -160,6 +161,7 @@ export function WalkthroughsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )

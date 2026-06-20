@@ -18,7 +18,9 @@ export function WorkbenchShell({
   return (
     <div className={cn('flex h-full flex-col bg-background text-foreground', className)}>
       {header}
-      <div className="flex flex-1 overflow-hidden">{children}</div>
+      {/* Rail + main sit side-by-side on desktop; on phones they stack so the
+          main column gets full width instead of being crushed by the rail. */}
+      <div className="flex flex-1 flex-col overflow-hidden md:flex-row">{children}</div>
     </div>
   )
 }

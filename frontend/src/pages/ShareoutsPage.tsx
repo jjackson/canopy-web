@@ -236,7 +236,7 @@ function PeriodRail({
   return (
     <nav
       aria-label="Shareouts by date"
-      className="md:w-56 md:shrink-0 md:sticky md:top-6 self-start"
+      className="min-w-0 md:w-56 md:shrink-0 md:sticky md:top-6 md:self-start"
     >
       <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-600 mb-2 px-2">
         By date
