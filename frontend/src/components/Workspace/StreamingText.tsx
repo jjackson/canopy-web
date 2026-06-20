@@ -10,13 +10,13 @@ export function StreamingText({ text, isStreaming, className }: StreamingTextPro
   return (
     <div
       className={cn(
-        'font-mono text-xs text-stone-300 whitespace-pre-wrap leading-relaxed',
+        'font-mono text-xs text-foreground-secondary whitespace-pre-wrap leading-relaxed',
         className
       )}
     >
       {text}
       {isStreaming && (
-        <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-orange-400" />
+        <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-primary" />
       )}
     </div>
   )

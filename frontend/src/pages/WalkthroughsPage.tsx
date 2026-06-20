@@ -15,8 +15,8 @@ function formatBytes(n: number): string {
 function VisibilityChip({ v }: { v: 'private' | 'link' }) {
   const cls =
     v === 'link'
-      ? 'bg-emerald-100 text-emerald-800'
-      : 'bg-slate-100 text-slate-700'
+      ? 'bg-success/10 text-success'
+      : 'bg-muted text-foreground-secondary'
   return (
     <span className={`px-2 py-0.5 text-xs rounded ${cls}`}>
       {v === 'link' ? 'Link' : 'Private'}
@@ -71,7 +71,7 @@ export function WalkthroughsPage() {
     <div className="max-w-6xl mx-auto p-6">
       <header className="flex items-baseline justify-between mb-6">
         <h1 className="text-2xl font-semibold">Walkthroughs</h1>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-muted-foreground">
           Sharable demos uploaded from <code>/canopy:walkthrough</code>
         </p>
       </header>
@@ -109,18 +109,18 @@ export function WalkthroughsPage() {
       </div>
 
       {error && (
-        <div className="text-red-600 text-sm mb-3">Failed: {error}</div>
+        <div className="text-destructive text-sm mb-3">Failed: {error}</div>
       )}
       {items === null && !error && (
-        <div className="text-slate-500 text-sm">Loading…</div>
+        <div className="text-muted-foreground text-sm">Loading…</div>
       )}
       {items && items.length === 0 && (
-        <div className="text-slate-500 text-sm">No walkthroughs match.</div>
+        <div className="text-muted-foreground text-sm">No walkthroughs match.</div>
       )}
       {items && items.length > 0 && (
         <div className="overflow-x-auto">
         <table className="w-full min-w-[680px] text-sm">
-          <thead className="text-left text-xs text-slate-500 border-b">
+          <thead className="text-left text-xs text-muted-foreground border-b">
             <tr>
               <th className="py-2 pr-3">Title</th>
               <th className="py-2 pr-3">Project</th>
@@ -133,19 +133,19 @@ export function WalkthroughsPage() {
           </thead>
           <tbody>
             {items.map((w) => (
-              <tr key={w.id} className="border-b hover:bg-slate-50">
+              <tr key={w.id} className="border-b hover:bg-muted/50">
                 <td className="py-2 pr-3">
-                  <Link to={`/w/${w.id}`} className="text-blue-700 hover:underline">
+                  <Link to={`/w/${w.id}`} className="text-primary hover:underline">
                     {w.title}
                   </Link>
                 </td>
                 <td className="py-2 pr-3">
                   {w.project_slug ? (
-                    <Link to={`/?project=${w.project_slug}`} className="text-slate-700 hover:underline">
+                    <Link to={`/?project=${w.project_slug}`} className="text-foreground-secondary hover:underline">
                       {w.project_slug}
                     </Link>
                   ) : (
-                    <span className="text-slate-400">—</span>
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </td>
                 <td className="py-2 pr-3 capitalize">{w.kind}</td>
@@ -154,7 +154,7 @@ export function WalkthroughsPage() {
                   <VisibilityChip v={w.visibility} />
                 </td>
                 <td className="py-2 pr-3">{formatBytes(w.size_bytes)}</td>
-                <td className="py-2 pr-3 text-slate-500">
+                <td className="py-2 pr-3 text-muted-foreground">
                   {new Date(w.created_at).toLocaleDateString()}
                 </td>
               </tr>

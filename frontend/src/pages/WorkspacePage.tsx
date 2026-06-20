@@ -157,7 +157,7 @@ export function WorkspacePage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-400">
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
         {error}
       </div>
     )
@@ -166,23 +166,23 @@ export function WorkspacePage() {
   const currentStep = statusToStep(status)
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] flex-col rounded-xl border border-stone-800 bg-stone-900 overflow-hidden">
+    <div className="flex h-[calc(100vh-5rem)] flex-col rounded-xl border border-border bg-card overflow-hidden">
       {/* Step indicator */}
-      <div className="shrink-0 border-b border-stone-800 bg-stone-950 px-4 py-2.5">
+      <div className="shrink-0 border-b border-border bg-background px-4 py-2.5">
         <StepIndicator currentStep={currentStep} />
       </div>
 
       {/* Main content: 30/70 split */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Sources (30%) */}
-        <div className="w-[30%] min-w-0 shrink-0 border-r border-stone-800">
+        <div className="w-[30%] min-w-0 shrink-0 border-r border-border">
           <SourcePanel sources={sources} />
         </div>
 
         {/* Right: Approach + Eval + Actions (70%) */}
         <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
           {/* Approach — scrollable */}
-          <div className="flex-1 overflow-y-auto bg-stone-900">
+          <div className="flex-1 overflow-y-auto bg-card">
             <ApproachPanel
               approach={approach as Record<string, unknown> & { name?: string; description?: string; steps?: { name?: string; description?: string; tools?: string[] }[] } | null}
               streamingText={streamingText}
@@ -194,7 +194,7 @@ export function WorkspacePage() {
           <EvalPanel evalCases={evalCases as { name?: string; input?: string | Record<string, unknown>; expected?: string | Record<string, unknown>; expected_output?: string | Record<string, unknown> }[]} />
 
           {/* Action bar */}
-          <div className="shrink-0 border-t border-stone-800 bg-stone-950 px-4 py-2.5 flex items-center justify-end gap-2">
+          <div className="shrink-0 border-t border-border bg-background px-4 py-2.5 flex items-center justify-end gap-2">
             <Button
               variant="outline"
               size="sm"

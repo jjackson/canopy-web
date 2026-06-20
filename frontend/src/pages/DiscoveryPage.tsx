@@ -71,7 +71,7 @@ export function DiscoveryPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-400">
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
         {error}
       </div>
     )
@@ -82,8 +82,8 @@ export function DiscoveryPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-stone-100">Published Skills</h1>
-          <p className="mt-0.5 text-xs text-stone-500">
+          <h1 className="text-lg font-semibold text-foreground">Published Skills</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Reusable AI skills extracted from conversations and documents.
           </p>
         </div>
@@ -131,13 +131,13 @@ export function DiscoveryPage() {
                   className="cursor-pointer"
                   onClick={() => navigate(`/skills/${skill.id}`)}
                 >
-                  <TableCell className="font-medium text-stone-100">
+                  <TableCell className="font-medium text-foreground">
                     {skill.name}
                   </TableCell>
-                  <TableCell className="max-w-xs truncate text-sm text-stone-500">
+                  <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
                     {skill.description}
                   </TableCell>
-                  <TableCell className="text-right text-sm text-stone-400 tabular-nums">
+                  <TableCell className="text-right text-sm text-foreground-secondary tabular-nums">
                     {skill.usage_count}
                   </TableCell>
                   <TableCell className="text-right">
@@ -146,10 +146,10 @@ export function DiscoveryPage() {
                         {skill.eval_score.toFixed(1)}
                       </Badge>
                     ) : (
-                      <span className="text-xs text-stone-600">--</span>
+                      <span className="text-xs text-muted-foreground">--</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right text-xs text-stone-500">
+                  <TableCell className="text-right text-xs text-muted-foreground">
                     {formatDate(skill.updated_at)}
                   </TableCell>
                 </TableRow>
@@ -159,8 +159,8 @@ export function DiscoveryPage() {
                 <TableCell colSpan={5} className="h-40 text-center">
                   {skills.length === 0 ? (
                     <div className="flex flex-col items-center gap-2">
-                      <p className="text-sm font-semibold text-stone-200">No skills yet</p>
-                      <p className="text-sm text-stone-500">
+                      <p className="text-sm font-semibold text-foreground-secondary">No skills yet</p>
+                      <p className="text-sm text-muted-foreground">
                         Paste a conversation to create your first reusable skill.
                       </p>
                       <Button size="sm" className="mt-2" onClick={handleNew}>
@@ -168,7 +168,7 @@ export function DiscoveryPage() {
                       </Button>
                     </div>
                   ) : (
-                    <p className="text-sm text-stone-500">No skills match &ldquo;{search}&rdquo;</p>
+                    <p className="text-sm text-muted-foreground">No skills match &ldquo;{search}&rdquo;</p>
                   )}
                 </TableCell>
               </TableRow>

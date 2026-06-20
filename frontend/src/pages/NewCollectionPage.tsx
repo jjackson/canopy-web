@@ -171,11 +171,11 @@ export function NewCollectionPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold text-stone-100">
+          <h1 className="text-lg font-semibold text-foreground">
             {reviseSkillId ? `Revising: Skill #${reviseSkillId}` : 'New Skill from Sources'}
           </h1>
         </div>
-        <p className="mt-1 text-sm text-stone-500">
+        <p className="mt-1 text-sm text-muted-foreground">
           {step === 'name' && 'Name your collection, then add one or more sources for the AI to analyze.'}
           {step === 'sources' && 'Add conversations, documents, or transcripts. The AI will analyze all sources together.'}
           {step === 'analysis' && 'The AI is analyzing your sources...'}
@@ -190,15 +190,15 @@ export function NewCollectionPage() {
             return (
               <div key={s.id} className="flex items-center gap-2">
                 {i > 0 && (
-                  <span className={`h-px w-6 ${done ? 'bg-orange-400/50' : 'bg-stone-800'}`} />
+                  <span className={`h-px w-6 ${done ? 'bg-primary/50' : 'bg-muted'}`} />
                 )}
                 <span
                   className={`text-[10px] uppercase tracking-wider font-semibold ${
                     active
-                      ? 'text-orange-400'
+                      ? 'text-primary'
                       : done
-                        ? 'text-stone-400'
-                        : 'text-stone-600'
+                        ? 'text-foreground-secondary'
+                        : 'text-muted-foreground'
                   }`}
                 >
                   {s.label}
@@ -211,16 +211,16 @@ export function NewCollectionPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-400">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
       {/* Step 1: Name the collection */}
       {step === 'name' && (
-        <form onSubmit={(e) => void handleCreateCollection(e)} className="space-y-4 rounded-xl border border-stone-800 bg-stone-900 p-6">
+        <form onSubmit={(e) => void handleCreateCollection(e)} className="space-y-4 rounded-xl border border-border bg-card p-6">
           <div>
-            <label htmlFor="collection-name" className="mb-1.5 block text-[10px] uppercase tracking-wider font-semibold text-stone-500">
+            <label htmlFor="collection-name" className="mb-1.5 block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
               Collection Name
             </label>
             <Input
@@ -233,8 +233,8 @@ export function NewCollectionPage() {
           </div>
 
           <div>
-            <label htmlFor="collection-description" className="mb-1.5 block text-[10px] uppercase tracking-wider font-semibold text-stone-500">
-              Description <span className="text-stone-600 normal-case tracking-normal">(optional)</span>
+            <label htmlFor="collection-description" className="mb-1.5 block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+              Description <span className="text-muted-foreground normal-case tracking-normal">(optional)</span>
             </label>
             <Textarea
               id="collection-description"
@@ -258,10 +258,10 @@ export function NewCollectionPage() {
       {step === 'sources' && (
         <div className="space-y-6">
           {/* Collection header */}
-          <div className="rounded-xl border border-stone-800 bg-stone-900 px-4 py-3">
-            <h2 className="text-sm font-semibold text-stone-100">{name}</h2>
+          <div className="rounded-xl border border-border bg-card px-4 py-3">
+            <h2 className="text-sm font-semibold text-foreground">{name}</h2>
             {description && (
-              <p className="mt-0.5 text-xs text-stone-500">{description}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
             )}
           </div>
 
@@ -271,16 +271,16 @@ export function NewCollectionPage() {
               {sources.map((source) => (
                 <div
                   key={source.id}
-                  className="flex items-start gap-3 rounded-lg border border-stone-800 bg-stone-900 px-3 py-2.5 hover:border-stone-700 transition-colors"
+                  className="flex items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5 hover:border-input transition-colors"
                 >
                   <Badge variant="secondary" className="mt-0.5 shrink-0">
                     {source.source_type}
                   </Badge>
                   <div className="min-w-0 flex-1">
                     {source.title && (
-                      <div className="text-sm font-medium text-stone-200">{source.title}</div>
+                      <div className="text-sm font-medium text-foreground-secondary">{source.title}</div>
                     )}
-                    <div className="truncate text-xs text-stone-500">
+                    <div className="truncate text-xs text-muted-foreground">
                       {firstLine(source.content)}
                     </div>
                   </div>
@@ -288,7 +288,7 @@ export function NewCollectionPage() {
                     type="button"
                     onClick={() => handleDeleteSource(source.id)}
                     disabled={deletingSourceId === source.id}
-                    className="shrink-0 text-sm text-stone-600 hover:text-red-400 transition-colors"
+                    className="shrink-0 text-sm text-muted-foreground hover:text-destructive transition-colors"
                     title="Remove source"
                   >
                     &times;
@@ -299,19 +299,19 @@ export function NewCollectionPage() {
           )}
 
           {/* Source count */}
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-stone-500">
+          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
             {sources.length === 0
               ? 'No sources added yet'
               : `${sources.length} source${sources.length === 1 ? '' : 's'} added`}
           </div>
 
           {/* Add source form */}
-          <form onSubmit={(e) => void handleAddSource(e)} className="space-y-3 rounded-xl border border-stone-800 bg-stone-900 p-4">
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-stone-500">Add Source</div>
+          <form onSubmit={(e) => void handleAddSource(e)} className="space-y-3 rounded-xl border border-border bg-card p-4">
+            <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Add Source</div>
 
             <div className="flex gap-3">
               <div className="w-36">
-                <label htmlFor="source-type" className="mb-1 block text-[10px] uppercase tracking-wider text-stone-500">
+                <label htmlFor="source-type" className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
                   Type
                 </label>
                 <select
@@ -319,10 +319,10 @@ export function NewCollectionPage() {
                   value={sourceType}
                   onChange={(e) => setSourceType(e.target.value as SourceType)}
                   disabled={addingSource}
-                  className="h-8 w-full rounded-lg border border-stone-700 bg-stone-950 px-2 text-sm text-stone-200 focus:border-orange-400/50 focus:outline-none focus:ring-2 focus:ring-orange-400/20"
+                  className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground-secondary focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   {SOURCE_TYPES.map((t) => (
-                    <option key={t} value={t} className="bg-stone-900 text-stone-200">
+                    <option key={t} value={t} className="bg-card text-foreground-secondary">
                       {t}
                     </option>
                   ))}
@@ -330,8 +330,8 @@ export function NewCollectionPage() {
               </div>
 
               <div className="flex-1">
-                <label htmlFor="source-title" className="mb-1 block text-[10px] uppercase tracking-wider text-stone-500">
-                  Title <span className="text-stone-600 normal-case tracking-normal">(optional)</span>
+                <label htmlFor="source-title" className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Title <span className="text-muted-foreground normal-case tracking-normal">(optional)</span>
                 </label>
                 <Input
                   id="source-title"
@@ -344,7 +344,7 @@ export function NewCollectionPage() {
             </div>
 
             <div>
-              <label htmlFor="source-content" className="mb-1 block text-[10px] uppercase tracking-wider text-stone-500">
+              <label htmlFor="source-content" className="mb-1 block text-[10px] uppercase tracking-wider text-muted-foreground">
                 Content
               </label>
               <Textarea
@@ -363,7 +363,7 @@ export function NewCollectionPage() {
           </form>
 
           {/* Start Analysis */}
-          <div className="flex items-center gap-3 border-t border-stone-800 pt-4">
+          <div className="flex items-center gap-3 border-t border-border pt-4">
             <Button
               onClick={() => void handleStartAnalysis()}
               disabled={sources.length === 0 || submitting}
@@ -371,7 +371,7 @@ export function NewCollectionPage() {
               Start Analysis
             </Button>
             {sources.length === 0 && (
-              <span className="text-xs text-stone-500">Add at least 1 source to continue</span>
+              <span className="text-xs text-muted-foreground">Add at least 1 source to continue</span>
             )}
           </div>
         </div>
@@ -379,10 +379,10 @@ export function NewCollectionPage() {
 
       {/* Step 3: Analysis in progress */}
       {step === 'analysis' && (
-        <div className="rounded-xl border border-stone-800 bg-stone-900 p-6 space-y-4">
+        <div className="rounded-xl border border-border bg-card p-6 space-y-4">
           <div className="flex items-center gap-3">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-stone-700 border-t-orange-400" />
-            <span className="text-sm text-stone-300">{analysisStatus}</span>
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-input border-t-orange-400" />
+            <span className="text-sm text-foreground-secondary">{analysisStatus}</span>
           </div>
         </div>
       )}

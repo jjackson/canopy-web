@@ -33,7 +33,7 @@ function FindingsReviewEntry({
         active
           ? 'text-primary'
           : pending
-            ? 'text-amber-300/90 hover:text-amber-200'
+            ? 'text-warning/90 hover:text-warning'
             : 'text-muted-foreground hover:text-foreground',
       )}
     >
@@ -41,7 +41,7 @@ function FindingsReviewEntry({
         aria-hidden
         className={clsx(
           'h-1 w-1 shrink-0 rounded-full',
-          pending ? 'bg-amber-400' : 'bg-muted-foreground',
+          pending ? 'bg-warning' : 'bg-muted-foreground',
         )}
       />
       <span className="truncate">
