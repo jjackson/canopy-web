@@ -177,7 +177,7 @@ function UserChip() {
             {initials}
           </span>
         )}
-        <span className="text-xs text-stone-300 max-w-[12rem] truncate">{auth.user.email}</span>
+        <span className="hidden sm:inline text-xs text-stone-300 max-w-[12rem] truncate">{auth.user.email}</span>
       </button>
 
       {open && (
@@ -203,33 +203,86 @@ function UserChip() {
 
 export function AppLayout() {
   const location = useLocation()
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Collapse the mobile menu whenever the route changes (e.g. tapping a link).
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+
+  function navLinkClass(path: string, block: boolean) {
+    const isActive =
+      location.pathname === path ||
+      (path !== '/' && location.pathname.startsWith(path))
+    return clsx(
+      'text-sm font-medium rounded transition-colors',
+      block ? 'block px-3 py-2' : 'px-3 py-1.5',
+      isActive
+        ? 'text-stone-100 bg-stone-900'
+        : 'text-stone-500 hover:text-stone-300 hover:bg-stone-900/50',
+    )
+  }
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200">
       <header className="border-b border-stone-800 bg-stone-950 relative">
-        <div className="mx-auto max-w-7xl px-6 py-3 flex items-center justify-between">
-          <Link to="/" className="text-lg font-semibold text-stone-100">Canopy<span className="text-orange-400">.</span></Link>
-          <div className="flex items-center gap-6">
-            <nav className="flex gap-1">
-              {NAV_ITEMS.map((item) => {
-                const isActive =
-                  location.pathname === item.path ||
-                  (item.path !== '/' && location.pathname.startsWith(item.path))
-                return (
-                  <Link key={item.path} to={item.path}
-                    className={clsx('text-sm font-medium px-3 py-1.5 rounded transition-colors',
-                      isActive
-                        ? 'text-stone-100 bg-stone-900'
-                        : 'text-stone-500 hover:text-stone-300 hover:bg-stone-900/50'
-                    )}>
-                    {item.label}
-                  </Link>
-                )
-              })}
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <Link to="/" className="text-lg font-semibold text-stone-100 shrink-0">Canopy<span className="text-orange-400">.</span></Link>
+          <div className="flex items-center gap-3 xl:gap-6">
+            {/* Full inline nav only once all items fit (~xl); below that it
+                overflows the viewport, so we collapse it into the menu below. */}
+            <nav className="hidden xl:flex gap-1">
+              {NAV_ITEMS.map((item) => (
+                <Link key={item.path} to={item.path} className={navLinkClass(item.path, false)}>
+                  {item.label}
+                </Link>
+              ))}
             </nav>
             <AiStatusBadge />
             <UserChip />
+            <button
+              type="button"
+              onClick={() => setMobileOpen((o) => !o)}
+              aria-label="Toggle navigation menu"
+              aria-expanded={mobileOpen}
+              className="xl:hidden -mr-1 p-2 rounded text-stone-400 hover:text-stone-200 hover:bg-stone-900"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                {mobileOpen ? (
+                  <>
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                    <line x1="6" y1="18" x2="18" y2="6" />
+                  </>
+                ) : (
+                  <>
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                  </>
+                )}
+              </svg>
+            </button>
           </div>
         </div>
+        {mobileOpen && (
+          <>
+            {/* Backdrop: tap anywhere outside the panel to dismiss. */}
+            <button
+              type="button"
+              aria-hidden="true"
+              tabIndex={-1}
+              onClick={() => setMobileOpen(false)}
+              className="xl:hidden fixed inset-0 top-[53px] z-30 bg-stone-950/40 cursor-default"
+            />
+            <nav className="xl:hidden absolute left-0 right-0 top-full z-40 border-b border-stone-800 bg-stone-950 px-3 py-2 shadow-lg flex flex-col gap-1 max-h-[calc(100vh-53px)] overflow-y-auto">
+              {NAV_ITEMS.map((item) => (
+                <Link key={item.path} to={item.path} className={navLinkClass(item.path, true)}>
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </>
+        )}
       </header>
       {location.pathname.startsWith('/ddd') ||
       location.pathname.startsWith('/review') ||

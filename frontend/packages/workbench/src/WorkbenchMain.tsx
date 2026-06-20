@@ -10,7 +10,7 @@ export const WorkbenchMain = forwardRef<
   ComponentPropsWithoutRef<'main'> & { children: ReactNode }
 >(function WorkbenchMain({ children, className, ...rest }, ref) {
   return (
-    <main ref={ref} className={cn('flex-1 overflow-y-auto', className)} {...rest}>
+    <main ref={ref} className={cn('min-h-0 min-w-0 flex-1 overflow-y-auto', className)} {...rest}>
       {children}
     </main>
   )

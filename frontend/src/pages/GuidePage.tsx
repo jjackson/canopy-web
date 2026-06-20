@@ -97,13 +97,13 @@ function SectionNav({
   onSelect: (id: SectionId) => void
 }) {
   return (
-    <nav className="flex flex-col gap-0.5">
+    <nav className="flex flex-row gap-1 overflow-x-auto md:flex-col md:gap-0.5">
       {SECTIONS.map((s) => (
         <button
           key={s.id}
           type="button"
           onClick={() => onSelect(s.id)}
-          className={`rounded-md px-3 py-1.5 text-left text-sm transition-colors ${
+          className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-left text-sm transition-colors md:shrink ${
             active === s.id
               ? 'bg-orange-400/10 border border-orange-400/30 text-orange-400 font-medium'
               : 'border border-transparent text-stone-500 hover:text-stone-200 hover:bg-stone-900'
@@ -739,10 +739,10 @@ export function GuidePage() {
   }
 
   return (
-    <div className="flex gap-8">
-      {/* Sidebar nav */}
-      <div className="w-44 shrink-0">
-        <div className="sticky top-24">
+    <div className="flex flex-col gap-6 md:flex-row md:gap-8">
+      {/* Sidebar nav — stacks on top on phones, becomes a sticky rail on desktop */}
+      <div className="w-full md:w-44 md:shrink-0">
+        <div className="md:sticky md:top-24">
           <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
             Guide
           </h3>

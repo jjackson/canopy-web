@@ -301,7 +301,7 @@ export function DddLeftNav({
   )
 
   return (
-    <WorkbenchRail width="w-72" header={header}>
+    <WorkbenchRail width="md:w-72" header={header}>
       <nav className="px-2 py-2">
         {error && <div className="px-3 py-2 text-xs text-destructive">{error}</div>}
         {!narratives && !error && (
