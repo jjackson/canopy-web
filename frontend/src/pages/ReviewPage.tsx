@@ -82,10 +82,10 @@ function ScoreBadge({
   return (
     <span
       title={tooltip}
-      className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30 cursor-default select-none"
+      className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold bg-special/20 text-special border border-special/30 cursor-default select-none"
     >
       {formatted}
-      <span className="text-violet-500 font-normal">/ {total}</span>
+      <span className="text-special font-normal">/ {total}</span>
     </span>
   )
 }
@@ -93,7 +93,7 @@ function ScoreBadge({
 function DirtyBadge({ isDirty }: { isDirty: boolean }) {
   if (!isDirty) return null
   return (
-    <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+    <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold bg-warning/20 text-warning border border-warning/30">
       Edited
     </span>
   )
@@ -105,7 +105,7 @@ function PersonaChip({ persona, dim = false }: { persona: ReviewPersona; dim?: b
       title={`${persona.name} — ${persona.role}`}
       className={[
         'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium select-none',
-        dim ? 'border-stone-700 text-stone-400' : 'border-stone-600 text-stone-200',
+        dim ? 'border-input text-foreground-secondary' : 'border-input text-foreground-secondary',
       ].join(' ')}
     >
       <span
@@ -150,8 +150,8 @@ function NarrativeVerdictControl({
   }
 
   return (
-    <div className="rounded-lg border border-stone-700 bg-stone-900 p-4 space-y-3">
-      <p className="text-sm text-stone-200 leading-snug">{decision.prompt}</p>
+    <div className="rounded-lg border border-input bg-card p-4 space-y-3">
+      <p className="text-sm text-foreground-secondary leading-snug">{decision.prompt}</p>
       <div className="flex flex-col sm:flex-row gap-3">
         {decision.options.map((opt) => {
           const meta = LABELS[opt] ?? { label: opt, explanation: '', accent: 'stone' }
@@ -160,14 +160,14 @@ function NarrativeVerdictControl({
 
           const selectedStyles: Record<string, string> = {
             emerald:
-              'border-emerald-500/60 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30',
+              'border-success/60 bg-success/15 text-success ring-1 ring-success/30',
             amber:
-              'border-amber-500/60 bg-amber-500/15 text-amber-200 ring-1 ring-amber-500/30',
+              'border-warning/60 bg-warning/15 text-warning ring-1 ring-warning/30',
             stone:
-              'border-stone-500 bg-stone-700 text-stone-100 ring-1 ring-stone-500/30',
+              'border-muted-foreground bg-input text-foreground ring-1 ring-muted-foreground/30',
           }
           const unselectedStyles =
-            'border-stone-700 text-stone-400 hover:border-stone-500 hover:text-stone-200 hover:bg-stone-800/50'
+            'border-input text-foreground-secondary hover:border-muted-foreground hover:text-foreground-secondary hover:bg-muted/50'
 
           return (
             <button
@@ -188,7 +188,7 @@ function NarrativeVerdictControl({
                 <p
                   className={[
                     'mt-1 text-xs leading-snug',
-                    isSelected ? 'opacity-80' : 'text-stone-500',
+                    isSelected ? 'opacity-80' : 'text-muted-foreground',
                   ].join(' ')}
                 >
                   {meta.explanation}
@@ -213,14 +213,14 @@ function DecisionGroup({ decision, chosen, onChange, readOnly }: DecisionGroupPr
   const classLabel = decision.class ? decision.class.replace(/_/g, ' ') : ''
 
   return (
-    <div className="rounded-lg border border-stone-700 bg-stone-900 p-4">
+    <div className="rounded-lg border border-input bg-card p-4">
       <div className="flex items-start gap-2 mb-3">
         {classLabel && (
-          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-orange-500/20 text-orange-300 border border-orange-500/30">
+          <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-primary/20 text-primary border border-primary/30">
             {classLabel}
           </span>
         )}
-        <p className="text-sm text-stone-200 leading-snug">{decision.prompt}</p>
+        <p className="text-sm text-foreground-secondary leading-snug">{decision.prompt}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {decision.options.map((opt) => {
@@ -232,8 +232,8 @@ function DecisionGroup({ decision, chosen, onChange, readOnly }: DecisionGroupPr
               className={[
                 'flex items-center gap-2 cursor-pointer rounded px-3 py-1.5 text-sm border transition-colors',
                 isSelected
-                  ? 'bg-orange-500/20 border-orange-500/50 text-orange-200'
-                  : 'border-stone-700 text-stone-400 hover:border-stone-500 hover:text-stone-200',
+                  ? 'bg-primary/20 border-primary/50 text-primary'
+                  : 'border-input text-foreground-secondary hover:border-muted-foreground hover:text-foreground-secondary',
                 readOnly ? 'pointer-events-none opacity-80' : '',
               ].join(' ')}
             >
@@ -248,10 +248,10 @@ function DecisionGroup({ decision, chosen, onChange, readOnly }: DecisionGroupPr
               />
               {opt}
               {isRecommended && !isSelected && (
-                <span className="text-[10px] text-stone-500">(recommended)</span>
+                <span className="text-[10px] text-muted-foreground">(recommended)</span>
               )}
               {isRecommended && isSelected && (
-                <span className="text-[10px] text-orange-400/70">(recommended)</span>
+                <span className="text-[10px] text-primary/70">(recommended)</span>
               )}
             </label>
           )
@@ -295,12 +295,12 @@ function FeatureRow({
       className={[
         'rounded border px-3 py-2 space-y-2',
         isMissed
-          ? 'border-amber-500/30 bg-amber-500/5'
-          : 'border-stone-800 bg-stone-900/60',
+          ? 'border-warning/30 bg-warning/5'
+          : 'border-border bg-card/60',
       ].join(' ')}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Feature
         </p>
         {!readOnly && (
@@ -308,7 +308,7 @@ function FeatureRow({
             type="button"
             onClick={onDelete}
             title="Delete feature"
-            className="text-stone-600 hover:text-red-400 transition-colors text-xs"
+            className="text-muted-foreground hover:text-destructive transition-colors text-xs"
           >
             ✕
           </button>
@@ -320,8 +320,8 @@ function FeatureRow({
         <FieldLabel>What to build</FieldLabel>
         <AutoTextarea
           className={[
-            'w-full rounded border bg-stone-900 px-2 py-1.5 text-sm text-stone-200 resize-none min-h-[2.5rem]',
-            'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+            'w-full rounded border bg-card px-2 py-1.5 text-sm text-foreground-secondary resize-none min-h-[2.5rem]',
+            'border-input focus:border-muted-foreground focus:outline-none transition-colors',
             readOnly ? 'opacity-70 cursor-default' : '',
           ].join(' ')}
           value={feature.description}
@@ -337,8 +337,8 @@ function FeatureRow({
         <FieldLabel>Verify — how we'll confirm it's built</FieldLabel>
         <AutoTextarea
           className={[
-            'w-full rounded border bg-stone-900 px-2 py-1.5 font-mono text-[11px] text-stone-300 resize-none min-h-[2.25rem] whitespace-pre-wrap break-words',
-            'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+            'w-full rounded border bg-card px-2 py-1.5 font-mono text-[11px] text-foreground-secondary resize-none min-h-[2.25rem] whitespace-pre-wrap break-words',
+            'border-input focus:border-muted-foreground focus:outline-none transition-colors',
             readOnly ? 'opacity-70 cursor-default' : '',
           ].join(' ')}
           value={feature.verify}
@@ -350,21 +350,21 @@ function FeatureRow({
       </div>
 
       {isMissed && (
-        <p className="text-[11px] text-amber-400/80">⚠ eval flagged as under-specified</p>
+        <p className="text-[11px] text-warning/80">⚠ eval flagged as under-specified</p>
       )}
 
       {/* optional feedback */}
       {!readOnly && (
         <input
           type="text"
-          className="w-full rounded border bg-stone-900 px-2 py-1.5 text-[11px] text-stone-400 border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
+          className="w-full rounded border bg-card px-2 py-1.5 text-[11px] text-foreground-secondary border-input focus:border-muted-foreground focus:outline-none transition-colors"
           value={feature.feedback}
           onChange={(e) => onFeedback(e.target.value)}
           placeholder="Feedback on this feature (optional)"
         />
       )}
       {readOnly && feature.feedback && (
-        <p className="text-[11px] text-stone-500 italic">Feedback: {feature.feedback}</p>
+        <p className="text-[11px] text-muted-foreground italic">Feedback: {feature.feedback}</p>
       )}
     </li>
   )
@@ -428,8 +428,8 @@ function StatusBadge({ status, frontier: frontierOverride }: { status?: string; 
       className={[
         'shrink-0 rounded px-2 py-0.5 text-[11px] font-medium select-none',
         frontier
-          ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-          : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
+          ? 'bg-warning/15 text-warning border border-warning/30'
+          : 'bg-success/15 text-success border border-success/30',
       ].join(' ')}
     >
       {frontier ? 'New feature' : 'Existing feature'}
@@ -478,20 +478,20 @@ function SceneCard({
       className={[
         'rounded-lg border p-4 space-y-3 transition-colors scroll-mt-4',
         isEdited
-          ? 'border-sky-500/60 bg-sky-500/5 ring-1 ring-sky-500/20'
-          : 'border-stone-700 bg-stone-950',
+          ? 'border-info/60 bg-info/5 ring-1 ring-info/20'
+          : 'border-input bg-background',
       ].join(' ')}
     >
       {/* Scene header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           {sceneNumber != null && (
-            <span className="text-[11px] font-semibold text-stone-500 tabular-nums shrink-0">
+            <span className="text-[11px] font-semibold text-muted-foreground tabular-nums shrink-0">
               Scene {sceneNumber}
             </span>
           )}
           {persona && <PersonaChip persona={persona} />}
-          <span className="text-sm font-medium text-stone-100">{scene.title}</span>
+          <span className="text-sm font-medium text-foreground">{scene.title}</span>
           {(grounding?.status || (gaps && gaps.length > 0)) && (
             <StatusBadge
               frontier={(grounding?.status ?? 'grounded') !== 'grounded' || (gaps?.length ?? 0) > 0}
@@ -500,7 +500,7 @@ function SceneCard({
           {isEdited && (
             <span
               title="This scene has pending edits in your current session"
-              className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium bg-sky-500/15 text-sky-300 border border-sky-500/30 select-none"
+              className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium bg-info/15 text-info border border-info/30 select-none"
             >
               Edited
             </span>
@@ -508,7 +508,7 @@ function SceneCard({
           {verifiedGreen && (
             <span
               title="This scene's verify actually ran and passed"
-              className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 select-none"
+              className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium bg-success/15 text-success border border-success/30 select-none"
             >
               ✓ verify passed
             </span>
@@ -526,7 +526,7 @@ function SceneCard({
               type="button"
               onClick={onDeleteScene}
               title="Delete scene"
-              className="text-stone-600 hover:text-red-400 transition-colors text-xs px-2 py-0.5 rounded border border-stone-700 hover:border-red-500/40"
+              className="text-muted-foreground hover:text-destructive transition-colors text-xs px-2 py-0.5 rounded border border-input hover:border-destructive/40"
             >
               Delete scene
             </button>
@@ -539,8 +539,8 @@ function SceneCard({
         <FieldLabel>What plays in the demo</FieldLabel>
         <AutoTextarea
           className={[
-            'w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-none min-h-[4rem]',
-            'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
+            'w-full rounded border bg-card px-3 py-2 text-sm text-foreground-secondary resize-none min-h-[4rem]',
+            'border-input focus:border-muted-foreground focus:outline-none transition-colors',
             readOnly ? 'opacity-70 cursor-default' : '',
           ].join(' ')}
           value={scene.narration}
@@ -554,8 +554,8 @@ function SceneCard({
       {/* Collapsed-by-default details. A one-line buildability summary stays visible
           so a reviewer can judge what they're approving without expanding all scenes. */}
       {!open && activeFeatures.length > 0 && (
-        <p className="text-xs text-stone-500">
-          <span className="text-stone-600">Builds: </span>
+        <p className="text-xs text-muted-foreground">
+          <span className="text-muted-foreground">Builds: </span>
           {activeFeatures[0].description}
           {activeFeatures.length > 1 ? ` +${activeFeatures.length - 1} more` : ''}
         </p>
@@ -563,9 +563,9 @@ function SceneCard({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-xs text-stone-500 hover:text-stone-300 transition-colors flex items-center gap-1.5"
+        className="text-xs text-muted-foreground hover:text-foreground-secondary transition-colors flex items-center gap-1.5"
       >
-        <span className="text-stone-600">{open ? '▾' : '▸'}</span>
+        <span className="text-muted-foreground">{open ? '▾' : '▸'}</span>
         {open
           ? 'Hide details'
           : `Show ${activeFeatures.length} feature${activeFeatures.length === 1 ? '' : 's'} + verify${hasGrounding ? ' + why' : ''}`}
@@ -578,7 +578,7 @@ function SceneCard({
         <div className="space-y-2">
           {activeFeatures.length > 0 && (
             <>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Features to build
               </p>
               <ul className="space-y-2">
@@ -600,7 +600,7 @@ function SceneCard({
             <button
               type="button"
               onClick={onAddFeature}
-              className="mt-1 text-xs text-stone-500 hover:text-stone-300 border border-dashed border-stone-700 hover:border-stone-500 rounded px-3 py-1.5 transition-colors"
+              className="mt-1 text-xs text-muted-foreground hover:text-foreground-secondary border border-dashed border-input hover:border-muted-foreground rounded px-3 py-1.5 transition-colors"
             >
               + Add feature
             </button>
@@ -612,8 +612,8 @@ function SceneCard({
           Muted + below the demo/features because the narration is what's most
           important to get right; this is the supporting "why" + build status. */}
       {hasGrounding && (
-        <div className="rounded border border-stone-800 bg-stone-900/40 p-3 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-600">
+        <div className="rounded border border-border bg-card/40 p-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Why this matters {grounding?.id ? `· ${grounding.id}` : ''}
           </p>
           {grounding != null && (
@@ -636,20 +636,20 @@ function SceneCard({
               </FieldLabel>
               <ul className="space-y-0.5">
                 {grounding.evidence.map((ev, i) => (
-                  <li key={i} className="text-[11px] text-stone-400 font-mono break-words">
-                    <span className="text-stone-600">{ev.kind ?? 'ref'}:</span> {ev.ref}
+                  <li key={i} className="text-[11px] text-foreground-secondary font-mono break-words">
+                    <span className="text-muted-foreground">{ev.kind ?? 'ref'}:</span> {ev.ref}
                   </li>
                 ))}
               </ul>
             </div>
           )}
           {(gaps ?? []).map((gap) => (
-            <div key={gap.id} className="rounded border border-amber-500/20 bg-amber-500/5 p-2 space-y-2">
+            <div key={gap.id} className="rounded border border-warning/20 bg-warning/5 p-2 space-y-2">
               <div className="flex items-center gap-2 text-[11px]">
                 {gap.type && (
-                  <span className="rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">{gap.type}</span>
+                  <span className="rounded bg-warning/15 text-warning px-1.5 py-0.5">{gap.type}</span>
                 )}
-                <span className="text-stone-500">what's missing for this scene</span>
+                <span className="text-muted-foreground">what's missing for this scene</span>
               </div>
               <AutoTextarea
                 className={inputCls(readOnly) + ' resize-none min-h-[2.5rem]'}
@@ -681,14 +681,14 @@ function SceneCard({
       {!readOnly && (
         <input
           type="text"
-          className="w-full rounded border bg-stone-900 px-3 py-1.5 text-xs text-stone-400 border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
+          className="w-full rounded border bg-card px-3 py-1.5 text-xs text-foreground-secondary border-input focus:border-muted-foreground focus:outline-none transition-colors"
           value={scene.feedback}
           onChange={(e) => onSceneFeedback(e.target.value)}
           placeholder="Scene-level feedback (optional)"
         />
       )}
       {readOnly && scene.feedback && (
-        <p className="text-xs text-stone-500 italic">Feedback: {scene.feedback}</p>
+        <p className="text-xs text-muted-foreground italic">Feedback: {scene.feedback}</p>
       )}
     </div>
   )
@@ -749,11 +749,11 @@ function BuildSequenceSection({
   return (
     <section>
       <div className="mb-3">
-        <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider">
+        <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider">
           Build sequence
         </h2>
         {!readOnly && (
-          <p className="text-xs text-stone-500 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             Order you'll tackle these when building — independent of the video order. Drag or use
             the arrows to rearrange.
           </p>
@@ -767,18 +767,18 @@ function BuildSequenceSection({
           return (
             <li
               key={scene.id}
-              className="flex items-center gap-3 rounded-lg border border-stone-700 bg-stone-900 px-3 py-2"
+              className="flex items-center gap-3 rounded-lg border border-input bg-card px-3 py-2"
             >
               {/* Build # badge */}
-              <span className="shrink-0 w-6 h-6 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30 flex items-center justify-center text-xs font-semibold select-none">
+              <span className="shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary border border-primary/30 flex items-center justify-center text-xs font-semibold select-none">
                 {idx + 1}
               </span>
 
               {/* Title + narrative position hint */}
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-stone-200 truncate">{scene.title}</p>
+                <p className="text-sm text-foreground-secondary truncate">{scene.title}</p>
                 {narrativePos !== idx && (
-                  <p className="text-[10px] text-stone-600">
+                  <p className="text-[10px] text-muted-foreground">
                     video position: {narrativePos + 1}
                   </p>
                 )}
@@ -798,8 +798,8 @@ function BuildSequenceSection({
                     className={[
                       'rounded border px-1.5 py-0.5 text-xs transition-colors',
                       idx === 0
-                        ? 'border-stone-800 text-stone-700 cursor-default'
-                        : 'border-stone-700 text-stone-400 hover:border-stone-500 hover:text-stone-200',
+                        ? 'border-border text-foreground-subtle cursor-default'
+                        : 'border-input text-foreground-secondary hover:border-muted-foreground hover:text-foreground-secondary',
                     ].join(' ')}
                   >
                     ↑
@@ -812,8 +812,8 @@ function BuildSequenceSection({
                     className={[
                       'rounded border px-1.5 py-0.5 text-xs transition-colors',
                       idx === orderedScenes.length - 1
-                        ? 'border-stone-800 text-stone-700 cursor-default'
-                        : 'border-stone-700 text-stone-400 hover:border-stone-500 hover:text-stone-200',
+                        ? 'border-border text-foreground-subtle cursor-default'
+                        : 'border-input text-foreground-secondary hover:border-muted-foreground hover:text-foreground-secondary',
                     ].join(' ')}
                   >
                     ↓
@@ -834,14 +834,14 @@ function BuildSequenceSection({
 
 function inputCls(readOnly: boolean): string {
   return [
-    'w-full rounded border bg-stone-900 px-2.5 py-1.5 text-sm text-stone-200',
-    'border-stone-700 focus:border-stone-500 focus:outline-none transition-colors',
-    readOnly ? 'opacity-70 cursor-default' : 'hover:border-stone-500 cursor-text',
+    'w-full rounded border bg-card px-2.5 py-1.5 text-sm text-foreground-secondary',
+    'border-input focus:border-muted-foreground focus:outline-none transition-colors',
+    readOnly ? 'opacity-70 cursor-default' : 'hover:border-muted-foreground cursor-text',
   ].join(' ')
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <span className="block text-[10px] uppercase tracking-wider text-stone-600 mb-0.5">{children}</span>
+  return <span className="block text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">{children}</span>
 }
 
 function PersonasSection({
@@ -857,21 +857,21 @@ function PersonasSection({
   if (keys.length === 0) return null
   return (
     <section>
-      <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
+      <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
         Personas
       </h2>
       <div className="grid gap-3 sm:grid-cols-2">
         {keys.map((key) => {
           const p = personas[key]
           return (
-            <div key={key} className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-2">
+            <div key={key} className="rounded-lg border border-input bg-background p-4 space-y-2">
               <div className="flex items-center gap-2">
                 <span
                   className="inline-block h-3 w-3 rounded-full shrink-0"
                   style={{ backgroundColor: p.color || '#78716c' }}
                 />
-                <span className="text-sm font-medium text-stone-100">{p.name || key}</span>
-                {p.org && <span className="text-xs text-stone-500">· {p.org}</span>}
+                <span className="text-sm font-medium text-foreground">{p.name || key}</span>
+                {p.org && <span className="text-xs text-muted-foreground">· {p.org}</span>}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -1142,7 +1142,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
     )
   } else {
     videoElement = (
-      <div className="flex items-center justify-center h-40 text-stone-500 text-sm">
+      <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
         No cut available yet
       </div>
     )
@@ -1154,7 +1154,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-start gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-semibold text-stone-100">
+            <h1 className="text-xl font-semibold text-foreground">
               {req.gate === 'concept_change'
                 ? 'Approve the story before we build it'
                 : req.gate === 'external_release'
@@ -1163,7 +1163,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                     ? 'Findings review'
                     : `Review: ${req.gate}`}
             </h1>
-            <p className="text-sm text-stone-500 mt-0.5">{req.run_id}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{req.run_id}</p>
           </div>
           {overallScore != null && (
             <div className="mt-0.5">
@@ -1171,7 +1171,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 score={overallScore}
                 tooltip="Actionability score — how confidently an AI could build this narrative as written (out of 5)"
               />
-              <p className="text-[10px] text-stone-600 mt-0.5 text-center">Actionability · AI eval</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 text-center">Actionability · AI eval</p>
             </div>
           )}
         </div>
@@ -1181,8 +1181,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             className={[
               'shrink-0 rounded px-2 py-0.5 text-xs font-medium',
               readOnly
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+                ? 'bg-success/20 text-success border border-success/30'
+                : 'bg-warning/20 text-warning border border-warning/30',
             ].join(' ')}
           >
             {readOnly ? 'Resolved' : 'Needs your input'}
@@ -1196,7 +1196,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           <button
             type="button"
             onClick={() => dispatch({ type: 'UNDO_LAST_OP' })}
-            className="text-xs text-stone-400 hover:text-stone-200 border border-stone-700 hover:border-stone-500 rounded px-3 py-1 transition-colors"
+            className="text-xs text-foreground-secondary hover:text-foreground-secondary border border-input hover:border-muted-foreground rounded px-3 py-1 transition-colors"
           >
             ↩ Undo last edit
           </button>
@@ -1204,7 +1204,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       )}
 
       {/* Tabs — narrative review vs the rendered cut(s) */}
-      <div className="flex items-center gap-1 border-b border-stone-800">
+      <div className="flex items-center gap-1 border-b border-border">
         {(['narrative', 'cuts'] as const).map((t) => (
           <button
             key={t}
@@ -1213,8 +1213,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             className={[
               'px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors',
               tab === t
-                ? 'border-orange-500 text-stone-100'
-                : 'border-transparent text-stone-500 hover:text-stone-300',
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground-secondary',
             ].join(' ')}
           >
             {t === 'narrative' ? 'Narrative' : 'Cuts'}
@@ -1225,13 +1225,13 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Cuts tab — the rendered demo cut; kept off the main view so it isn't distracting */}
       {tab === 'cuts' && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
+          <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-2">
             Current cut
           </h2>
-          <div className="rounded-lg border border-stone-700 bg-black overflow-hidden">
+          <div className="rounded-lg border border-input bg-black overflow-hidden">
             {videoElement}
           </div>
-          <p className="text-xs text-stone-600 mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             This tab shows the rendered demo cut. Spec/yaml history lives in git — not version-controlled here.
           </p>
         </section>
@@ -1241,19 +1241,19 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {tab === 'narrative' && (
         <>
       {!readOnly && (
-        <p className="text-xs text-stone-400 rounded border border-stone-700 bg-stone-900/60 px-3 py-2">
+        <p className="text-xs text-foreground-secondary rounded border border-input bg-card/60 px-3 py-2">
           Every field on this page is editable — click any text to change it, drag the build
           sequence to reorder, then approve or send back at the bottom.
         </p>
       )}
       {/* The demo — the cohesive story + the one problem it all serves */}
       {(req.narrative?.trim() || effectiveWhyBrief.problem || Object.keys(personas).length > 0) && (
-        <section className="rounded-lg border border-stone-700 bg-stone-900/60 p-5 space-y-3">
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider">
+        <section className="rounded-lg border border-input bg-card/60 p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider">
             The demo
           </h2>
           {req.narrative?.trim() && (
-            <p className="text-[15px] leading-relaxed text-stone-200">
+            <p className="text-[15px] leading-relaxed text-foreground-secondary">
               {(() => {
                 // v2 (gap-flexible-scene-length): iterate the per-scene
                 // narration items from the request. Each item's `text` is the
@@ -1268,8 +1268,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                   const sceneId = scene.id
                   const isEdited = editedSceneIds.has(sceneId)
                   const stateCls = isEdited
-                    ? 'underline decoration-sky-400/60 hover:decoration-sky-300'
-                    : 'hover:underline hover:decoration-stone-300/70'
+                    ? 'underline decoration-info/60 hover:decoration-info'
+                    : 'hover:underline hover:decoration-foreground-secondary/70'
                   return (
                     <span key={sceneId}>
                       {i > 0 && ' '}
@@ -1310,7 +1310,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           )}
           {Object.keys(personas).length > 0 && (
             <div className="flex items-center gap-2 flex-wrap pt-1">
-              <span className="text-[11px] uppercase tracking-wider text-stone-600">Cast</span>
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Cast</span>
               {Object.values(personas).map((p) => (
                 <PersonaChip key={p.name} persona={p} dim />
               ))}
@@ -1333,7 +1333,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Other decisions */}
       {otherDecisions.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
+          <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
             {readOnly ? 'Additional decisions (submitted)' : 'Additional decisions'}
           </h2>
           <div className="space-y-3">
@@ -1352,48 +1352,48 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
 
       {/* What approving does — the next-action + engage-vs-delegate summary */}
       {!readOnly && liveScenes.length > 0 && resolvedChoice('narrative-verdict') !== 'redraft' && (
-        <section className="rounded-lg border border-sky-500/30 bg-sky-500/[0.06] p-4">
-          <h2 className="text-sm font-semibold text-sky-200 mb-2">If you approve, running DDD next will…</h2>
-          <ul className="space-y-1 text-sm text-stone-300">
+        <section className="rounded-lg border border-info/30 bg-info/[0.06] p-4">
+          <h2 className="text-sm font-semibold text-info mb-2">If you approve, running DDD next will…</h2>
+          <ul className="space-y-1 text-sm text-foreground-secondary">
             <li>
-              <span className="text-stone-500">▶</span>{' '}
-              <span className="text-stone-100">Render {liveScenes.length} scene{liveScenes.length === 1 ? '' : 's'}</span>{' '}
+              <span className="text-muted-foreground">▶</span>{' '}
+              <span className="text-foreground">Render {liveScenes.length} scene{liveScenes.length === 1 ? '' : 's'}</span>{' '}
               against the live app and screenshot each beat.
             </li>
             <li>
-              <span className="text-stone-500">🔨</span>{' '}
-              <span className="text-stone-100">
+              <span className="text-muted-foreground">🔨</span>{' '}
+              <span className="text-foreground">
                 Build {toBuildFeatures.length} new feature{toBuildFeatures.length === 1 ? '' : 's'}
                 {frontierCount > 0 && ` (across ${frontierCount} beat${frontierCount === 1 ? '' : 's'})`}
               </span>
               {frontierCount > 0 && toBuildFeatures.length > 0 ? (
                 <>
                   :{' '}
-                  <span className="text-amber-300">
+                  <span className="text-warning">
                     {toBuildFeatures.map((f) => f.id).join(', ')}
                   </span>
                 </>
               ) : (
-                <span className="text-stone-500"> — none; every beat already rides shipped code</span>
+                <span className="text-muted-foreground"> — none; every beat already rides shipped code</span>
               )}
               .
             </li>
             <li>
-              <span className="text-stone-500">⚖</span>{' '}
-              <span className="text-stone-100">Re-judge</span> (concept + actionability) and loop, stopping at the
-              next <em className="text-stone-400">concept_change</em> or <em className="text-stone-400">external_release</em> gate.
+              <span className="text-muted-foreground">⚖</span>{' '}
+              <span className="text-foreground">Re-judge</span> (concept + actionability) and loop, stopping at the
+              next <em className="text-foreground-secondary">concept_change</em> or <em className="text-foreground-secondary">external_release</em> gate.
             </li>
           </ul>
-          <p className="text-xs text-stone-500 mt-3">
+          <p className="text-xs text-muted-foreground mt-3">
             {builtSceneCount}/{liveScenes.length} scenes already ride shipped code.{' '}
             {frontierCount > 0 ? (
               <>
                 The build is {toBuildFeatures.length} scoped feature{toBuildFeatures.length === 1 ? '' : 's'} —{' '}
-                <span className="text-emerald-300">safe to delegate</span>. The story framing is the part that&apos;s{' '}
-                <span className="text-sky-300">yours to approve</span>.
+                <span className="text-success">safe to delegate</span>. The story framing is the part that&apos;s{' '}
+                <span className="text-info">yours to approve</span>.
               </>
             ) : (
-              <>Nothing new to build — this is a <span className="text-emerald-300">render-and-confirm</span> pass.</>
+              <>Nothing new to build — this is a <span className="text-success">render-and-confirm</span> pass.</>
             )}
           </p>
         </section>
@@ -1402,12 +1402,12 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Scene cards — driven by op-buffer projection */}
       {(effectiveScenes.length > 0 || !readOnly) && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-1">
+          <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-1">
             {readOnly ? 'Scenes (submitted)' : 'Scenes — the story, beat by beat'}
           </h2>
-          <p className="text-xs text-stone-600 mb-3">
-            <span className="text-emerald-300">Existing feature</span> = backed by shipped code ·{' '}
-            <span className="text-amber-300">New feature</span> = intended, not built yet. Each scene = one beat of the demo.
+          <p className="text-xs text-muted-foreground mb-3">
+            <span className="text-success">Existing feature</span> = backed by shipped code ·{' '}
+            <span className="text-warning">New feature</span> = intended, not built yet. Each scene = one beat of the demo.
             Per-scene numbers are AI actionability estimates (1–5; passes at ≥4).
           </p>
           <div className="space-y-4">
@@ -1482,7 +1482,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                     op: { op: 'add-scene', sceneId, title: `New Scene ${newSceneCounterRef.current}` },
                   })
                 }}
-                className="w-full rounded-lg border border-dashed border-stone-700 hover:border-stone-500 text-stone-500 hover:text-stone-300 py-3 text-sm transition-colors"
+                className="w-full rounded-lg border border-dashed border-input hover:border-muted-foreground text-muted-foreground hover:text-foreground-secondary py-3 text-sm transition-colors"
               >
                 + Add scene
               </button>
@@ -1494,34 +1494,34 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Other grounding — spine claims / gaps not tied to any scene (kept so nothing is lost) */}
       {(orphanSpine.length > 0 || orphanGaps.length > 0) && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-1">
+          <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-1">
             Other grounding
           </h2>
-          <p className="text-xs text-stone-600 mb-3">
+          <p className="text-xs text-muted-foreground mb-3">
             Why-brief items not tied to any scene above. Tie one to a scene by setting that scene's provenance.
           </p>
-          <div className="rounded-lg border border-stone-800 bg-stone-900/40 p-4 space-y-3">
+          <div className="rounded-lg border border-border bg-card/40 p-4 space-y-3">
             {orphanSpine.map((item) => (
               <div key={item.id} className="text-sm">
                 <div className="flex items-center gap-2 text-xs mb-1">
-                  <span className="font-mono text-stone-400">{item.id}</span>
+                  <span className="font-mono text-foreground-secondary">{item.id}</span>
                   <StatusBadge status={item.status} />
                 </div>
-                <p className="text-stone-300">{item.claim}</p>
-                {item.rationale && <p className="text-stone-500 text-xs mt-0.5">{item.rationale}</p>}
+                <p className="text-foreground-secondary">{item.claim}</p>
+                {item.rationale && <p className="text-muted-foreground text-xs mt-0.5">{item.rationale}</p>}
               </div>
             ))}
             {orphanGaps.map((gap) => (
               <div key={gap.id} className="text-sm">
                 <div className="flex items-center gap-2 text-xs mb-1">
-                  <span className="font-mono text-stone-400">{gap.id}</span>
+                  <span className="font-mono text-foreground-secondary">{gap.id}</span>
                   {gap.type && (
-                    <span className="rounded bg-amber-500/15 text-amber-300 px-1.5 py-0.5">{gap.type}</span>
+                    <span className="rounded bg-warning/15 text-warning px-1.5 py-0.5">{gap.type}</span>
                   )}
                 </div>
-                <p className="text-stone-300">{gap.detail}</p>
+                <p className="text-foreground-secondary">{gap.detail}</p>
                 {gap.proposed_action && (
-                  <p className="text-stone-500 text-xs mt-0.5">→ {gap.proposed_action}</p>
+                  <p className="text-muted-foreground text-xs mt-0.5">→ {gap.proposed_action}</p>
                 )}
               </div>
             ))}
@@ -1550,11 +1550,11 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Overall feedback */}
       {!readOnly && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
+          <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-2">
             Overall feedback
           </h2>
           <AutoTextarea
-            className="w-full rounded border bg-stone-900 px-3 py-2 text-sm text-stone-200 resize-none min-h-[3rem] border-stone-700 focus:border-stone-500 focus:outline-none transition-colors"
+            className="w-full rounded border bg-card px-3 py-2 text-sm text-foreground-secondary resize-none min-h-[3rem] border-input focus:border-muted-foreground focus:outline-none transition-colors"
             value={overallFeedback}
             onChange={(e) =>
               dispatch({ type: 'APPEND_OP', op: { op: 'set-overall-feedback', text: e.target.value } })
@@ -1566,10 +1566,10 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       )}
       {readOnly && review.response_json?.overall_feedback && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
+          <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-2">
             Overall feedback (submitted)
           </h2>
-          <p className="text-sm text-stone-400 italic">{review.response_json.overall_feedback}</p>
+          <p className="text-sm text-foreground-secondary italic">{review.response_json.overall_feedback}</p>
         </section>
       )}
 
@@ -1579,7 +1579,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
           <button
             type="button"
             onClick={() => setAuditOpen((o) => !o)}
-            className="flex items-center gap-2 text-sm text-stone-500 hover:text-stone-300 transition-colors"
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground-secondary transition-colors"
           >
             <svg
               className={['h-4 w-4 transition-transform', auditOpen ? 'rotate-90' : ''].join(' ')}
@@ -1598,9 +1598,9 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             {autonomousAudit.length === 1 ? '' : 's'})
           </button>
           {auditOpen && (
-            <ul className="mt-3 space-y-1.5 pl-4 border-l border-stone-800">
+            <ul className="mt-3 space-y-1.5 pl-4 border-l border-border">
               {autonomousAudit.map((entry, i) => (
-                <li key={i} className="text-sm text-stone-400">
+                <li key={i} className="text-sm text-foreground-secondary">
                   {entry}
                 </li>
               ))}
@@ -1611,7 +1611,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
 
       {/* Error */}
       {error && (
-        <p className="text-sm text-red-400 rounded border border-red-500/30 bg-red-500/10 px-3 py-2">
+        <p className="text-sm text-destructive rounded border border-destructive/30 bg-destructive/10 px-3 py-2">
           {error}
         </p>
       )}
@@ -1619,7 +1619,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       {/* Your decision — single decision zone, immediately above Submit */}
       {narrativeVerdictDecision && (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-3">
+          <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
             {readOnly ? 'Decision (submitted)' : 'Your decision'}
           </h2>
           <NarrativeVerdictControl
@@ -1633,12 +1633,12 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
 
       {/* Submit / resolved state */}
       {readOnly ? (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
-          <p className="text-sm text-emerald-300 font-medium">
+        <div className="rounded-lg border border-success/30 bg-success/10 px-4 py-3">
+          <p className="text-sm text-success font-medium">
             Review resolved — the loop will continue.
           </p>
           {review.resolved_at && (
-            <p className="text-xs text-emerald-500 mt-0.5">
+            <p className="text-xs text-success mt-0.5">
               Submitted {new Date(review.resolved_at).toLocaleString()}
             </p>
           )}
@@ -1646,7 +1646,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       ) : (
         <div className="flex flex-col items-end gap-1">
           {(frontierCount > 0 || belowBarCount > 0) && resolvedChoice('narrative-verdict') !== 'redraft' && (
-            <p className="text-[11px] text-amber-300/90 max-w-md text-right mb-1">
+            <p className="text-[11px] text-warning/90 max-w-md text-right mb-1">
               ⚠ {frontierCount > 0 && `${frontierCount} scene${frontierCount === 1 ? ' shows a new feature' : 's show new features'} (not built yet)`}
               {frontierCount > 0 && belowBarCount > 0 && '; '}
               {belowBarCount > 0 && `${belowBarCount} below the ≥4 actionability bar`}
@@ -1660,8 +1660,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             className={[
               'px-6 py-2 rounded font-medium text-sm transition-colors',
               !canSubmit
-                ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
-                : 'bg-orange-500 hover:bg-orange-400 text-white',
+                ? 'bg-input text-foreground-secondary cursor-not-allowed'
+                : 'bg-primary hover:bg-primary/90 text-white',
             ].join(' ')}
           >
             {busy
@@ -1670,7 +1670,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
                 ? 'Submit — send back to re-draft'
                 : 'Submit — approve & build'}
           </button>
-          <span className="text-[11px] text-stone-600">
+          <span className="text-[11px] text-muted-foreground">
             Commits your decision above (with any edits you made).
           </span>
         </div>
@@ -1724,15 +1724,15 @@ export function ReviewPage() {
 
   if (error && !review) {
     return withChrome(
-      <div className="max-w-4xl mx-auto p-6 text-red-500">
+      <div className="max-w-4xl mx-auto p-6 text-destructive">
         <p className="font-semibold">Error loading review</p>
-        <p className="text-sm mt-1 text-red-400">{error}</p>
+        <p className="text-sm mt-1 text-destructive">{error}</p>
       </div>,
     )
   }
 
   if (!review) {
-    return withChrome(<div className="max-w-4xl mx-auto p-6 text-stone-500">Loading…</div>)
+    return withChrome(<div className="max-w-4xl mx-auto p-6 text-muted-foreground">Loading…</div>)
   }
 
   const isResolved = review.status === 'resolved'

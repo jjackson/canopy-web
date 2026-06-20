@@ -57,11 +57,11 @@ export function WalkthroughViewerPage() {
 
   if (error) {
     return (
-      <div className="max-w-4xl mx-auto p-6 text-red-400/90">Error: {error}</div>
+      <div className="max-w-4xl mx-auto p-6 text-destructive/90">Error: {error}</div>
     )
   }
   if (!w) {
-    return <div className="max-w-4xl mx-auto p-6 text-stone-500">Loading…</div>
+    return <div className="max-w-4xl mx-auto p-6 text-muted-foreground">Loading…</div>
   }
 
   // Forward a `#scene-N` deep-link (e.g. /w/<id>#scene-3) into the deck
@@ -97,8 +97,8 @@ export function WalkthroughViewerPage() {
     <div className="max-w-5xl mx-auto p-6">
       <header className="mb-4 flex items-baseline justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-stone-100">{w.title}</h1>
-          <p className="text-sm text-stone-500">
+          <h1 className="text-2xl font-semibold text-foreground">{w.title}</h1>
+          <p className="text-sm text-muted-foreground">
             {w.kind === 'video' ? 'Video' : 'HTML slideshow'} · {w.owner_email}
             {w.project_slug ? ` · ${w.project_slug}` : ''}
           </p>
@@ -106,8 +106,8 @@ export function WalkthroughViewerPage() {
         <span
           className={`px-2 py-0.5 text-xs rounded border ${
             w.visibility === 'link'
-              ? 'text-emerald-400/90 bg-emerald-400/10 border-emerald-400/25'
-              : 'text-stone-400 bg-stone-800/60 border-stone-700'
+              ? 'text-success/90 bg-success/10 border-success/25'
+              : 'text-foreground-secondary bg-muted/60 border-input'
           }`}
         >
           {w.visibility === 'link' ? 'Public' : 'Private (dimagi)'}
@@ -117,14 +117,14 @@ export function WalkthroughViewerPage() {
       {w.is_owner && (
         <div className="mb-4 flex flex-wrap gap-2 text-sm">
           <button
-            className="px-3 py-1 rounded-lg border border-stone-800 bg-stone-900 text-stone-300 hover:bg-stone-800 hover:border-stone-700 transition-colors disabled:opacity-50"
+            className="px-3 py-1 rounded-lg border border-border bg-card text-foreground-secondary hover:bg-muted hover:border-input transition-colors disabled:opacity-50"
             onClick={toggleVisibility}
             disabled={busy}
           >
             {w.visibility === 'link' ? 'Make private' : 'Make public'}
           </button>
           <button
-            className="px-3 py-1 rounded-lg border border-red-500/30 text-red-400/90 bg-red-500/5 hover:bg-red-500/10 transition-colors disabled:opacity-50 ml-auto"
+            className="px-3 py-1 rounded-lg border border-destructive/30 text-destructive/90 bg-destructive/5 hover:bg-destructive/10 transition-colors disabled:opacity-50 ml-auto"
             onClick={destroy}
             disabled={busy}
           >
@@ -133,7 +133,7 @@ export function WalkthroughViewerPage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-stone-800 bg-black overflow-hidden">
+      <div className="rounded-xl border border-border bg-black overflow-hidden">
         {w.kind === 'video' ? (
           <video
             src={videoSrc}
@@ -158,8 +158,8 @@ export function WalkthroughViewerPage() {
       {(siblingLinks.length > 0 || referenceLinks.length > 0) && (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {siblingLinks.length > 0 && (
-            <section className="bg-stone-900 border border-stone-800 rounded-xl p-5">
-              <h2 className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-3">
+            <section className="bg-card border border-border rounded-xl p-5">
+              <h2 className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
                 This walkthrough
               </h2>
               <div className="flex flex-col gap-2">
@@ -169,17 +169,17 @@ export function WalkthroughViewerPage() {
                     href={l.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex items-center gap-3 bg-stone-950/40 hover:bg-stone-950/70 border border-stone-800 hover:border-stone-700 rounded-lg px-3 py-2 transition-colors"
+                    className="group flex items-center gap-3 bg-background/40 hover:bg-background/70 border border-border hover:border-input rounded-lg px-3 py-2 transition-colors"
                   >
                     <span aria-hidden className="shrink-0 text-sm">
                       {siblingIcon(l.kind)}
                     </span>
-                    <span className="text-xs text-stone-300 truncate flex-1">
+                    <span className="text-xs text-foreground-secondary truncate flex-1">
                       {l.label}
                     </span>
                     <span
                       aria-hidden
-                      className="text-[11px] text-stone-600 group-hover:text-orange-400 transition-colors shrink-0"
+                      className="text-[11px] text-muted-foreground group-hover:text-primary transition-colors shrink-0"
                     >
                       ↗
                     </span>
@@ -190,11 +190,11 @@ export function WalkthroughViewerPage() {
           )}
 
           {referenceLinks.length > 0 && (
-            <section className="bg-stone-900 border border-stone-800 rounded-xl p-5">
-              <h2 className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-1">
+            <section className="bg-card border border-border rounded-xl p-5">
+              <h2 className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
                 Explore in the app
               </h2>
-              <p className="text-xs text-stone-500 mb-3">
+              <p className="text-xs text-muted-foreground mb-3">
                 Destinations shown in this walkthrough — open them live.
               </p>
               <div className="flex flex-col gap-2">
@@ -204,14 +204,14 @@ export function WalkthroughViewerPage() {
                     href={l.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex items-center gap-3 bg-stone-950/40 hover:bg-stone-950/70 border border-stone-800 hover:border-stone-700 rounded-lg px-3 py-2 transition-colors"
+                    className="group flex items-center gap-3 bg-background/40 hover:bg-background/70 border border-border hover:border-input rounded-lg px-3 py-2 transition-colors"
                   >
-                    <span className="text-xs text-stone-300 truncate flex-1">
+                    <span className="text-xs text-foreground-secondary truncate flex-1">
                       {l.label}
                     </span>
                     <span
                       aria-hidden
-                      className="text-[11px] text-stone-600 group-hover:text-orange-400 transition-colors shrink-0"
+                      className="text-[11px] text-muted-foreground group-hover:text-primary transition-colors shrink-0"
                     >
                       ↗
                     </span>

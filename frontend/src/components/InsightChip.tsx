@@ -1,12 +1,12 @@
 import type { InsightCategory } from '@/api/insights'
 
 export const CATEGORY_STYLES: Record<string, { bg: string; border: string; text: string; label: string }> = {
-  ship_gap: { bg: 'bg-amber-400/5', border: 'border-amber-400/20', text: 'text-amber-400', label: 'Ship Gap' },
-  hygiene: { bg: 'bg-orange-400/5', border: 'border-orange-400/20', text: 'text-orange-400', label: 'Hygiene' },
-  pattern: { bg: 'bg-violet-400/5', border: 'border-violet-400/20', text: 'text-violet-400', label: 'Pattern' },
-  stale: { bg: 'bg-stone-400/5', border: 'border-stone-400/20', text: 'text-stone-500', label: 'Stale' },
-  opportunity: { bg: 'bg-emerald-400/5', border: 'border-emerald-400/20', text: 'text-emerald-400', label: 'Opportunity' },
-  alignment: { bg: 'bg-sky-400/5', border: 'border-sky-400/20', text: 'text-sky-400', label: 'Alignment' },
+  ship_gap: { bg: 'bg-warning/5', border: 'border-warning/20', text: 'text-warning', label: 'Ship Gap' },
+  hygiene: { bg: 'bg-primary/5', border: 'border-primary/20', text: 'text-primary', label: 'Hygiene' },
+  pattern: { bg: 'bg-special/5', border: 'border-special/20', text: 'text-special', label: 'Pattern' },
+  stale: { bg: 'bg-foreground-secondary/5', border: 'border-muted-foreground/20', text: 'text-muted-foreground', label: 'Stale' },
+  opportunity: { bg: 'bg-success/5', border: 'border-success/20', text: 'text-success', label: 'Opportunity' },
+  alignment: { bg: 'bg-info/5', border: 'border-info/20', text: 'text-info', label: 'Alignment' },
 }
 
 export function CategoryBadge({ category }: { category: InsightCategory | null }) {

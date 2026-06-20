@@ -18,16 +18,16 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
               <span
                 className={cn(
                   'mx-1 h-px w-5',
-                  isCompleted ? 'bg-orange-400/40' : 'bg-stone-800'
+                  isCompleted ? 'bg-primary/40' : 'bg-muted'
                 )}
               />
             )}
             <span
               className={cn(
                 'rounded px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold transition-colors',
-                isCurrent && 'bg-orange-400/10 border border-orange-400/30 text-orange-400',
-                isCompleted && 'text-stone-400 bg-stone-900 border border-stone-800',
-                !isCurrent && !isCompleted && 'text-stone-600'
+                isCurrent && 'bg-primary/10 border border-primary/30 text-primary',
+                isCompleted && 'text-foreground-secondary bg-card border border-border',
+                !isCurrent && !isCompleted && 'text-muted-foreground'
               )}
             >
               {label}

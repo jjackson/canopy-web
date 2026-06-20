@@ -79,7 +79,7 @@ function AiStatusBadge() {
     return (
       <Link
         to="/settings"
-        className="text-xs text-orange-400 bg-orange-400/10 border border-orange-400/20 px-2 py-1 rounded hover:bg-orange-400/20"
+        className="text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded hover:bg-primary/20"
       >
         AI: Not connected — click to set up
       </Link>
@@ -91,7 +91,7 @@ function AiStatusBadge() {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="text-xs text-orange-400 bg-orange-400/10 border border-orange-400/20 px-2 py-1 rounded hover:bg-orange-400/20 flex items-center gap-1"
+        className="text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded hover:bg-primary/20 flex items-center gap-1"
       >
         AI: {status.backend === 'cli' ? 'Claude CLI' : 'API'}
         <svg className={clsx('h-3 w-3 transition-transform', open && 'rotate-180')} viewBox="0 0 12 12" fill="none">
@@ -100,9 +100,9 @@ function AiStatusBadge() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-stone-700 bg-stone-900 shadow-lg z-50">
-          <div className="px-3 py-2 border-b border-stone-800">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">AI Backend</span>
+        <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-input bg-card shadow-lg z-50">
+          <div className="px-3 py-2 border-b border-border">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">AI Backend</span>
           </div>
           {BACKENDS.map((b) => {
             const isActive = status.backend === b.key
@@ -113,25 +113,25 @@ function AiStatusBadge() {
                 onClick={() => void handleSwitch(b.key)}
                 disabled={switching}
                 className={clsx(
-                  'flex w-full items-center justify-between px-3 py-2 text-left hover:bg-stone-800',
-                  isActive && 'bg-stone-800',
+                  'flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted',
+                  isActive && 'bg-muted',
                 )}
               >
                 <div>
-                  <div className="text-sm font-medium text-stone-100">{b.label}</div>
-                  <div className="text-[11px] text-stone-500">{b.description}</div>
+                  <div className="text-sm font-medium text-foreground">{b.label}</div>
+                  <div className="text-[11px] text-muted-foreground">{b.description}</div>
                 </div>
                 {isActive && (
-                  <span className="text-orange-400 text-xs font-medium">Active</span>
+                  <span className="text-primary text-xs font-medium">Active</span>
                 )}
               </button>
             )
           })}
-          <div className="border-t border-stone-800">
+          <div className="border-t border-border">
             <Link
               to="/settings"
               onClick={() => setOpen(false)}
-              className="block px-3 py-2 text-xs text-stone-500 hover:bg-stone-800 hover:text-stone-300"
+              className="block px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground-secondary"
             >
               Auth settings...
             </Link>
@@ -168,29 +168,29 @@ function UserChip() {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 rounded-full border border-stone-800 bg-stone-900 pl-1 pr-3 py-1 hover:bg-stone-800"
+        className="flex items-center gap-2 rounded-full border border-border bg-card pl-1 pr-3 py-1 hover:bg-muted"
       >
         {auth.user.avatar_url ? (
           <img src={auth.user.avatar_url} alt="" className="h-6 w-6 rounded-full" />
         ) : (
-          <span className="h-6 w-6 rounded-full bg-orange-500 text-white text-xs font-semibold flex items-center justify-center">
+          <span className="h-6 w-6 rounded-full bg-primary text-white text-xs font-semibold flex items-center justify-center">
             {initials}
           </span>
         )}
-        <span className="hidden sm:inline text-xs text-stone-300 max-w-[12rem] truncate">{auth.user.email}</span>
+        <span className="hidden sm:inline text-xs text-foreground-secondary max-w-[12rem] truncate">{auth.user.email}</span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-stone-700 bg-stone-900 shadow-lg z-50">
-          <div className="px-3 py-2 border-b border-stone-800 text-xs text-stone-400">
+        <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-input bg-card shadow-lg z-50">
+          <div className="px-3 py-2 border-b border-border text-xs text-foreground-secondary">
             Signed in as
-            <div className="text-stone-200 truncate">{auth.user.email}</div>
+            <div className="text-foreground-secondary truncate">{auth.user.email}</div>
           </div>
           <form method="post" action="/accounts/logout/">
             <input type="hidden" name="csrfmiddlewaretoken" value={decodeURIComponent(csrfToken)} />
             <button
               type="submit"
-              className="w-full text-left px-3 py-2 text-sm text-stone-200 hover:bg-stone-800"
+              className="w-full text-left px-3 py-2 text-sm text-foreground-secondary hover:bg-muted"
             >
               Sign out
             </button>
@@ -218,16 +218,16 @@ export function AppLayout() {
       'text-sm font-medium rounded transition-colors',
       block ? 'block px-3 py-2' : 'px-3 py-1.5',
       isActive
-        ? 'text-stone-100 bg-stone-900'
-        : 'text-stone-500 hover:text-stone-300 hover:bg-stone-900/50',
+        ? 'text-foreground bg-card'
+        : 'text-muted-foreground hover:text-foreground-secondary hover:bg-card/50',
     )
   }
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-200">
-      <header className="border-b border-stone-800 bg-stone-950 relative">
+    <div className="min-h-screen bg-background text-foreground-secondary">
+      <header className="border-b border-border bg-background relative">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
-          <Link to="/" className="text-lg font-semibold text-stone-100 shrink-0">Canopy<span className="text-orange-400">.</span></Link>
+          <Link to="/" className="text-lg font-semibold text-foreground shrink-0">Canopy<span className="text-primary">.</span></Link>
           <div className="flex items-center gap-3 xl:gap-6">
             {/* Full inline nav only once all items fit (~xl); below that it
                 overflows the viewport, so we collapse it into the menu below. */}
@@ -245,7 +245,7 @@ export function AppLayout() {
               onClick={() => setMobileOpen((o) => !o)}
               aria-label="Toggle navigation menu"
               aria-expanded={mobileOpen}
-              className="xl:hidden -mr-1 p-2 rounded text-stone-400 hover:text-stone-200 hover:bg-stone-900"
+              className="xl:hidden -mr-1 p-2 rounded text-foreground-secondary hover:text-foreground-secondary hover:bg-card"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 {mobileOpen ? (
@@ -272,9 +272,9 @@ export function AppLayout() {
               aria-hidden="true"
               tabIndex={-1}
               onClick={() => setMobileOpen(false)}
-              className="xl:hidden fixed inset-0 top-[53px] z-30 bg-stone-950/40 cursor-default"
+              className="xl:hidden fixed inset-0 top-[53px] z-30 bg-background/40 cursor-default"
             />
-            <nav className="xl:hidden absolute left-0 right-0 top-full z-40 border-b border-stone-800 bg-stone-950 px-3 py-2 shadow-lg flex flex-col gap-1 max-h-[calc(100vh-53px)] overflow-y-auto">
+            <nav className="xl:hidden absolute left-0 right-0 top-full z-40 border-b border-border bg-background px-3 py-2 shadow-lg flex flex-col gap-1 max-h-[calc(100vh-53px)] overflow-y-auto">
               {NAV_ITEMS.map((item) => (
                 <Link key={item.path} to={item.path} className={navLinkClass(item.path, true)}>
                   {item.label}

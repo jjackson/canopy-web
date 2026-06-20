@@ -105,11 +105,11 @@ function TrendIndicator({ trend }: { trend: Skill['eval_trend'] }) {
   if (!trend) return null
   switch (trend) {
     case 'improving':
-      return <span className="text-emerald-400 text-sm font-medium" title="Improving">▲</span>
+      return <span className="text-success text-sm font-medium" title="Improving">▲</span>
     case 'declining':
-      return <span className="text-red-400 text-sm font-medium" title="Declining">▼</span>
+      return <span className="text-destructive text-sm font-medium" title="Declining">▼</span>
     case 'stable':
-      return <span className="text-stone-600 text-sm font-medium" title="Stable">&mdash;</span>
+      return <span className="text-muted-foreground text-sm font-medium" title="Stable">&mdash;</span>
   }
 }
 
@@ -123,10 +123,10 @@ function ScoreHistoryBadges({ runs }: { runs: EvalRun[] }) {
           key={run.id}
           className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium border ${
             run.overall_score >= 0.7
-              ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/30'
+              ? 'bg-success/10 text-success border-success/30'
               : run.overall_score >= 0.4
-                ? 'bg-amber-400/10 text-amber-400 border-amber-400/30'
-                : 'bg-red-400/10 text-red-400 border-red-400/30'
+                ? 'bg-warning/10 text-warning border-warning/30'
+                : 'bg-destructive/10 text-destructive border-destructive/30'
           }`}
           title={formatDateTime(run.created_at)}
         >
@@ -215,34 +215,34 @@ function EvalCaseEditor({
         const isExpanded = expandedId === c.id
         const terms = c.expected_output?.contains ?? []
         return (
-          <div key={c.id} className="rounded-lg border border-stone-800 bg-stone-900 overflow-hidden">
+          <div key={c.id} className="rounded-lg border border-border bg-card overflow-hidden">
             <button
               type="button"
-              className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-stone-800/50 transition-colors"
+              className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/50 transition-colors"
               onClick={() => handleExpand(c)}
             >
-              <span className="text-sm font-medium text-stone-200">{c.name}</span>
+              <span className="text-sm font-medium text-foreground-secondary">{c.name}</span>
               <div className="flex items-center gap-1">
                 {terms.map((t) => (
                   <Badge key={t} variant="outline" className="text-[10px]">
                     {t}
                   </Badge>
                 ))}
-                <span className="ml-2 text-xs text-stone-600">{isExpanded ? '−' : '+'}</span>
+                <span className="ml-2 text-xs text-muted-foreground">{isExpanded ? '−' : '+'}</span>
               </div>
             </button>
             {isExpanded && (
-              <div className="border-t border-stone-800 px-3 py-3 space-y-2.5 bg-stone-950/50">
+              <div className="border-t border-border px-3 py-3 space-y-2.5 bg-background/50">
                 <div className="flex flex-wrap gap-1">
                   {terms.map((t) => (
                     <span
                       key={t}
-                      className="inline-flex items-center gap-1 rounded bg-stone-800 border border-stone-700 px-2 py-0.5 text-xs text-stone-300"
+                      className="inline-flex items-center gap-1 rounded bg-muted border border-input px-2 py-0.5 text-xs text-foreground-secondary"
                     >
                       {t}
                       <button
                         type="button"
-                        className="ml-0.5 text-stone-500 hover:text-red-400 transition-colors"
+                        className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors"
                         onClick={() => void handleRemoveTerm(c, t)}
                         disabled={saving}
                       >
@@ -311,13 +311,13 @@ function RunCaseTable({ cases }: { cases: CaseResult[] }) {
         {cases.map((r, i) => (
           <>
             <TableRow key={i} className="group">
-              <TableCell className="text-sm text-stone-200">{r.case_name}</TableCell>
+              <TableCell className="text-sm text-foreground-secondary">{r.case_name}</TableCell>
               <TableCell className="text-right">
                 <span
                   className={
                     r.passed
-                      ? 'text-[10px] font-semibold uppercase tracking-wider text-emerald-400 bg-emerald-400/10 border border-emerald-400/30 rounded px-1.5 py-0.5'
-                      : 'text-[10px] font-semibold uppercase tracking-wider text-red-400 bg-red-400/10 border border-red-400/30 rounded px-1.5 py-0.5'
+                      ? 'text-[10px] font-semibold uppercase tracking-wider text-success bg-success/10 border border-success/30 rounded px-1.5 py-0.5'
+                      : 'text-[10px] font-semibold uppercase tracking-wider text-destructive bg-destructive/10 border border-destructive/30 rounded px-1.5 py-0.5'
                   }
                 >
                   {r.passed ? 'PASS' : 'FAIL'}
@@ -325,11 +325,11 @@ function RunCaseTable({ cases }: { cases: CaseResult[] }) {
               </TableCell>
               <TableCell className="max-w-xs text-xs">
                 {r.passed ? (
-                  <span className="text-emerald-400/80">
+                  <span className="text-success/80">
                     {r.reasons.length > 0 ? r.reasons.join('; ') : 'All checks passed'}
                   </span>
                 ) : (
-                  <span className="text-red-400/80">
+                  <span className="text-destructive/80">
                     {r.reasons.length > 0 ? r.reasons.join('; ') : 'Failed'}
                   </span>
                 )}
@@ -338,7 +338,7 @@ function RunCaseTable({ cases }: { cases: CaseResult[] }) {
                 {r.output_preview && (
                   <button
                     type="button"
-                    className="text-xs text-stone-600 hover:text-stone-300 transition-colors"
+                    className="text-xs text-muted-foreground hover:text-foreground-secondary transition-colors"
                     onClick={() => setExpandedCase(expandedCase === i ? null : i)}
                     title="Toggle output preview"
                   >
@@ -349,8 +349,8 @@ function RunCaseTable({ cases }: { cases: CaseResult[] }) {
             </TableRow>
             {expandedCase === i && r.output_preview && (
               <TableRow key={`${i}-preview`}>
-                <TableCell colSpan={4} className="bg-stone-950">
-                  <pre className="max-h-32 overflow-auto text-xs text-stone-400 whitespace-pre-wrap font-mono border-l-2 border-orange-400/50 pl-3">
+                <TableCell colSpan={4} className="bg-background">
+                  <pre className="max-h-32 overflow-auto text-xs text-foreground-secondary whitespace-pre-wrap font-mono border-l-2 border-primary/50 pl-3">
                     {r.output_preview}
                   </pre>
                 </TableCell>
@@ -509,7 +509,7 @@ export function SkillDetailPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-400">
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
         {error}
       </div>
     )
@@ -523,9 +523,9 @@ export function SkillDetailPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="rounded-xl border border-stone-800 bg-stone-900 p-5">
+      <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-lg font-semibold text-stone-100">{skill.name}</h1>
+          <h1 className="text-lg font-semibold text-foreground">{skill.name}</h1>
           <Button
             size="sm"
             variant="outline"
@@ -545,22 +545,22 @@ export function SkillDetailPage() {
           )}
           <ScoreHistoryBadges runs={evalRuns} />
         </div>
-        <p className="mt-2 text-sm text-stone-400 leading-relaxed">{skill.description}</p>
+        <p className="mt-2 text-sm text-foreground-secondary leading-relaxed">{skill.description}</p>
       </div>
 
       {/* Steps */}
       {skill.definition?.steps && skill.definition.steps.length > 0 && (
         <section>
-          <h2 className="text-[10px] uppercase tracking-wider font-semibold text-stone-500 mb-3">Steps</h2>
+          <h2 className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-3">Steps</h2>
           <ol className="space-y-2.5">
             {skill.definition.steps.map((step, i) => (
-              <li key={i} className="flex gap-3 rounded-lg border border-stone-800 bg-stone-900 p-3 hover:border-stone-700 transition-colors">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-stone-800 border border-stone-700 text-[11px] font-semibold text-stone-400">
+              <li key={i} className="flex gap-3 rounded-lg border border-border bg-card p-3 hover:border-input transition-colors">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted border border-input text-[11px] font-semibold text-foreground-secondary">
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-stone-100">{step.name}</p>
-                  <p className="mt-0.5 text-sm text-stone-400 leading-relaxed">{step.description}</p>
+                  <p className="text-sm font-medium text-foreground">{step.name}</p>
+                  <p className="mt-0.5 text-sm text-foreground-secondary leading-relaxed">{step.description}</p>
                   {step.tools && step.tools.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {step.tools.map((tool) => (
@@ -580,7 +580,7 @@ export function SkillDetailPage() {
       {/* Eval Section */}
       <section>
         <div className="flex items-center justify-between">
-          <h2 className="text-[10px] uppercase tracking-wider font-semibold text-stone-500">Eval Suite</h2>
+          <h2 className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Eval Suite</h2>
           <Button
             size="sm"
             variant="default"
@@ -593,9 +593,9 @@ export function SkillDetailPage() {
 
         {evalSuite ? (
           <>
-            <div className="mt-2 flex gap-3 text-xs text-stone-500">
+            <div className="mt-2 flex gap-3 text-xs text-muted-foreground">
               <span>{evalSuite.cases.length} cases</span>
-              <span className="text-stone-700">·</span>
+              <span className="text-foreground-subtle">·</span>
               <span>{evalSuite.runs_count} runs</span>
             </div>
 
@@ -609,42 +609,42 @@ export function SkillDetailPage() {
             )}
           </>
         ) : (
-          <p className="mt-2 text-sm text-stone-500">No eval suite configured.</p>
+          <p className="mt-2 text-sm text-muted-foreground">No eval suite configured.</p>
         )}
 
         {/* Latest run — expanded */}
         {latestRun && (
           <div className="mt-6 space-y-3">
-            <h3 className="text-[10px] uppercase tracking-wider font-semibold text-stone-500">Recent Runs</h3>
+            <h3 className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Recent Runs</h3>
 
-            <div className="rounded-lg border border-stone-800 bg-stone-900 overflow-hidden">
+            <div className="rounded-lg border border-border bg-card overflow-hidden">
               <button
                 type="button"
-                className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-stone-800/50 transition-colors"
+                className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-muted/50 transition-colors"
                 onClick={() => toggleRunExpanded(latestRun.id)}
               >
                 <div className="flex items-center gap-2">
                   <Badge variant={latestRun.overall_score >= 0.7 ? 'default' : 'secondary'}>
                     {scorePercent(latestRun.overall_score)}
                   </Badge>
-                  <span className="text-xs text-stone-500">
+                  <span className="text-xs text-muted-foreground">
                     {formatDateTime(latestRun.created_at)}
                   </span>
                   {latestRun.runtime != null && (
-                    <span className="text-xs text-stone-600 font-mono">
+                    <span className="text-xs text-muted-foreground font-mono">
                       {latestRun.runtime}
                     </span>
                   )}
                   <Badge variant="outline" className="text-[10px]">latest</Badge>
                 </div>
-                <span className="text-xs text-stone-600">
+                <span className="text-xs text-muted-foreground">
                   {expandedRuns.has(latestRun.id) ? '−' : '+'}
                 </span>
               </button>
               {expandedRuns.has(latestRun.id) &&
                 latestRun.results?.cases &&
                 latestRun.results.cases.length > 0 && (
-                  <div className="border-t border-stone-800 p-3 bg-stone-950/50">
+                  <div className="border-t border-border p-3 bg-background/50">
                     <RunCaseTable cases={latestRun.results.cases} />
                   </div>
                 )}
@@ -652,33 +652,33 @@ export function SkillDetailPage() {
 
             {/* Older runs — collapsed by default */}
             {olderRuns.map((run) => (
-              <div key={run.id} className="rounded-lg border border-stone-800 bg-stone-900 overflow-hidden">
+              <div key={run.id} className="rounded-lg border border-border bg-card overflow-hidden">
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-stone-800/50 transition-colors"
+                  className="flex w-full items-center justify-between px-3 py-2.5 hover:bg-muted/50 transition-colors"
                   onClick={() => toggleRunExpanded(run.id)}
                 >
                   <div className="flex items-center gap-2">
                     <Badge variant={run.overall_score >= 0.7 ? 'default' : 'secondary'}>
                       {scorePercent(run.overall_score)}
                     </Badge>
-                    <span className="text-xs text-stone-500">
+                    <span className="text-xs text-muted-foreground">
                       {formatDate(run.created_at)}
                     </span>
                     {run.runtime != null && (
-                      <span className="text-xs text-stone-600 font-mono">
+                      <span className="text-xs text-muted-foreground font-mono">
                         {run.runtime}
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-stone-600">
+                  <span className="text-xs text-muted-foreground">
                     {expandedRuns.has(run.id) ? '−' : '+'}
                   </span>
                 </button>
                 {expandedRuns.has(run.id) &&
                   run.results?.cases &&
                   run.results.cases.length > 0 && (
-                    <div className="border-t border-stone-800 p-3 bg-stone-950/50">
+                    <div className="border-t border-border p-3 bg-background/50">
                       <RunCaseTable cases={run.results.cases} />
                     </div>
                   )}
@@ -688,7 +688,7 @@ export function SkillDetailPage() {
         )}
 
         {evalRuns.length === 0 && (
-          <p className="mt-4 text-sm text-stone-500">
+          <p className="mt-4 text-sm text-muted-foreground">
             No eval runs yet. Click &ldquo;Run Eval&rdquo; to get started.
           </p>
         )}
@@ -696,7 +696,7 @@ export function SkillDetailPage() {
 
       {/* Runtime Adapters */}
       <section>
-        <h2 className="text-[10px] uppercase tracking-wider font-semibold text-stone-500 mb-3">Runtime Adapters</h2>
+        <h2 className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-3">Runtime Adapters</h2>
         <div className="flex gap-2 flex-wrap">
           {RUNTIMES.map((rt) => (
             <Button
@@ -711,7 +711,7 @@ export function SkillDetailPage() {
           ))}
         </div>
         {adapterOutput && (
-          <pre className="mt-3 max-h-64 overflow-auto rounded-lg border border-stone-800 bg-stone-950 p-3 text-xs text-stone-300 font-mono leading-relaxed">
+          <pre className="mt-3 max-h-64 overflow-auto rounded-lg border border-border bg-background p-3 text-xs text-foreground-secondary font-mono leading-relaxed">
             {adapterOutput}
           </pre>
         )}

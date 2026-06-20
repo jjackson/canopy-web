@@ -17,7 +17,7 @@ import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
 // FYI with no gate (notify).
 const BANDS: { type: NeedsYouType; label: string; blurb: string; dot: string }[] = [
   { type: 'review', label: 'Review', blurb: 'Suggestions awaiting your validate / decline', dot: 'bg-muted-foreground' },
-  { type: 'question', label: 'Question', blurb: 'Echo is blocked and needs a decision', dot: 'bg-amber-400' },
+  { type: 'question', label: 'Question', blurb: 'Echo is blocked and needs a decision', dot: 'bg-warning' },
   { type: 'notify', label: 'Notify', blurb: 'Recent work — no action needed', dot: 'bg-primary/50' },
 ]
 

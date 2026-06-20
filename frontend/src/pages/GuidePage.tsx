@@ -105,8 +105,8 @@ function SectionNav({
           onClick={() => onSelect(s.id)}
           className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-left text-sm transition-colors md:shrink ${
             active === s.id
-              ? 'bg-orange-400/10 border border-orange-400/30 text-orange-400 font-medium'
-              : 'border border-transparent text-stone-500 hover:text-stone-200 hover:bg-stone-900'
+              ? 'bg-primary/10 border border-primary/30 text-primary font-medium'
+              : 'border border-transparent text-muted-foreground hover:text-foreground-secondary hover:bg-card'
           }`}
         >
           {s.label}
@@ -135,18 +135,18 @@ function CopyBlock({
   }
 
   return (
-    <div className="rounded-lg border border-stone-800 bg-stone-950 overflow-hidden">
-      <div className="flex items-center justify-between border-b border-stone-800 bg-stone-900 px-3 py-1.5">
-        <span className="text-[10px] uppercase tracking-wider font-semibold text-stone-500">{title}</span>
+    <div className="rounded-lg border border-border bg-background overflow-hidden">
+      <div className="flex items-center justify-between border-b border-border bg-card px-3 py-1.5">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{title}</span>
         <button
           type="button"
           onClick={handleCopy}
-          className="text-xs text-orange-400/70 hover:text-orange-400 font-medium transition-colors"
+          className="text-xs text-primary/70 hover:text-primary font-medium transition-colors"
         >
           {copied ? 'Copied' : label || 'Copy'}
         </button>
       </div>
-      <pre className="p-3 text-xs text-stone-300 font-mono overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto leading-relaxed">
+      <pre className="p-3 text-xs text-foreground-secondary font-mono overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto leading-relaxed">
         {children}
       </pre>
     </div>
@@ -155,13 +155,13 @@ function CopyBlock({
 
 function CodeBlock({ children, title }: { children: string; title?: string }) {
   return (
-    <div className="rounded-lg border border-stone-800 bg-stone-950 overflow-hidden">
+    <div className="rounded-lg border border-border bg-background overflow-hidden">
       {title && (
-        <div className="border-b border-stone-800 bg-stone-900 px-3 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-stone-500">
+        <div className="border-b border-border bg-card px-3 py-1.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
           {title}
         </div>
       )}
-      <pre className="p-3 text-xs text-stone-300 font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
+      <pre className="p-3 text-xs text-foreground-secondary font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
         {children}
       </pre>
     </div>
@@ -179,12 +179,12 @@ function StepBox({
 }) {
   return (
     <div className="flex gap-4">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-400/10 border border-orange-400/30 text-xs font-bold text-orange-400">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 border border-primary/30 text-xs font-bold text-primary">
         {number}
       </div>
       <div className="min-w-0 flex-1 space-y-2">
-        <h4 className="text-sm font-semibold text-stone-100">{title}</h4>
-        <div className="text-sm text-stone-400 space-y-2 leading-relaxed">{children}</div>
+        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+        <div className="text-sm text-foreground-secondary space-y-2 leading-relaxed">{children}</div>
       </div>
     </div>
   )
@@ -200,16 +200,16 @@ function DeployTarget({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-xl border border-stone-800 bg-stone-900 p-4 space-y-3 hover:border-stone-700 transition-colors">
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3 hover:border-input transition-colors">
       <div className="flex items-center gap-2 flex-wrap">
-        <h4 className="text-sm font-semibold text-stone-100">{title}</h4>
+        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
         {badges?.map((b) => (
           <Badge key={b} variant="outline" className="text-[10px]">
             {b}
           </Badge>
         ))}
       </div>
-      <div className="text-sm text-stone-400 space-y-2 leading-relaxed">{children}</div>
+      <div className="text-sm text-foreground-secondary space-y-2 leading-relaxed">{children}</div>
     </div>
   )
 }
@@ -222,17 +222,17 @@ function TryItSection() {
   return (
     <section className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-stone-100">Build Your First Skill</h2>
-        <p className="mt-1 text-sm text-stone-500">
+        <h2 className="text-base font-semibold text-foreground">Build Your First Skill</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           Walk through the full flow using real internal conversations. The AI
           will extract the team's process into a reusable skill. Takes about 3
           minutes.
         </p>
       </div>
 
-      <div className="rounded-xl border border-stone-800 bg-stone-900 p-4 space-y-2">
-        <h3 className="text-sm font-semibold text-stone-100">The scenario</h3>
-        <p className="text-sm text-stone-400">
+      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-foreground">The scenario</h3>
+        <p className="text-sm text-foreground-secondary">
           Beth recently walked Priya through how she writes discovery call
           debriefs. Neal followed up with a review of what makes debriefs good vs
           weak. This tribal knowledge lives in two Slack threads — exactly the
@@ -245,22 +245,22 @@ function TryItSection() {
         <StepBox number={1} title="Start a new skill">
           <p>
             Click{' '}
-            <Link to="/new" className="text-orange-400 hover:text-orange-300 underline font-medium">
+            <Link to="/new" className="text-primary hover:text-primary underline font-medium">
               New
             </Link>{' '}
             to open the skill builder. Use these values:
           </p>
           <div className="grid grid-cols-[100px_1fr] gap-x-3 gap-y-1 mt-2 text-xs">
-            <span className="font-medium text-stone-200">Name</span>
+            <span className="font-medium text-foreground-secondary">Name</span>
             <CopyBlock title="Collection name" label="Copy name">
               {SAMPLE_COLLECTION_NAME}
             </CopyBlock>
-            <span className="font-medium text-stone-200">Description</span>
+            <span className="font-medium text-foreground-secondary">Description</span>
             <CopyBlock title="Description" label="Copy description">
               {SAMPLE_COLLECTION_DESC}
             </CopyBlock>
           </div>
-          <p className="text-xs text-stone-500 mt-2">Click <strong>Next</strong> to create the collection.</p>
+          <p className="text-xs text-muted-foreground mt-2">Click <strong>Next</strong> to create the collection.</p>
         </StepBox>
 
         <StepBox number={2} title="Add Beth's walkthrough">
@@ -272,16 +272,16 @@ function TryItSection() {
           </p>
           <div className="space-y-2 mt-2">
             <div className="grid grid-cols-[80px_1fr] gap-2 text-xs items-center">
-              <span className="font-medium text-stone-200">Type</span>
-              <span className="text-stone-400">Slack</span>
-              <span className="font-medium text-stone-200">Title</span>
-              <span className="text-stone-400">Beth walks Priya through debrief process</span>
+              <span className="font-medium text-foreground-secondary">Type</span>
+              <span className="text-foreground-secondary">Slack</span>
+              <span className="font-medium text-foreground-secondary">Title</span>
+              <span className="text-foreground-secondary">Beth walks Priya through debrief process</span>
             </div>
             <CopyBlock title="Source content — paste this into the Content field" label="Copy conversation">
               {SAMPLE_SOURCE_1}
             </CopyBlock>
           </div>
-          <p className="text-xs text-stone-500 mt-1">Click <strong>Add</strong>, then add the second source below.</p>
+          <p className="text-xs text-muted-foreground mt-1">Click <strong>Add</strong>, then add the second source below.</p>
         </StepBox>
 
         <StepBox number={3} title="Add Neal's quality review">
@@ -293,16 +293,16 @@ function TryItSection() {
           </p>
           <div className="space-y-2 mt-2">
             <div className="grid grid-cols-[80px_1fr] gap-2 text-xs items-center">
-              <span className="font-medium text-stone-200">Type</span>
-              <span className="text-stone-400">Slack</span>
-              <span className="font-medium text-stone-200">Title</span>
-              <span className="text-stone-400">Neal's debrief quality review</span>
+              <span className="font-medium text-foreground-secondary">Type</span>
+              <span className="text-foreground-secondary">Slack</span>
+              <span className="font-medium text-foreground-secondary">Title</span>
+              <span className="text-foreground-secondary">Neal's debrief quality review</span>
             </div>
             <CopyBlock title="Source content — paste this into the Content field" label="Copy conversation">
               {SAMPLE_SOURCE_2}
             </CopyBlock>
           </div>
-          <p className="text-xs text-stone-500 mt-1">Click <strong>Add</strong> to add this source.</p>
+          <p className="text-xs text-muted-foreground mt-1">Click <strong>Add</strong> to add this source.</p>
         </StepBox>
 
         <StepBox number={4} title="Run the analysis">
@@ -320,7 +320,7 @@ function TryItSection() {
             The workspace shows the proposed skill on the right and your source
             conversations on the left. Look for:
           </p>
-          <ul className="space-y-1 text-xs text-stone-400 mt-1">
+          <ul className="space-y-1 text-xs text-foreground-secondary mt-1">
             <li>-- Did it capture Beth's 8 debrief sections as structured steps?</li>
             <li>-- Does it include Neal's quality criteria (specificity, quotes, honest qualification)?</li>
             <li>-- Is the "aha moment" concept reflected in the skill?</li>
@@ -341,16 +341,16 @@ function TryItSection() {
         </StepBox>
       </div>
 
-      <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/5 p-4 space-y-2">
-        <h3 className="text-sm font-semibold text-emerald-400">What you just built</h3>
-        <p className="text-sm text-stone-300 leading-relaxed">
+      <div className="rounded-xl border border-success/30 bg-success/5 p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-success">What you just built</h3>
+        <p className="text-sm text-foreground-secondary leading-relaxed">
           Beth's debrief process and Neal's quality bar — captured from two Slack
           threads and turned into a reusable skill. Now any team member can
           produce a debrief that meets the standard Beth and Neal established,
           without having to find those old conversations or ask someone to walk
           them through it again.
         </p>
-        <p className="text-sm text-stone-300 leading-relaxed">
+        <p className="text-sm text-foreground-secondary leading-relaxed">
           That's the core idea: tribal knowledge that lives in conversations
           becomes a tested, deployable skill that works everywhere the team
           works.
@@ -363,65 +363,65 @@ function TryItSection() {
 function OverviewSection() {
   return (
     <section className="space-y-4">
-      <h2 className="text-base font-semibold text-stone-100">How It Works</h2>
-      <p className="text-sm text-stone-400 leading-relaxed">
+      <h2 className="text-base font-semibold text-foreground">How It Works</h2>
+      <p className="text-sm text-foreground-secondary leading-relaxed">
         Canopy turns conversations, transcripts, and documents into
-        <strong className="text-stone-200"> reusable AI skills</strong> — structured instructions that any AI
+        <strong className="text-foreground-secondary"> reusable AI skills</strong> — structured instructions that any AI
         agent can follow consistently. Instead of repeating yourself across
         conversations, capture the pattern once and deploy it everywhere.
       </p>
 
-      <div className="rounded-xl border border-stone-800 bg-stone-900 p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-stone-100">The flow</h3>
-        <ol className="space-y-2 text-sm text-stone-400">
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">The flow</h3>
+        <ol className="space-y-2 text-sm text-foreground-secondary">
           <li className="flex gap-2">
-            <span className="shrink-0 font-mono text-stone-600">1.</span>
+            <span className="shrink-0 font-mono text-muted-foreground">1.</span>
             <span><strong>Paste sources</strong> — conversations, docs, Slack threads, transcripts</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 font-mono text-stone-600">2.</span>
+            <span className="shrink-0 font-mono text-muted-foreground">2.</span>
             <span><strong>AI analyzes</strong> — extracts the repeatable pattern and proposes a skill with eval cases</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 font-mono text-stone-600">3.</span>
+            <span className="shrink-0 font-mono text-muted-foreground">3.</span>
             <span><strong>Review & edit</strong> — refine the steps, adjust eval criteria</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 font-mono text-stone-600">4.</span>
+            <span className="shrink-0 font-mono text-muted-foreground">4.</span>
             <span><strong>Test</strong> — run evals to verify quality</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 font-mono text-stone-600">5.</span>
+            <span className="shrink-0 font-mono text-muted-foreground">5.</span>
             <span><strong>Deploy</strong> — export to Claude Code, Desktop, GitHub, or OpenClaw</span>
           </li>
         </ol>
       </div>
 
-      <div className="rounded-xl border border-stone-800 bg-stone-900 p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-stone-100">What makes a good source?</h3>
-        <p className="text-sm text-stone-400">
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">What makes a good source?</h3>
+        <p className="text-sm text-foreground-secondary">
           Any conversation or document where someone did something well that others
           should be able to repeat:
         </p>
         <div className="grid grid-cols-2 gap-2 mt-1">
-          <div className="rounded-lg border border-stone-800 bg-stone-950 px-3 py-2">
-            <div className="text-xs font-medium text-stone-200">Transcript</div>
-            <div className="text-xs text-stone-500">Call recordings, meeting notes</div>
+          <div className="rounded-lg border border-border bg-background px-3 py-2">
+            <div className="text-xs font-medium text-foreground-secondary">Transcript</div>
+            <div className="text-xs text-muted-foreground">Call recordings, meeting notes</div>
           </div>
-          <div className="rounded-lg border border-stone-800 bg-stone-950 px-3 py-2">
-            <div className="text-xs font-medium text-stone-200">Slack</div>
-            <div className="text-xs text-stone-500">Channel threads, DM conversations</div>
+          <div className="rounded-lg border border-border bg-background px-3 py-2">
+            <div className="text-xs font-medium text-foreground-secondary">Slack</div>
+            <div className="text-xs text-muted-foreground">Channel threads, DM conversations</div>
           </div>
-          <div className="rounded-lg border border-stone-800 bg-stone-950 px-3 py-2">
-            <div className="text-xs font-medium text-stone-200">Document</div>
-            <div className="text-xs text-stone-500">Runbooks, SOPs, wiki pages</div>
+          <div className="rounded-lg border border-border bg-background px-3 py-2">
+            <div className="text-xs font-medium text-foreground-secondary">Document</div>
+            <div className="text-xs text-muted-foreground">Runbooks, SOPs, wiki pages</div>
           </div>
-          <div className="rounded-lg border border-stone-800 bg-stone-950 px-3 py-2">
-            <div className="text-xs font-medium text-stone-200">Text</div>
-            <div className="text-xs text-stone-500">Notes, freeform instructions</div>
+          <div className="rounded-lg border border-border bg-background px-3 py-2">
+            <div className="text-xs font-medium text-foreground-secondary">Text</div>
+            <div className="text-xs text-muted-foreground">Notes, freeform instructions</div>
           </div>
         </div>
-        <p className="text-xs text-stone-500 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           Tip: Multiple sources work better — the AI cross-references them to
           find the consistent pattern.
         </p>
@@ -434,15 +434,15 @@ function WorkspaceSection() {
   return (
     <section className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-stone-100">Review & Edit</h2>
-        <p className="mt-1 text-sm text-stone-500">
+        <h2 className="text-base font-semibold text-foreground">Review & Edit</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           The workspace is where you co-author the skill with the AI.
         </p>
       </div>
 
-      <div className="rounded-xl border border-stone-800 bg-stone-900 p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-stone-100">Workspace layout</h3>
-        <div className="text-sm text-stone-400 space-y-2">
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">Workspace layout</h3>
+        <div className="text-sm text-foreground-secondary space-y-2">
           <p>
             <strong>Left panel — Sources.</strong> Your original source material
             for reference while editing.
@@ -460,33 +460,33 @@ function WorkspaceSection() {
       </div>
 
       <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-stone-100">What to look for</h3>
-        <ul className="space-y-2 text-sm text-stone-400">
+        <h3 className="text-sm font-semibold text-foreground">What to look for</h3>
+        <ul className="space-y-2 text-sm text-foreground-secondary">
           <li className="flex gap-2">
-            <span className="shrink-0 text-stone-600">--</span>
+            <span className="shrink-0 text-muted-foreground">--</span>
             <span>Are the steps in the right order? Do they cover the full workflow?</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 text-stone-600">--</span>
+            <span className="shrink-0 text-muted-foreground">--</span>
             <span>Is each step description clear enough for an AI to follow without ambiguity?</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 text-stone-600">--</span>
+            <span className="shrink-0 text-muted-foreground">--</span>
             <span>Are the eval cases testing the right things? Add cases for edge cases you care about.</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 text-stone-600">--</span>
+            <span className="shrink-0 text-muted-foreground">--</span>
             <span>Does the skill name clearly describe what it does? Good names help discovery.</span>
           </li>
         </ul>
       </div>
 
-      <div className="rounded-xl border border-stone-800 bg-stone-900 p-4 space-y-2">
-        <h3 className="text-sm font-semibold text-stone-100">Publishing</h3>
-        <p className="text-sm text-stone-400">
+      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-foreground">Publishing</h3>
+        <p className="text-sm text-foreground-secondary">
           When you're satisfied, click <strong>Publish</strong>. The skill
           appears on the{' '}
-          <Link to="/" className="underline font-medium text-stone-200">
+          <Link to="/" className="underline font-medium text-foreground-secondary">
             Skills
           </Link>{' '}
           page and is ready to deploy. You can always <strong>Revise</strong> a
@@ -501,8 +501,8 @@ function EvalSection() {
   return (
     <section className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-stone-100">Test with Evals</h2>
-        <p className="mt-1 text-sm text-stone-500">
+        <h2 className="text-base font-semibold text-foreground">Test with Evals</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           Evals verify your skill produces the right output. Run them before
           deploying and after every revision.
         </p>
@@ -535,7 +535,7 @@ function EvalSection() {
         </StepBox>
       </div>
 
-      <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200">
+      <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
         <strong>Tip:</strong> Add eval cases for edge cases and failure modes, not
         just the happy path. A skill that handles "I don't have enough information"
         gracefully is more valuable than one that only works on perfect inputs.
@@ -548,8 +548,8 @@ function DeploySection() {
   return (
     <section className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-stone-100">Deploy Your Skill</h2>
-        <p className="mt-1 text-sm text-stone-500">
+        <h2 className="text-base font-semibold text-foreground">Deploy Your Skill</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           Once published and tested, deploy your skill to any of these targets.
           On the skill detail page, use the <strong>Runtime Adapters</strong>{' '}
           section to generate the right format.
@@ -565,7 +565,7 @@ function DeploySection() {
             Deploy as a slash-command skill in Claude Code. Generated as a
             markdown file that Claude Code loads automatically.
           </p>
-          <ol className="space-y-1 text-xs text-stone-400">
+          <ol className="space-y-1 text-xs text-foreground-secondary">
             <li>1. On the skill detail page, click <strong>Claude Code Skill</strong></li>
             <li>2. Copy the generated output</li>
             <li>3. Save it to your project's skill directory:</li>
@@ -578,9 +578,9 @@ mkdir -p .claude/skills
 # Paste the output into this file:
 .claude/skills/your-skill-name.md`}
           </CodeBlock>
-          <p className="text-xs text-stone-500">
+          <p className="text-xs text-muted-foreground">
             The skill is now available as a slash command in Claude Code.
-            Type <code className="rounded bg-stone-800 border border-stone-700 px-1 py-0.5 text-stone-300">/your-skill-name</code> in
+            Type <code className="rounded bg-muted border border-input px-1 py-0.5 text-foreground-secondary">/your-skill-name</code> in
             any Claude Code session to use it.
           </p>
         </DeployTarget>
@@ -593,13 +593,13 @@ mkdir -p .claude/skills
             Use the same Claude Code Skill adapter output. Claude Desktop
             supports project-level skills when Claude Code is installed.
           </p>
-          <ol className="space-y-1 text-xs text-stone-400">
+          <ol className="space-y-1 text-xs text-foreground-secondary">
             <li>1. Generate the <strong>Claude Code Skill</strong> adapter</li>
-            <li>2. In your project folder, save it to <code className="rounded bg-stone-800 border border-stone-700 px-1 py-0.5 text-stone-300">.claude/skills/your-skill-name.md</code></li>
+            <li>2. In your project folder, save it to <code className="rounded bg-muted border border-input px-1 py-0.5 text-foreground-secondary">.claude/skills/your-skill-name.md</code></li>
             <li>3. Open the project folder in Claude Desktop</li>
             <li>4. The skill appears as a slash command in the chat</li>
           </ol>
-          <div className="rounded-lg border border-orange-400/30 bg-orange-400/10 p-2 text-xs text-orange-300">
+          <div className="rounded-lg border border-primary/30 bg-primary/10 p-2 text-xs text-primary">
             Claude Desktop reads the same <code>.claude/skills/</code> directory
             as the CLI. One skill file works in both.
           </div>
@@ -623,7 +623,7 @@ git push
 # Team members get the skill on next pull
 # Works with Claude Code CLI + Desktop App automatically`}
           </CodeBlock>
-          <p className="text-xs text-stone-500">
+          <p className="text-xs text-muted-foreground">
             Skills committed to a repo are available to anyone who clones it
             and uses Claude Code. No extra setup required.
           </p>
@@ -638,7 +638,7 @@ git push
             generates a system prompt with ordered steps that an autonomous
             agent executes without human intervention.
           </p>
-          <ol className="space-y-1 text-xs text-stone-400">
+          <ol className="space-y-1 text-xs text-foreground-secondary">
             <li>1. On the skill detail page, click <strong>Open Claw Prompt</strong></li>
             <li>2. Copy the generated system prompt</li>
             <li>3. Use it in your OpenClaw configuration:</li>
@@ -666,46 +666,46 @@ claude --system-prompt "$(cat skill-prompt.txt)" --allowedTools "..." \\
             generates a JSON definition with UI steps, inputs, and outputs
             that can drive a guided workflow UI.
           </p>
-          <ol className="space-y-1 text-xs text-stone-400">
+          <ol className="space-y-1 text-xs text-foreground-secondary">
             <li>1. On the skill detail page, click <strong>Web Workflow</strong></li>
             <li>2. Copy the JSON output</li>
             <li>3. Integrate it into your web application's workflow engine</li>
           </ol>
-          <p className="text-xs text-stone-500">
+          <p className="text-xs text-muted-foreground">
             Best for teams building custom AI-powered tools that need structured,
             step-by-step interactions.
           </p>
         </DeployTarget>
       </div>
 
-      <div className="rounded-xl border border-stone-800 bg-stone-900 p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-stone-100">Quick reference: which adapter to use</h3>
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">Quick reference: which adapter to use</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-stone-800 text-left">
-                <th className="py-2 pr-4 font-medium text-stone-200">I want to...</th>
-                <th className="py-2 pr-4 font-medium text-stone-200">Use this adapter</th>
-                <th className="py-2 font-medium text-stone-200">Output</th>
+              <tr className="border-b border-border text-left">
+                <th className="py-2 pr-4 font-medium text-foreground-secondary">I want to...</th>
+                <th className="py-2 pr-4 font-medium text-foreground-secondary">Use this adapter</th>
+                <th className="py-2 font-medium text-foreground-secondary">Output</th>
               </tr>
             </thead>
-            <tbody className="text-stone-400">
-              <tr className="border-b border-stone-800">
+            <tbody className="text-foreground-secondary">
+              <tr className="border-b border-border">
                 <td className="py-2 pr-4">Use in Claude Code terminal</td>
                 <td className="py-2 pr-4">Claude Code Skill</td>
                 <td className="py-2">Markdown file</td>
               </tr>
-              <tr className="border-b border-stone-800">
+              <tr className="border-b border-border">
                 <td className="py-2 pr-4">Use in Claude Desktop app</td>
                 <td className="py-2 pr-4">Claude Code Skill</td>
                 <td className="py-2">Markdown file</td>
               </tr>
-              <tr className="border-b border-stone-800">
+              <tr className="border-b border-border">
                 <td className="py-2 pr-4">Share via GitHub repo</td>
                 <td className="py-2 pr-4">Claude Code Skill</td>
                 <td className="py-2">Markdown file (commit to repo)</td>
               </tr>
-              <tr className="border-b border-stone-800">
+              <tr className="border-b border-border">
                 <td className="py-2 pr-4">Run autonomously (OpenClaw)</td>
                 <td className="py-2 pr-4">Open Claw Prompt</td>
                 <td className="py-2">System prompt text</td>
@@ -743,7 +743,7 @@ export function GuidePage() {
       {/* Sidebar nav — stacks on top on phones, becomes a sticky rail on desktop */}
       <div className="w-full md:w-44 md:shrink-0">
         <div className="md:sticky md:top-24">
-          <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+          <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Guide
           </h3>
           <SectionNav active={activeSection} onSelect={setActiveSection} />

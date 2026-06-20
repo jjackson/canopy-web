@@ -81,11 +81,11 @@ function Section({
   return (
     <section id={runSectionDomId(id)} className="mt-6 scroll-mt-4">
       <div className="mb-2 flex items-baseline gap-2">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {title}
         </h2>
-        {subtitle && <span className="text-[11px] text-stone-600">{subtitle}</span>}
-        <span className="h-px flex-1 bg-stone-800" />
+        {subtitle && <span className="text-[11px] text-muted-foreground">{subtitle}</span>}
+        <span className="h-px flex-1 bg-muted" />
       </div>
       {children}
     </section>
@@ -94,7 +94,7 @@ function Section({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-stone-800 px-4 py-6 text-center text-xs text-stone-600">
+    <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-xs text-muted-foreground">
       {children}
     </div>
   )
@@ -107,7 +107,7 @@ function OpenLink({ href, label = 'Open' }: { href: string; label?: string }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 rounded-md border border-stone-800 px-2 py-0.5 text-[11px] text-stone-400 transition-colors hover:border-stone-700 hover:text-orange-300"
+      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[11px] text-foreground-secondary transition-colors hover:border-input hover:text-primary"
     >
       <span className="truncate font-mono">{href}</span>
       <span aria-hidden>↗</span>
@@ -135,7 +135,7 @@ function HtmlEmbed({
   return (
     <div className="flex flex-col gap-2">
       <OpenLink href={withSceneHash(viewerUrl, sceneHash)} />
-      <div className="overflow-hidden rounded-xl border border-stone-800 bg-white">
+      <div className="overflow-hidden rounded-xl border border-border bg-white">
         <iframe
           src={withSceneHash(contentUrl, sceneHash)}
           title={title}
@@ -149,9 +149,9 @@ function HtmlEmbed({
 
 function NarrativeBlock({ narrative }: { narrative: DddRunNarrative }) {
   return (
-    <div className="rounded-xl border border-stone-800 bg-stone-900 p-5">
+    <div className="rounded-xl border border-border bg-card p-5">
       {narrative.story && (
-        <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-stone-200">
+        <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
           {narrative.story}
         </p>
       )}
@@ -162,25 +162,25 @@ function NarrativeBlock({ narrative }: { narrative: DddRunNarrative }) {
             return (
               <li
                 key={n.id ?? i}
-                className="rounded-lg border border-stone-800 bg-stone-950/40 px-3 py-2"
+                className="rounded-lg border border-border bg-background/40 px-3 py-2"
               >
                 <div className="mb-0.5 flex items-center gap-2">
-                  <span className="text-[10px] font-mono text-stone-600">
+                  <span className="text-[10px] font-mono text-muted-foreground">
                     {n.scene ?? i + 1}
                   </span>
                   {n.title && (
-                    <span className="text-xs font-medium text-stone-300">{n.title}</span>
+                    <span className="text-xs font-medium text-foreground-secondary">{n.title}</span>
                   )}
                   {persona?.name && (
                     <span
-                      className="text-[10px] text-orange-300/80"
+                      className="text-[10px] text-primary/80"
                       title={persona.role || ''}
                     >
                       {persona.name}
                     </span>
                   )}
                 </div>
-                <p className="text-xs leading-relaxed text-stone-400">{n.text}</p>
+                <p className="text-xs leading-relaxed text-foreground-secondary">{n.text}</p>
               </li>
             )
           })}
@@ -203,20 +203,20 @@ function ExternalSystemsBlock({ links }: { links: DddLink[] }) {
       href={l.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-center gap-3 rounded-lg border border-stone-800 bg-stone-950/40 px-3 py-2 transition-colors hover:border-stone-700 hover:bg-stone-950/70"
+      className="group flex items-center gap-3 rounded-lg border border-border bg-background/40 px-3 py-2 transition-colors hover:border-input hover:bg-background/70"
     >
       {(l.kind === 'narrative' || l.kind === 'companion') && (
         <span aria-hidden className="shrink-0 text-sm">
           {l.kind === 'narrative' ? '📖' : '🎞️'}
         </span>
       )}
-      <span className="shrink-0 text-xs text-stone-300">{l.label}</span>
-      <span className="flex-1 truncate text-right font-mono text-[11px] text-stone-600 transition-colors group-hover:text-orange-300">
+      <span className="shrink-0 text-xs text-foreground-secondary">{l.label}</span>
+      <span className="flex-1 truncate text-right font-mono text-[11px] text-muted-foreground transition-colors group-hover:text-primary">
         {l.url}
       </span>
       <span
         aria-hidden
-        className="shrink-0 text-[11px] text-stone-600 transition-colors group-hover:text-orange-400"
+        className="shrink-0 text-[11px] text-muted-foreground transition-colors group-hover:text-primary"
       >
         ↗
       </span>
@@ -227,7 +227,7 @@ function ExternalSystemsBlock({ links }: { links: DddLink[] }) {
       <div className="flex flex-col gap-1">{systems.map(row)}</div>
       {related.length > 0 && (
         <div className="flex flex-col gap-1">
-          <h3 className="text-[9px] uppercase tracking-wider text-stone-600">Related</h3>
+          <h3 className="text-[9px] uppercase tracking-wider text-muted-foreground">Related</h3>
           {related.map(row)}
         </div>
       )}
@@ -328,8 +328,8 @@ export function RunPackage({ runId }: { runId: string }) {
   }
 
   if (error)
-    return <div className="p-8 text-sm text-red-400/90">Error: {error}</div>
-  if (!run) return <div className="p-8 text-sm text-stone-500">Loading run…</div>
+    return <div className="p-8 text-sm text-destructive/90">Error: {error}</div>
+  if (!run) return <div className="p-8 text-sm text-muted-foreground">Loading run…</div>
 
   return (
     <div className="mx-auto max-w-4xl px-8 py-6">
@@ -337,17 +337,17 @@ export function RunPackage({ runId }: { runId: string }) {
         <div>
           <Link
             to={`/ddd/${encodeURIComponent(run.narrative_slug)}`}
-            className="text-[11px] uppercase tracking-wider text-stone-500 hover:text-stone-300"
+            className="text-[11px] uppercase tracking-wider text-muted-foreground hover:text-foreground-secondary"
           >
             {run.narrative_slug}
           </Link>
-          <h1 className="font-mono text-xl font-semibold text-stone-100">
+          <h1 className="font-mono text-xl font-semibold text-foreground">
             {run.run_id}
           </h1>
         </div>
-        <div className="flex items-center gap-3 text-xs text-stone-500">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {run.phase && (
-            <span className="rounded border border-stone-700 bg-stone-800/60 px-2 py-0.5 text-stone-300">
+            <span className="rounded border border-input bg-muted/60 px-2 py-0.5 text-foreground-secondary">
               {run.phase}
             </span>
           )}
@@ -356,7 +356,7 @@ export function RunPackage({ runId }: { runId: string }) {
             type="button"
             onClick={onDeleteRun}
             disabled={deleting}
-            className="rounded-md border border-stone-800 px-2.5 py-1 text-xs text-stone-500 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
           >
             {deleting ? 'Deleting…' : 'Delete run'}
           </button>
@@ -367,7 +367,7 @@ export function RunPackage({ runId }: { runId: string }) {
         {run.video ? (
           <div className="flex flex-col gap-2">
             <OpenLink href={run.video.viewer_url} />
-            <div className="overflow-hidden rounded-xl border border-stone-800 bg-black">
+            <div className="overflow-hidden rounded-xl border border-border bg-black">
               <video
                 src={run.video.content_url}
                 controls
@@ -417,7 +417,7 @@ export function RunPackage({ runId }: { runId: string }) {
         {run.narrative?.review_id && (
           <a
             href={`/review/${run.narrative.review_id}`}
-            className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs text-orange-300 transition-colors hover:bg-orange-500/20"
+            className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary transition-colors hover:bg-primary/20"
           >
             Edit narrative in review
             {run.narrative.version != null && ` (v${run.narrative.version})`}
@@ -455,16 +455,16 @@ export function RunPackage({ runId }: { runId: string }) {
               href={a.viewer_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="group flex items-center gap-3 rounded-lg border border-stone-800 bg-stone-950/40 px-3 py-1.5 text-xs transition-colors hover:border-stone-700 hover:bg-stone-950/70"
+              className="group flex items-center gap-3 rounded-lg border border-border bg-background/40 px-3 py-1.5 text-xs transition-colors hover:border-input hover:bg-background/70"
             >
-              <span className="w-28 shrink-0 text-[10px] font-medium text-stone-400">
+              <span className="w-28 shrink-0 text-[10px] font-medium text-foreground-secondary">
                 {roleLabel(a.role, a.kind)}
               </span>
-              <span className="flex-1 truncate text-stone-300">{a.title}</span>
-              <span className="shrink-0 text-stone-600">{fmtDate(a.created_at)}</span>
+              <span className="flex-1 truncate text-foreground-secondary">{a.title}</span>
+              <span className="shrink-0 text-muted-foreground">{fmtDate(a.created_at)}</span>
               <span
                 aria-hidden
-                className="shrink-0 font-mono text-[11px] text-stone-600 transition-colors group-hover:text-orange-300"
+                className="shrink-0 font-mono text-[11px] text-muted-foreground transition-colors group-hover:text-primary"
               >
                 {a.viewer_url} ↗
               </span>

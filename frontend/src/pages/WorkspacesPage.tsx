@@ -93,7 +93,7 @@ export function WorkspacesPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-400">
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
         {error}
       </div>
     )
@@ -103,8 +103,8 @@ export function WorkspacesPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-stone-100">Workspace Sessions</h1>
-          <p className="mt-0.5 text-xs text-stone-500">
+          <h1 className="text-lg font-semibold text-foreground">Workspace Sessions</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Resume in-progress skill extraction sessions or review past ones.
           </p>
         </div>
@@ -129,8 +129,8 @@ export function WorkspacesPage() {
               onClick={() => setStatusFilter(f.value)}
               className={`text-xs px-2.5 py-1 rounded border transition-colors ${
                 statusFilter === f.value
-                  ? 'bg-orange-400/10 border-orange-400/30 text-orange-400'
-                  : 'bg-stone-900 border-stone-800 text-stone-500 hover:text-stone-300 hover:border-stone-700'
+                  ? 'bg-primary/10 border-primary/30 text-primary'
+                  : 'bg-card border-border text-muted-foreground hover:text-foreground-secondary hover:border-input'
               }`}
             >
               {f.label}
@@ -165,18 +165,18 @@ export function WorkspacesPage() {
                   className="cursor-pointer"
                   onClick={() => navigate(`/workspace/${session.id}`)}
                 >
-                  <TableCell className="font-medium text-stone-100">
-                    {session.skill_name || <span className="text-stone-600 italic">Untitled</span>}
+                  <TableCell className="font-medium text-foreground">
+                    {session.skill_name || <span className="text-muted-foreground italic">Untitled</span>}
                   </TableCell>
-                  <TableCell className="text-sm text-stone-400">
-                    {session.collection_name || <span className="text-stone-600">—</span>}
+                  <TableCell className="text-sm text-foreground-secondary">
+                    {session.collection_name || <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell>
                     <Badge variant={STATUS_VARIANTS[session.status] || 'secondary'}>
                       {session.status}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right text-xs text-stone-500">
+                  <TableCell className="text-right text-xs text-muted-foreground">
                     {relativeTime(session.updated_at)}
                   </TableCell>
                 </TableRow>
@@ -186,10 +186,10 @@ export function WorkspacesPage() {
                 <TableCell colSpan={4} className="h-40 text-center">
                   {sessions.length === 0 ? (
                     <div className="flex flex-col items-center gap-2">
-                      <p className="text-sm font-semibold text-stone-200">
+                      <p className="text-sm font-semibold text-foreground-secondary">
                         No workspace sessions {statusFilter ? `with status "${statusFilter}"` : 'yet'}
                       </p>
-                      <p className="text-sm text-stone-500">
+                      <p className="text-sm text-muted-foreground">
                         Start a new session to extract a skill from a collection.
                       </p>
                       <Button size="sm" className="mt-2" onClick={handleNew}>
@@ -197,7 +197,7 @@ export function WorkspacesPage() {
                       </Button>
                     </div>
                   ) : (
-                    <p className="text-sm text-stone-500">No sessions match &ldquo;{search}&rdquo;</p>
+                    <p className="text-sm text-muted-foreground">No sessions match &ldquo;{search}&rdquo;</p>
                   )}
                 </TableCell>
               </TableRow>
