@@ -67,9 +67,59 @@
 }
 
 :root {
-    /* Warm Earth dark theme — tokens tuned to match Tailwind stone-* palette
-       so shadcn UI components (Button, Input, Table, Tabs, Badge, Skeleton)
-       inherit the dark look automatically. */
+    /* Warm Earth LIGHT theme — the opt-in companion. The app defaults to .dark
+       (applied pre-render by the inline script in index.html), so most users
+       never see :root; it activates only when a user toggles to light. Tokens
+       mirror the dark set name-for-name so every component themes from the same
+       variables. Brand/status hues are deepened (~600) for contrast on white. */
+    --background: oklch(0.985 0.002 106.42);     /* warm off-white (~stone-50) */
+    --foreground: oklch(0.216 0.006 56.04);      /* ~stone-900 */
+    --card: oklch(1 0 0);                          /* white */
+    --card-foreground: oklch(0.216 0.006 56.04);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.216 0.006 56.04);
+    --primary: oklch(0.646 0.222 41.12);          /* ~orange-600 (readable on white) */
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.970 0.001 106.42);       /* ~stone-100 */
+    --secondary-foreground: oklch(0.216 0.006 56.04);
+    --muted: oklch(0.970 0.001 106.42);           /* ~stone-100 */
+    --muted-foreground: oklch(0.553 0.013 58.07); /* ~stone-500 */
+    --foreground-secondary: oklch(0.374 0.01 67.56); /* ~stone-700 — secondary text */
+    --foreground-subtle: oklch(0.709 0.01 56.26);    /* ~stone-400 — faint text */
+    --accent: oklch(0.970 0.001 106.42);
+    --accent-foreground: oklch(0.216 0.006 56.04);
+    --destructive: oklch(0.577 0.245 27.325);     /* ~red-600 */
+    --destructive-foreground: oklch(1 0 0);
+    --success: oklch(0.596 0.145 163.22);         /* ~emerald-600 */
+    --success-foreground: oklch(1 0 0);
+    --warning: oklch(0.666 0.179 58.32);          /* ~amber-600 */
+    --warning-foreground: oklch(1 0 0);
+    --info: oklch(0.588 0.158 241.97);            /* ~sky-600 */
+    --info-foreground: oklch(1 0 0);
+    --special: oklch(0.541 0.281 293.0);          /* ~violet-600 */
+    --special-foreground: oklch(1 0 0);
+    --border: oklch(0.869 0.005 56.37);           /* ~stone-200 */
+    --input: oklch(0.869 0.005 56.37);            /* ~stone-200 */
+    --ring: oklch(0.646 0.222 41.12 / 0.4);       /* orange-600/40 */
+    --chart-1: oklch(0.646 0.222 41.12);
+    --chart-2: oklch(0.553 0.013 58.07);
+    --chart-3: oklch(0.709 0.01 56.26);
+    --chart-4: oklch(0.809 0.005 56.0);
+    --chart-5: oklch(0.869 0.005 56.37);
+    --radius: 0.625rem;                            /* theme-agnostic; inherited by .dark */
+    --sidebar: oklch(0.985 0.002 106.42);
+    --sidebar-foreground: oklch(0.216 0.006 56.04);
+    --sidebar-primary: oklch(0.646 0.222 41.12);
+    --sidebar-primary-foreground: oklch(1 0 0);
+    --sidebar-accent: oklch(0.970 0.001 106.42);
+    --sidebar-accent-foreground: oklch(0.216 0.006 56.04);
+    --sidebar-border: oklch(0.869 0.005 56.37);
+    --sidebar-ring: oklch(0.646 0.222 41.12 / 0.4);
+}
+
+.dark {
+    /* Warm Earth DARK theme (the default) — tokens tuned to match Tailwind
+       stone and orange-400 so shadcn UI components inherit the dark look. */
     --background: oklch(0.147 0.004 49.25);      /* ~stone-950 */
     --foreground: oklch(0.923 0.003 48.72);      /* ~stone-100 */
     --card: oklch(0.216 0.006 56.04);            /* ~stone-900 */
@@ -104,7 +154,6 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
     --sidebar: oklch(0.147 0.004 49.25);
     --sidebar-foreground: oklch(0.923 0.003 48.72);
     --sidebar-primary: oklch(0.757 0.161 53.57);
@@ -113,41 +162,6 @@
     --sidebar-accent-foreground: oklch(0.923 0.003 48.72);
     --sidebar-border: oklch(0.268 0.007 34.3);
     --sidebar-ring: oklch(0.757 0.161 53.57 / 0.4);
-}
-
-.dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --destructive-foreground: oklch(0.985 0 0);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
