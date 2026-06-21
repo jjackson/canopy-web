@@ -198,4 +198,8 @@ jobs:
       - name: Deploy
         env:
           SKIP_TESTS: '1'  # Already verified in test-backend / test-frontend jobs
+          # Read-only token for the private jjackson/canopy plugin; deploy.sh
+          # clones it into the build context so /system renders the catalog.
+          # Optional — when unset the build still succeeds (empty catalog).
+          CANOPY_PLUGIN_TOKEN: ${{ secrets.CANOPY_PLUGIN_TOKEN }}
         run: ./deploy.sh ${{ github.sha }}
