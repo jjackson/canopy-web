@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/theme/ThemeProvider'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Projects' },
+  { path: '/system', label: 'System' },
   { path: '/timeline', label: 'Timeline' },
   { path: '/insights', label: 'Insights' },
   { path: '/shareouts', label: 'Shareouts' },

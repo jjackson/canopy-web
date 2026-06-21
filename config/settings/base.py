@@ -36,6 +36,27 @@ DEBUG = env("DEBUG")
 
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
+# Path to the canopy plugin source (skills/ agents/ commands/) read by
+# apps.system to render the capability catalog at /system. In production the
+# Docker build clones jjackson/canopy into CANOPY_DIR; for local dev, point this
+# at your installed plugin cache, e.g.
+#   CANOPY_PLUGIN_PATH=~/.claude/plugins/cache/canopy/canopy/<version>
+# When the path is absent the catalog renders empty with a warning (never 500s).
+#
+# The jjackson/canopy marketplace repo NESTS the plugin under plugins/canopy/;
+# a bare plugin checkout (the cache) has skills/ at its root. Auto-detect both.
+def _resolve_canopy_plugin_path() -> str:
+    explicit = env.str("CANOPY_PLUGIN_PATH", default="")
+    if explicit:
+        return explicit
+    for cand in (CANOPY_DIR / "plugins" / "canopy", CANOPY_DIR):
+        if (cand / "skills").is_dir():
+            return str(cand)
+    return str(CANOPY_DIR)
+
+
+CANOPY_PLUGIN_PATH = _resolve_canopy_plugin_path()
+
 # Application definition
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -67,6 +88,7 @@ INSTALLED_APPS = [
     "apps.sessions",
     "apps.agents",
     "apps.timeline",
+    "apps.system",
 ]
 
 MIDDLEWARE = [
