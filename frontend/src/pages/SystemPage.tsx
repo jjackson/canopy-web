@@ -9,6 +9,7 @@ import {
   type CapabilityItem,
   type CapabilityKind,
 } from '@/api/system'
+import { WORKFLOWS, type WorkflowStep } from './systemWorkflows'
 
 const KIND_LABEL: Record<CapabilityKind, string> = {
   skill: 'Skill',
@@ -24,6 +25,7 @@ const KIND_BADGE: Record<CapabilityKind, string> = {
 }
 
 type KindFilter = 'all' | CapabilityKind
+type ViewMode = 'catalog' | 'workflows'
 
 function KindBadge({ kind }: { kind: CapabilityKind }) {
   return (
@@ -39,11 +41,73 @@ function groupLabel(kind: CapabilityKind, family: string): string {
   return family === 'general' ? 'General' : family
 }
 
+/** Resolve a workflow step against the live catalog: exact (kind,name) → name → null. */
+function resolveStep(items: CapabilityItem[], step: WorkflowStep): CapabilityItem | null {
+  return (
+    items.find((i) => i.kind === step.kind && i.name === step.name) ||
+    items.find((i) => i.name === step.name) ||
+    null
+  )
+}
+
+function WorkflowsView({
+  items,
+  selected,
+  onSelect,
+}: {
+  items: CapabilityItem[]
+  selected: CapabilityItem | null
+  onSelect: (i: CapabilityItem) => void
+}) {
+  return (
+    <div className="space-y-5">
+      {WORKFLOWS.map((wf) => (
+        <section key={wf.id} className="rounded-lg border border-border bg-card p-4">
+          <h2 className="text-sm font-semibold text-foreground">{wf.title}</h2>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{wf.description}</p>
+          <ol className="mt-3 space-y-1">
+            {wf.steps.map((step, idx) => {
+              const item = resolveStep(items, step)
+              const active = !!item && selected?.kind === item.kind && selected?.name === item.name
+              return (
+                <li key={`${step.kind}:${step.name}:${idx}`} className="flex items-start gap-2">
+                  <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
+                    {idx + 1}
+                  </span>
+                  {item ? (
+                    <button
+                      type="button"
+                      onClick={() => onSelect(item)}
+                      className={`min-w-0 flex-1 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted/50 ${active ? 'bg-muted/60' : ''}`}
+                    >
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span className="text-sm font-medium text-foreground">{item.display_name}</span>
+                        <KindBadge kind={item.kind} />
+                      </span>
+                      {step.note && <span className="mt-0.5 block text-xs text-muted-foreground">{step.note}</span>}
+                    </button>
+                  ) : (
+                    <span className="min-w-0 flex-1 px-2 py-1">
+                      <span className="font-mono text-sm text-foreground-subtle line-through">{step.name}</span>
+                      <span className="ml-2 text-[10px] text-muted-foreground">(not in this plugin version)</span>
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ol>
+        </section>
+      ))}
+    </div>
+  )
+}
+
 export function SystemPage() {
   const [catalog, setCatalog] = useState<CapabilityCatalog | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<KindFilter>('all')
+  const [mode, setMode] = useState<ViewMode>('catalog')
   const [selected, setSelected] = useState<CapabilityItem | null>(null)
   const [detail, setDetail] = useState<CapabilityDetail | null>(null)
   const [detailErr, setDetailErr] = useState<string | null>(null)
@@ -148,7 +212,29 @@ export function SystemPage() {
         )}
       </header>
 
-      {/* Controls */}
+      {/* View toggle: Catalog vs Workflows */}
+      <div className="mb-4 flex gap-1">
+        {(['catalog', 'workflows'] as ViewMode[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => {
+              setMode(m)
+              setSelected(null)
+            }}
+            className={`rounded-md border px-3 py-1.5 text-sm capitalize transition-colors ${
+              mode === m
+                ? 'border-primary/30 bg-primary/10 text-primary font-medium'
+                : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground-secondary'
+            }`}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+
+      {/* Catalog controls (search + kind) — only in catalog mode */}
+      {mode === 'catalog' && (
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <input
           type="search"
@@ -174,12 +260,15 @@ export function SystemPage() {
           ))}
         </div>
       </div>
+      )}
 
       {/* List + detail */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* List — hidden on mobile when a detail is open */}
         <div className={selected ? 'hidden lg:block' : 'block'}>
-          {total === 0 ? (
+          {mode === 'workflows' ? (
+            <WorkflowsView items={catalog.items} selected={selected} onSelect={setSelected} />
+          ) : total === 0 ? (
             <p className="text-sm text-muted-foreground">No capabilities match “{query}”.</p>
           ) : (
             <div className="space-y-5">
