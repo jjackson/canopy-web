@@ -10,9 +10,9 @@ RUN npm run build
 # ─── Stage 2: Python runtime ─────────────────────────────────────────
 FROM python:3.12-slim
 
-# Install Node.js for the optional Claude Code CLI backend (+ git to vendor the plugin)
+# Install Node.js for the optional Claude Code CLI backend
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates git \
+    curl ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -25,19 +25,12 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN pip install .
 
-# Application code
+# Application code. This includes ./canopy when the deploy step has cloned the
+# (private) canopy plugin into the build context — see deploy.sh. apps.system
+# reads it at /app/canopy/plugins/canopy to render the /system catalog;
+# settings' _resolve_canopy_plugin_path() locates it. When absent (local builds,
+# missing token), the catalog degrades to an empty state with a warning.
 COPY . .
-
-# Vendor the canopy plugin so apps.system can read the live capability surface
-# at /system. The repo nests the plugin under plugins/canopy/; settings'
-# _resolve_canopy_plugin_path() detects that. CANOPY_PLUGIN_REF busts Docker's
-# layer cache so a rebuild picks up new skills/agents (pass the plugin's HEAD
-# SHA from CI; defaults to main).
-ARG CANOPY_PLUGIN_REF=main
-RUN rm -rf /app/canopy \
-    && git clone --depth 1 --branch "${CANOPY_PLUGIN_REF}" \
-       https://github.com/jjackson/canopy.git /app/canopy \
-       || git clone --depth 1 https://github.com/jjackson/canopy.git /app/canopy
 
 # Built SPA from stage 1
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist

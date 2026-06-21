@@ -54,6 +54,30 @@ else
   (cd frontend && npm run build)
 fi
 
+# --------------------------------------------------------------------------
+# Vendor the canopy plugin into the build context so apps.system can render the
+# /system capability catalog from the plugin's actual file structure. The plugin
+# repo (jjackson/canopy) is private, so we clone it HERE on the (ephemeral)
+# runner using CANOPY_PLUGIN_TOKEN and let Cloud Build pick it up via the source
+# upload + Dockerfile `COPY . .`. The token never enters an image layer, and
+# .gcloudignore strips `.git` from the upload so only plugin files ship. When
+# the token is absent the build still succeeds; /system shows an empty-catalog
+# warning until it's provided.
+# --------------------------------------------------------------------------
+rm -rf canopy
+if [ -n "${CANOPY_PLUGIN_TOKEN:-}" ]; then
+  echo "==> Vendoring canopy plugin (jjackson/canopy) into build context..."
+  if git clone --depth 1 \
+      "https://x-access-token:${CANOPY_PLUGIN_TOKEN}@github.com/jjackson/canopy.git" canopy; then
+    echo "    plugin vendored at ./canopy/plugins/canopy"
+  else
+    echo "    WARNING: plugin clone failed — /system catalog will be empty"
+    rm -rf canopy
+  fi
+else
+  echo "==> CANOPY_PLUGIN_TOKEN not set — skipping plugin vendor (/system will be empty)."
+fi
+
 echo "==> Building and pushing combined image via Cloud Build..."
 # Cloud Build runs on linux/amd64 in GCP, so no local Docker required and no
 # cross-arch headache from Apple Silicon. cloudbuild.yaml drives the build and
