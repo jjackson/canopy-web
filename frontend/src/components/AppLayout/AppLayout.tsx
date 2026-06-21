@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { aiStatus, aiSwitch } from '@/api/ai'
 import { useAuth } from '@/auth/AuthProvider'
-import { ThemeToggle } from '@/theme/ThemeProvider'
+import { useTheme } from '@/theme/ThemeProvider'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Projects' },
@@ -18,7 +18,6 @@ const NAV_ITEMS = [
   { path: '/ddd', label: 'DDD' },
   { path: '/workspaces', label: 'Workspaces' },
   { path: '/guide', label: 'Guide' },
-  { path: '/settings', label: 'Settings' },
 ]
 
 const BACKENDS = [
@@ -26,14 +25,17 @@ const BACKENDS = [
   { key: 'cli' as const, label: 'Claude CLI', description: 'Claude subscription via CLI' },
 ]
 
-function AiStatusBadge() {
+function UserMenu() {
+  const auth = useAuth()
+  const { theme, setTheme } = useTheme()
+  const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<{
     backend: string; ready: boolean; detail: string; setup_hint: string | null
   } | null>(null)
-  const [open, setOpen] = useState(false)
   const [switching, setSwitching] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
+  // AI backend status — polled until ready.
   useEffect(() => {
     aiStatus().then(setStatus).catch(() => {})
     const interval = setInterval(() => {
@@ -45,110 +47,7 @@ function AiStatusBadge() {
     return () => clearInterval(interval)
   }, [])
 
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [open])
-
-  async function handleSwitch(backend: 'api' | 'cli') {
-    if (status?.backend === backend) {
-      setOpen(false)
-      return
-    }
-    setSwitching(true)
-    try {
-      await aiSwitch(backend)
-      const newStatus = await aiStatus()
-      setStatus(newStatus)
-    } catch {
-      // silent
-    } finally {
-      setSwitching(false)
-      setOpen(false)
-    }
-  }
-
-  if (!status) return null
-
-  if (!status.ready) {
-    return (
-      <Link
-        to="/settings"
-        className="text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded hover:bg-primary/20"
-      >
-        AI: Not connected — click to set up
-      </Link>
-    )
-  }
-
-  return (
-    <div className="relative" ref={menuRef}>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded hover:bg-primary/20 flex items-center gap-1"
-      >
-        AI: {status.backend === 'cli' ? 'Claude CLI' : 'API'}
-        <svg className={clsx('h-3 w-3 transition-transform', open && 'rotate-180')} viewBox="0 0 12 12" fill="none">
-          <path d="M3 5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-input bg-card shadow-lg z-50">
-          <div className="px-3 py-2 border-b border-border">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">AI Backend</span>
-          </div>
-          {BACKENDS.map((b) => {
-            const isActive = status.backend === b.key
-            return (
-              <button
-                key={b.key}
-                type="button"
-                onClick={() => void handleSwitch(b.key)}
-                disabled={switching}
-                className={clsx(
-                  'flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted',
-                  isActive && 'bg-muted',
-                )}
-              >
-                <div>
-                  <div className="text-sm font-medium text-foreground">{b.label}</div>
-                  <div className="text-[11px] text-muted-foreground">{b.description}</div>
-                </div>
-                {isActive && (
-                  <span className="text-primary text-xs font-medium">Active</span>
-                )}
-              </button>
-            )
-          })}
-          <div className="border-t border-border">
-            <Link
-              to="/settings"
-              onClick={() => setOpen(false)}
-              className="block px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground-secondary"
-            >
-              Auth settings...
-            </Link>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function UserChip() {
-  const auth = useAuth()
-  const [open, setOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-
+  // Close on outside click.
   useEffect(() => {
     if (!open) return
     function handleClick(e: MouseEvent) {
@@ -165,11 +64,33 @@ function UserChip() {
   const csrfToken = (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? '')
   const initials = (auth.user.name || auth.user.email).slice(0, 1).toUpperCase()
 
+  async function handleSwitch(backend: 'api' | 'cli') {
+    if (status?.backend === backend || switching) return
+    setSwitching(true)
+    try {
+      await aiSwitch(backend)
+      setStatus(await aiStatus())
+    } catch {
+      // silent
+    } finally {
+      setSwitching(false)
+    }
+  }
+
+  const segBtn = (active: boolean) =>
+    clsx(
+      'flex-1 rounded-md border px-2 py-1.5 text-xs capitalize transition-colors disabled:opacity-50',
+      active
+        ? 'border-primary/30 bg-primary/10 text-primary font-medium'
+        : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground-secondary',
+    )
+
   return (
     <div className="relative" ref={menuRef}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        aria-label="Account menu"
         className="flex items-center gap-2 rounded-full border border-border bg-card pl-1 pr-3 py-1 hover:bg-muted"
       >
         {auth.user.avatar_url ? (
@@ -180,19 +101,76 @@ function UserChip() {
           </span>
         )}
         <span className="hidden sm:inline text-xs text-foreground-secondary max-w-[12rem] truncate">{auth.user.email}</span>
+        {/* AI-not-ready indicator on the chip so it's discoverable without opening the menu. */}
+        {status && !status.ready && <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-label="AI not connected" />}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-input bg-card shadow-lg z-50">
-          <div className="px-3 py-2 border-b border-border text-xs text-foreground-secondary">
+        <div className="absolute right-0 top-full mt-1 w-64 overflow-hidden rounded-lg border border-input bg-card shadow-lg z-50">
+          <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
             Signed in as
-            <div className="text-foreground-secondary truncate">{auth.user.email}</div>
+            <div className="truncate text-foreground-secondary">{auth.user.email}</div>
           </div>
-          <form method="post" action="/accounts/logout/">
+
+          {/* AI backend */}
+          <div className="border-b border-border px-3 py-2">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">AI backend</div>
+            {!status ? (
+              <div className="text-xs text-muted-foreground">Checking…</div>
+            ) : (
+              <>
+                <div className="flex gap-1">
+                  {BACKENDS.map((b) => (
+                    <button
+                      key={b.key}
+                      type="button"
+                      disabled={switching}
+                      onClick={() => void handleSwitch(b.key)}
+                      title={b.description}
+                      className={segBtn(status.backend === b.key)}
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+                {!status.ready && (
+                  <Link
+                    to="/settings"
+                    onClick={() => setOpen(false)}
+                    className="mt-1.5 block text-[11px] text-warning hover:underline"
+                  >
+                    Not connected — set up →
+                  </Link>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Theme */}
+          <div className="border-b border-border px-3 py-2">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Theme</div>
+            <div className="flex gap-1">
+              {(['light', 'dark'] as const).map((t) => (
+                <button key={t} type="button" onClick={() => setTheme(t)} className={segBtn(theme === t)}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Link
+            to="/settings"
+            onClick={() => setOpen(false)}
+            className="block px-3 py-2 text-sm text-foreground-secondary hover:bg-muted"
+          >
+            Settings
+          </Link>
+
+          <form method="post" action="/accounts/logout/" className="border-t border-border">
             <input type="hidden" name="csrfmiddlewaretoken" value={decodeURIComponent(csrfToken)} />
             <button
               type="submit"
-              className="w-full text-left px-3 py-2 text-sm text-foreground-secondary hover:bg-muted"
+              className="w-full px-3 py-2 text-left text-sm text-foreground-secondary hover:bg-muted"
             >
               Sign out
             </button>
@@ -240,9 +218,7 @@ export function AppLayout() {
                 </Link>
               ))}
             </nav>
-            <ThemeToggle />
-            <AiStatusBadge />
-            <UserChip />
+            <UserMenu />
             <button
               type="button"
               onClick={() => setMobileOpen((o) => !o)}
