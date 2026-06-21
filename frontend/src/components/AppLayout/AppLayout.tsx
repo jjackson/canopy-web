@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { aiStatus, aiSwitch } from '@/api/ai'
 import { useAuth } from '@/auth/AuthProvider'
+import { ThemeToggle } from '@/theme/ThemeProvider'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Projects' },
@@ -238,6 +239,7 @@ export function AppLayout() {
                 </Link>
               ))}
             </nav>
+            <ThemeToggle />
             <AiStatusBadge />
             <UserChip />
             <button
