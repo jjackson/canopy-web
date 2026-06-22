@@ -130,3 +130,112 @@ def test_non_owner_cannot_read_detail(auth_client, other):
     other_client = Client()
     other_client.force_login(other)
     assert other_client.get(f"/api/sessions/{slug}").status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Arcs
+# ---------------------------------------------------------------------------
+
+
+def _create_arc(client, items, *, title="My Arc", visibility="link"):
+    return client.post(
+        "/api/sessions/arcs",
+        data=json.dumps({"title": title, "visibility": visibility, "items": items}),
+        content_type="application/json",
+    )
+
+
+@pytest.mark.django_db
+@override_settings(REQUIRE_AUTH=True)
+def test_arc_create_and_public_view_stitches_sections_in_order(auth_client):
+    s1 = _upload(auth_client, _transcript("arc-a"), title="First").json()["slug"]
+    s2 = _upload(auth_client, _transcript("arc-b"), title="Second").json()["slug"]
+    resp = _create_arc(
+        auth_client,
+        [
+            {"session_slug": s2, "heading": "Kickoff"},  # deliberately out of upload order
+            {"session_slug": s1, "heading": "Follow-up"},
+        ],
+        title="Campaign build",
+    )
+    assert resp.status_code == 201, resp.content
+    token = resp.json()["share_token"]
+    assert resp.json()["item_count"] == 2
+
+    body = Client().get(f"/api/share/{token}").json()
+    assert body["kind"] == "arc"
+    assert body["title"] == "Campaign build"
+    assert [s["heading"] for s in body["sections"]] == ["Kickoff", "Follow-up"]
+    # Each section carries its session's reduced messages.
+    assert all(len(s["messages"]) == 2 for s in body["sections"])
+    assert "owner_email" not in body
+
+
+@pytest.mark.django_db
+@override_settings(REQUIRE_AUTH=True)
+def test_single_session_token_still_returns_kind_session(auth_client):
+    token = _upload(auth_client, _transcript()).json()["share_token"]
+    body = Client().get(f"/api/share/{token}").json()
+    assert body["kind"] == "session"
+    assert len(body["messages"]) == 2
+    assert body["sections"] == []
+
+
+@pytest.mark.django_db
+def test_arc_create_rejects_unowned_session(auth_client, other):
+    other_client = Client()
+    other_client.force_login(other)
+    theirs = _upload(other_client, _transcript("theirs")).json()["slug"]
+    resp = _create_arc(auth_client, [{"session_slug": theirs}])
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db
+def test_arc_create_rejects_duplicate_session(auth_client):
+    s1 = _upload(auth_client, _transcript("dup")).json()["slug"]
+    resp = _create_arc(auth_client, [{"session_slug": s1}, {"session_slug": s1}])
+    assert resp.status_code == 422
+
+
+@pytest.mark.django_db
+def test_arc_rotate_token_invalidates_old_link(auth_client):
+    s1 = _upload(auth_client, _transcript("r1")).json()["slug"]
+    arc = _create_arc(auth_client, [{"session_slug": s1}]).json()
+    slug, old = arc["slug"], arc["share_token"]
+    new = auth_client.post(f"/api/sessions/arcs/{slug}/rotate-token").json()["share_token"]
+    assert new != old
+    assert Client().get(f"/api/share/{old}").status_code == 404
+    assert Client().get(f"/api/share/{new}").status_code == 200
+
+
+@pytest.mark.django_db
+def test_arc_list_and_detail_owner_only(auth_client, other):
+    s1 = _upload(auth_client, _transcript("d1"), title="One").json()["slug"]
+    slug = _create_arc(auth_client, [{"session_slug": s1, "heading": "H"}]).json()["slug"]
+
+    rows = auth_client.get("/api/sessions/arcs").json()
+    assert len(rows) == 1 and rows[0]["slug"] == slug and rows[0]["item_count"] == 1
+
+    detail = auth_client.get(f"/api/sessions/arcs/{slug}").json()
+    assert detail["items"][0]["session_slug"] == s1
+    assert detail["items"][0]["heading"] == "H"
+    assert detail["items"][0]["message_count"] == 2
+
+    other_client = Client()
+    other_client.force_login(other)
+    assert other_client.get(f"/api/sessions/arcs/{slug}").status_code == 403
+
+
+@pytest.mark.django_db
+@override_settings(REQUIRE_AUTH=True)
+def test_arc_make_private_revokes_share(auth_client):
+    s1 = _upload(auth_client, _transcript("p1")).json()["slug"]
+    arc = _create_arc(auth_client, [{"session_slug": s1}]).json()
+    slug, token = arc["slug"], arc["share_token"]
+    assert Client().get(f"/api/share/{token}").status_code == 200
+    auth_client.patch(
+        f"/api/sessions/arcs/{slug}",
+        data=json.dumps({"visibility": "private"}),
+        content_type="application/json",
+    )
+    assert Client().get(f"/api/share/{token}").status_code == 404

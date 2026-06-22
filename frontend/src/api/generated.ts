@@ -1065,6 +1065,60 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/sessions/arcs": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List my arcs */
+        readonly get: operations["apps_sessions_api_list_arcs"];
+        readonly put?: never;
+        /** Create an arc from owned sessions (ordered) */
+        readonly post: operations["apps_sessions_api_create_arc"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/sessions/arcs/{slug}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get one arc (owner) */
+        readonly get: operations["apps_sessions_api_get_arc"];
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete an arc (owner) */
+        readonly delete: operations["apps_sessions_api_delete_arc"];
+        readonly options?: never;
+        readonly head?: never;
+        /** Update an arc (owner) */
+        readonly patch: operations["apps_sessions_api_patch_arc"];
+        readonly trace?: never;
+    };
+    readonly "/api/sessions/arcs/{slug}/rotate-token": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Rotate arc share token (owner) */
+        readonly post: operations["apps_sessions_api_rotate_arc_token"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/sessions/{slug}": {
         readonly parameters: {
             readonly query?: never;
@@ -1382,7 +1436,7 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** Public read-only view of a shared session */
+        /** Public read-only view of a shared session or arc */
         readonly get: operations["apps_sessions_api_public_share_view"];
         readonly put?: never;
         readonly post?: never;
@@ -3090,6 +3144,162 @@ export interface components {
              */
             readonly updated_at: string;
         };
+        /** ArcCreateOut */
+        readonly ArcCreateOut: {
+            /** Slug */
+            readonly slug: string;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+            /** Item Count */
+            readonly item_count: number;
+            /** Share Token */
+            readonly share_token?: string | null;
+        };
+        /** ArcCreateIn */
+        readonly ArcCreateIn: {
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /**
+             * Visibility
+             * @default link
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+            /** Items */
+            readonly items: readonly components["schemas"]["ArcItemIn"][];
+        };
+        /** ArcItemIn */
+        readonly ArcItemIn: {
+            /** Session Slug */
+            readonly session_slug: string;
+            /**
+             * Heading
+             * @default
+             */
+            readonly heading: string;
+        };
+        /** ArcListItemOut */
+        readonly ArcListItemOut: {
+            /** Slug */
+            readonly slug: string;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+            /**
+             * Owner Email
+             * Format: email
+             */
+            readonly owner_email: string;
+            /** Item Count */
+            readonly item_count: number;
+            /** Share Token */
+            readonly share_token?: string | null;
+            /** Is Owner */
+            readonly is_owner: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /** ArcDetailOut */
+        readonly ArcDetailOut: {
+            /** Slug */
+            readonly slug: string;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /**
+             * Visibility
+             * @enum {string}
+             */
+            readonly visibility: "private" | "link";
+            /**
+             * Owner Email
+             * Format: email
+             */
+            readonly owner_email: string;
+            /** Item Count */
+            readonly item_count: number;
+            /** Share Token */
+            readonly share_token?: string | null;
+            /** Is Owner */
+            readonly is_owner: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+            /**
+             * Items
+             * @default []
+             */
+            readonly items: readonly components["schemas"]["ArcItemOut"][];
+        };
+        /** ArcItemOut */
+        readonly ArcItemOut: {
+            /** Position */
+            readonly position: number;
+            /**
+             * Heading
+             * @default
+             */
+            readonly heading: string;
+            /** Session Slug */
+            readonly session_slug: string;
+            /**
+             * Session Title
+             * @default
+             */
+            readonly session_title: string;
+            /** Message Count */
+            readonly message_count: number;
+        };
+        /** ArcPatchIn */
+        readonly ArcPatchIn: {
+            /** Title */
+            readonly title?: string | null;
+            /** Project Slug */
+            readonly project_slug?: string | null;
+            /** Visibility */
+            readonly visibility?: ("private" | "link") | null;
+        };
+        /** SessionRotateTokenOut */
+        readonly SessionRotateTokenOut: {
+            /** Share Token */
+            readonly share_token: string;
+        };
         /** SessionDetailOut */
         readonly SessionDetailOut: {
             /** Slug */
@@ -3162,11 +3372,6 @@ export interface components {
             readonly project_slug?: string | null;
             /** Visibility */
             readonly visibility?: ("private" | "link") | null;
-        };
-        /** SessionRotateTokenOut */
-        readonly SessionRotateTokenOut: {
-            /** Share Token */
-            readonly share_token: string;
         };
         /** AgentOut */
         readonly AgentOut: {
@@ -3848,10 +4053,35 @@ export interface components {
             readonly body: string;
         };
         /**
-         * SharedSessionOut
-         * @description Public, read-only payload for /api/share/{token}. No owner identity.
+         * SharedSectionOut
+         * @description One arc section in the public view: a member session's turn-synthesis.
          */
-        readonly SharedSessionOut: {
+        readonly SharedSectionOut: {
+            /**
+             * Heading
+             * @default
+             */
+            readonly heading: string;
+            /** Redaction Count */
+            readonly redaction_count: number;
+            /**
+             * Messages
+             * @default []
+             */
+            readonly messages: readonly components["schemas"]["SessionMessageOut"][];
+        };
+        /**
+         * SharedViewOut
+         * @description Public, read-only payload for /api/share/{token}, for either a single
+         *     session (``kind="session"``, ``messages`` populated) or an arc
+         *     (``kind="arc"``, ``sections`` populated). No owner identity is exposed.
+         */
+        readonly SharedViewOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "session" | "arc";
             /**
              * Title
              * @default
@@ -3864,6 +4094,11 @@ export interface components {
              * @default []
              */
             readonly messages: readonly components["schemas"]["SessionMessageOut"][];
+            /**
+             * Sections
+             * @default []
+             */
+            readonly sections: readonly components["schemas"]["SharedSectionOut"][];
         };
     };
     responses: never;
@@ -5557,6 +5792,142 @@ export interface operations {
             };
         };
     };
+    readonly apps_sessions_api_list_arcs: {
+        readonly parameters: {
+            readonly query?: {
+                readonly project?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ArcListItemOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_create_arc: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ArcCreateIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ArcCreateOut"];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_get_arc: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ArcDetailOut"];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_delete_arc: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly apps_sessions_api_patch_arc: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ArcPatchIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ArcListItemOut"];
+                };
+            };
+        };
+    };
+    readonly apps_sessions_api_rotate_arc_token: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionRotateTokenOut"];
+                };
+            };
+        };
+    };
     readonly apps_sessions_api_get_session: {
         readonly parameters: {
             readonly query?: never;
@@ -6148,7 +6519,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["SharedSessionOut"];
+                    readonly "application/json": components["schemas"]["SharedViewOut"];
                 };
             };
         };

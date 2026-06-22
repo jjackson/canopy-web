@@ -36,10 +36,23 @@ export interface SessionListItem {
   updated_at: string;
 }
 
-export interface SharedSession {
-  title: string;
+/** One arc section in the public view — a member session's turn-synthesis. */
+export interface SharedSection {
+  heading: string;
   redaction_count: number;
   messages: SessionMessage[];
+}
+
+/**
+ * Public read-only payload for /api/share/{token}. Discriminated by `kind`:
+ * a single `session` (messages populated) or an `arc` (sections populated).
+ */
+export interface SharedView {
+  kind: "session" | "arc";
+  title: string;
+  redaction_count: number;
+  messages: SessionMessage[]; // session kind
+  sections: SharedSection[]; // arc kind
 }
 
 export class ApiError extends Error {
@@ -81,9 +94,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-/** Public, read-only — works for anonymous visitors with a valid token. */
-export function getSharedSession(token: string): Promise<SharedSession> {
-  return request<SharedSession>(`/api/share/${encodeURIComponent(token)}`);
+/** Public, read-only — works for anonymous visitors with a valid token.
+ * Resolves either a single shared session or a multi-session arc. */
+export function getShared(token: string): Promise<SharedView> {
+  return request<SharedView>(`/api/share/${encodeURIComponent(token)}`);
 }
 
 export function listMySessions(): Promise<SessionListItem[]> {

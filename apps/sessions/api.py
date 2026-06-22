@@ -22,9 +22,22 @@ from apps.api.auth import session_auth
 from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, ProblemError
 
 from . import redact
-from .models import Message, Session, ShareToken
+from .models import (
+    ArcShareToken,
+    Message,
+    Session,
+    SessionArc,
+    SessionArcItem,
+    ShareToken,
+)
 from .parser import parse_session_file
 from .schemas import (
+    ArcCreateIn,
+    ArcCreateOut,
+    ArcDetailOut,
+    ArcItemOut,
+    ArcListItemOut,
+    ArcPatchIn,
     SessionDetailOut,
     SessionListItemOut,
     SessionMessageOut,
@@ -32,7 +45,8 @@ from .schemas import (
     SessionRotateTokenOut,
     SessionUploadOut,
     SessionVisibility,
-    SharedSessionOut,
+    SharedSectionOut,
+    SharedViewOut,
 )
 
 router = Router(auth=session_auth, tags=["sessions"])
@@ -214,6 +228,164 @@ def list_sessions(
 
 
 # ---------------------------------------------------------------------------
+# Arcs — ordered groups of owned sessions, shared as one page.
+# Registered BEFORE the session `/{slug}` routes so `/arcs` isn't captured as a
+# session slug.
+# ---------------------------------------------------------------------------
+
+
+def _arc_list_payload(arc: SessionArc, *, is_owner: bool) -> dict:
+    token = arc.active_token() if is_owner else None
+    return {
+        "slug": arc.slug,
+        "title": arc.title,
+        "project_slug": arc.project_slug,
+        "visibility": arc.visibility,
+        "owner_email": arc.owner.email,
+        "item_count": arc.items.count(),
+        "share_token": token.token if token else None,
+        "is_owner": is_owner,
+        "created_at": arc.created_at,
+        "updated_at": arc.updated_at,
+    }
+
+
+def _arc_item_payloads(arc: SessionArc) -> list[dict]:
+    return [
+        {
+            "position": item.position,
+            "heading": item.heading,
+            "session_slug": item.session.slug,
+            "session_title": item.session.title,
+            "message_count": item.session.messages.count(),
+        }
+        for item in arc.items.select_related("session")
+    ]
+
+
+def _get_owned_arc_or_403(request: HttpRequest, slug: str) -> SessionArc:
+    arc = SessionArc.objects.filter(slug=slug).select_related("owner").first()
+    if arc is None:
+        raise ProblemError(404, "Arc not found", type_=TYPE_NOT_FOUND)
+    if not (request.user.is_authenticated and arc.owner_id == request.user.id):
+        raise ProblemError(403, "Forbidden — owner only", type_=TYPE_FORBIDDEN)
+    return arc
+
+
+@router.post(
+    "/arcs",
+    response={201: ArcCreateOut},
+    summary="Create an arc from owned sessions (ordered)",
+)
+def create_arc(request: HttpRequest, payload: ArcCreateIn) -> Status:
+    slugs = [it.session_slug for it in payload.items]
+    if len(set(slugs)) != len(slugs):
+        raise ProblemError(
+            422, "Duplicate session in arc", detail="Each session may appear once."
+        )
+    owned = {
+        s.slug: s
+        for s in Session.objects.filter(owner=request.user, slug__in=slugs)
+    }
+    missing = [sl for sl in slugs if sl not in owned]
+    if missing:
+        raise ProblemError(
+            404,
+            "Unknown session(s)",
+            detail=f"Not found or not yours: {', '.join(missing)}",
+            type_=TYPE_NOT_FOUND,
+        )
+
+    with transaction.atomic():
+        arc = SessionArc.objects.create(
+            owner=request.user,
+            title=(payload.title or "").strip()[:500],
+            project_slug=(payload.project_slug or "").strip() or None,
+            visibility=payload.visibility,
+        )
+        items = [
+            SessionArcItem(
+                arc=arc,
+                session=owned[it.session_slug],
+                position=pos,
+                heading=(it.heading or "").strip()[:500],
+            )
+            for pos, it in enumerate(payload.items, start=1)
+        ]
+        SessionArcItem.objects.bulk_create(items)
+        token = None
+        if payload.visibility == SessionArc.VISIBILITY_LINK:
+            token = ArcShareToken.objects.create(arc=arc, created_by=request.user)
+
+    return Status(
+        201,
+        ArcCreateOut(
+            slug=arc.slug,
+            visibility=arc.visibility,
+            item_count=len(items),
+            share_token=token.token if token else None,
+        ),
+    )
+
+
+@router.get("/arcs", response=list[ArcListItemOut], summary="List my arcs")
+def list_arcs(request: HttpRequest, project: str = "") -> list[ArcListItemOut]:
+    qs = (
+        SessionArc.objects.select_related("owner")
+        .filter(owner=request.user)
+        .prefetch_related("share_tokens", "items")
+    )
+    if project:
+        qs = qs.filter(project_slug=project)
+    return [
+        ArcListItemOut.model_validate(_arc_list_payload(a, is_owner=True)) for a in qs
+    ]
+
+
+@router.get("/arcs/{slug}", response=ArcDetailOut, summary="Get one arc (owner)")
+def get_arc(request: HttpRequest, slug: str) -> ArcDetailOut:
+    arc = _get_owned_arc_or_403(request, slug)
+    payload = _arc_list_payload(arc, is_owner=True)
+    payload["items"] = _arc_item_payloads(arc)
+    return ArcDetailOut.model_validate(payload)
+
+
+@router.patch("/arcs/{slug}", response=ArcListItemOut, summary="Update an arc (owner)")
+def patch_arc(request: HttpRequest, slug: str, payload: ArcPatchIn) -> ArcListItemOut:
+    arc = _get_owned_arc_or_403(request, slug)
+    updates = payload.model_dump(exclude_unset=True)
+    new_visibility = updates.pop("visibility", None)
+    for field, value in updates.items():
+        setattr(arc, field, value)
+    if updates:
+        arc.save()
+    if new_visibility == SessionArc.VISIBILITY_LINK:
+        arc.ensure_share_token(request.user)
+    elif new_visibility == SessionArc.VISIBILITY_PRIVATE:
+        arc.revoke_sharing()
+    arc.refresh_from_db()
+    return ArcListItemOut.model_validate(_arc_list_payload(arc, is_owner=True))
+
+
+@router.delete("/arcs/{slug}", response={204: None}, summary="Delete an arc (owner)")
+def delete_arc(request: HttpRequest, slug: str) -> Status:
+    arc = _get_owned_arc_or_403(request, slug)
+    arc.delete()
+    return Status(204, None)
+
+
+@router.post(
+    "/arcs/{slug}/rotate-token",
+    response=SessionRotateTokenOut,
+    summary="Rotate arc share token (owner)",
+)
+def rotate_arc_token(request: HttpRequest, slug: str) -> SessionRotateTokenOut:
+    arc = _get_owned_arc_or_403(request, slug)
+    token = arc.rotate_share_token(request.user)
+    return SessionRotateTokenOut(share_token=token.token)
+
+
+# ---------------------------------------------------------------------------
 # Detail (owner)
 # ---------------------------------------------------------------------------
 
@@ -286,24 +458,8 @@ def rotate_token(request: HttpRequest, slug: str) -> SessionRotateTokenOut:
 # ---------------------------------------------------------------------------
 
 
-@share_router.get(
-    "/{token}",
-    auth=None,
-    response=SharedSessionOut,
-    summary="Public read-only view of a shared session",
-)
-def public_share_view(request: HttpRequest, token: str) -> SharedSessionOut:
-    share = (
-        ShareToken.objects.select_related("session")
-        .filter(token=token)
-        .first()
-    )
-    # 404 on missing OR revoked — never leak the difference.
-    if share is None or share.revoked_at is not None:
-        raise ProblemError(404, "Share link not found", type_=TYPE_NOT_FOUND)
-
-    session = share.session
-    messages = [
+def _session_messages_out(session: Session) -> list[SessionMessageOut]:
+    return [
         SessionMessageOut(
             turn_index=m.turn_index,
             role=m.role,
@@ -312,8 +468,45 @@ def public_share_view(request: HttpRequest, token: str) -> SharedSessionOut:
         )
         for m in session.messages.all()
     ]
-    return SharedSessionOut(
-        title=session.title,
-        redaction_count=session.redaction_count,
-        messages=messages,
+
+
+@share_router.get(
+    "/{token}",
+    auth=None,
+    response=SharedViewOut,
+    summary="Public read-only view of a shared session or arc",
+)
+def public_share_view(request: HttpRequest, token: str) -> SharedViewOut:
+    # A token is either a single-session token or an arc token. Try session
+    # first (the common case); 404 on missing OR revoked — never leak which.
+    share = ShareToken.objects.select_related("session").filter(token=token).first()
+    if share is not None and share.revoked_at is None:
+        session = share.session
+        return SharedViewOut(
+            kind="session",
+            title=session.title,
+            redaction_count=session.redaction_count,
+            messages=_session_messages_out(session),
+        )
+
+    arc_share = (
+        ArcShareToken.objects.select_related("arc").filter(token=token).first()
     )
+    if arc_share is not None and arc_share.revoked_at is None:
+        arc = arc_share.arc
+        sections = [
+            SharedSectionOut(
+                heading=(item.heading or item.session.title),
+                redaction_count=item.session.redaction_count,
+                messages=_session_messages_out(item.session),
+            )
+            for item in arc.items.select_related("session")
+        ]
+        return SharedViewOut(
+            kind="arc",
+            title=arc.title,
+            redaction_count=sum(s.redaction_count for s in sections),
+            sections=sections,
+        )
+
+    raise ProblemError(404, "Share link not found", type_=TYPE_NOT_FOUND)
