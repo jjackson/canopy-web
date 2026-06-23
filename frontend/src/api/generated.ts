@@ -214,6 +214,42 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/issues/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List origin records */
+        readonly get: operations["apps_issues_api_list_issues"];
+        readonly put?: never;
+        /** Upsert an origin record */
+        readonly post: operations["apps_issues_api_upsert_issue"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/issues/{repo_slug}/{number}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get an origin record */
+        readonly get: operations["apps_issues_api_get_issue"];
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete an origin record (cleanup) */
+        readonly delete: operations["apps_issues_api_delete_issue"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/insights/": {
         readonly parameters: {
             readonly query?: never;
@@ -1832,6 +1868,143 @@ export interface components {
             readonly started_at: string;
             /** Completed At */
             readonly completed_at?: string | null;
+        };
+        /** OriginIssueOut */
+        readonly OriginIssueOut: {
+            /** Id */
+            readonly id: number;
+            /** Repo */
+            readonly repo: string;
+            /** Number */
+            readonly number: number;
+            /** Title */
+            readonly title: string;
+            /** Source */
+            readonly source: string;
+            /** Agent */
+            readonly agent: string;
+            /** Skill */
+            readonly skill: string;
+            /** Initiative */
+            readonly initiative: string;
+            /** Ledger */
+            readonly ledger: string;
+            /** Created */
+            readonly created: string;
+            /** Disposition */
+            readonly disposition: string;
+            /** Confidence */
+            readonly confidence: string;
+            /** Mandate */
+            readonly mandate: string;
+            /** Done When */
+            readonly done_when: string;
+            /** Intent */
+            readonly intent: string;
+            /** Evidence */
+            readonly evidence: readonly {
+                readonly [key: string]: unknown;
+            }[];
+            /** Corpus */
+            readonly corpus: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /**
+         * OriginIssueIn
+         * @description Upsert payload — the canopy.origin record minus envelope fields (`schema`/`issue` are derived).
+         */
+        readonly OriginIssueIn: {
+            /** Repo */
+            readonly repo: string;
+            /** Number */
+            readonly number: number;
+            /** Title */
+            readonly title: string;
+            /**
+             * Source
+             * @default hal-architect
+             */
+            readonly source: string;
+            /**
+             * Agent
+             * @default hal
+             */
+            readonly agent: string;
+            /**
+             * Skill
+             * @default architect
+             */
+            readonly skill: string;
+            /**
+             * Initiative
+             * @default
+             */
+            readonly initiative: string;
+            /**
+             * Ledger
+             * @default
+             */
+            readonly ledger: string;
+            /**
+             * Created
+             * @default
+             */
+            readonly created: string;
+            /**
+             * Disposition
+             * @default route
+             */
+            readonly disposition: string;
+            /**
+             * Confidence
+             * @default medium
+             */
+            readonly confidence: string;
+            /**
+             * Mandate
+             * @default
+             */
+            readonly mandate: string;
+            /**
+             * Done When
+             * @default
+             */
+            readonly done_when: string;
+            /**
+             * Intent
+             * @default
+             */
+            readonly intent: string;
+            /** Evidence */
+            readonly evidence?: readonly {
+                readonly [key: string]: unknown;
+            }[];
+            /** Corpus */
+            readonly corpus?: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** Page[OriginIssueOut] */
+        readonly Page_OriginIssueOut_: {
+            /** Items */
+            readonly items: readonly components["schemas"]["OriginIssueOut"][];
+            /** Total */
+            readonly total: number;
+            /** Offset */
+            readonly offset: number;
+            /** Limit */
+            readonly limit: number;
         };
         /** InsightOut */
         readonly InsightOut: {
@@ -4510,6 +4683,108 @@ export interface operations {
                 content: {
                     readonly "application/json": readonly components["schemas"]["ProjectActionSummaryOut"][];
                 };
+            };
+        };
+    };
+    readonly apps_issues_api_list_issues: {
+        readonly parameters: {
+            readonly query?: {
+                readonly initiative?: string | null;
+                readonly repo?: string | null;
+                readonly offset?: number;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Page_OriginIssueOut_"];
+                };
+            };
+        };
+    };
+    readonly apps_issues_api_upsert_issue: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["OriginIssueIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["OriginIssueOut"];
+                };
+            };
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["OriginIssueOut"];
+                };
+            };
+        };
+    };
+    readonly apps_issues_api_get_issue: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly repo_slug: string;
+                readonly number: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["OriginIssueOut"];
+                };
+            };
+        };
+    };
+    readonly apps_issues_api_delete_issue: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly repo_slug: string;
+                readonly number: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
