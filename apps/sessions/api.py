@@ -15,6 +15,7 @@ from pathlib import Path
 
 from django.db import transaction
 from django.http import HttpRequest
+from django.utils.dateparse import parse_datetime
 from ninja import File, Form, Router, Status
 from ninja.files import UploadedFile
 
@@ -114,6 +115,8 @@ def upload_session(
     title: str = Form(""),
     project_slug: str = Form(""),
     visibility: SessionVisibility = Form("link"),
+    started_at: str = Form(""),
+    ended_at: str = Form(""),
 ) -> Status:
     if file.size > MAX_UPLOAD_BYTES:
         raise ProblemError(
@@ -121,6 +124,11 @@ def upload_session(
             "Payload too large",
             detail=f"Transcript exceeds {MAX_UPLOAD_BYTES} bytes.",
         )
+
+    # When the session actually ran (the uploader reads these from the raw
+    # transcript; the reduced upload itself has no per-event timestamps).
+    started_dt = parse_datetime(started_at) if started_at else None
+    ended_dt = parse_datetime(ended_at) if ended_at else None
 
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         for chunk in file.chunks():
@@ -138,6 +146,16 @@ def upload_session(
             owner=request.user, cli_session_id=parsed.cli_session_id
         ).first()
         if existing is not None:
+            # Backfill timing on re-upload if we have it and the stored row doesn't.
+            backfill = []
+            if started_dt and existing.started_at is None:
+                existing.started_at = started_dt
+                backfill.append("started_at")
+            if ended_dt and existing.ended_at is None:
+                existing.ended_at = ended_dt
+                backfill.append("ended_at")
+            if backfill:
+                existing.save(update_fields=[*backfill, "updated_at"])
             token = (
                 existing.ensure_share_token(request.user)
                 if existing.visibility == Session.VISIBILITY_LINK
@@ -168,6 +186,8 @@ def upload_session(
             source_filename=(file.name or "")[:500],
             raw_bytes=parsed.raw_bytes,
             line_count=parsed.line_count,
+            started_at=started_dt,
+            ended_at=ended_dt,
         )
 
         total_redactions = 0
@@ -250,6 +270,12 @@ def _arc_list_payload(arc: SessionArc, *, is_owner: bool) -> dict:
     }
 
 
+def _turn_count(session: Session) -> int:
+    """Conversation turns = the human prompts (one user message per turn in the
+    reduced upload)."""
+    return session.messages.filter(role="user").count()
+
+
 def _arc_item_payloads(arc: SessionArc) -> list[dict]:
     return [
         {
@@ -258,6 +284,9 @@ def _arc_item_payloads(arc: SessionArc) -> list[dict]:
             "session_slug": item.session.slug,
             "session_title": item.session.title,
             "message_count": item.session.messages.count(),
+            "turn_count": _turn_count(item.session),
+            "started_at": item.session.started_at,
+            "ended_at": item.session.ended_at,
         }
         for item in arc.items.select_related("session")
     ]
@@ -486,6 +515,9 @@ def public_share_view(request: HttpRequest, token: str) -> SharedViewOut:
             kind="session",
             title=session.title,
             redaction_count=session.redaction_count,
+            turn_count=_turn_count(session),
+            started_at=session.started_at,
+            ended_at=session.ended_at,
             messages=_session_messages_out(session),
         )
 
@@ -498,14 +530,22 @@ def public_share_view(request: HttpRequest, token: str) -> SharedViewOut:
             SharedSectionOut(
                 heading=(item.heading or item.session.title),
                 redaction_count=item.session.redaction_count,
+                turn_count=_turn_count(item.session),
+                started_at=item.session.started_at,
+                ended_at=item.session.ended_at,
                 messages=_session_messages_out(item.session),
             )
             for item in arc.items.select_related("session")
         ]
+        starts = [s.started_at for s in sections if s.started_at]
+        ends = [s.ended_at for s in sections if s.ended_at]
         return SharedViewOut(
             kind="arc",
             title=arc.title,
             redaction_count=sum(s.redaction_count for s in sections),
+            turn_count=sum(s.turn_count for s in sections),
+            started_at=min(starts) if starts else None,
+            ended_at=max(ends) if ends else None,
             sections=sections,
         )
 

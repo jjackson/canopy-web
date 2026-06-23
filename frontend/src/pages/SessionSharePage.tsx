@@ -10,6 +10,39 @@ type LoadState =
   | { kind: "loaded"; view: SharedView }
   | { kind: "error"; code: string; message: string };
 
+/** "Jun 18, 2026" — or "Jun 18 – Jun 20, 2026" when it spans days. */
+function formatWhen(start: string | null, end: string | null): string {
+  if (!start) return "";
+  const s = new Date(start);
+  const full: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
+  if (!end) return s.toLocaleDateString(undefined, full);
+  const e = new Date(end);
+  if (s.toDateString() === e.toDateString()) return s.toLocaleDateString(undefined, full);
+  return `${s.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${e.toLocaleDateString(undefined, full)}`;
+}
+
+/** "2h 31m" / "45m" / "" — wall-clock span between first and last activity. */
+function formatDuration(start: string | null, end: string | null): string {
+  if (!start || !end) return "";
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (!(ms > 0)) return "";
+  const mins = Math.round(ms / 60000);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+/** "Jun 18, 2026 · 2h 31m · 41 turns" — a session's properties. */
+function propsLine(start: string | null, end: string | null, turns: number): string {
+  const parts: string[] = [];
+  const when = formatWhen(start, end);
+  if (when) parts.push(when);
+  const dur = formatDuration(start, end);
+  if (dur) parts.push(dur);
+  parts.push(`${turns} turn${turns === 1 ? "" : "s"}`);
+  return parts.join(" · ");
+}
+
 /**
  * Public, read-only view of a shared Claude session — or a multi-session arc
  * (several sessions' turn-syntheses stitched into one page with section
@@ -78,6 +111,8 @@ export default function SessionSharePage() {
                 } — read only`
               : "Shared session — read only"}
           </span>
+          <span className="text-zinc-400" aria-hidden>·</span>
+          <span>{propsLine(view.started_at, view.ended_at, view.turn_count)}</span>
           {view.redaction_count > 0 && (
             <span
               className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700"
@@ -93,13 +128,22 @@ export default function SessionSharePage() {
           <div className="mt-8 space-y-12">
             {view.sections.map((section, i) => (
               <section key={i}>
-                <div className="mb-4 flex items-baseline gap-3 border-b border-zinc-200 pb-2">
-                  <span className="text-xs font-medium text-zinc-400">
-                    {i + 1}/{view.sections.length}
-                  </span>
-                  <h2 className="text-base font-semibold text-zinc-800">
-                    {section.heading || `Session ${i + 1}`}
-                  </h2>
+                <div className="mb-4 border-b border-zinc-200 pb-2">
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-xs font-medium text-zinc-400">
+                      {i + 1}/{view.sections.length}
+                    </span>
+                    <h2 className="text-base font-semibold text-zinc-800">
+                      {section.heading || `Session ${i + 1}`}
+                    </h2>
+                  </div>
+                  <p className="mt-1 pl-8 text-xs text-zinc-500">
+                    {propsLine(section.started_at, section.ended_at, section.turn_count)}
+                    {section.redaction_count > 0 &&
+                      ` · ${section.redaction_count} secret${
+                        section.redaction_count === 1 ? "" : "s"
+                      } redacted`}
+                  </p>
                 </div>
                 <MessageList messages={section.messages} />
               </section>

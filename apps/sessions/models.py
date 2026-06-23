@@ -63,6 +63,12 @@ class Session(models.Model):
     raw_bytes = models.BigIntegerField(default=0)
     line_count = models.IntegerField(default=0)
 
+    # When the original Claude session actually ran (first/last event timestamps
+    # from the raw transcript). Distinct from created_at, which is the upload
+    # time. Nullable — older uploads and transcripts without timestamps have none.
+    started_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

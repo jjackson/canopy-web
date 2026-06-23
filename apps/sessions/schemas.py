@@ -95,6 +95,9 @@ class ArcItemOut(StrictModel):
     session_slug: str
     session_title: str = ""
     message_count: int = Field(ge=0)
+    turn_count: int = Field(ge=0)
+    started_at: dt.datetime | None = None
+    ended_at: dt.datetime | None = None
 
 
 class ArcListItemOut(StrictModel):
@@ -127,20 +130,31 @@ class ArcCreateOut(StrictModel):
 
 
 class SharedSectionOut(StrictModel):
-    """One arc section in the public view: a member session's turn-synthesis."""
+    """One arc section in the public view: a member session's turn-synthesis,
+    with the session's properties (when it ran, how many turns)."""
 
     heading: str = ""
     redaction_count: int = Field(ge=0)
+    turn_count: int = Field(ge=0)
+    started_at: dt.datetime | None = None
+    ended_at: dt.datetime | None = None
     messages: list[SessionMessageOut] = []
 
 
 class SharedViewOut(StrictModel):
     """Public, read-only payload for /api/share/{token}, for either a single
     session (``kind="session"``, ``messages`` populated) or an arc
-    (``kind="arc"``, ``sections`` populated). No owner identity is exposed."""
+    (``kind="arc"``, ``sections`` populated). No owner identity is exposed.
+
+    For a single session, ``started_at``/``ended_at``/``turn_count`` describe it
+    directly; for an arc they span all sections (earliest start, latest end,
+    summed turns)."""
 
     kind: Literal["session", "arc"]
     title: str = ""
     redaction_count: int = Field(ge=0)
+    turn_count: int = Field(ge=0)
+    started_at: dt.datetime | None = None
+    ended_at: dt.datetime | None = None
     messages: list[SessionMessageOut] = []  # session kind
     sections: list[SharedSectionOut] = []  # arc kind
