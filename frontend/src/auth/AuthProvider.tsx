@@ -14,7 +14,7 @@ const AuthContext = createContext<AuthState>({ status: 'loading', user: null })
 // the API self-enforces (private resources 404 to anonymous callers).
 function isPublicLinkRoute(): boolean {
   const path = window.location.pathname
-  return path.startsWith('/review/') || path.startsWith('/w/')
+  return path.startsWith('/review/') || path.startsWith('/w/') || path.startsWith('/share/')
 }
 
 export function useAuth(): AuthState {
