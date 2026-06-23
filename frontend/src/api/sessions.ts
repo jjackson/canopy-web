@@ -40,17 +40,24 @@ export interface SessionListItem {
 export interface SharedSection {
   heading: string;
   redaction_count: number;
+  turn_count: number;
+  started_at: string | null;
+  ended_at: string | null;
   messages: SessionMessage[];
 }
 
 /**
  * Public read-only payload for /api/share/{token}. Discriminated by `kind`:
  * a single `session` (messages populated) or an `arc` (sections populated).
+ * `started_at`/`ended_at`/`turn_count` describe the session, or span the arc.
  */
 export interface SharedView {
   kind: "session" | "arc";
   title: string;
   redaction_count: number;
+  turn_count: number;
+  started_at: string | null;
+  ended_at: string | null;
   messages: SessionMessage[]; // session kind
   sections: SharedSection[]; // arc kind
 }

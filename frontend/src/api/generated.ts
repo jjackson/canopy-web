@@ -3285,6 +3285,12 @@ export interface components {
             readonly session_title: string;
             /** Message Count */
             readonly message_count: number;
+            /** Turn Count */
+            readonly turn_count: number;
+            /** Started At */
+            readonly started_at?: string | null;
+            /** Ended At */
+            readonly ended_at?: string | null;
         };
         /** ArcPatchIn */
         readonly ArcPatchIn: {
@@ -4054,7 +4060,8 @@ export interface components {
         };
         /**
          * SharedSectionOut
-         * @description One arc section in the public view: a member session's turn-synthesis.
+         * @description One arc section in the public view: a member session's turn-synthesis,
+         *     with the session's properties (when it ran, how many turns).
          */
         readonly SharedSectionOut: {
             /**
@@ -4064,6 +4071,12 @@ export interface components {
             readonly heading: string;
             /** Redaction Count */
             readonly redaction_count: number;
+            /** Turn Count */
+            readonly turn_count: number;
+            /** Started At */
+            readonly started_at?: string | null;
+            /** Ended At */
+            readonly ended_at?: string | null;
             /**
              * Messages
              * @default []
@@ -4075,6 +4088,10 @@ export interface components {
          * @description Public, read-only payload for /api/share/{token}, for either a single
          *     session (``kind="session"``, ``messages`` populated) or an arc
          *     (``kind="arc"``, ``sections`` populated). No owner identity is exposed.
+         *
+         *     For a single session, ``started_at``/``ended_at``/``turn_count`` describe it
+         *     directly; for an arc they span all sections (earliest start, latest end,
+         *     summed turns).
          */
         readonly SharedViewOut: {
             /**
@@ -4089,6 +4106,12 @@ export interface components {
             readonly title: string;
             /** Redaction Count */
             readonly redaction_count: number;
+            /** Turn Count */
+            readonly turn_count: number;
+            /** Started At */
+            readonly started_at?: string | null;
+            /** Ended At */
+            readonly ended_at?: string | null;
             /**
              * Messages
              * @default []
@@ -5755,6 +5778,16 @@ export interface operations {
                      * @enum {string}
                      */
                     readonly visibility?: "private" | "link";
+                    /**
+                     * Started At
+                     * @default
+                     */
+                    readonly started_at?: string;
+                    /**
+                     * Ended At
+                     * @default
+                     */
+                    readonly ended_at?: string;
                 };
             };
         };

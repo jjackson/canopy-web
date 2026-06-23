@@ -239,3 +239,62 @@ def test_arc_make_private_revokes_share(auth_client):
         content_type="application/json",
     )
     assert Client().get(f"/api/share/{token}").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Session timing (when / how long) on the share payload
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+@override_settings(REQUIRE_AUTH=True)
+def test_single_session_view_carries_timing_and_turn_count(auth_client):
+    token = _upload(
+        auth_client, _transcript("tm1"),
+        started_at="2026-06-18T23:00:00Z", ended_at="2026-06-19T01:30:00Z",
+    ).json()["share_token"]
+    body = Client().get(f"/api/share/{token}").json()
+    assert body["kind"] == "session"
+    assert body["turn_count"] == 1  # one human prompt in _transcript
+    assert body["started_at"].startswith("2026-06-18")
+    assert body["ended_at"].startswith("2026-06-19")
+
+
+@pytest.mark.django_db
+@override_settings(REQUIRE_AUTH=True)
+def test_arc_sections_carry_timing_and_arc_spans_them(auth_client):
+    s1 = _upload(
+        auth_client, _transcript("ta"), title="First",
+        started_at="2026-06-18T23:00:00Z", ended_at="2026-06-19T01:00:00Z",
+    ).json()["slug"]
+    s2 = _upload(
+        auth_client, _transcript("tb"), title="Second",
+        started_at="2026-06-20T08:00:00Z", ended_at="2026-06-20T10:00:00Z",
+    ).json()["slug"]
+    token = _create_arc(
+        auth_client,
+        [{"session_slug": s1, "heading": "H1"}, {"session_slug": s2, "heading": "H2"}],
+    ).json()["share_token"]
+
+    body = Client().get(f"/api/share/{token}").json()
+    sec = body["sections"]
+    assert sec[0]["started_at"].startswith("2026-06-18")
+    assert sec[0]["turn_count"] == 1
+    assert sec[1]["ended_at"].startswith("2026-06-20")
+    # Arc span = earliest start, latest end, summed turns.
+    assert body["started_at"].startswith("2026-06-18")
+    assert body["ended_at"].startswith("2026-06-20")
+    assert body["turn_count"] == 2
+
+
+@pytest.mark.django_db
+def test_reupload_backfills_timing(auth_client):
+    # First upload without timing, then re-upload (dedup) WITH timing → backfilled.
+    slug = _upload(auth_client, _transcript("bf1")).json()["slug"]
+    assert Session.objects.get(slug=slug).started_at is None
+    _upload(
+        auth_client, _transcript("bf1"),
+        started_at="2026-06-18T23:00:00Z", ended_at="2026-06-19T01:00:00Z",
+    )
+    s = Session.objects.get(slug=slug)
+    assert s.started_at is not None and s.ended_at is not None
