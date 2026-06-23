@@ -295,6 +295,23 @@ def test_reupload_backfills_timing(auth_client):
     _upload(
         auth_client, _transcript("bf1"),
         started_at="2026-06-18T23:00:00Z", ended_at="2026-06-19T01:00:00Z",
+        active_seconds="900",
     )
     s = Session.objects.get(slug=slug)
     assert s.started_at is not None and s.ended_at is not None
+    assert s.active_seconds == 900
+
+
+@pytest.mark.django_db
+@override_settings(REQUIRE_AUTH=True)
+def test_active_seconds_in_share_payload_and_arc_sum(auth_client):
+    s1 = _upload(auth_client, _transcript("as1"), active_seconds="600").json()["slug"]
+    s2 = _upload(auth_client, _transcript("as2"), active_seconds="1800").json()["slug"]
+    tok1 = Session.objects.get(slug=s1).active_token().token
+    assert Client().get(f"/api/share/{tok1}").json()["active_seconds"] == 600
+    token = _create_arc(
+        auth_client, [{"session_slug": s1}, {"session_slug": s2}]
+    ).json()["share_token"]
+    body = Client().get(f"/api/share/{token}").json()
+    assert [sec["active_seconds"] for sec in body["sections"]] == [600, 1800]
+    assert body["active_seconds"] == 2400

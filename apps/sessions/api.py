@@ -117,6 +117,7 @@ def upload_session(
     visibility: SessionVisibility = Form("link"),
     started_at: str = Form(""),
     ended_at: str = Form(""),
+    active_seconds: int = Form(0),
 ) -> Status:
     if file.size > MAX_UPLOAD_BYTES:
         raise ProblemError(
@@ -125,10 +126,11 @@ def upload_session(
             detail=f"Transcript exceeds {MAX_UPLOAD_BYTES} bytes.",
         )
 
-    # When the session actually ran (the uploader reads these from the raw
-    # transcript; the reduced upload itself has no per-event timestamps).
+    # When the session actually ran + how long it actively took (the uploader
+    # reads these from the raw transcript; the reduced upload has no timestamps).
     started_dt = parse_datetime(started_at) if started_at else None
     ended_dt = parse_datetime(ended_at) if ended_at else None
+    active_secs = active_seconds if active_seconds > 0 else None
 
     with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as tmp:
         for chunk in file.chunks():
@@ -154,6 +156,9 @@ def upload_session(
             if ended_dt and existing.ended_at is None:
                 existing.ended_at = ended_dt
                 backfill.append("ended_at")
+            if active_secs and existing.active_seconds is None:
+                existing.active_seconds = active_secs
+                backfill.append("active_seconds")
             if backfill:
                 existing.save(update_fields=[*backfill, "updated_at"])
             token = (
@@ -188,6 +193,7 @@ def upload_session(
             line_count=parsed.line_count,
             started_at=started_dt,
             ended_at=ended_dt,
+            active_seconds=active_secs,
         )
 
         total_redactions = 0
@@ -287,6 +293,7 @@ def _arc_item_payloads(arc: SessionArc) -> list[dict]:
             "turn_count": _turn_count(item.session),
             "started_at": item.session.started_at,
             "ended_at": item.session.ended_at,
+            "active_seconds": item.session.active_seconds,
         }
         for item in arc.items.select_related("session")
     ]
@@ -518,6 +525,7 @@ def public_share_view(request: HttpRequest, token: str) -> SharedViewOut:
             turn_count=_turn_count(session),
             started_at=session.started_at,
             ended_at=session.ended_at,
+            active_seconds=session.active_seconds,
             messages=_session_messages_out(session),
         )
 
@@ -533,12 +541,14 @@ def public_share_view(request: HttpRequest, token: str) -> SharedViewOut:
                 turn_count=_turn_count(item.session),
                 started_at=item.session.started_at,
                 ended_at=item.session.ended_at,
+                active_seconds=item.session.active_seconds,
                 messages=_session_messages_out(item.session),
             )
             for item in arc.items.select_related("session")
         ]
         starts = [s.started_at for s in sections if s.started_at]
         ends = [s.ended_at for s in sections if s.ended_at]
+        active_total = sum(s.active_seconds or 0 for s in sections)
         return SharedViewOut(
             kind="arc",
             title=arc.title,
@@ -546,6 +556,7 @@ def public_share_view(request: HttpRequest, token: str) -> SharedViewOut:
             turn_count=sum(s.turn_count for s in sections),
             started_at=min(starts) if starts else None,
             ended_at=max(ends) if ends else None,
+            active_seconds=active_total or None,
             sections=sections,
         )
 

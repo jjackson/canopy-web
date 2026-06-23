@@ -3291,6 +3291,8 @@ export interface components {
             readonly started_at?: string | null;
             /** Ended At */
             readonly ended_at?: string | null;
+            /** Active Seconds */
+            readonly active_seconds?: number | null;
         };
         /** ArcPatchIn */
         readonly ArcPatchIn: {
@@ -4077,6 +4079,8 @@ export interface components {
             readonly started_at?: string | null;
             /** Ended At */
             readonly ended_at?: string | null;
+            /** Active Seconds */
+            readonly active_seconds?: number | null;
             /**
              * Messages
              * @default []
@@ -4112,6 +4116,8 @@ export interface components {
             readonly started_at?: string | null;
             /** Ended At */
             readonly ended_at?: string | null;
+            /** Active Seconds */
+            readonly active_seconds?: number | null;
             /**
              * Messages
              * @default []
@@ -5788,6 +5794,11 @@ export interface operations {
                      * @default
                      */
                     readonly ended_at?: string;
+                    /**
+                     * Active Seconds
+                     * @default 0
+                     */
+                    readonly active_seconds?: number;
                 };
             };
         };
