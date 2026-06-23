@@ -17,7 +17,9 @@ function redirectToLogin(): never {
 // bounce an anonymous visitor to login. Keep in sync with AuthProvider.
 function isPublicLinkRoute(): boolean {
   const p = window.location.pathname;
-  return p.startsWith("/review/") || p.startsWith("/share/");
+  return (
+    p.startsWith("/review/") || p.startsWith("/w/") || p.startsWith("/share/")
+  );
 }
 
 export const apiV2 = createClient<paths>({

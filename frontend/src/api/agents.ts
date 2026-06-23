@@ -164,7 +164,7 @@ function redirectToLogin(): never {
 
 function isPublicLinkRoute(): boolean {
   const p = window.location.pathname
-  return p.startsWith('/review/') || p.startsWith('/share/')
+  return p.startsWith('/review/') || p.startsWith('/w/') || p.startsWith('/share/')
 }
 
 async function getJson<T>(path: string, what: string): Promise<T> {
