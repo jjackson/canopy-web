@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     "apps.skills",
     "apps.evals",
     "apps.projects",
+    "apps.issues",
     "apps.walkthroughs",
     "apps.tokens",
     "apps.reviews",

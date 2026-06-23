@@ -138,6 +138,7 @@ from apps.common.api import ai_router, common_router, public_router  # noqa: E40
 from apps.evals.api import router as evals_router  # noqa: E402
 from apps.projects.api import insights_router  # noqa: E402
 from apps.projects.api import router as projects_router  # noqa: E402
+from apps.issues.api import router as issues_router  # noqa: E402
 from apps.skills.api import router as skills_router  # noqa: E402
 from apps.tokens.api import router as tokens_router  # noqa: E402
 from apps.reviews.api import router as reviews_router  # noqa: E402
@@ -152,6 +153,7 @@ from apps.timeline.api import router as timeline_router  # noqa: E402
 from apps.system.api import router as system_router  # noqa: E402
 
 api.add_router("/projects", projects_router)
+api.add_router("/issues", issues_router)
 api.add_router("/insights", insights_router)
 api.add_router("/collections", collections_router)
 api.add_router("/skills", skills_router)
