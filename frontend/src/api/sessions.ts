@@ -43,6 +43,7 @@ export interface SharedSection {
   turn_count: number;
   started_at: string | null;
   ended_at: string | null;
+  active_seconds: number | null;
   messages: SessionMessage[];
 }
 
@@ -58,6 +59,7 @@ export interface SharedView {
   turn_count: number;
   started_at: string | null;
   ended_at: string | null;
+  active_seconds: number | null;
   messages: SessionMessage[]; // session kind
   sections: SharedSection[]; // arc kind
 }

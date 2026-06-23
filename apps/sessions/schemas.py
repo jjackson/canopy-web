@@ -98,6 +98,7 @@ class ArcItemOut(StrictModel):
     turn_count: int = Field(ge=0)
     started_at: dt.datetime | None = None
     ended_at: dt.datetime | None = None
+    active_seconds: int | None = None
 
 
 class ArcListItemOut(StrictModel):
@@ -138,6 +139,7 @@ class SharedSectionOut(StrictModel):
     turn_count: int = Field(ge=0)
     started_at: dt.datetime | None = None
     ended_at: dt.datetime | None = None
+    active_seconds: int | None = None
     messages: list[SessionMessageOut] = []
 
 
@@ -156,5 +158,6 @@ class SharedViewOut(StrictModel):
     turn_count: int = Field(ge=0)
     started_at: dt.datetime | None = None
     ended_at: dt.datetime | None = None
+    active_seconds: int | None = None
     messages: list[SessionMessageOut] = []  # session kind
     sections: list[SharedSectionOut] = []  # arc kind

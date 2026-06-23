@@ -203,3 +203,16 @@ jobs:
           # Optional — when unset the build still succeeds (empty catalog).
           CANOPY_PLUGIN_TOKEN: ${{ secrets.CANOPY_PLUGIN_TOKEN }}
         run: ./deploy.sh ${{ github.sha }}
+
+      # deploy.sh ships the service image but NOT migrations. Run the migrate
+      # Cloud Run job against the exact image we just deployed, so a schema
+      # change can never ship half-applied (the new code live with the old
+      # schema → 500s on the new tables). Idempotent: no-op when there's nothing
+      # to migrate.
+      - name: Run database migrations
+        run: |
+          IMG="us-central1-docker.pkg.dev/canopy-494811/canopy-web/canopy-web:${{ github.sha }}"
+          gcloud run jobs update canopy-web-migrate \
+            --image="$IMG" --region=us-central1 --quiet
+          gcloud run jobs execute canopy-web-migrate \
+            --region=us-central1 --wait

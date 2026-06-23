@@ -68,6 +68,10 @@ class Session(models.Model):
     # time. Nullable — older uploads and transcripts without timestamps have none.
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
+    # Estimated *active* duration in seconds — inter-event gaps capped at 30 min
+    # so idle time doesn't inflate it (the honest "how long", vs the wall-clock
+    # started_at→ended_at span). Nullable for older/timestamp-less uploads.
+    active_seconds = models.IntegerField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
