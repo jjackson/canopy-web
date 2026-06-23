@@ -105,7 +105,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --add-cloudsql-instances="${SQL_INSTANCE}" \
   --set-env-vars="DJANGO_SETTINGS_MODULE=config.settings.production" \
   --set-env-vars="AI_BACKEND=api" \
-  --set-env-vars="^|^AUTH_ALLOWED_EMAIL_DOMAIN=dimagi.com,dimagi-ai.com" \
+  --set-env-vars="^|^AUTH_ALLOWED_EMAIL_DOMAIN=dimagi.com,dimagi-ai.com,dimagi-associate.com" \
   --set-env-vars="REQUIRE_AUTH=${REQUIRE_AUTH_FLAG}" \
   --set-env-vars="CANOPY_DRIVE_ROOT_FOLDER_ID=1cUv7wQXOvVwuZ86PdhkxpFcuB4Lm9fPz" \
   --set-secrets="SECRET_KEY=django-secret-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=canopy-db-url:latest,GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret:latest,CANOPY_DRIVE_SA_KEY_JSON=canopy-web-drive-sa:latest" \
