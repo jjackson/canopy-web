@@ -1,0 +1,165 @@
+{
+  "artifacts": [
+    {
+      "name": "program.md",
+      "skill": "connect-program-setup"
+    },
+    {
+      "name": "pdd.md",
+      "skill": "idea-to-pdd"
+    },
+    {
+      "name": "deliver-app-summary.md",
+      "skill": "pdd-to-deliver-app"
+    },
+    {
+      "name": "learn-app-summary.md",
+      "skill": "pdd-to-learn-app"
+    }
+  ],
+  "decisions": [],
+  "gates": [],
+  "name": "nutrition-midflight",
+  "run": {
+    "current_phase": "connect-setup",
+    "current_step": "connect-program-setup",
+    "mode": "review",
+    "status": "in_progress"
+  },
+  "run_id": "20260602-1030",
+  "steps": [
+    {
+      "ordinal": 1,
+      "phase": "design-review",
+      "skill": "idea-to-pdd",
+      "status": "complete"
+    },
+    {
+      "ordinal": 2,
+      "phase": "design-review",
+      "skill": "pdd-to-test-prompts",
+      "status": "complete"
+    },
+    {
+      "ordinal": 3,
+      "phase": "commcare-setup",
+      "skill": "pdd-to-learn-app",
+      "status": "complete"
+    },
+    {
+      "ordinal": 4,
+      "phase": "commcare-setup",
+      "skill": "pdd-to-deliver-app",
+      "status": "complete"
+    },
+    {
+      "ordinal": 5,
+      "phase": "commcare-setup",
+      "skill": "app-deploy",
+      "status": "complete"
+    },
+    {
+      "ordinal": 6,
+      "phase": "commcare-setup",
+      "skill": "app-test",
+      "status": "complete"
+    },
+    {
+      "ordinal": 7,
+      "phase": "commcare-setup",
+      "skill": "training-materials",
+      "status": "complete"
+    },
+    {
+      "ordinal": 8,
+      "phase": "connect-setup",
+      "skill": "connect-program-setup",
+      "status": "running"
+    },
+    {
+      "ordinal": 9,
+      "phase": "connect-setup",
+      "skill": "connect-opp-setup",
+      "status": "pending"
+    },
+    {
+      "ordinal": 10,
+      "phase": "ocs-setup",
+      "skill": "ocs-agent-setup",
+      "status": "pending"
+    },
+    {
+      "ordinal": 11,
+      "phase": "ocs-setup",
+      "skill": "ocs-chatbot-qa",
+      "status": "pending"
+    },
+    {
+      "ordinal": 12,
+      "phase": "ocs-setup",
+      "skill": "ocs-chatbot-eval",
+      "status": "pending"
+    },
+    {
+      "ordinal": 13,
+      "phase": "llo-management",
+      "skill": "llo-invite",
+      "status": "pending"
+    },
+    {
+      "ordinal": 14,
+      "phase": "llo-management",
+      "skill": "llo-onboarding",
+      "status": "pending"
+    },
+    {
+      "ordinal": 15,
+      "phase": "llo-management",
+      "skill": "llo-uat",
+      "status": "pending"
+    },
+    {
+      "ordinal": 16,
+      "phase": "llo-management",
+      "skill": "llo-launch",
+      "status": "pending"
+    },
+    {
+      "ordinal": 17,
+      "phase": "llo-management",
+      "skill": "timeline-monitor",
+      "status": "pending"
+    },
+    {
+      "ordinal": 18,
+      "phase": "llo-management",
+      "skill": "flw-data-review",
+      "status": "pending"
+    },
+    {
+      "ordinal": 19,
+      "phase": "closeout",
+      "skill": "opp-closeout",
+      "status": "pending"
+    },
+    {
+      "ordinal": 20,
+      "phase": "closeout",
+      "skill": "llo-feedback",
+      "status": "pending"
+    },
+    {
+      "ordinal": 21,
+      "phase": "closeout",
+      "skill": "learnings-summary",
+      "status": "pending"
+    },
+    {
+      "ordinal": 22,
+      "phase": "closeout",
+      "skill": "cycle-grade",
+      "status": "pending"
+    }
+  ],
+  "verdicts": []
+}

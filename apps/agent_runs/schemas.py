@@ -103,6 +103,7 @@ class RunSummary(StrictModel):
     label: str = ""
     mode: RunMode = "review"
     status: RunStatus = "pending"
+    current_phase: str = ""
     current_step: str = ""
     forked_from: str | None = None
     session_link: str = ""
@@ -122,6 +123,7 @@ class Run(StrictModel):
     label: str = ""
     mode: RunMode = "review"
     status: RunStatus = "pending"
+    current_phase: str = ""
     current_step: str = ""
     forked_from: str | None = None
     session_link: str = ""

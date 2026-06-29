@@ -723,7 +723,15 @@ class DriveRunStore:
         )
 
     def _run_header_fields(self, agent: str, run_id: str, state_data: dict) -> dict:
+        # ACE's run_state.yaml writes the autopilot mode as the literal
+        # "autopilot" (see the malaria-rdt-simple fixture). The canopy read
+        # model's RunMode enum canonicalizes that to "auto", so map it here.
+        # Previously any non-"review"/"auto" value (including ACE's own
+        # "autopilot") silently collapsed to "review" — a real parity bug that
+        # dropped the autopilot signal on every ACE run.
         mode = state_data.get("mode")
+        if mode == "autopilot":
+            mode = "auto"
         if mode not in ("review", "auto"):
             mode = "review"
         label = (
@@ -736,6 +744,9 @@ class DriveRunStore:
             "agent_slug": agent,
             "label": label,
             "mode": mode,
+            # current_phase is read straight from run_state.yaml (matching ACE's
+            # RunDetail.current_phase) — the read model previously omitted it.
+            "current_phase": str(state_data.get("current_phase") or ""),
             "current_step": str(
                 state_data.get("current_step") or state_data.get("step") or ""
             ),
@@ -806,6 +817,7 @@ class DriveRunStore:
                     label=hdr["label"],
                     mode=hdr["mode"],
                     status=derive_status(steps),
+                    current_phase=hdr["current_phase"],
                     current_step=hdr["current_step"],
                     forked_from=hdr["forked_from"],
                     session_link=hdr["session_link"],
@@ -1069,6 +1081,7 @@ class DriveRunStore:
             label=new_run.label,
             mode=new_run.mode,
             status=new_run.status_from_steps(),
+            current_phase=new_run.current_phase,
             current_step=new_run.current_step,
             forked_from=new_run.forked_from,
             session_link=new_run.session_link,
