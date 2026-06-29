@@ -85,13 +85,6 @@ def test_record_gate_closes_open_gate():
     assert run.gates[0].decided_at is not None
 
 
-def test_fork_not_implemented():
-    store = InMemoryRunStore()
-    store.put_run(_sample_run())
-    with pytest.raises(NotImplementedError):
-        store.fork("echo", "r1", at_step="render")
-
-
 def test_changed_ids_tracks_writes():
     store = InMemoryRunStore()
     store.put_run(_sample_run("r1"))

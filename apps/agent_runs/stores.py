@@ -8,7 +8,7 @@ lets ACE keep Drive-as-truth while canopy-hosted agents get DB-as-truth.
 Adapters here:
 - `InMemoryRunStore` — dict-backed, for tests and as the reference behaviour.
 - `DbRunStore` — reads `apps.agent_runs.models` rows into the read model. Reads +
-  `record_gate` are implemented; `fork` is the next layer (raises NotImplemented).
+  the writes (`record_gate`, `record_decision`, `fork`) are implemented.
 
 The Drive adapter (ACE parity) lands in a later phase behind this same Protocol.
 """
@@ -27,6 +27,43 @@ from .schemas import (
     Verdict,
     derive_status,
 )
+
+# Fork modes — both copy kept (pre-fork) steps + their decisions; they differ
+# only in how upstream decision rows carry forward (mirrors ACE's
+# opp_forker.FORK_MODES):
+#   * keep-overrides-only — only rows whose status == "overridden" survive; AI
+#     defaults are dropped so the new run re-derives them.
+#   * keep-all — every kept-step decision carries forward regardless of status.
+FORK_MODES = ("keep-overrides-only", "keep-all")
+
+# The mutable read-model Decision fields a write path may set (everything but
+# the step_key, which is positional).
+_DECISION_WRITE_FIELDS = (
+    "question", "ai_default", "override", "status", "reasoning", "evidence_basis",
+)
+
+
+def _apply_decision_edit(fields: dict, edit) -> None:
+    """Mutate a decision `fields` dict in place per a single fork `edit`.
+
+    `edit` may be a bare string (the override answer) or a dict with any of
+    `override` / `status` / `reasoning` / `evidence_basis`. Supplying an
+    `override` flips status to "overridden" unless an explicit status is given.
+    A falsy/None edit is a no-op.
+    """
+    if not edit:
+        return
+    if isinstance(edit, str):
+        edit = {"override": edit}
+    if "override" in edit and edit["override"] is not None:
+        fields["override"] = edit["override"]
+        fields["status"] = edit.get("status", "overridden")
+    elif "status" in edit:
+        fields["status"] = edit["status"]
+    if "reasoning" in edit:
+        fields["reasoning"] = edit["reasoning"]
+    if "evidence_basis" in edit:
+        fields["evidence_basis"] = edit["evidence_basis"]
 
 
 @runtime_checkable
@@ -59,6 +96,16 @@ class RunStore(Protocol):
         """Record (close) a gate decision on a step. A write."""
         ...
 
+    def record_decision(self, agent: str, run_id: str, step_key: str, decision_fields: dict) -> Decision:
+        """Append an entry to the auditable decisions log on a step. A write.
+
+        `decision_fields` carries the read-model Decision fields (`question`
+        required; `ai_default` / `override` / `status` / `reasoning` /
+        `evidence_basis` optional). Used by gates/steps to record what the AI
+        proposed and any human override.
+        """
+        ...
+
     def fork(self, agent: str, run_id: str, at_step: str, mode: str = "keep-overrides-only", edits: dict | None = None) -> RunSummary:
         """Mint a new run under the same agent, copying steps < at_step. A write."""
         ...
@@ -84,6 +131,7 @@ class InMemoryRunStore:
         self._runs: dict[str, dict[str, Run]] = {}
         self._cursor = 0
         self._changed: list[tuple[int, str, str]] = []  # (seq, agent, run_id)
+        self._fork_seq = 0  # monotonic suffix for minted fork run-ids
 
     # -- helpers (test-facing) --
     def put_run(self, run: Run) -> Run:
@@ -145,8 +193,73 @@ class InMemoryRunStore:
         self._changed.append((self._cursor, agent, run_id))
         return updated
 
+    def record_decision(self, agent: str, run_id: str, step_key: str, decision_fields: dict) -> Decision:
+        run = self._require(agent, run_id)
+        fields = {k: v for k, v in decision_fields.items() if k in _DECISION_WRITE_FIELDS}
+        decision = Decision(step_key=step_key, **fields)
+        run.decisions.append(decision)
+        self._cursor += 1
+        self._changed.append((self._cursor, agent, run_id))
+        return decision
+
     def fork(self, agent: str, run_id: str, at_step: str, mode: str = "keep-overrides-only", edits: dict | None = None) -> RunSummary:
-        raise NotImplementedError("fork is the next layer — see Wave 1 Phase 2")
+        if mode not in FORK_MODES:
+            raise ValueError(f"unknown fork mode {mode!r}; expected one of {FORK_MODES}")
+        src = self._require(agent, run_id)
+        fork_step = next((s for s in src.steps if s.key == at_step), None)
+        if fork_step is None:
+            raise ValueError(f"no step {at_step!r} in run {run_id!r}")
+        fork_ordinal = fork_step.ordinal
+        edits = edits or {}
+
+        new_steps: list[Step] = []
+        new_verdicts: list[Verdict] = []
+        kept_keys: set[str] = set()
+        for s in src.steps:
+            kept = s.ordinal < fork_ordinal
+            if kept:
+                kept_keys.add(s.key)
+            new_steps.append(s.model_copy(update={
+                "status": "complete" if kept else "pending",
+                "started_at": s.started_at if kept else None,
+                "completed_at": s.completed_at if kept else None,
+                "error": "",
+            }))
+            if kept:
+                # "verdict seeded" — mark the carried-over step as not freshly
+                # judged (mirrors ACE's `verdict: seeded` phase sentinel).
+                new_verdicts.append(Verdict(
+                    step_key=s.key, kind="judge", criteria={"seeded": True},
+                    rationale=f"seeded from run {run_id}",
+                ))
+
+        new_decisions: list[Decision] = []
+        for d in src.decisions:
+            if d.step_key not in kept_keys:
+                continue
+            if mode == "keep-overrides-only" and d.status != "overridden":
+                continue
+            fields = d.model_dump()
+            _apply_decision_edit(fields, edits.get(d.step_key, {}).get(d.question))
+            new_decisions.append(Decision(**fields))
+
+        self._fork_seq += 1
+        new_id = f"{run_id}-fork-{self._fork_seq}"
+        new_run = Run(
+            id=new_id, agent_slug=src.agent_slug, label=src.label, mode=src.mode,
+            current_step=at_step, forked_from=run_id, session_link="",
+            created_at=dt.datetime.now(dt.timezone.utc),
+            steps=new_steps, artifacts=[], verdicts=new_verdicts,
+            decisions=new_decisions, gates=[],
+        )
+        self.put_run(new_run)
+        return RunSummary(
+            id=new_run.id, agent_slug=new_run.agent_slug, label=new_run.label,
+            mode=new_run.mode, status=new_run.status_from_steps(),
+            current_step=new_run.current_step, forked_from=new_run.forked_from,
+            session_link=new_run.session_link, created_at=new_run.created_at,
+            completed_at=new_run.completed_at,
+        )
 
     def changed_ids(self, agent: str, cursor: str | None = None) -> tuple[list[str], str]:
         start = int(cursor) if cursor else 0
@@ -164,8 +277,9 @@ class DbRunStore:
     """A `RunStore` backed by `apps.agent_runs.models` Postgres rows.
 
     Reads (`get_run`, `list_runs`, `list_steps`, `list_artifacts`,
-    `list_verdicts`) + `record_gate` are implemented. `fork` (CREATE + copy
-    steps/decisions) is the next layer.
+    `list_verdicts`) and writes (`record_gate`, `record_decision`, `fork`) are
+    all implemented. `fork` CREATEs a new `AgentRun` and copies trimmed
+    steps/decisions per `mode`/`edits`.
     """
 
     def get_run(self, agent: str, run_id: str) -> Run:
@@ -278,11 +392,92 @@ class DbRunStore:
         gate.save()
         return _gate_to_schema(gate, step_key)
 
+    def record_decision(self, agent: str, run_id: str, step_key: str, decision_fields: dict) -> Decision:
+        from .models import AgentRunDecision, AgentRunStep
+
+        step = AgentRunStep.objects.get(run__agent__slug=agent, run_id=run_id, key=step_key)
+        fields = {k: v for k, v in decision_fields.items() if k in _DECISION_WRITE_FIELDS}
+        decision = AgentRunDecision.objects.create(step=step, **fields)
+        return _decision_to_schema(decision, step_key)
+
     def fork(self, agent: str, run_id: str, at_step: str, mode: str = "keep-overrides-only", edits: dict | None = None) -> RunSummary:
-        # TODO(Wave 1 Phase 2): CREATE a new AgentRun under the same agent, copy
-        # steps (and decisions per `mode`) with ordinal < the at_step ordinal,
-        # set forked_from, and return the new run's summary.
-        raise NotImplementedError("DbRunStore.fork is the next layer — see Wave 1 Phase 2")
+        from django.db import transaction
+
+        from .models import (
+            AgentRun,
+            AgentRunDecision,
+            AgentRunStep,
+            AgentRunVerdict,
+        )
+
+        if mode not in FORK_MODES:
+            raise ValueError(f"unknown fork mode {mode!r}; expected one of {FORK_MODES}")
+
+        source = AgentRun.objects.select_related("agent").get(agent__slug=agent, pk=run_id)
+        source_steps = list(source.steps.all().order_by("ordinal", "id"))
+        fork_step = next((s for s in source_steps if s.key == at_step), None)
+        if fork_step is None:
+            raise ValueError(f"no step {at_step!r} in run {run_id!r}")
+        fork_ordinal = fork_step.ordinal
+        edits = edits or {}
+
+        with transaction.atomic():
+            new_run = AgentRun.objects.create(
+                agent=source.agent,
+                label=source.label,
+                mode=source.mode,
+                current_step=at_step,
+                forked_from=source,
+            )
+            for s in source_steps:
+                kept = s.ordinal < fork_ordinal
+                new_step = AgentRunStep.objects.create(
+                    run=new_run,
+                    key=s.key,
+                    ordinal=s.ordinal,
+                    title=s.title,
+                    status=AgentRunStep.COMPLETE if kept else AgentRunStep.PENDING,
+                    started_at=s.started_at if kept else None,
+                    completed_at=s.completed_at if kept else None,
+                    error="",
+                )
+                if not kept:
+                    continue
+                # "verdict seeded" — carried-over step, not freshly judged.
+                AgentRunVerdict.objects.create(
+                    step=new_step,
+                    kind=AgentRunVerdict.JUDGE,
+                    criteria={"seeded": True},
+                    rationale=f"seeded from run {source.pk}",
+                )
+                step_edits = edits.get(s.key, {})
+                for d in s.decisions.all().order_by("id"):
+                    if mode == "keep-overrides-only" and d.status != AgentRunDecision.OVERRIDDEN:
+                        continue
+                    fields = {
+                        "question": d.question,
+                        "ai_default": d.ai_default,
+                        "override": d.override,
+                        "status": d.status,
+                        "reasoning": d.reasoning,
+                        "evidence_basis": d.evidence_basis,
+                    }
+                    _apply_decision_edit(fields, step_edits.get(d.question))
+                    AgentRunDecision.objects.create(step=new_step, **fields)
+
+        new_steps = [_step_to_schema(s) for s in new_run.steps.all()]
+        return RunSummary(
+            id=str(new_run.pk),
+            agent_slug=new_run.agent.slug,
+            label=new_run.label,
+            mode=new_run.mode,
+            status=derive_status(new_steps),
+            current_step=new_run.current_step,
+            forked_from=str(new_run.forked_from_id) if new_run.forked_from_id else None,
+            session_link=new_run.session_link,
+            created_at=new_run.created_at,
+            completed_at=new_run.completed_at,
+        )
 
     def changed_ids(self, agent: str, cursor: str | None = None) -> tuple[list[str], str]:
         from django.utils.dateparse import parse_datetime

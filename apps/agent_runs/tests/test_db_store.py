@@ -106,11 +106,6 @@ def test_forked_from_is_carried(agent):
     assert read.forked_from == str(parent.pk)
 
 
-def test_fork_not_implemented(run):
-    with pytest.raises(NotImplementedError):
-        DbRunStore().fork("echo", str(run.pk), at_step="render")
-
-
 def test_changed_ids(run):
     ids, cursor = DbRunStore().changed_ids("echo")
     assert str(run.pk) in ids
