@@ -28,6 +28,7 @@ the arrow's direction and enforce it in CI.
 | App | Tier | What it is |
 |---|---|---|
 | `agents` | **framework** | Agent workspace: board, command-drain queue, work-products, tasks, *needs-you* inbox. Agent-agnostic. |
+| `agent_runs` | **framework** | Unified agent run-lifecycle: run → step → artifact → verdict/QA → decision → gate → fork, as a storage-agnostic read model behind a `RunStore` Protocol (DB adapter persists rows; Drive adapter reads ACE's YAML). FK's `agents.Agent`; imports no product app. |
 | `api` | **framework** (composition root) | The single NinjaAPI that wires every app's router. The one seam allowed to import all apps. |
 | `common` | **framework** | Shared infra: anthropic client, auth flow, middleware, auth-domains. |
 | `timeline` | **framework** | Generic activity-log aggregation; reads other apps' events via a string registry (no hard product imports). |

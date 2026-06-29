@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     "apps.mcp",
     "apps.sessions",
     "apps.agents",
+    "apps.agent_runs",
     "apps.timeline",
     "apps.system",
 ]
