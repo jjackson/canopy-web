@@ -1,5 +1,5 @@
 {
-  "name": "@marshellis/canopy-ui",
+  "name": "canopy-ui",
   "version": "0.2.0",
   "type": "module",
   "exports": {

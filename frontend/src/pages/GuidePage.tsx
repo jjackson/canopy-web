@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Badge } from '@marshellis/canopy-ui/ui'
+import { Badge } from 'canopy-ui/ui'
 
 const SECTIONS = [
   { id: 'try-it', label: 'Try It Now' },

@@ -9,7 +9,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingSpinner,
-} from '@marshellis/canopy-ui'
+} from 'canopy-ui'
 import {
   listTimeline,
   type TimelineEvent,

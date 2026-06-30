@@ -3,13 +3,13 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
-/* Shared @marshellis/canopy-ui token CONTRACT: maps Tailwind color/radius utilities
+/* Shared canopy-ui token CONTRACT: maps Tailwind color/radius utilities
    (bg-primary, text-muted-foreground, border-border, rounded-lg, …) onto the
    canonical CSS-var NAMES (--primary, --muted-foreground, --border, --radius, …).
    The preset owns the NAMES; this app owns the VALUES — the :root / .dark
    palette below. ace-web imports this same preset with its own palette. Keep in
    lockstep with packages/workbench/src/tokens/preset.css. */
-@import "@marshellis/canopy-ui/tokens/preset.css";
+@import "canopy-ui/tokens/preset.css";
 
 @source "../packages/workbench/src";
 

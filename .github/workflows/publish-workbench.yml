@@ -1,15 +1,14 @@
-name: Publish @marshellis/canopy-ui
+name: Publish canopy-ui
 
-# Publishes the shared front-end workbench package to the PUBLIC npm registry
-# (npmjs.com) under the @marshellis scope. GitHub Packages can't host @marshellis from a
-# personal repo (its npm scope must equal the repo owner), so we use npmjs.
+# Publishes the shared front-end design system to the PUBLIC npm registry as the
+# UNSCOPED package `canopy-ui` (no org scope — portable, not tied to any account).
 #
 # Trigger by pushing a tag like `workbench-v0.2.0`, or manually via the Actions
 # tab (workflow_dispatch). Bump the version in
 # frontend/packages/workbench/package.json to match the tag before tagging.
 #
-# Requires repo secret NPM_TOKEN — an npm "Automation" token for an account that
-# can publish to the @marshellis org (claim @marshellis on npmjs first).
+# Requires repo secret NPM_TOKEN — an npm "Automation" token for an account with
+# publish rights to `canopy-ui`. (Or use OIDC Trusted Publishing instead.)
 on:
   push:
     tags: ['workbench-v*']
@@ -25,7 +24,6 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-          scope: '@marshellis'
       - name: Publish
         run: npm publish --access public
         working-directory: frontend/packages/workbench
