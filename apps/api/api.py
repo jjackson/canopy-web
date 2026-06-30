@@ -149,6 +149,7 @@ from apps.shareouts.api import router as shareouts_router  # noqa: E402
 from apps.sessions.api import router as sessions_router  # noqa: E402
 from apps.sessions.api import share_router as session_share_router  # noqa: E402
 from apps.agents.api import router as agents_router  # noqa: E402
+from apps.agent_runs.api import router as agent_runs_router  # noqa: E402
 from apps.timeline.api import router as timeline_router  # noqa: E402
 from apps.system.api import router as system_router  # noqa: E402
 
@@ -169,6 +170,7 @@ api.add_router("/ddd", runs_router)
 api.add_router("/shareouts", shareouts_router)
 api.add_router("/sessions", sessions_router)
 api.add_router("/agents", agents_router)
+api.add_router("/agents", agent_runs_router)  # unified run lifecycle under the agents namespace
 api.add_router("/timeline", timeline_router)
 api.add_router("/system", system_router)
 api.add_router("/share", session_share_router)

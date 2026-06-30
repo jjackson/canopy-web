@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.agent_runs.models import AgentRun, AgentRunGate, AgentRunStep
 from apps.agents import services
 from apps.agents.models import Agent, AgentSkill, AgentSync, AgentTask, AgentWorkProduct
 
@@ -126,6 +127,54 @@ def test_needs_you_types_ranks_and_excludes_echo():
     order = [rank[i["type"]] for i in res["items"]]
     assert order == sorted(order)                        # typed bands, ranked
     assert res["waiting_count"] == 2                      # gated (review+question) only
+
+
+def test_needs_you_projects_run_state():
+    """Run lifecycle surfaces on /needs-you reusing review/question/notify
+    (spec §5): open gate → review, failed step → question, completed → notify."""
+    agent = _agent()
+    # Run A: an OPEN gate awaiting a human decision → review (gated/waiting).
+    run_a = AgentRun.objects.create(agent=agent, label="Render demo", current_step="render")
+    step_a = AgentRunStep.objects.create(run=run_a, key="render", ordinal=0, status=AgentRunStep.RUNNING)
+    AgentRunGate.objects.create(step=step_a)  # decided_at None → open
+    # Run B: a FAILED step → question (gated/waiting).
+    run_b = AgentRun.objects.create(agent=agent, label="Build app", current_step="build")
+    AgentRunStep.objects.create(run=run_b, key="build", ordinal=0, status=AgentRunStep.FAILED, error="boom")
+    # Run C: all steps terminal → completed run → notify (NOT waiting).
+    run_c = AgentRun.objects.create(agent=agent, label="Shipped run")
+    AgentRunStep.objects.create(run=run_c, key="done", ordinal=0, status=AgentRunStep.COMPLETE)
+
+    res = services.needs_you(agent)
+    triples = [(i["type"], i["ref_kind"], i["title"]) for i in res["items"]]
+    assert ("review", "run", "Render demo") in triples          # open gate
+    assert ("question", "run", "Build app") in triples           # failed step
+    assert ("notify", "run", "Shipped run") in triples           # completed run
+    # open gate + failed step are gated → bump the "waiting on you" badge
+    assert res["waiting_count"] >= 2
+    # the review item's subtitle carries the gate's step
+    review_run = next(i for i in res["items"] if i["ref_kind"] == "run" and i["type"] == "review")
+    assert "render" in review_run["subtitle"]
+    # ranking preserved across the merged task + run bands
+    rank = {"review": 0, "question": 1, "notify": 2}
+    order = [rank[i["type"]] for i in res["items"]]
+    assert order == sorted(order)
+
+
+def test_agenttask_run_link_round_trips():
+    """A task can mean 'execute this run' — the nullable FK round-trips and
+    SET_NULL leaves the task when its run is deleted."""
+    agent = _agent()
+    run = AgentRun.objects.create(agent=agent, label="Linked run")
+    task = services.create_task(agent, _task(ext_id="t1", title="Execute the run"))
+    assert task.run_id is None                                   # nullable by default
+    task.run = run
+    task.save(update_fields=["run"])
+    task.refresh_from_db()
+    assert task.run_id == run.pk and task.run == run
+    assert list(run.tasks.all()) == [task]                       # reverse accessor
+    run.delete()                                                 # on_delete=SET_NULL
+    task.refresh_from_db()
+    assert task.run_id is None and AgentTask.objects.filter(pk=task.pk).exists()
 
 
 def test_command_flow_accept_then_apply_and_decline():

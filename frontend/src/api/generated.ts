@@ -1400,6 +1400,92 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/runs/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List an agent's runs */
+        readonly get: operations["apps_agent_runs_api_list_runs"];
+        readonly put?: never;
+        /** Create a run */
+        readonly post: operations["apps_agent_runs_api_create_run"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/runs/{run_id}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Full run read model */
+        readonly get: operations["apps_agent_runs_api_get_run"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/runs/{run_id}/steps/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** A run's steps */
+        readonly get: operations["apps_agent_runs_api_list_steps"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/runs/{run_id}/steps/{step_key}/gate": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Record a gate decision on a step */
+        readonly post: operations["apps_agent_runs_api_record_gate"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/runs/{run_id}/fork": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Fork a run */
+        readonly post: operations["apps_agent_runs_api_fork_run"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/timeline/": {
         readonly parameters: {
             readonly query?: never;
@@ -4125,6 +4211,363 @@ export interface components {
              */
             readonly result_note: string;
         };
+        /** Page[RunSummary] */
+        readonly Page_RunSummary_: {
+            /** Items */
+            readonly items: readonly components["schemas"]["RunSummary"][];
+            /** Total */
+            readonly total: number;
+            /** Offset */
+            readonly offset: number;
+            /** Limit */
+            readonly limit: number;
+        };
+        /**
+         * RunSummary
+         * @description A lightweight run header for list views (no steps/artifacts/verdicts).
+         */
+        readonly RunSummary: {
+            /** Id */
+            readonly id: string;
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /**
+             * Label
+             * @default
+             */
+            readonly label: string;
+            /**
+             * Mode
+             * @default review
+             * @enum {string}
+             */
+            readonly mode: "review" | "auto";
+            /**
+             * Status
+             * @default pending
+             * @enum {string}
+             */
+            readonly status: "pending" | "in_progress" | "complete";
+            /**
+             * Current Phase
+             * @default
+             */
+            readonly current_phase: string;
+            /**
+             * Current Step
+             * @default
+             */
+            readonly current_step: string;
+            /** Forked From */
+            readonly forked_from?: string | null;
+            /**
+             * Session Link
+             * @default
+             */
+            readonly session_link: string;
+            /** Created At */
+            readonly created_at?: string | null;
+            /** Completed At */
+            readonly completed_at?: string | null;
+        };
+        /**
+         * RunCreateIn
+         * @description Create a run (optionally seeded with steps).
+         */
+        readonly RunCreateIn: {
+            /**
+             * Label
+             * @default
+             */
+            readonly label: string;
+            /**
+             * Mode
+             * @default review
+             * @enum {string}
+             */
+            readonly mode: "review" | "auto";
+            /**
+             * Current Step
+             * @default
+             */
+            readonly current_step: string;
+            /**
+             * Session Link
+             * @default
+             */
+            readonly session_link: string;
+            /** Steps */
+            readonly steps?: readonly components["schemas"]["StepIn"][];
+        };
+        /**
+         * StepIn
+         * @description A seed step for a freshly created run.
+         */
+        readonly StepIn: {
+            /** Key */
+            readonly key: string;
+            /**
+             * Ordinal
+             * @default 0
+             */
+            readonly ordinal: number;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /**
+             * Status
+             * @default pending
+             * @enum {string}
+             */
+            readonly status: "pending" | "running" | "complete" | "failed" | "skipped";
+        };
+        /**
+         * Artifact
+         * @description A step-attributed artifact (many per step).
+         */
+        readonly Artifact: {
+            /** Step Key */
+            readonly step_key: string;
+            /** Name */
+            readonly name: string;
+            /**
+             * Url
+             * @default
+             */
+            readonly url: string;
+            /**
+             * Mime Type
+             * @default
+             */
+            readonly mime_type: string;
+            /** Size */
+            readonly size?: number | null;
+            /**
+             * Role
+             * @default
+             */
+            readonly role: string;
+        };
+        /**
+         * Decision
+         * @description An entry in the auditable decisions log.
+         */
+        readonly Decision: {
+            /** Step Key */
+            readonly step_key: string;
+            /** Question */
+            readonly question: string;
+            /**
+             * Ai Default
+             * @default
+             */
+            readonly ai_default: string;
+            /**
+             * Override
+             * @default
+             */
+            readonly override: string;
+            /**
+             * Status
+             * @default ai-default
+             * @enum {string}
+             */
+            readonly status: "ai-default" | "overridden";
+            /**
+             * Reasoning
+             * @default
+             */
+            readonly reasoning: string;
+            /**
+             * Evidence Basis
+             * @default
+             */
+            readonly evidence_basis: string;
+        };
+        /**
+         * Gate
+         * @description A pause point on a step. `decided_at is None` → the gate is still open.
+         */
+        readonly Gate: {
+            /** Step Key */
+            readonly step_key: string;
+            /**
+             * Decision
+             * @default
+             */
+            readonly decision: string;
+            /**
+             * Decided By
+             * @default
+             */
+            readonly decided_by: string;
+            /** Decided At */
+            readonly decided_at?: string | null;
+            /**
+             * Note
+             * @default
+             */
+            readonly note: string;
+        };
+        /**
+         * Run
+         * @description The full run read model: header + steps + their attached objects.
+         *
+         *     `status` is derived — callers should set it via `derive_status()` after
+         *     populating `steps`, or read `Run.status_from_steps()`.
+         */
+        readonly Run: {
+            /** Id */
+            readonly id: string;
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /**
+             * Label
+             * @default
+             */
+            readonly label: string;
+            /**
+             * Mode
+             * @default review
+             * @enum {string}
+             */
+            readonly mode: "review" | "auto";
+            /**
+             * Status
+             * @default pending
+             * @enum {string}
+             */
+            readonly status: "pending" | "in_progress" | "complete";
+            /**
+             * Current Phase
+             * @default
+             */
+            readonly current_phase: string;
+            /**
+             * Current Step
+             * @default
+             */
+            readonly current_step: string;
+            /** Forked From */
+            readonly forked_from?: string | null;
+            /**
+             * Session Link
+             * @default
+             */
+            readonly session_link: string;
+            /** Created At */
+            readonly created_at?: string | null;
+            /** Completed At */
+            readonly completed_at?: string | null;
+            /** Steps */
+            readonly steps?: readonly components["schemas"]["Step"][];
+            /** Artifacts */
+            readonly artifacts?: readonly components["schemas"]["Artifact"][];
+            /** Verdicts */
+            readonly verdicts?: readonly components["schemas"]["Verdict"][];
+            /** Decisions */
+            readonly decisions?: readonly components["schemas"]["Decision"][];
+            /** Gates */
+            readonly gates?: readonly components["schemas"]["Gate"][];
+        };
+        /**
+         * Step
+         * @description One ordered step of a run.
+         */
+        readonly Step: {
+            /** Key */
+            readonly key: string;
+            /**
+             * Ordinal
+             * @default 0
+             */
+            readonly ordinal: number;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /**
+             * Status
+             * @default pending
+             * @enum {string}
+             */
+            readonly status: "pending" | "running" | "complete" | "failed" | "skipped";
+            /** Started At */
+            readonly started_at?: string | null;
+            /** Completed At */
+            readonly completed_at?: string | null;
+            /**
+             * Error
+             * @default
+             */
+            readonly error: string;
+        };
+        /**
+         * Verdict
+         * @description A judge or QA verdict attached to a step (QA gates the judge).
+         */
+        readonly Verdict: {
+            /** Step Key */
+            readonly step_key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "judge" | "qa";
+            /** Score */
+            readonly score?: number | null;
+            /** Passed */
+            readonly passed?: boolean | null;
+            /** Criteria */
+            readonly criteria?: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Rationale
+             * @default
+             */
+            readonly rationale: string;
+            /** Evaluated At */
+            readonly evaluated_at?: string | null;
+        };
+        /**
+         * GateDecisionIn
+         * @description Record (close) a gate decision on a step.
+         */
+        readonly GateDecisionIn: {
+            /** Decision */
+            readonly decision: string;
+            /**
+             * Decided By
+             * @default
+             */
+            readonly decided_by: string;
+            /**
+             * Note
+             * @default
+             */
+            readonly note: string;
+        };
+        /**
+         * ForkIn
+         * @description Fork a run at a step boundary.
+         */
+        readonly ForkIn: {
+            /** At Step */
+            readonly at_step: string;
+            /**
+             * Mode
+             * @default keep-overrides-only
+             */
+            readonly mode: string;
+            /** Edits */
+            readonly edits?: {
+                readonly [key: string]: unknown;
+            };
+        };
         /** ActivityEventOut */
         readonly ActivityEventOut: {
             /** Subsystem */
@@ -6750,6 +7193,157 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AgentTaskCommandOut"];
+                };
+            };
+        };
+    };
+    readonly apps_agent_runs_api_list_runs: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Page_RunSummary_"];
+                };
+            };
+        };
+    };
+    readonly apps_agent_runs_api_create_run: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RunCreateIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RunSummary"];
+                };
+            };
+        };
+    };
+    readonly apps_agent_runs_api_get_run: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly run_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Run"];
+                };
+            };
+        };
+    };
+    readonly apps_agent_runs_api_list_steps: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly run_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["Step"][];
+                };
+            };
+        };
+    };
+    readonly apps_agent_runs_api_record_gate: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly run_id: string;
+                readonly step_key: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GateDecisionIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Gate"];
+                };
+            };
+        };
+    };
+    readonly apps_agent_runs_api_fork_run: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly run_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ForkIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RunSummary"];
                 };
             };
         };

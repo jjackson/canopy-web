@@ -141,6 +141,19 @@ class AgentTask(models.Model):
 
     agent = models.ForeignKey(Agent, on_delete=models.CASCADE, related_name="tasks")
     ext_id = models.CharField(max_length=64, help_text="Stable id from the source sheet.")
+    # A task can mean "execute this run" — the run-lifecycle backing for the
+    # board (spec §5). String FK ref ("agent_runs.AgentRun") so this framework
+    # app doesn't import apps.agent_runs at module load (both are framework and
+    # agent_runs imports apps.agents.models — a hard import here would cycle).
+    # SET_NULL: deleting a run leaves the task, just unlinked.
+    run = models.ForeignKey(
+        "agent_runs.AgentRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tasks",
+        help_text="The run this task executes, if the task is run-backed.",
+    )
     title = models.CharField(max_length=300, help_text="The outcome.")
     next_action = models.CharField(max_length=300, blank=True, default="", help_text="The single concrete next step (verb-first).")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=SUGGESTED)
