@@ -4,7 +4,7 @@
 False iff any QA verdict explicitly failed. Both are computed (serialized) fields
 so the REST read model surfaces them without a stored column.
 """
-from canopy_runs.schemas import Run, Step, Verdict
+from canopy_agent_runs.schemas import Run, Step, Verdict
 
 
 def _run(verdicts):

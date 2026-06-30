@@ -30,8 +30,8 @@ from pathlib import Path
 
 import pytest
 
-from canopy_runs.drive.store import DriveRunStore, SkillMeta
-from canopy_runs.schemas import Run
+from canopy_agent_runs.drive.store import DriveRunStore, SkillMeta
+from canopy_agent_runs.schemas import Run
 from tests.fixtures.fake_drive import FakeDriveClient
 
 PARITY_DIR = Path(__file__).parent / "fixtures" / "parity"
