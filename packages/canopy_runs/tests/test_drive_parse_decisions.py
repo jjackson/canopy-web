@@ -11,9 +11,9 @@ question/ai-default (the schema-drift regression signature).
 """
 import logging
 
-from apps.agent_runs.drive.parsers import _extract_decision_rows, _parse_decision_rows
+from canopy_runs.drive.parsers import _extract_decision_rows, _parse_decision_rows
 
-_LOGGER = "apps.agent_runs.drive.parsers"
+_LOGGER = "canopy_runs.drive.parsers"
 
 
 def _base_row(extras: dict | None = None) -> dict:

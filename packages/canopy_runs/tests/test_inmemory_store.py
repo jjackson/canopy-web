@@ -5,7 +5,7 @@ import datetime as dt
 
 import pytest
 
-from apps.agent_runs.schemas import (
+from canopy_runs.schemas import (
     Artifact,
     Decision,
     Gate,
@@ -13,7 +13,7 @@ from apps.agent_runs.schemas import (
     Step,
     Verdict,
 )
-from apps.agent_runs.stores import InMemoryRunStore, RunStore
+from canopy_runs.stores import InMemoryRunStore, RunStore
 
 
 def _sample_run(run_id: str = "r1", agent: str = "echo", created: dt.datetime | None = None) -> Run:

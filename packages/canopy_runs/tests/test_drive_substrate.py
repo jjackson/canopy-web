@@ -4,8 +4,8 @@ Proves the ported verdict-score normalization, QA-result parsing, and that
 FakeDriveClient serves a nested-dict run-folder tree through canopy-web's
 DriveClient Protocol (read + write + changes feed).
 """
-from apps.agent_runs.drive.client import DriveClient, FileContent
-from apps.agent_runs.drive.parsers import (
+from canopy_runs.drive.client import DriveClient, FileContent
+from canopy_runs.drive.parsers import (
     _detect_score_scale,
     _parse_qa_result_yaml,
     _parse_verdict_yaml,
@@ -13,7 +13,7 @@ from apps.agent_runs.drive.parsers import (
     _skill_from_verdict_stem,
     parse_decisions_yaml,
 )
-from apps.agent_runs.tests.fixtures.fake_drive import (
+from tests.fixtures.fake_drive import (
     FakeDriveClient,
     malaria_pilot_tree,
     turmeric_multi_run_tree,

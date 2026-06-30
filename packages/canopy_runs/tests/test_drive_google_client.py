@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from apps.agent_runs.drive.client import ChangesPage, DriveFile, FileContent
-from apps.agent_runs.drive.google_client import GoogleDriveClient
+from canopy_runs.drive.client import ChangesPage, DriveFile, FileContent
+from canopy_runs.drive.google_client import GoogleDriveClient
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
