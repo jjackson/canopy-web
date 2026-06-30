@@ -1,5 +1,5 @@
 /**
- * @canopy/workbench — Tailwind v4 token PRESET.
+ * @marshellis/workbench — Tailwind v4 token PRESET.
  *
  * This is the shared CONTRACT: it maps Tailwind color/radius utilities
  * (`bg-primary`, `text-muted-foreground`, `border-border`, `rounded-lg`, …)
@@ -11,8 +11,8 @@
  * default values, which an app may import then override).
  *
  * Usage (in an app's index.css, after `@import "tailwindcss";`):
- *   @import "@canopy/workbench/tokens/preset.css";
- *   @import "@canopy/workbench/tokens/tokens.css";   // optional defaults
+ *   @import "@marshellis/workbench/tokens/preset.css";
+ *   @import "@marshellis/workbench/tokens/tokens.css";   // optional defaults
  *   :root { --primary: <app palette>; ... }           // override values
  */
 @theme inline {

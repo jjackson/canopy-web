@@ -9,7 +9,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingSpinner,
-} from '@canopy/workbench'
+} from '@marshellis/workbench'
 import {
   listTimeline,
   type TimelineEvent,

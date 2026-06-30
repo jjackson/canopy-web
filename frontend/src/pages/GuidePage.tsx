@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Badge } from '@canopy/workbench/ui'
+import { Badge } from '@marshellis/workbench/ui'
 
 const SECTIONS = [
   { id: 'try-it', label: 'Try It Now' },
