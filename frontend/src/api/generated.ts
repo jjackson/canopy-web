@@ -944,7 +944,7 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /** Upload a Claude .jsonl transcript (multipart) */
-        readonly post: operations["apps_sessions_api_upload_session"];
+        readonly post: operations["apps_session_sharing_api_upload_session"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -959,7 +959,7 @@ export interface paths {
             readonly cookie?: never;
         };
         /** List my shared sessions */
-        readonly get: operations["apps_sessions_api_list_sessions"];
+        readonly get: operations["apps_session_sharing_api_list_sessions"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -976,10 +976,10 @@ export interface paths {
             readonly cookie?: never;
         };
         /** List my arcs */
-        readonly get: operations["apps_sessions_api_list_arcs"];
+        readonly get: operations["apps_session_sharing_api_list_arcs"];
         readonly put?: never;
         /** Create an arc from owned sessions (ordered) */
-        readonly post: operations["apps_sessions_api_create_arc"];
+        readonly post: operations["apps_session_sharing_api_create_arc"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -994,15 +994,15 @@ export interface paths {
             readonly cookie?: never;
         };
         /** Get one arc (owner) */
-        readonly get: operations["apps_sessions_api_get_arc"];
+        readonly get: operations["apps_session_sharing_api_get_arc"];
         readonly put?: never;
         readonly post?: never;
         /** Delete an arc (owner) */
-        readonly delete: operations["apps_sessions_api_delete_arc"];
+        readonly delete: operations["apps_session_sharing_api_delete_arc"];
         readonly options?: never;
         readonly head?: never;
         /** Update an arc (owner) */
-        readonly patch: operations["apps_sessions_api_patch_arc"];
+        readonly patch: operations["apps_session_sharing_api_patch_arc"];
         readonly trace?: never;
     };
     readonly "/api/sessions/arcs/{slug}/rotate-token": {
@@ -1015,7 +1015,7 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /** Rotate arc share token (owner) */
-        readonly post: operations["apps_sessions_api_rotate_arc_token"];
+        readonly post: operations["apps_session_sharing_api_rotate_arc_token"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1030,15 +1030,15 @@ export interface paths {
             readonly cookie?: never;
         };
         /** Get one session (owner) */
-        readonly get: operations["apps_sessions_api_get_session"];
+        readonly get: operations["apps_session_sharing_api_get_session"];
         readonly put?: never;
         readonly post?: never;
         /** Delete a session (owner) */
-        readonly delete: operations["apps_sessions_api_delete_session"];
+        readonly delete: operations["apps_session_sharing_api_delete_session"];
         readonly options?: never;
         readonly head?: never;
         /** Update a session (owner) */
-        readonly patch: operations["apps_sessions_api_patch_session"];
+        readonly patch: operations["apps_session_sharing_api_patch_session"];
         readonly trace?: never;
     };
     readonly "/api/sessions/{slug}/rotate-token": {
@@ -1051,7 +1051,7 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /** Rotate share token (owner) */
-        readonly post: operations["apps_sessions_api_rotate_token"];
+        readonly post: operations["apps_session_sharing_api_rotate_token"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1564,7 +1564,7 @@ export interface paths {
             readonly cookie?: never;
         };
         /** Public read-only view of a shared session or arc */
-        readonly get: operations["apps_sessions_api_public_share_view"];
+        readonly get: operations["apps_session_sharing_api_public_share_view"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -6368,7 +6368,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_upload_session: {
+    readonly apps_session_sharing_api_upload_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6429,7 +6429,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_list_sessions: {
+    readonly apps_session_sharing_api_list_sessions: {
         readonly parameters: {
             readonly query?: {
                 readonly project?: string;
@@ -6451,7 +6451,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_list_arcs: {
+    readonly apps_session_sharing_api_list_arcs: {
         readonly parameters: {
             readonly query?: {
                 readonly project?: string;
@@ -6473,7 +6473,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_create_arc: {
+    readonly apps_session_sharing_api_create_arc: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6497,7 +6497,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_get_arc: {
+    readonly apps_session_sharing_api_get_arc: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6519,7 +6519,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_delete_arc: {
+    readonly apps_session_sharing_api_delete_arc: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6539,7 +6539,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_patch_arc: {
+    readonly apps_session_sharing_api_patch_arc: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6565,7 +6565,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_rotate_arc_token: {
+    readonly apps_session_sharing_api_rotate_arc_token: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6587,7 +6587,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_get_session: {
+    readonly apps_session_sharing_api_get_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6609,7 +6609,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_delete_session: {
+    readonly apps_session_sharing_api_delete_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6629,7 +6629,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_patch_session: {
+    readonly apps_session_sharing_api_patch_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6655,7 +6655,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_rotate_token: {
+    readonly apps_session_sharing_api_rotate_token: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -7540,7 +7540,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_public_share_view: {
+    readonly apps_session_sharing_api_public_share_view: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
