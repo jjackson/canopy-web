@@ -1,7 +1,7 @@
-name: Publish @canopy/workbench
+name: Publish @marshellis/workbench
 
 # Publishes the shared front-end workbench package to the PUBLIC npm registry
-# (npmjs.com) under the @canopy scope. GitHub Packages can't host @canopy from a
+# (npmjs.com) under the @marshellis scope. GitHub Packages can't host @marshellis from a
 # personal repo (its npm scope must equal the repo owner), so we use npmjs.
 #
 # Trigger by pushing a tag like `workbench-v0.2.0`, or manually via the Actions
@@ -9,7 +9,7 @@ name: Publish @canopy/workbench
 # frontend/packages/workbench/package.json to match the tag before tagging.
 #
 # Requires repo secret NPM_TOKEN — an npm "Automation" token for an account that
-# can publish to the @canopy org (claim @canopy on npmjs first).
+# can publish to the @marshellis org (claim @marshellis on npmjs first).
 on:
   push:
     tags: ['workbench-v*']
@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-          scope: '@canopy'
+          scope: '@marshellis'
       - name: Publish
         run: npm publish --access public
         working-directory: frontend/packages/workbench

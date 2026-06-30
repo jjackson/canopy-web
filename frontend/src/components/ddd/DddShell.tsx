@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { WorkbenchShell, WorkbenchMain } from '@canopy/workbench'
+import { WorkbenchShell, WorkbenchMain } from '@marshellis/workbench'
 import { DddLeftNav } from './DddLeftNav'
 import { RunSectionNavProvider } from './runSectionNav'
 

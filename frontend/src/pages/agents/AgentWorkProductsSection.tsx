@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { listAgentWorkProducts, type AgentWorkProductOut } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { WorkProductCard } from '@/components/agents/cards'
-import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from '@marshellis/workbench'
 
 export function AgentWorkProductsSection() {
   const { agent } = useOutletContext<AgentOutletContext>()

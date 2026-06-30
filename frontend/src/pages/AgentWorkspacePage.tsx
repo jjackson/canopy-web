@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, Outlet, useParams } from 'react-router-dom'
 import { getAgent, type AgentDetailOut } from '@/api/agents'
 import { AgentLeftNav } from '@/components/agents/AgentLeftNav'
-import { WorkbenchShell, WorkbenchMain } from '@canopy/workbench'
+import { WorkbenchShell, WorkbenchMain } from '@marshellis/workbench'
 
 /** Context the section sub-routes read via useOutletContext. */
 export interface AgentOutletContext {
