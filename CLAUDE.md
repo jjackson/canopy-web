@@ -1,6 +1,7 @@
 # Canopy Web
 
-Collaborative web workspace for building reusable AI skills from conversations.
+Collaborative web workspace for the canopy agent ecosystem — portfolio insights,
+first-class AI agents, demo-driven development (DDD), walkthroughs, and shareouts.
 
 ## Architecture
 
@@ -11,10 +12,9 @@ Collaborative web workspace for building reusable AI skills from conversations.
   schema (`frontend/src/api/generated.ts`) and consumed via `openapi-fetch`.
 - **Frontend:** React 19 + Vite + Tailwind CSS 4 + shadcn/ui
 - **AI:** Anthropic Claude API via SSE streaming. Dual backend — direct API key (`AI_BACKEND=api`) or Claude Code CLI subscription (`AI_BACKEND=cli`), switchable at runtime via `/api/ai/switch/`.
-- **Runtime adapters:** `apps/skills/adapters/` produces skill artifacts for `web`, `claude_code`, and `open_claw` runtimes.
 - **MCP server:** `apps/mcp/` is a FastMCP 3.x Streamable-HTTP server mounted into the ASGI app at `/api/mcp/` (wired in `config/asgi.py`). Tools run **as the authenticated user** via per-user PAT (`CanopyPATVerifier`) and reuse the same service functions as the REST views, so the two surfaces can't drift. See `docs/architecture/mcp-surface.md`.
 - **Deployment:** GCP Cloud Run + Cloud SQL on the `canopy-494811` project. `./deploy.sh` builds via Cloud Build (`cloudbuild.yaml`) and `gcloud run deploy`s — no local Docker daemon required. Production settings in `config/settings/production.py`.
-- **Framework/product boundary (the one invariant):** apps split into **framework** (generic, agent-agnostic substrate — `agents`, `api`, `common`, `timeline`, `tokens`, `sessions`, `issues`, `mcp`, `system`) and **product** (canopy's own features — `projects`, `collections`, `workspace`, `skills`, `evals`, `walkthroughs`, `reviews`, `shareouts`, `runs`). **Framework code must never import product code; product freely imports framework.** This keeps the blend cuttable (the framework apps could lift onto a standalone host without dragging canopy's product). It's a *direction, not a wall* — we don't move apps into `framework/`/`product/` folders. Enforced by `tests/test_architecture_boundary.py` (fails CI on a framework→product import, or on a new app left untiered). Full rationale + the accepted carve-outs (the `api` composition root, the `mcp` insights tool): **`ARCHITECTURE.md`**.
+- **Framework/product boundary (the one invariant):** apps split into **framework** (generic, agent-agnostic substrate — `agents`, `agent_runs`, `workspaces`, `api`, `common`, `timeline`, `tokens`, `session_sharing`, `issues`, `mcp`, `system`) and **product** (canopy's own features — `projects`, `walkthroughs`, `reviews`, `shareouts`, `runs`). **Framework code must never import product code; product freely imports framework.** This keeps the blend cuttable (the framework apps could lift onto a standalone host without dragging canopy's product). It's a *direction, not a wall* — we don't move apps into `framework/`/`product/` folders. Enforced by `tests/test_architecture_boundary.py` (fails CI on a framework→product import, or on a new app left untiered). Full rationale + the accepted carve-outs (the `api` composition root, the `mcp` insights tool): **`ARCHITECTURE.md`**.
 
 ## Development
 
@@ -25,7 +25,6 @@ Backend uses [`uv`](https://docs.astral.sh/uv/) for dependency management (uv.lo
 cp .env.example .env  # Set AI_BACKEND=api + ANTHROPIC_API_KEY, or AI_BACKEND=cli
 uv sync --extra dev
 uv run python manage.py migrate
-uv run python manage.py seed_demo   # optional: 5 demo skills with eval history
 uv run python manage.py runserver
 
 # Frontend
@@ -53,7 +52,7 @@ When `AI_BACKEND=cli`, the `claude` binary must be on PATH and authenticated. In
 
 ```bash
 uv run pytest                                    # All backend tests
-uv run pytest tests/test_workspace_engine.py -v  # Specific
+uv run pytest tests/test_architecture_boundary.py -v  # Specific
 cd frontend && npm run build                     # Frontend type check + build
 cd frontend && npm run gen:api                   # Regenerate TypeScript types from OpenAPI schema
 ```
@@ -63,12 +62,6 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 ## Key URLs
 
 - `/` — Project workbench. Tile grid dashboard with a "Today's top 3" insight hero, freshness chip, inline insights triage, and self-prioritizing tile order by insight count.
-- `/skills` — Skill discovery feed
-- `/workspaces` — Workspace session list (resume in-progress sessions)
-- `/new` — New collection / source ingestion flow
-- `/workspace/:sessionId` — Co-authoring workspace
-- `/skills/:skillId` — Skill detail + eval history
-- `/guide` — Interactive walkthrough using a "Discovery Call Debrief" sample collection (try-it / how-it-works / review / eval / deploy sections)
 - `/insights` — Cross-portfolio AI insights feed
 - `/shareouts` (+ `/shareouts/:period`) — Dated, teammate-facing work briefings (what shipped, why, how to leverage) posted by `/canopy:shareout`; `:period` is a copy-linkable permalink to one briefing
 - `/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
@@ -114,31 +107,6 @@ All endpoints are served by Django Ninja (Pydantic v2 typed) under `/api/`. Erro
 - `GET /api/insights/` — List all insights across projects. Filters: `?category=<slug>` (matches `[<slug>]` content prefix), `?source=<producer>` (filters by writer), `?project=<slug>`. Bearer-readable for machine producers (e.g. `canopy:portfolio-review`) so they can dedupe before re-publishing.
 - `DELETE /api/insights/{id}/` — Dismiss an insight (OAuth only — bearer is GET-only here).
 - `POST /api/insights/clear/` — Clear insights (regeneration helper).
-
-### Collections
-- `POST /api/collections/` — Create collection
-- `GET /api/collections/{id}/` — Get collection with sources
-- `POST /api/collections/{id}/sources/` — Add source
-
-### Workspace
-- `GET /api/workspace/` — List workspace sessions (filter: ?status=proposed, ?collection=id, ?limit=50)
-- `POST /api/workspace/start/{collection_id}/` — Start workspace (SSE stream)
-- `POST /api/workspace/analyze/{collection_id}/` — Run AI analysis to propose approach + eval
-- `GET /api/workspace/{session_id}/` — Get workspace state
-- `PATCH /api/workspace/{session_id}/edit/` — Edit skill draft
-- `POST /api/workspace/{session_id}/publish/` — Publish skill
-
-### Skills
-- `GET /api/skills/` — List skills
-- `GET /api/skills/{id}/` — Skill detail
-- `POST /api/skills/{id}/adapter/` — Generate runtime adapter
-
-### Evals
-- `GET /api/evals/{skill_id}/` — Eval suite detail
-- `POST /api/evals/{skill_id}/run/` — Run eval
-- `GET /api/evals/{skill_id}/history/` — Eval history
-- `POST /api/evals/{skill_id}/cases/` — Add eval case
-- `PATCH /api/evals/{skill_id}/cases/{case_id}/` — Edit / remove eval case
 
 ### AI backend (`apps/common`)
 - `GET /api/ai/status/` — Current backend + auth state
@@ -237,7 +205,7 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 ## Design Decisions
 
 - **API is Pydantic-first via Django Ninja**: every request/response is a Pydantic v2 model declared in `apps/<app>/schemas.py`. Routes live in `apps/<app>/api.py`, registered on the single `NinjaAPI` instance in `apps/api/api.py`. Errors are RFC 7807 `application/problem+json`. Frontend types are generated from the OpenAPI 3.1 schema by `openapi-typescript` into `frontend/src/api/generated.ts` and consumed via `openapi-fetch`. The `regen-openapi.yml` GitHub workflow auto-commits regenerated types on PRs touching `apps/**/api.py` or `apps/**/schemas.py`.
-- **Streaming endpoints stay on Django**: `POST /api/workspace/start/<id>/` returns `StreamingHttpResponse` directly from a Ninja handler (declared as `response=None`); the SSE event format is the contract. `GET /w/<uuid>/content` (the walkthrough viewer) stays as a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range support (for `<video>` scrubbing) doesn't fit the Ninja contract.
+- **Streaming endpoints stay on Django**: `GET /w/<uuid>/content` (the walkthrough viewer) stays as a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range support (for `<video>` scrubbing) doesn't fit the Ninja contract. SSE handlers that need raw streaming return `StreamingHttpResponse` directly from a Ninja handler (declared as `response=None`); the SSE event format is the contract.
 - **Bare Django views**: `/api/csrf/`, `/api/debug/mint-session/`, `/auth/cli/authorize/`, and `/health/` (the last is also Ninja-mountable via `public_router`) — they manipulate sessions/cookies/redirects directly. Matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
 - **MCP is in-process FastMCP, not OpenAPI-derived**: `apps/mcp/` mounts a FastMCP 3.x Streamable-HTTP server at `/api/mcp/` whose tools are explicit Python functions calling the same service layer as the REST views (no HTTP self-loopback). Auth is per-user PAT inside the server (fail-closed), every call is audited, and writes are rate-limited.
 - **Visibility is tokenless Public/Private:** `visibility=link` means "anyone with the URL" (the UUID is the only secret) for walkthroughs + reviews; `private` is Dimagi-OAuth-gated and 404s to anonymous. Walkthrough content/detail and review *read* are public when `link`; review *submit* and all mutations require auth. The login middleware allowlists the `/w/` shell + walkthrough detail GET (alongside the review-link allowlist). The narrative-level toggle (`PATCH /api/ddd/narratives/{slug}/visibility/`) cascades to every artifact + review under a narrative; the dormant `share_token` column is retained for reversibility. See `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md`.
@@ -249,9 +217,7 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
   - **Status / categorical accents:** `success` (emerald — opportunity), `warning` (amber — ship-gap), `info` (sky — alignment), `special` (violet — pattern), `destructive` (red — errors). Each has a `-foreground` for solid fills; tinted badges use `bg-<token>/10 text-<token> border-<token>/30`.
   - **Exception:** `/share/:token` (`SessionSharePage` + the `transcript/` components) is a deliberate **light-themed** public viewer mounted outside the app shell (`bg-white`); it intentionally uses neutral literals and is the one surface that does not consume the dark token set.
 - APP UI: dense, readable, tables not cards
-- Workspace flow: Ingest → AI proposes Approach + Eval → Review/Edit → Test → Publish
 - SSE streaming for AI responses (Scout pattern)
-- Overwrite-with-history versioning
 - **Auth:** Google OAuth via django-allauth (allowed-domain restricted via `AUTH_ALLOWED_EMAIL_DOMAIN` — comma-separated list, default `dimagi.com`). Personal Access Tokens (`apps/tokens/`) authenticate machine callers via `Authorization: Bearer <raw>` — `BearerTokenAuthMiddleware` resolves them upstream of `LoginRequiredMiddleware`. `/api/debug/mint-session/` lets an authenticated user mint a short-lived session cookie to hand to an AI assistant. Single-tenant in V1; multi-tenant scaffolding tracked in `TODOS.md`.
 - PostgreSQL on Cloud SQL (GCP `canopy-494811`)
 - Dual AI backend lets users run either against an API key or their own Claude Code subscription
