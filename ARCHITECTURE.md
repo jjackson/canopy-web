@@ -34,7 +34,7 @@ the arrow's direction and enforce it in CI.
 | `common` | **framework** | Shared infra: anthropic client, auth flow, middleware, auth-domains. |
 | `timeline` | **framework** | Generic activity-log aggregation; reads other apps' events via a string registry (no hard product imports). |
 | `tokens` | **framework** | Personal Access Token management + bearer auth. |
-| `sessions` | **framework** | Session/transcript storage + sharing. |
+| `session_sharing` | **framework** | Shared Claude transcript storage + the public `/share/:token` viewer (renamed from `sessions` to free that name for the live-session harness). |
 | `issues` | **framework** | GitHub issue provenance / evidence capture. |
 | `mcp` | **framework** | MCP server infra + audit + rate-limit. (Individual *tools* may be product — see carve-outs.) |
 | `system` | **framework** | System metadata / AI-backend status. |

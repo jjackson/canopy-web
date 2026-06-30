@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from apps.sessions.parser import parse_session_file
+from apps.session_sharing.parser import parse_session_file
 
 
 def _write_jsonl(tmp_path: Path, rows: list[dict]) -> Path:

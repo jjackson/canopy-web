@@ -145,8 +145,8 @@ from apps.reviews.api import router as reviews_router  # noqa: E402
 from apps.runs.api import router as runs_router  # noqa: E402
 from apps.walkthroughs.api import router as walkthroughs_router  # noqa: E402
 from apps.shareouts.api import router as shareouts_router  # noqa: E402
-from apps.sessions.api import router as sessions_router  # noqa: E402
-from apps.sessions.api import share_router as session_share_router  # noqa: E402
+from apps.session_sharing.api import router as sessions_router  # noqa: E402
+from apps.session_sharing.api import share_router as session_share_router  # noqa: E402
 from apps.agents.api import router as agents_router  # noqa: E402
 from apps.agent_runs.api import router as agent_runs_router  # noqa: E402
 from apps.workspaces.api import router as workspaces_router  # noqa: E402

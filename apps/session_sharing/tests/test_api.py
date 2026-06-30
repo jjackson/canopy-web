@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, override_settings
 
-from apps.sessions.models import Session
+from apps.session_sharing.models import Session
 
 User = get_user_model()
 
