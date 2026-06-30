@@ -1,5 +1,5 @@
 /**
- * @marshellis/canopy-ui — Tailwind v4 token PRESET.
+ * canopy-ui — Tailwind v4 token PRESET.
  *
  * This is the shared CONTRACT: it maps Tailwind color/radius utilities
  * (`bg-primary`, `text-muted-foreground`, `border-border`, `rounded-lg`, …)
@@ -11,8 +11,8 @@
  * default values, which an app may import then override).
  *
  * Usage (in an app's index.css, after `@import "tailwindcss";`):
- *   @import "@marshellis/canopy-ui/tokens/preset.css";
- *   @import "@marshellis/canopy-ui/tokens/tokens.css";   // optional defaults
+ *   @import "canopy-ui/tokens/preset.css";
+ *   @import "canopy-ui/tokens/tokens.css";   // optional defaults
  *   :root { --primary: <app palette>; ... }           // override values
  */
 @theme inline {
