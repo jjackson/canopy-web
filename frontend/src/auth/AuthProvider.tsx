@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 function LoginPrompt() {
   const next = encodeURIComponent(window.location.pathname + window.location.search)
-  const loginHref = `${import.meta.env.BASE_URL}accounts/google/login/?next=${next}`
+  const loginHref = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/accounts/google/login/?next=${next}`
   return (
     <div className="min-h-screen bg-background text-foreground-secondary flex items-center justify-center px-6">
       <div className="max-w-md w-full bg-card border border-border rounded-xl p-8 text-center">

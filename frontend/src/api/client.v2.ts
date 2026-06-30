@@ -10,7 +10,7 @@ function redirectToLogin(): never {
   const next = encodeURIComponent(window.location.pathname + window.location.search);
   // Prefix-aware: BASE_URL is "/" at root and "/canopy/" as a labs tenant, so
   // this stays under the deployment instead of bouncing to a sibling tenant.
-  window.location.href = `${import.meta.env.BASE_URL}accounts/google/login/?next=${next}`;
+  window.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/accounts/google/login/?next=${next}`;
   throw new Error("Redirecting to login");
 }
 

@@ -158,7 +158,7 @@ export interface NeedsYouOut {
 // Google login flow; everything else surfaces as a thrown Error.
 function redirectToLogin(): never {
   const next = encodeURIComponent(window.location.pathname + window.location.search)
-  window.location.href = `${import.meta.env.BASE_URL}accounts/google/login/?next=${next}`
+  window.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/accounts/google/login/?next=${next}`
   throw new Error('Redirecting to login')
 }
 
