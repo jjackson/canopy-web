@@ -403,6 +403,10 @@ def _snapshot_to_schema(
             mime_type=a.mime_type or "",
             size=a.size_bytes,
             role=key,
+            # The Drive adapter already holds both during attribution: the Drive
+            # file id is the opaque stable handle; ``path`` is run-relative.
+            ref=a.drive_file_id or "",
+            path=a.path or "",
         )
         for a in snap.artifacts
     ]
@@ -458,6 +462,14 @@ def _decision_to_schema(d) -> Decision:
         status=d.status if d.status in ("ai-default", "overridden") else "ai-default",
         reasoning=d.notes or d.override_reasoning or "",
         evidence_basis=d.evidence_basis or "",
+        # The parsers.Decision dataclass already carries these (ported from ACE's
+        # decisions-schema); thread them through instead of dropping them.
+        id=d.id or "",
+        phase=d.phase or "",
+        options_considered=list(d.options_considered or []),
+        source=d.source or "",
+        override_reasoning=d.override_reasoning or "",
+        conflict_signals=list(d.conflict_signals or []),
     )
 
 

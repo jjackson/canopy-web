@@ -331,6 +331,9 @@ def _artifact_to_schema(a, step_key: str) -> Artifact:
         mime_type=a.mime_type,
         size=a.size,
         role=a.role,
+        # The DB adapter has no Drive file id; the row pk is the stable handle.
+        # ``path`` has no DB-native source — default "". (No ORM column added.)
+        ref=str(a.pk),
     )
 
 

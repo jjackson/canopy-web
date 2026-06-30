@@ -66,6 +66,13 @@ class Artifact(StrictModel):
     mime_type: str = ""
     size: int | None = None
     role: str = ""
+    # ``ref`` is an opaque, adapter-defined stable handle: the Drive adapter sets
+    # it to the Drive file id; the DB adapter may set it to the row pk or leave
+    # "". ``path`` is the run-relative path (e.g. "1-design/pdd.md"). Both are
+    # populated from data each adapter already holds — surfaced so consumers
+    # (e.g. ace-web) need not re-derive them downstream.
+    ref: str = ""
+    path: str = ""
 
 
 class Decision(StrictModel):
@@ -78,6 +85,15 @@ class Decision(StrictModel):
     status: DecisionStatus = "ai-default"
     reasoning: str = ""
     evidence_basis: str = ""
+    # Generic decisions-log fields the Drive adapter already parses (ported from
+    # ACE's decisions-schema). Storage-agnostic with safe defaults: the DB
+    # adapter leaves them at their defaults.
+    id: str = ""
+    phase: str = ""
+    options_considered: list[str] = Field(default_factory=list)
+    source: str = ""
+    override_reasoning: str = ""
+    conflict_signals: list[str] = Field(default_factory=list)
 
 
 class Gate(StrictModel):

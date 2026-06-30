@@ -102,3 +102,24 @@ def test_missing_run_raises():
     store = InMemoryRunStore()
     with pytest.raises(KeyError):
         store.get_run("echo", "nope")
+
+
+def test_new_artifact_and_decision_fields_default_safely():
+    # Storage-agnostic adapters (in-memory, DB) that don't carry the enriched
+    # Drive provenance construct the read model fine — the new fields take their
+    # safe defaults (empty string / empty list), never required.
+    store = InMemoryRunStore()
+    store.put_run(_sample_run())
+    run = store.get_run("echo", "r1")
+
+    art = run.artifacts[0]
+    assert art.ref == ""
+    assert art.path == ""
+
+    dec = run.decisions[0]
+    assert dec.id == ""
+    assert dec.phase == ""
+    assert dec.options_considered == []
+    assert dec.source == ""
+    assert dec.override_reasoning == ""
+    assert dec.conflict_signals == []

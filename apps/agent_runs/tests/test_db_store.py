@@ -56,9 +56,18 @@ def test_get_run_hydrates_full_read_model(run):
     assert [s.key for s in read.steps] == ["spec", "render"]
     assert len(read.artifacts) == 1 and read.artifacts[0].step_key == "render"
     assert read.artifacts[0].size == 1024
+    # The DB adapter has no Drive file id: ref defaults to the row pk, path "".
+    art = read.artifacts[0]
+    assert art.ref == str(AgentRunArtifact.objects.get(name="hero.mp4").pk)
+    assert art.path == ""
     assert len(read.verdicts) == 1 and read.verdicts[0].passed is True
     assert read.verdicts[0].criteria == {"structural": "pass"}
     assert len(read.decisions) == 1 and read.decisions[0].step_key == "spec"
+    # The enriched decisions-log fields have no DB columns — they default safely.
+    dec = read.decisions[0]
+    assert dec.id == "" and dec.phase == "" and dec.source == ""
+    assert dec.options_considered == [] and dec.conflict_signals == []
+    assert dec.override_reasoning == ""
     assert len(read.gates) == 1 and read.gates[0].is_open is True
 
 
