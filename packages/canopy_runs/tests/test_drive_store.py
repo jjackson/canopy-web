@@ -73,6 +73,7 @@ decisions:
     question: Which archetype?
     ai-default: atomic-visit
     options: [atomic-visit, focus-group]
+    source: idea-pack
     status: ai-default
 """
 
@@ -180,6 +181,23 @@ def test_artifacts_attributed_to_producing_skill():
     assert "idea-to-pdd-qa_result.yaml" not in [a.name for a in run.artifacts]
 
 
+def test_artifact_ref_and_path_populated_from_drive_data():
+    # The Drive adapter surfaces the Drive file id (opaque stable handle) as
+    # Artifact.ref and the run-relative path as Artifact.path — both from data
+    # it already holds during attribution. ace-web reads these instead of
+    # re-deriving them.
+    run = _store().get_run(AGENT, RUN_ID)
+    pdd = next(a for a in run.artifacts if a.name == "pdd.md")
+    assert pdd.path == "1-design/pdd.md"
+    assert pdd.ref  # non-empty Drive file id
+    assert pdd.url.endswith(pdd.ref)  # url is https://fake/<ref> for this client
+    summary = next(
+        a for a in run.artifacts if a.name == "pdd-to-learn-app_summary.md"
+    )
+    assert summary.path == "2-build/pdd-to-learn-app_summary.md"
+    assert summary.ref
+
+
 def test_judge_and_qa_verdicts_attached_to_step():
     run = _store().get_run(AGENT, RUN_ID)
     judges = [v for v in run.verdicts if v.kind == "judge"]
@@ -205,6 +223,14 @@ def test_decisions_log_parsed_through():
     assert d.question == "Which archetype?"
     assert d.ai_default == "atomic-visit"
     assert d.status == "ai-default"
+    # Generic decisions-log fields the Drive adapter already parses are now
+    # threaded through to the read model (previously dropped).
+    assert d.id == "archetype-selection"
+    assert d.phase == "1-design"
+    assert d.options_considered == ["atomic-visit", "focus-group"]
+    assert d.source == "idea-pack"
+    assert d.override_reasoning == ""
+    assert d.conflict_signals == []
 
 
 def test_gates_parsed_from_run_state():
