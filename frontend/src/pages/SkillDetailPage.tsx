@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getSkill, generateAdapter } from '@/api/skills'
 import { getEvalSuite, runEval, getEvalHistory, editEvalCase, deleteEvalCase } from '@/api/evals'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@canopy/workbench/ui'
+import { Badge } from '@canopy/workbench/ui'
+import { Input } from '@canopy/workbench/ui'
+import { Skeleton } from '@canopy/workbench/ui'
 import {
   Table,
   TableBody,
@@ -13,7 +13,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from '@canopy/workbench/ui'
 
 // ---------------------------------------------------------------------------
 // Types

@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { mintDebugSession, type MintDebugSessionResponse } from '@/api/debug'
 import { aiStatus as fetchAiStatus, aiAuthStart, aiAuthComplete, aiAuthPoll } from '@/api/ai'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from '@canopy/workbench/ui'
+import { Input } from '@canopy/workbench/ui'
 
 type Step = 'idle' | 'loading' | 'awaiting_code' | 'submitting' | 'complete' | 'error'
 

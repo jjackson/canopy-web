@@ -1,14 +1,22 @@
 {
   "name": "@canopy/workbench",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./lib": "./src/lib/index.ts",
+    "./ui": "./src/ui/index.ts",
+    "./shell": "./src/shell/index.ts",
+    "./tokens": "./src/tokens/index.ts",
+    "./tokens/preset.css": "./src/tokens/preset.css",
+    "./tokens/tokens.css": "./src/tokens/tokens.css"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
   "peerDependencies": {
+    "@base-ui/react": "^1.3.0",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

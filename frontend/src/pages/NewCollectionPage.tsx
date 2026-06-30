@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { createCollection, addSource } from '@/api/collections'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
+import { Button } from '@canopy/workbench/ui'
+import { Input } from '@canopy/workbench/ui'
+import { Textarea } from '@canopy/workbench/ui'
+import { Badge } from '@canopy/workbench/ui'
 
 const SOURCE_TYPES = ['transcript', 'slack', 'document', 'text'] as const
 type SourceType = (typeof SOURCE_TYPES)[number]

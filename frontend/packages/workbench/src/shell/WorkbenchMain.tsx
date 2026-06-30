@@ -1,5 +1,5 @@
 import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from 'react'
-import { cn } from './cn'
+import { cn } from '../lib/cn'
 
 /**
  * The scrolling main column. Forwards a ref and arbitrary <main> props so a

@@ -1,34 +1,18 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
-
-/* Shared @canopy/workbench token CONTRACT: maps Tailwind color/radius utilities
-   (bg-primary, text-muted-foreground, border-border, rounded-lg, …) onto the
-   canonical CSS-var NAMES (--primary, --muted-foreground, --border, --radius, …).
-   The preset owns the NAMES; this app owns the VALUES — the :root / .dark
-   palette below. ace-web imports this same preset with its own palette. Keep in
-   lockstep with packages/workbench/src/tokens/preset.css. */
-@import "@canopy/workbench/tokens/preset.css";
-
-@source "../packages/workbench/src";
-
-@custom-variant dark (&:is(.dark *));
-
-/* App-specific theme extensions (font face + custom animation) that are NOT
-   part of the shared token contract — they stay in canopy-web's globals. */
-@theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-    --animate-pulse-slow: pulse-slow 3s ease-in-out infinite;
-}
-
+/**
+ * @canopy/workbench — DEFAULT token VALUES (the palette baseline).
+ *
+ * These are the default values for the CSS-variable names declared by the
+ * preset (preset.css). They are a complete, working "Warm Earth" palette so a
+ * consuming app renders correctly out of the box. Each app is expected to
+ * OVERRIDE these in its own globals (define `:root` / `.dark` AFTER importing
+ * this file); identical var names mean only the values shift per app.
+ *
+ * The app defaults to `.dark` (apps apply the `.dark` class pre-render); the
+ * `:root` light set is the opt-in companion. App-specific concerns (font face,
+ * custom animations) are NOT defined here — they live in each app's globals.
+ */
 :root {
-    /* Warm Earth LIGHT theme — the opt-in companion. The app defaults to .dark
-       (applied pre-render by the inline script in index.html), so most users
-       never see :root; it activates only when a user toggles to light. Tokens
-       mirror the dark set name-for-name so every component themes from the same
-       variables. Brand/status hues are deepened (~600) for contrast on white. */
+    /* Warm Earth LIGHT — the opt-in companion. */
     --background: oklch(0.985 0.002 106.42);     /* warm off-white (~stone-50) */
     --foreground: oklch(0.216 0.006 56.04);      /* ~stone-900 */
     --card: oklch(1 0 0);                          /* white */
@@ -75,8 +59,7 @@
 }
 
 .dark {
-    /* Warm Earth DARK theme (the default) — tokens tuned to match Tailwind
-       stone and orange-400 so shadcn UI components inherit the dark look. */
+    /* Warm Earth DARK — the default. */
     --background: oklch(0.147 0.004 49.25);      /* ~stone-950 */
     --foreground: oklch(0.923 0.003 48.72);      /* ~stone-100 */
     --card: oklch(0.216 0.006 56.04);            /* ~stone-900 */
@@ -119,33 +102,4 @@
     --sidebar-accent-foreground: oklch(0.923 0.003 48.72);
     --sidebar-border: oklch(0.268 0.007 34.3);
     --sidebar-ring: oklch(0.757 0.161 53.57 / 0.4);
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-    }
-  body {
-    @apply bg-background text-foreground;
-    }
-  html {
-    @apply font-sans;
-    }
-}
-
-@keyframes pulse-slow {
-  0%, 100% {
-    opacity: 1;
-    box-shadow: 0 0 4px rgba(74, 222, 128, 0.4);
-  }
-  50% {
-    opacity: 0.7;
-    box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-pulse-slow {
-    animation: none !important;
-  }
 }

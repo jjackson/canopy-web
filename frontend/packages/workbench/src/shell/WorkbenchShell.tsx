@@ -1,5 +1,5 @@
 import type { JSX, ReactNode } from 'react'
-import { cn } from './cn'
+import { cn } from '../lib/cn'
 
 /**
  * Full-bleed outer scaffold: optional top header over a body row. The caller
