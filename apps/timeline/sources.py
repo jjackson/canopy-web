@@ -27,7 +27,7 @@ _REGISTRY: list[tuple[str, str, str, str]] = [
     ("walkthroughs", "Walkthroughs", "apps.walkthroughs.timeline", "recent_events"),
     ("shareouts", "Shareouts", "apps.shareouts.timeline", "recent_events"),
     ("agents", "Agents", "apps.agents.timeline", "recent_events"),
-    ("sessions", "Sessions", "apps.sessions.timeline", "recent_events"),
+    ("sessions", "Sessions", "apps.session_sharing.timeline", "recent_events"),
     ("projects", "Projects", "apps.projects.timeline", "project_events"),
     ("skills", "Skills", "apps.skills.timeline", "recent_events"),
 ]

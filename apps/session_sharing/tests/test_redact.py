@@ -1,7 +1,7 @@
 """Unit tests for the best-effort secret scrub."""
 from __future__ import annotations
 
-from apps.sessions import redact
+from apps.session_sharing import redact
 
 
 def test_openai_style_key_redacted():
