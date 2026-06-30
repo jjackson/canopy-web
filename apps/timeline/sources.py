@@ -30,7 +30,6 @@ _REGISTRY: list[tuple[str, str, str, str]] = [
     ("sessions", "Sessions", "apps.sessions.timeline", "recent_events"),
     ("projects", "Projects", "apps.projects.timeline", "project_events"),
     ("skills", "Skills", "apps.skills.timeline", "recent_events"),
-    ("workspace", "Workspace", "apps.workspace.timeline", "recent_events"),
 ]
 
 

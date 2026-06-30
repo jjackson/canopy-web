@@ -29,6 +29,7 @@ the arrow's direction and enforce it in CI.
 |---|---|---|
 | `agents` | **framework** | Agent workspace: board, command-drain queue, work-products, tasks, *needs-you* inbox. Agent-agnostic. |
 | `agent_runs` | **framework** | Unified agent run-lifecycle: run → step → artifact → verdict/QA → decision → gate → fork, as a storage-agnostic read model behind a `RunStore` Protocol (DB adapter persists rows; Drive adapter reads ACE's YAML). FK's `agents.Agent`; imports no product app. |
+| `workspaces` | **framework** | Multi-tenancy: `Workspace` + members (owner/editor/viewer) + email invites (ported from ace-web, domain-agnostic — no Drive coupling). The tenant that owns agents + runs. Distinct from the retired co-authoring app that used to be `apps/workspace` (singular). |
 | `api` | **framework** (composition root) | The single NinjaAPI that wires every app's router. The one seam allowed to import all apps. |
 | `common` | **framework** | Shared infra: anthropic client, auth flow, middleware, auth-domains. |
 | `timeline` | **framework** | Generic activity-log aggregation; reads other apps' events via a string registry (no hard product imports). |
@@ -39,7 +40,6 @@ the arrow's direction and enforce it in CI.
 | `system` | **framework** | System metadata / AI-backend status. |
 | `projects` | **product** | Canopy's portfolio/insights feature: repos + which canopy skills ran (`skills[]`, `skill_name`, hygiene-skill frontend). Not a generic registry today — promote to framework only when a real second consumer needs one. |
 | `collections` | **product** | DDD source collections. |
-| `workspace` | **product** | DDD workspace / skill-authoring sessions. |
 | `skills` | **product** | Canopy skill registry. |
 | `evals` | **product** | Eval suites tied to skills. |
 | `walkthroughs` | **product** | DDD walkthrough artifacts (HTML/video demos). |

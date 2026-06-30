@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { analyzeWorkspace } from '@/api/workspace'
 import { createCollection, addSource } from '@/api/collections'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,8 +32,8 @@ export function NewCollectionPage() {
     ? Number(searchParams.get('revise'))
     : null
 
-  // Step tracking: 'name' | 'sources' | 'analysis'
-  const [step, setStep] = useState<'name' | 'sources' | 'analysis'>('name')
+  // Step tracking: 'name' | 'sources'
+  const [step, setStep] = useState<'name' | 'sources'>('name')
 
   // Step 1: Collection info
   const [name, setName] = useState('')
@@ -50,9 +49,6 @@ export function NewCollectionPage() {
   const [sourceContent, setSourceContent] = useState('')
   const [addingSource, setAddingSource] = useState(false)
   const [deletingSourceId, setDeletingSourceId] = useState<number | null>(null)
-
-  // Step 3: Analysis
-  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null)
 
   // Shared
   const [error, setError] = useState<string | null>(null)
@@ -133,25 +129,11 @@ export function NewCollectionPage() {
     []
   )
 
-  // Step 2 → Step 3: Start analysis
-  const handleStartAnalysis = useCallback(async () => {
-    if (collectionId == null || sources.length === 0) return
-
-    setError(null)
-    setSubmitting(true)
-    setStep('analysis')
-
-    try {
-      setAnalysisStatus('Analyzing sources (this may take 30-60 seconds)...')
-      const result = await analyzeWorkspace(collectionId)
-      navigate(`/workspace/${result.session_id}${reviseSkillId ? `?revise=${reviseSkillId}` : ''}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Analysis failed.')
-      setSubmitting(false)
-      setStep('sources')
-      setAnalysisStatus(null)
-    }
-  }, [collectionId, sources.length, navigate, reviseSkillId])
+  // Step 2: Finish — collection + sources are saved; return to the workbench
+  const handleFinish = useCallback(() => {
+    if (collectionId == null) return
+    navigate('/')
+  }, [collectionId, navigate])
 
   // First line of content for preview
   function firstLine(content: string, maxLen = 80): string {
@@ -163,7 +145,6 @@ export function NewCollectionPage() {
   const stepLabels = [
     { id: 'name', label: 'Name' },
     { id: 'sources', label: 'Sources' },
-    { id: 'analysis', label: 'Analyze' },
   ] as const
 
   return (
@@ -176,9 +157,8 @@ export function NewCollectionPage() {
           </h1>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          {step === 'name' && 'Name your collection, then add one or more sources for the AI to analyze.'}
-          {step === 'sources' && 'Add conversations, documents, or transcripts. The AI will analyze all sources together.'}
-          {step === 'analysis' && 'The AI is analyzing your sources...'}
+          {step === 'name' && 'Name your collection, then add one or more sources.'}
+          {step === 'sources' && 'Add conversations, documents, or transcripts to this collection.'}
         </p>
 
         {/* Subtle step indicator */}
@@ -362,27 +342,17 @@ export function NewCollectionPage() {
             </Button>
           </form>
 
-          {/* Start Analysis */}
+          {/* Finish */}
           <div className="flex items-center gap-3 border-t border-border pt-4">
             <Button
-              onClick={() => void handleStartAnalysis()}
+              onClick={() => handleFinish()}
               disabled={sources.length === 0 || submitting}
             >
-              Start Analysis
+              Done
             </Button>
             {sources.length === 0 && (
               <span className="text-xs text-muted-foreground">Add at least 1 source to continue</span>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Analysis in progress */}
-      {step === 'analysis' && (
-        <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-input border-t-orange-400" />
-            <span className="text-sm text-foreground-secondary">{analysisStatus}</span>
           </div>
         </div>
       )}
