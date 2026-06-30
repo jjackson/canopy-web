@@ -1,7 +1,6 @@
 import pytest
 
 from apps.collections.models import Collection, Source
-from apps.workspace.models import WorkspaceSession
 from apps.skills.models import Skill
 from apps.evals.models import EvalSuite, EvalCase, EvalRun
 
@@ -55,28 +54,6 @@ class TestSource:
         assert collection.sources.first() == source
 
 
-class TestWorkspaceSession:
-    def test_create_workspace_session(self, db, collection):
-        session = WorkspaceSession.objects.create(collection=collection)
-        assert session.pk is not None
-        assert session.status == "created"
-        assert session.collection == collection
-        assert session.proposed_approach == {}
-        assert session.proposed_eval_cases == []
-        assert session.skill_draft == {}
-        assert session.edit_history == []
-        assert session.created_at is not None
-        assert session.updated_at is not None
-
-    def test_workspace_session_status_update(self, db, collection):
-        session = WorkspaceSession.objects.create(collection=collection, status="analyzing")
-        assert session.status == "analyzing"
-
-    def test_workspace_session_related_name(self, db, collection):
-        WorkspaceSession.objects.create(collection=collection)
-        assert collection.workspace_sessions.count() == 1
-
-
 class TestSkill:
     def test_create_skill_version_default(self, db):
         skill = Skill.objects.create(
@@ -88,18 +65,8 @@ class TestSkill:
         assert skill.name == "tone-matcher"
         assert skill.version == 1
         assert skill.usage_count == 0
-        assert skill.workspace_session is None
         assert skill.created_at is not None
         assert skill.updated_at is not None
-
-    def test_skill_with_workspace_session(self, db, collection):
-        session = WorkspaceSession.objects.create(collection=collection)
-        skill = Skill.objects.create(
-            name="linked-skill",
-            definition={"system_prompt": "test"},
-            workspace_session=session,
-        )
-        assert skill.workspace_session == session
 
     def test_skill_name_unique(self, db):
         Skill.objects.create(name="unique-skill", definition={})
