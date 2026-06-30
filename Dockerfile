@@ -24,9 +24,13 @@ RUN npm install -g @anthropic-ai/claude-code
 
 WORKDIR /app
 
-# Install Python deps first for better layer caching
-COPY pyproject.toml ./
-RUN pip install .
+# Install Python deps first for better layer caching. canopy-web depends on the
+# in-repo `canopy-runs` package (a uv path source — see [tool.uv.sources]), so
+# copy it into the context and install via uv (which resolves path sources);
+# plain `pip install .` can't find canopy-runs on PyPI.
+COPY pyproject.toml uv.lock ./
+COPY packages/ ./packages/
+RUN pip install uv && uv pip install --system .
 
 # Application code. This includes ./canopy when the deploy step has cloned the
 # (private) canopy plugin into the build context — see deploy.sh. apps.system
