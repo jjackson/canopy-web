@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { listAgentTasks, listAgentCommands, type AgentCommandOut, type AgentTaskOut } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { TasksBoard } from '@/components/TasksBoard'
-import { WorkbenchSubHeader, WorkbenchSkeleton } from '@marshellis/workbench'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from '@marshellis/canopy-ui'
 
 export function AgentTasksSection() {
   const { agent } = useOutletContext<AgentOutletContext>()

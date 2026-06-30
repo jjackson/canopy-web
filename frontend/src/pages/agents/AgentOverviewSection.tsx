@@ -9,7 +9,7 @@ import {
 } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { CountStat, SyncCard } from '@/components/agents/cards'
-import { WorkbenchSubHeader, WorkbenchSkeleton } from '@marshellis/workbench'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from '@marshellis/canopy-ui'
 
 const TASK_COLUMNS: { status: AgentTaskStatus; label: string; dot: string }[] = [
   { status: 'suggested', label: 'Suggested', dot: 'bg-muted-foreground' },

@@ -1,9 +1,9 @@
 /**
- * @marshellis/workbench/tokens — the shared token contract.
+ * @marshellis/canopy-ui/tokens — the shared token contract.
  *
  * The substance of the token system is CSS, imported directly:
- *   import "@marshellis/workbench/tokens/preset.css"   // Tailwind v4 @theme name → var mapping
- *   import "@marshellis/workbench/tokens/tokens.css"    // default :root / .dark VALUES
+ *   import "@marshellis/canopy-ui/tokens/preset.css"   // Tailwind v4 @theme name → var mapping
+ *   import "@marshellis/canopy-ui/tokens/tokens.css"    // default :root / .dark VALUES
  *
  * This module exposes the canonical list of token names so tooling/tests can
  * assert an app's palette covers the contract.
