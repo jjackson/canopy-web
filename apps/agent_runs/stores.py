@@ -110,6 +110,26 @@ class RunStore(Protocol):
         """Mint a new run under the same agent, copying steps < at_step. A write."""
         ...
 
+    def create_run(
+        self,
+        agent: str,
+        *,
+        label: str = "",
+        mode: str = "review",
+        current_step: str = "",
+        session_link: str = "",
+        steps: list[dict] | None = None,
+    ) -> RunSummary:
+        """Create a fresh run (with optional seed steps) under the agent. A write.
+
+        `steps` is a list of dicts carrying read-model Step fields
+        (`key` required; `ordinal` / `title` / `status` optional). Returns the
+        new run's header. Only DB-as-truth stores create runs through this API —
+        Drive runs are minted by ACE itself, so `DriveRunStore.create_run` is the
+        seam that stays unimplemented until/unless ACE writes through canopy.
+        """
+        ...
+
     def changed_ids(self, agent: str, cursor: str | None = None) -> tuple[list[str], str]:
         """Invalidation hook: run ids changed since `cursor`, plus a new cursor.
 
@@ -132,6 +152,7 @@ class InMemoryRunStore:
         self._cursor = 0
         self._changed: list[tuple[int, str, str]] = []  # (seq, agent, run_id)
         self._fork_seq = 0  # monotonic suffix for minted fork run-ids
+        self._run_seq = 0  # monotonic suffix for minted (created) run-ids
 
     # -- helpers (test-facing) --
     def put_run(self, run: Run) -> Run:
@@ -251,6 +272,41 @@ class InMemoryRunStore:
             created_at=dt.datetime.now(dt.timezone.utc),
             steps=new_steps, artifacts=[], verdicts=new_verdicts,
             decisions=new_decisions, gates=[],
+        )
+        self.put_run(new_run)
+        return RunSummary(
+            id=new_run.id, agent_slug=new_run.agent_slug, label=new_run.label,
+            mode=new_run.mode, status=new_run.status_from_steps(),
+            current_step=new_run.current_step, forked_from=new_run.forked_from,
+            session_link=new_run.session_link, created_at=new_run.created_at,
+            completed_at=new_run.completed_at,
+        )
+
+    def create_run(
+        self,
+        agent: str,
+        *,
+        label: str = "",
+        mode: str = "review",
+        current_step: str = "",
+        session_link: str = "",
+        steps: list[dict] | None = None,
+    ) -> RunSummary:
+        self._run_seq += 1
+        new_id = f"{agent}-run-{self._run_seq}"
+        read_steps = [
+            Step(
+                key=s["key"],
+                ordinal=s.get("ordinal", i),
+                title=s.get("title", ""),
+                status=s.get("status", "pending"),
+            )
+            for i, s in enumerate(steps or [])
+        ]
+        new_run = Run(
+            id=new_id, agent_slug=agent, label=label, mode=mode,
+            current_step=current_step, session_link=session_link,
+            created_at=dt.datetime.now(dt.timezone.utc), steps=read_steps,
         )
         self.put_run(new_run)
         return RunSummary(
@@ -477,6 +533,52 @@ class DbRunStore:
             session_link=new_run.session_link,
             created_at=new_run.created_at,
             completed_at=new_run.completed_at,
+        )
+
+    def create_run(
+        self,
+        agent: str,
+        *,
+        label: str = "",
+        mode: str = "review",
+        current_step: str = "",
+        session_link: str = "",
+        steps: list[dict] | None = None,
+    ) -> RunSummary:
+        from apps.agents.models import Agent
+        from django.db import transaction
+
+        from .models import AgentRun, AgentRunStep
+
+        agent_obj = Agent.objects.get(slug=agent)
+        with transaction.atomic():
+            run = AgentRun.objects.create(
+                agent=agent_obj,
+                label=label,
+                mode=mode,
+                current_step=current_step,
+                session_link=session_link,
+            )
+            for i, s in enumerate(steps or []):
+                AgentRunStep.objects.create(
+                    run=run,
+                    key=s["key"],
+                    ordinal=s.get("ordinal", i),
+                    title=s.get("title", ""),
+                    status=s.get("status", AgentRunStep.PENDING),
+                )
+        read_steps = [_step_to_schema(s) for s in run.steps.all()]
+        return RunSummary(
+            id=str(run.pk),
+            agent_slug=run.agent.slug,
+            label=run.label,
+            mode=run.mode,
+            status=derive_status(read_steps),
+            current_step=run.current_step,
+            forked_from=None,
+            session_link=run.session_link,
+            created_at=run.created_at,
+            completed_at=run.completed_at,
         )
 
     def changed_ids(self, agent: str, cursor: str | None = None) -> tuple[list[str], str]:

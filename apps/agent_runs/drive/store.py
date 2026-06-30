@@ -1100,6 +1100,25 @@ class DriveRunStore:
             else:
                 self.client.copy_file(child.id, dest_folder_id, child.name)
 
+    def create_run(
+        self,
+        agent: str,
+        *,
+        label: str = "",
+        mode: str = "review",
+        current_step: str = "",
+        session_link: str = "",
+        steps: list[dict] | None = None,
+    ) -> RunSummary:
+        """Drive runs are minted by ACE itself (it writes ``run_state.yaml`` into
+        the opp's Drive tree), not created through canopy's REST surface. This is
+        the deliberate seam: the unified-run API can only *create* DB-as-truth
+        runs. If ACE ever writes back through canopy this is where it lands."""
+        raise NotImplementedError(
+            "DriveRunStore is read/gate/fork-only; Drive runs are created by ACE, "
+            "not via the canopy run API."
+        )
+
     # -- RunStore: cache invalidation --
     def changed_ids(
         self, agent: str, cursor: str | None = None

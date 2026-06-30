@@ -211,6 +211,28 @@ WALKTHROUGH_MAX_UPLOAD_BYTES = env.int(
     "WALKTHROUGH_MAX_UPLOAD_BYTES", default=75 * 1024 * 1024,
 )
 
+# --- Agent-run Drive backing (apps/agent_runs) -----------------------
+# Drive-as-truth run store for agents whose runs live in a Google Drive
+# tree (e.g. ACE opps under ACE/<slug>/runs/<run-id>/). All knobs are
+# optional and empty by default: with nothing set, every agent resolves
+# to the DB-backed run store (apps.agent_runs.resolver.get_run_store) and
+# nothing here is touched — so a deploy without Drive creds is unaffected.
+#
+# Credentials (first non-empty wins; see
+# apps.agent_runs.drive.google_client._load_credentials):
+#   AGENT_RUNS_DRIVE_SA_KEY_JSON  — inline service-account JSON, or
+#   AGENT_RUNS_DRIVE_SA_KEY_PATH  — path to a service-account JSON file, or
+#   CANOPY_DRIVE_SA_KEY_JSON      — the shared canopy Drive SA (fallback).
+AGENT_RUNS_DRIVE_SA_KEY_JSON = env("AGENT_RUNS_DRIVE_SA_KEY_JSON", default="")
+AGENT_RUNS_DRIVE_SA_KEY_PATH = env("AGENT_RUNS_DRIVE_SA_KEY_PATH", default="")
+
+# Which agents are Drive-backed, and the Drive root folder each one's runs
+# live under (the folder that contains `runs/<run-id>/` and optionally
+# `opp.yaml`). JSON map of {agent_slug: drive_root_folder_id}. Empty = no
+# agent is Drive-backed. Example:
+#   AGENT_RUNS_DRIVE_ROOTS='{"ace": "0AbCdEf...root-folder-id"}'
+AGENT_RUNS_DRIVE_ROOTS = env.json("AGENT_RUNS_DRIVE_ROOTS", default={})
+
 # Machine-caller authentication: see apps/tokens/ for Personal Access
 # Tokens. Mint with `manage.py create_token --email X --label Y`; the
 # raw value goes in the `Authorization: Bearer <raw>` header and
