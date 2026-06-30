@@ -41,6 +41,10 @@ CSRF_COOKIE_PATH = "/canopy/"
 
 CSRF_TRUSTED_ORIGINS = ["https://labs.connect.dimagi.com"]
 
+# Static served under the prefix (the SPA's own assets are emitted by Vite with
+# base=/canopy/; this covers Django/admin/staticfiles).
+STATIC_URL = "/canopy/static/"
+
 # Shared RDS (a dedicated canopy_web database on labs-jj-postgres).
 DATABASES = {"default": env.db("DATABASE_URL")}
 
