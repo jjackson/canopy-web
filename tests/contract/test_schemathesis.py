@@ -23,6 +23,16 @@ import os
 
 import pytest
 import schemathesis
+from hypothesis import HealthCheck, settings
+
+# Per-endpoint example count. Schemathesis is property-based: each (path × method)
+# runs `max_examples` generated requests. The default (100) × canopy-web's many
+# endpoints made this a ~6-min blocker on every PR. So PRs run a fast smoke (a few
+# examples each — still hits every endpoint and catches the contract breaks that
+# matter: wrong status codes / schema mismatches), and the nightly job
+# (.github/workflows/contract-nightly.yml) sets SCHEMATHESIS_MAX_EXAMPLES high for
+# exhaustive fuzzing off the PR critical path.
+_MAX_EXAMPLES = int(os.environ.get("SCHEMATHESIS_MAX_EXAMPLES", "6"))
 
 SCHEMA_URL = os.environ.get(
     "SCHEMATHESIS_SCHEMA_URL", "http://localhost:8000/api/openapi.json"
@@ -45,6 +55,11 @@ _parametrize = (
 
 
 @_parametrize
+@settings(
+    max_examples=_MAX_EXAMPLES,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
+)
 def test_api_conforms_to_schema(case):
     headers: dict[str, str] = {}
     if AUTH_BEARER:
