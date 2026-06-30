@@ -1,0 +1,38 @@
+name: Publish canopy-ui
+
+# Publishes the shared front-end design system to the PUBLIC npm registry as the
+# UNSCOPED package `canopy-ui` (no org scope — portable, not tied to any account).
+#
+# Auth is OIDC Trusted Publishing — NO stored token. GitHub Actions mints a
+# short-lived OIDC token that npm trusts, so there's no NPM_TOKEN secret to leak.
+# One-time setup on npmjs: the canopy-ui package → Settings → Trusted Publisher →
+# GitHub Actions → repo `jjackson/canopy-web`, workflow `publish-canopy-ui.yml`.
+#
+# Trigger by pushing a tag like `canopy-ui-v0.3.0`, or manually via the Actions
+# tab (workflow_dispatch). Bump the version in
+# frontend/packages/canopy-ui/package.json to match the tag before tagging.
+on:
+  push:
+    tags: ['canopy-ui-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # required for OIDC Trusted Publishing
+
+jobs:
+  publish:
+    name: Publish to npmjs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      # Trusted Publishing + provenance need npm >= 11.5.1 (node 20 ships npm 10).
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+      - name: Publish (OIDC, with provenance)
+        run: npm publish --access public --provenance
+        working-directory: frontend/packages/canopy-ui
