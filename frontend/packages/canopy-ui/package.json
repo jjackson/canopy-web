@@ -1,6 +1,6 @@
 {
   "name": "canopy-ui",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -19,9 +19,22 @@
     "@base-ui/react": "^1.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "lucide-react": "^1.8.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0"
+  },
+  "peerDependenciesMeta": {
+    "lucide-react": {
+      "optional": true
+    },
+    "sonner": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "sonner": "^2.0.7"
   },
   "files": ["src"]
 }
