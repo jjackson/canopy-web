@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import { Badge } from '@marshellis/workbench/ui'
+import { Badge } from '@marshellis/canopy-ui/ui'
 
 interface Source {
   id?: number

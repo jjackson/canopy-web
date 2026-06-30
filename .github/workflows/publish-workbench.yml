@@ -1,4 +1,4 @@
-name: Publish @marshellis/workbench
+name: Publish @marshellis/canopy-ui
 
 # Publishes the shared front-end workbench package to the PUBLIC npm registry
 # (npmjs.com) under the @marshellis scope. GitHub Packages can't host @marshellis from a

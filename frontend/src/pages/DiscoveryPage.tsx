@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { listSkills } from '@/api/skills'
-import { Button } from '@marshellis/workbench/ui'
-import { Input } from '@marshellis/workbench/ui'
-import { Badge } from '@marshellis/workbench/ui'
-import { Skeleton } from '@marshellis/workbench/ui'
+import { Button } from '@marshellis/canopy-ui/ui'
+import { Input } from '@marshellis/canopy-ui/ui'
+import { Badge } from '@marshellis/canopy-ui/ui'
+import { Skeleton } from '@marshellis/canopy-ui/ui'
 import {
   Table,
   TableBody,
@@ -12,7 +12,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@marshellis/workbench/ui'
+} from '@marshellis/canopy-ui/ui'
 
 interface Skill {
   id: number

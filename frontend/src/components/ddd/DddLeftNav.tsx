@@ -8,7 +8,7 @@ import {
   type DddNarrativeListItem,
 } from '@/api/ddd'
 import { listReviews, type ReviewListItem } from '@/api/reviews'
-import { WorkbenchRail, WorkbenchNavItem } from '@marshellis/workbench'
+import { WorkbenchRail, WorkbenchNavItem } from '@marshellis/canopy-ui'
 import { useRunSectionNav } from './runSectionNav'
 
 /**
