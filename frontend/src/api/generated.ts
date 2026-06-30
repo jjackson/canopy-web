@@ -1469,6 +1469,23 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/runs/{run_id}/steps/{step_key}/verdict": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Record a judge/QA verdict on a step */
+        readonly post: operations["apps_agent_runs_api_record_verdict"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/agents/{slug}/runs/{run_id}/fork": {
         readonly parameters: {
             readonly query?: never;
@@ -4349,6 +4366,16 @@ export interface components {
              * @default
              */
             readonly role: string;
+            /**
+             * Ref
+             * @default
+             */
+            readonly ref: string;
+            /**
+             * Path
+             * @default
+             */
+            readonly path: string;
         };
         /**
          * Decision
@@ -4385,6 +4412,30 @@ export interface components {
              * @default
              */
             readonly evidence_basis: string;
+            /**
+             * Id
+             * @default
+             */
+            readonly id: string;
+            /**
+             * Phase
+             * @default
+             */
+            readonly phase: string;
+            /** Options Considered */
+            readonly options_considered?: readonly string[];
+            /**
+             * Source
+             * @default
+             */
+            readonly source: string;
+            /**
+             * Override Reasoning
+             * @default
+             */
+            readonly override_reasoning: string;
+            /** Conflict Signals */
+            readonly conflict_signals?: readonly string[];
         };
         /**
          * Gate
@@ -4471,6 +4522,18 @@ export interface components {
             readonly decisions?: readonly components["schemas"]["Decision"][];
             /** Gates */
             readonly gates?: readonly components["schemas"]["Gate"][];
+            /**
+             * Overall Score
+             * @description Weakest-link (min) score across judge verdicts — the opp-eval roll-up.
+             *     QA gates the judge: a judge score on a step whose QA failed is excluded
+             *     (invalid). None when no qa-clean judge verdict carries a score.
+             */
+            readonly overall_score: number | null;
+            /**
+             * Qa Gate Ok
+             * @description False iff any QA verdict explicitly failed (QA gates the judge).
+             */
+            readonly qa_gate_ok: boolean;
         };
         /**
          * Step
@@ -4550,6 +4613,31 @@ export interface components {
              * @default
              */
             readonly note: string;
+        };
+        /**
+         * VerdictIn
+         * @description Record a judge/QA verdict on a step. `kind=qa` is the binary gate;
+         *     `kind=judge` carries the 0-N quality score that the run aggregates.
+         */
+        readonly VerdictIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "judge" | "qa";
+            /** Score */
+            readonly score?: number | null;
+            /** Passed */
+            readonly passed?: boolean | null;
+            /** Criteria */
+            readonly criteria?: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Rationale
+             * @default
+             */
+            readonly rationale: string;
         };
         /**
          * ForkIn
@@ -7317,6 +7405,34 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["Gate"];
+                };
+            };
+        };
+    };
+    readonly apps_agent_runs_api_record_verdict: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly run_id: string;
+                readonly step_key: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["VerdictIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Verdict"];
                 };
             };
         };
