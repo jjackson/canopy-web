@@ -22,7 +22,12 @@ env = environ.Env()
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = False  # ALB handles the redirect
 
-ALLOWED_HOSTS = ["labs.connect.dimagi.com"]
+# Permissive behind the ALB (the only thing reaching this service is the ALB,
+# which routes just /canopy/* here) — matches canopy's production default and
+# lets the ALB IP-based health check (Host: <container-ip>) through. Host-header
+# attacks are mooted by the ALB boundary; CSRF is still pinned via
+# CSRF_TRUSTED_ORIGINS below.
+ALLOWED_HOSTS = ["*"]
 
 # Served under /canopy on the shared ALB.
 FORCE_SCRIPT_NAME = env("FORCE_SCRIPT_NAME", default="/canopy")
