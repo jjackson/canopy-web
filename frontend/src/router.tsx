@@ -1,8 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout/AppLayout'
-import { WorkspacePage } from './pages/WorkspacePage'
-import { WorkspacesPage } from './pages/WorkspacesPage'
 import { DiscoveryPage } from './pages/DiscoveryPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
@@ -92,8 +90,6 @@ export const router = createBrowserRouter([
       { path: '/reviews', element: <Navigate to="/ddd" replace /> },
       { path: '/review/:id', element: <ReviewPage /> },
       { path: '/new', element: <NewCollectionPage /> },
-      { path: '/workspaces', element: <WorkspacesPage /> },
-      { path: '/workspace/:sessionId', element: <WorkspacePage /> },
       { path: '/skills/:skillId', element: <SkillDetailPage /> },
       { path: '/guide', element: <GuidePage /> },
       { path: '/settings', element: <SettingsPage /> },

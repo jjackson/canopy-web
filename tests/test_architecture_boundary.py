@@ -24,8 +24,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 APPS = ROOT / "apps"
 
 # ── The tiers (canonical copy lives in ARCHITECTURE.md; keep them in sync) ──────
-FRAMEWORK = {"agents", "agent_runs", "api", "common", "timeline", "tokens", "sessions", "issues", "mcp", "system"}
-PRODUCT = {"projects", "collections", "workspace", "skills", "evals",
+FRAMEWORK = {"agents", "agent_runs", "workspaces", "api", "common", "timeline", "tokens", "sessions", "issues", "mcp", "system"}
+PRODUCT = {"projects", "collections", "skills", "evals",
            "walkthroughs", "reviews", "shareouts", "runs"}
 
 # The ONE composition root allowed to import every app — it wires each app's

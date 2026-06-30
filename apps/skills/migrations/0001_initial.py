@@ -9,7 +9,6 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('workspace', '0001_initial'),
     ]
 
     operations = [
@@ -24,7 +23,6 @@ class Migration(migrations.Migration):
                 ('usage_count', models.IntegerField(default=0)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('workspace_session', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='workspace.workspacesession')),
             ],
         ),
     ]

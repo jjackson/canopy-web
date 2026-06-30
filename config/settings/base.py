@@ -75,7 +75,6 @@ INSTALLED_APPS = [
     # Local apps
     "apps.common",
     "apps.collections",
-    "apps.workspace",
     "apps.skills",
     "apps.evals",
     "apps.projects",
@@ -89,6 +88,7 @@ INSTALLED_APPS = [
     "apps.sessions",
     "apps.agents",
     "apps.agent_runs",
+    "apps.workspaces",
     "apps.timeline",
     "apps.system",
 ]
