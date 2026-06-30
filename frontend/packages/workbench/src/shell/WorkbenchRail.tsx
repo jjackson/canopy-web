@@ -1,5 +1,5 @@
 import type { JSX, ReactNode } from 'react'
-import { cn } from './cn'
+import { cn } from '../lib/cn'
 
 /**
  * The bordered left rail chrome. Header slot (identity / title / filters) over a
