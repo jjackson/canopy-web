@@ -44,21 +44,33 @@ So P1 (run_state) and P4 (decisions) are done. The remaining harvest:
 - **W5/W8/W9:** AI-backend, workbench-shell, auth convergence. *Defer* — canopy-web already
   has working versions; converge opportunistically.
 
+## Transcript-confirmed status (from the wave0 session + ace-web)
+
+The wave0/keystone agent did **Wave 0, Wave 1, and Wave 4** — Wave 4 is *further than
+first reported*: ace-web PR #660 (`wave4/run-reader-swap`, merged) swapped `apps/opps`
+onto the shared `canopy_runs` adapter; ace-web now depends on `canopy-runs`. The team
+chose **Option 2** (ace-web imports framework code, stays standalone), which the agent
+noted *removes Wave-3 multi-tenancy from ACE's critical path*. Per the user, multi-tenancy
+is still wanted — for the **non-ACE** agents (Echo + the new ones) — and then **multiplayer
+mode** (real-time collab) on top. So Wave 3 is back on, justified by the agent fleet, not ACE.
+
 ## Increment order (each = TDD, green, commit)
 
-1. **P3a-1** — `record_verdict` on `RunStore` (Protocol + InMemory + DB) + read-model
-   aggregate (`Run.overall_score` weakest-link over judge verdicts; `Run.qa_gate_ok`) +
-   `POST /{slug}/runs/{run_id}/steps/{step_key}/verdict`. Migration-free (uses existing
-   `AgentRunVerdict` columns). ← **building now**
-2. **P3a-2** — QA-gates-judge enforcement: recording a `judge` verdict on a step whose `qa`
-   verdict failed marks it gated; aggregate reflects it.
-3. **W1-1** — `workspaces` app: `Workspace`/`Membership`/`Invite` models + RBAC + REST.
-4. **W1-2** — scope `agents` + `agent_runs` to a workspace (nullable FK, default workspace,
+1. **P3a-1** ✅ — `record_verdict` on `RunStore` (Protocol + InMemory + DB) + read-model
+   aggregate (`Run.overall_score`, `Run.qa_gate_ok`). Migration-free. (commit aeef191)
+2. **P3a-2** ✅ — QA-gates-judge: judge score on a QA-failed step excluded from
+   `overall_score` (centralized in the read model) + `POST .../steps/{key}/verdict`.
+   181 tests green. (commit da72a2a)
+3. **P3b** — plugin `canopy eval` runner lib/skill (grades an artifact vs a rubric, POSTs a
+   verdict). The *scorer* the wave1 agent left out. ← **next**
+4. **W1-1** — `workspaces` app: `Workspace`/`Membership`/`Invite` + RBAC + REST (harvest
+   ace-web's `apps/workspaces`).
+5. **W1-2** — scope `agents` + `agent_runs` to a workspace (nullable FK, default workspace,
    non-member 404).
-5. **P3b** — plugin `canopy eval` runner lib/skill (consumes P3a verdict endpoint).
-6. **W3** — `ingest` app (transcript + cost rollup).
-7. **W7** — `service_accounts` vault.
-8. Remaining (W4, P2 graph, P7, P8) as pulled.
+6. **W4 (multiplayer)** — websocket sessions + presence (harvest ace-web's `apps/sessions`
+   consumer + Channels), scoped to a workspace.
+7. **W3** — `ingest` app (transcript + cost rollup); **W7** — `service_accounts` vault.
+8. Deferred tail (P2 manifest graph, P7 gdrive MCP, P8 video consolidation) as pulled.
 
 ## Invariant
 
