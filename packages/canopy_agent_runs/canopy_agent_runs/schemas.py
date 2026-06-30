@@ -10,7 +10,7 @@ Run.status is a DERIVED field — `derive_status()` computes it from the steps m
 (all terminal → complete; any running/pending → in_progress) rather than reading a
 stored column. This is load-bearing per the ACE source.
 
-Django-free: this module (and the whole `canopy_runs` package) imports no Django.
+Django-free: this module (and the whole `canopy_agent_runs` package) imports no Django.
 `StrictModel` is defined locally rather than pulled from `apps.common.schemas` so
 the read model is portable into any project (e.g. ace-web) by pip-install alone.
 """

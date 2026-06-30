@@ -1,7 +1,7 @@
 """The real Google-backed `DriveClient` for the agent-run Drive adapter.
 
 This is the deploy-only half of the Drive path: a concrete implementation of
-the `DriveClient` Protocol (`canopy_runs.drive.client`) that talks to the live
+the `DriveClient` Protocol (`canopy_agent_runs.drive.client`) that talks to the live
 Google Drive v3 API. `DriveRunStore` is written against the Protocol, so
 swapping `FakeDriveClient` for this in production is a one-line change at the
 composition root (canopy-web's `apps.agent_runs.resolver`).
@@ -15,7 +15,7 @@ and the methods that need it — NEVER at module top level. Importing this modul
 therefore requires no SDK and touches no network, which keeps the package
 import-clean and lets the unit tests mock the service object without installing
 or stubbing the SDK. Install the SDK via the package's `drive` extra
-(`pip install "canopy-runs[drive]"`).
+(`pip install "canopy-agent-runs[drive]"`).
 
 DJANGO-FREE: this module reads no `django.conf.settings`. Credential SOURCES
 (inline SA JSON / SA key path / a fallback JSON) are passed in as explicit

@@ -2,7 +2,7 @@
 
 This is the Drive half of the Phase-1 contract: it reads an agent's Drive
 run-folder tree and returns the *same* storage-agnostic read model
-(`canopy_runs.schemas`) the DB adapter (`DbRunStore`) returns, so the two
+(`canopy_agent_runs.schemas`) the DB adapter (`DbRunStore`) returns, so the two
 are interchangeable behind the `RunStore` Protocol.
 
 It ports the ORCHESTRATION from ace-web's ``apps/opps/sync.py`` —

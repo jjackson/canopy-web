@@ -9,11 +9,11 @@
 
 ## Corrected starting state (what Wave 1 already delivered)
 
-Wave 1 (`apps/agent_runs` + `packages/canopy_runs`) built more than its commits implied:
+Wave 1 (`apps/agent_runs` + `packages/canopy_agent_runs`) built more than its commits implied:
 - **Tables exist:** `AgentRunVerdict` (judge/qa, score, passed, per-dim `criteria`),
   `AgentRunDecision` (P4 ✓), `AgentRunArtifact` (role-attributed, partial P2),
   `AgentRunGate`.
-- **Read model** lives in the Django-free `canopy_runs` package; `RunStore` Protocol
+- **Read model** lives in the Django-free `canopy_agent_runs` package; `RunStore` Protocol
   has `record_gate` / `record_decision` / `fork` — **but NO `record_verdict`**, and the
   `Run` read model has a `verdicts` list with **no run-level aggregate**.
 
@@ -23,7 +23,7 @@ So P1 (run_state) and P4 (decisions) are done. The remaining harvest:
 
 **Wave 2 — plugin crown jewels (remaining):**
 - **P3a (web, THIS spec's first increments):** verdict recording + QA-gates-judge
-  enforcement + run-level eval aggregation on `agent_runs`/`canopy_runs`. The plumbing a
+  enforcement + run-level eval aggregation on `agent_runs`/`canopy_agent_runs`. The plumbing a
   self-grading agent writes to.
 - **P3b (plugin):** the eval *runner* — a shared `canopy eval` lib/skill that grades an
   artifact against a rubric and POSTs a verdict (the generic port of ACE's verdict-schema +
@@ -48,7 +48,7 @@ So P1 (run_state) and P4 (decisions) are done. The remaining harvest:
 
 The wave0/keystone agent did **Wave 0, Wave 1, and Wave 4** — Wave 4 is *further than
 first reported*: ace-web PR #660 (`wave4/run-reader-swap`, merged) swapped `apps/opps`
-onto the shared `canopy_runs` adapter; ace-web now depends on `canopy-runs`. The team
+onto the shared `canopy_agent_runs` adapter; ace-web now depends on `canopy-agent-runs`. The team
 chose **Option 2** (ace-web imports framework code, stays standalone), which the agent
 noted *removes Wave-3 multi-tenancy from ACE's critical path*. Per the user, multi-tenancy
 is still wanted — for the **non-ACE** agents (Echo + the new ones) — and then **multiplayer

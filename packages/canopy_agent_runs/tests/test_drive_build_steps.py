@@ -6,7 +6,7 @@ status``); falls back to artifact-presence when no status is declared.
 """
 from dataclasses import dataclass
 
-from canopy_runs.drive.parsers import (
+from canopy_agent_runs.drive.parsers import (
     ArtifactRef,
     QAResult,
     _build_steps,

@@ -18,9 +18,9 @@ import datetime as dt
 
 import pytest
 
-from canopy_runs.drive.store import DriveRunStore, SkillMeta
-from canopy_runs.schemas import Run, RunSummary
-from canopy_runs.stores import RunStore
+from canopy_agent_runs.drive.store import DriveRunStore, SkillMeta
+from canopy_agent_runs.schemas import Run, RunSummary
+from canopy_agent_runs.stores import RunStore
 from tests.fixtures.fake_drive import FakeDriveClient
 
 AGENT = "goofy-geese"

@@ -44,7 +44,7 @@ def _drive_root_for(slug: str) -> str | None:
 
 def _drive_cred_sources() -> dict:
     """Resolve the Drive SA credential SOURCES from Django settings into the
-    keyword args the (Django-free) ``canopy_runs.drive.google_client`` factory
+    keyword args the (Django-free) ``canopy_agent_runs.drive.google_client`` factory
     expects. This is the composition seam: settings are read HERE, never inside
     the package.
 
@@ -76,13 +76,13 @@ def get_run_store(agent) -> RunStore:
 
     # Lazily import the Drive adapter + Google client so the DB path (and module
     # import) never pulls in the Drive store or the Google SDK shim. These now
-    # live in the installable, Django-free ``canopy_runs`` package.
-    from canopy_runs.drive.google_client import (
+    # live in the installable, Django-free ``canopy_agent_runs`` package.
+    from canopy_agent_runs.drive.google_client import (
         DriveNotConfigured,
         credentials_configured,
         get_google_drive_client,
     )
-    from canopy_runs.drive.store import DriveRunStore
+    from canopy_agent_runs.drive.store import DriveRunStore
 
     cred_sources = _drive_cred_sources()
     if not credentials_configured(**cred_sources):
