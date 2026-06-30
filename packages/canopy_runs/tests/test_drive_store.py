@@ -133,6 +133,13 @@ def test_drive_store_satisfies_runstore_protocol():
     assert isinstance(_store(), RunStore)
 
 
+def test_record_verdict_is_read_through_only():
+    """ACE writes its own verdicts/*.yaml; the Drive adapter does not write them.
+    Canopy-hosted agents record verdicts via the DB store instead."""
+    with pytest.raises(NotImplementedError, match="read-through"):
+        _store().record_verdict(AGENT, "any-run", "render", kind="judge", score=80.0)
+
+
 # --- get_run: the full read model ---
 
 

@@ -861,6 +861,21 @@ class DriveRunStore:
         return self.get_run(agent, run_id).verdicts
 
     # -- RunStore: writes --
+    def record_verdict(
+        self, agent: str, run_id: str, step_key: str, *,
+        kind: str, score: float | None = None, passed: bool | None = None,
+        criteria: dict | None = None, rationale: str = "",
+        evaluated_at: dt.datetime | None = None,
+    ) -> Verdict:
+        """Not supported: the Drive adapter is read-through for verdicts. ACE
+        writes its own ``verdicts/*.yaml`` (and new-layout per-phase verdicts);
+        `list_verdicts` reads them. Canopy-hosted agents record verdicts through
+        the DB store (`DbRunStore.record_verdict`)."""
+        raise NotImplementedError(
+            "DriveRunStore is read-through for verdicts: ACE writes verdicts to "
+            "Drive directly; record them via the DB store for canopy-hosted agents."
+        )
+
     def record_gate(
         self,
         agent: str,

@@ -108,6 +108,20 @@ def test_record_gate_closes_it(run):
     assert read.gates[0].decided_by == "jj@x.com"
 
 
+def test_record_verdict_persists_and_aggregates(run):
+    store = DbRunStore()
+    rid = str(run.pk)
+    v = store.record_verdict("echo", rid, "render", kind="judge", score=82.0, rationale="solid")
+    assert v.kind == "judge" and v.score == 82.0 and v.step_key == "render"
+    assert v.evaluated_at is not None
+    read = store.get_run("echo", rid)
+    assert read.overall_score == 82.0       # weakest-link over the single judge verdict
+    assert read.qa_gate_ok is True          # fixture's qa verdict passed
+    # a second, lower judge verdict drives the weakest-link roll-up down
+    store.record_verdict("echo", rid, "spec", kind="judge", score=70.0)
+    assert store.get_run("echo", rid).overall_score == 70.0
+
+
 def test_forked_from_is_carried(agent):
     parent = AgentRun.objects.create(agent=agent, label="parent")
     child = AgentRun.objects.create(agent=agent, label="child", forked_from=parent)

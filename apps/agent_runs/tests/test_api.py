@@ -156,6 +156,31 @@ def test_gate_missing_step_404(agent):
     assert resp.status_code == 404
 
 
+def test_record_verdict_and_aggregate(agent):
+    c = _auth_client()
+    rid = _post(c, _base(), {
+        "steps": [{"key": "render", "ordinal": 0, "status": "running"}],
+    }).json()["id"]
+    resp = _post(c, f"{_base()}{rid}/steps/render/verdict", {
+        "kind": "judge", "score": 82.0, "rationale": "solid",
+    })
+    assert resp.status_code == 201, resp.content
+    v = resp.json()
+    assert v["kind"] == "judge" and v["score"] == 82.0 and v["step_key"] == "render"
+    # reflected in the run read model + the run-level aggregate
+    body = c.get(f"{_base()}{rid}/").json()
+    assert body["verdicts"][0]["score"] == 82.0
+    assert body["overall_score"] == 82.0
+    assert body["qa_gate_ok"] is True
+
+
+def test_verdict_missing_step_404(agent):
+    c = _auth_client()
+    rid = _post(c, _base(), {"steps": [{"key": "spec", "ordinal": 0}]}).json()["id"]
+    resp = _post(c, f"{_base()}{rid}/steps/nope/verdict", {"kind": "qa", "passed": True})
+    assert resp.status_code == 404
+
+
 # ---- fork ----
 def test_fork_run(agent):
     c = _auth_client()

@@ -169,6 +169,22 @@ class DbRunStore:
         decision = AgentRunDecision.objects.create(step=step, **fields)
         return _decision_to_schema(decision, step_key)
 
+    def record_verdict(
+        self, agent: str, run_id: str, step_key: str, *,
+        kind: str, score: float | None = None, passed: bool | None = None,
+        criteria: dict | None = None, rationale: str = "",
+        evaluated_at: dt.datetime | None = None,
+    ) -> Verdict:
+        from .models import AgentRunStep, AgentRunVerdict
+
+        step = AgentRunStep.objects.get(run__agent__slug=agent, run_id=run_id, key=step_key)
+        verdict = AgentRunVerdict.objects.create(
+            step=step, kind=kind, score=score, passed=passed,
+            criteria=criteria or {}, rationale=rationale,
+            evaluated_at=evaluated_at or dt.datetime.now(dt.timezone.utc),
+        )
+        return _verdict_to_schema(verdict, step_key)
+
     def fork(self, agent: str, run_id: str, at_step: str, mode: str = "keep-overrides-only", edits: dict | None = None) -> RunSummary:
         from django.db import transaction
 

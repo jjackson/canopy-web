@@ -98,6 +98,28 @@ def test_changed_ids_tracks_writes():
     assert ids3 == ["r1"]
 
 
+def test_record_verdict_appends_and_aggregates():
+    store = InMemoryRunStore()
+    store.put_run(_sample_run())
+    v = store.record_verdict("echo", "r1", "render", kind="judge", score=82.0, rationale="solid")
+    assert isinstance(v, Verdict)
+    assert (v.kind, v.score, v.step_key) == ("judge", 82.0, "render")
+    assert v.evaluated_at is not None
+    run = store.get_run("echo", "r1")
+    assert run.verdicts[-1].score == 82.0
+    assert run.overall_score == 82.0          # weakest-link over the single judge verdict
+    assert run.qa_gate_ok is True             # the sample's qa verdict passed
+
+
+def test_record_verdict_tracked_as_write():
+    store = InMemoryRunStore()
+    store.put_run(_sample_run("r1"))
+    _, cursor = store.changed_ids("echo")
+    store.record_verdict("echo", "r1", "render", kind="qa", passed=False)
+    ids, _ = store.changed_ids("echo", cursor)
+    assert ids == ["r1"]
+
+
 def test_missing_run_raises():
     store = InMemoryRunStore()
     with pytest.raises(KeyError):

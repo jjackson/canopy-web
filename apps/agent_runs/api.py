@@ -21,7 +21,7 @@ from apps.api.pagination import Page, paginate
 from apps.common.schemas import StrictModel
 
 from . import resolver
-from .schemas import Gate, Run, RunMode, RunSummary, Step, StepStatus
+from .schemas import Gate, Run, RunMode, RunSummary, Step, StepStatus, Verdict, VerdictKind
 from .stores import RunStore
 
 router = Router(auth=session_auth, tags=["agent-runs"])
@@ -54,6 +54,17 @@ class GateDecisionIn(StrictModel):
     decision: str = Field(min_length=1, max_length=120)
     decided_by: str = ""
     note: str = ""
+
+
+class VerdictIn(StrictModel):
+    """Record a judge/QA verdict on a step. `kind=qa` is the binary gate;
+    `kind=judge` carries the 0-N quality score that the run aggregates."""
+
+    kind: VerdictKind
+    score: float | None = None
+    passed: bool | None = None
+    criteria: dict = Field(default_factory=dict)
+    rationale: str = ""
 
 
 class ForkIn(StrictModel):
@@ -147,6 +158,23 @@ def record_gate(request: HttpRequest, slug: str, run_id: str, step_key: str,
     except (ObjectDoesNotExist, KeyError):
         raise HttpError(404, f"step '{step_key}' not found in run '{run_id}'")
     return Status(201, gate)
+
+
+@router.post("/{slug}/runs/{run_id}/steps/{step_key}/verdict", response={201: Verdict},
+             summary="Record a judge/QA verdict on a step",
+             openapi_extra={"x-mcp-expose": True})
+def record_verdict(request: HttpRequest, slug: str, run_id: str, step_key: str,
+                   payload: VerdictIn) -> Status:
+    agent, store = _store_for(slug)
+    try:
+        verdict = store.record_verdict(
+            agent.slug, run_id, step_key,
+            kind=payload.kind, score=payload.score, passed=payload.passed,
+            criteria=payload.criteria, rationale=payload.rationale,
+        )
+    except (ObjectDoesNotExist, KeyError):
+        raise HttpError(404, f"step '{step_key}' not found in run '{run_id}'")
+    return Status(201, verdict)
 
 
 @router.post("/{slug}/runs/{run_id}/fork", response={201: RunSummary}, summary="Fork a run",

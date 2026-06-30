@@ -96,6 +96,16 @@ class RunStore(Protocol):
     def list_verdicts(self, agent: str, run_id: str) -> list[Verdict]:
         ...
 
+    def record_verdict(
+        self, agent: str, run_id: str, step_key: str, *,
+        kind: str, score: float | None = None, passed: bool | None = None,
+        criteria: dict | None = None, rationale: str = "",
+        evaluated_at: dt.datetime | None = None,
+    ) -> Verdict:
+        """Attach a judge/QA verdict to a step. A write. `evaluated_at` defaults
+        to now. The run's `overall_score` / `qa_gate_ok` aggregate recomputes."""
+        ...
+
     def record_gate(self, agent: str, run_id: str, step_key: str, decision: str, decided_by: str = "", note: str = "") -> Gate:
         """Record (close) a gate decision on a step. A write."""
         ...
@@ -226,6 +236,23 @@ class InMemoryRunStore:
         self._cursor += 1
         self._changed.append((self._cursor, agent, run_id))
         return decision
+
+    def record_verdict(
+        self, agent: str, run_id: str, step_key: str, *,
+        kind: str, score: float | None = None, passed: bool | None = None,
+        criteria: dict | None = None, rationale: str = "",
+        evaluated_at: dt.datetime | None = None,
+    ) -> Verdict:
+        run = self._require(agent, run_id)
+        verdict = Verdict(
+            step_key=step_key, kind=kind, score=score, passed=passed,
+            criteria=criteria or {}, rationale=rationale,
+            evaluated_at=evaluated_at or dt.datetime.now(dt.timezone.utc),
+        )
+        run.verdicts.append(verdict)
+        self._cursor += 1
+        self._changed.append((self._cursor, agent, run_id))
+        return verdict
 
     def fork(self, agent: str, run_id: str, at_step: str, mode: str = "keep-overrides-only", edits: dict | None = None) -> RunSummary:
         if mode not in FORK_MODES:
