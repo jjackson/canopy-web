@@ -19,7 +19,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class StrictModel(BaseModel):
@@ -165,6 +165,20 @@ class Run(StrictModel):
     verdicts: list[Verdict] = Field(default_factory=list)
     decisions: list[Decision] = Field(default_factory=list)
     gates: list[Gate] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def overall_score(self) -> float | None:
+        """Weakest-link (min) score across judge verdicts — the opp-eval roll-up.
+        None when no judge verdict carries a score."""
+        scores = [v.score for v in self.verdicts if v.kind == "judge" and v.score is not None]
+        return min(scores) if scores else None
+
+    @computed_field
+    @property
+    def qa_gate_ok(self) -> bool:
+        """False iff any QA verdict explicitly failed (QA gates the judge)."""
+        return all(v.passed is not False for v in self.verdicts if v.kind == "qa")
 
     def status_from_steps(self) -> RunStatus:
         """Derive run status from the steps map (load-bearing per spec §3)."""
