@@ -1370,6 +1370,41 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/workspaces/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List my workspaces */
+        readonly get: operations["apps_workspaces_api_list_workspaces"];
+        readonly put?: never;
+        /** Create a workspace */
+        readonly post: operations["apps_workspaces_api_create_workspace"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/workspaces/{slug}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get a workspace (member-only) */
+        readonly get: operations["apps_workspaces_api_get_workspace"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/timeline/": {
         readonly parameters: {
             readonly query?: never;
@@ -4414,6 +4449,31 @@ export interface components {
                 readonly [key: string]: unknown;
             };
         };
+        /** WorkspaceOut */
+        readonly WorkspaceOut: {
+            /** Slug */
+            readonly slug: string;
+            /** Display Name */
+            readonly display_name: string;
+            /** Auto Join Domains */
+            readonly auto_join_domains: readonly string[];
+            /** Role */
+            readonly role: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** WorkspaceCreateIn */
+        readonly WorkspaceCreateIn: {
+            /** Slug */
+            readonly slug: string;
+            /** Display Name */
+            readonly display_name: string;
+            /** Auto Join Domains */
+            readonly auto_join_domains?: readonly string[];
+        };
         /** ActivityEventOut */
         readonly ActivityEventOut: {
             /** Subsystem */
@@ -7078,6 +7138,72 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["RunSummary"];
+                };
+            };
+        };
+    };
+    readonly apps_workspaces_api_list_workspaces: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["WorkspaceOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_workspaces_api_create_workspace: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["WorkspaceCreateIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WorkspaceOut"];
+                };
+            };
+        };
+    };
+    readonly apps_workspaces_api_get_workspace: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WorkspaceOut"];
                 };
             };
         };
