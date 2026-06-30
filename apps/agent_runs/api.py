@@ -77,17 +77,23 @@ class ForkIn(StrictModel):
 
 
 # ---- helpers ----
-def _get_agent_or_404(slug: str):
+def _get_agent_or_404(request, slug: str):
+    """Resolve an agent, gated by workspace membership (non-member → 404, no
+    existence leak). Mirrors apps/agents' gate so runs are scoped via their agent."""
     from apps.agents import services
+    from apps.workspaces import services as wsvc
 
     agent = services.get_agent(slug)
     if agent is None:
         raise HttpError(404, f"agent '{slug}' not found")
+    wsvc.auto_join_workspaces(request.user)
+    if agent.workspace_id and not wsvc.is_member(request.user, agent.workspace_id):
+        raise HttpError(404, f"agent '{slug}' not found")
     return agent
 
 
-def _store_for(slug: str) -> tuple[object, RunStore]:
-    agent = _get_agent_or_404(slug)
+def _store_for(request, slug: str) -> tuple[object, RunStore]:
+    agent = _get_agent_or_404(request, slug)
     return agent, resolver.get_run_store(agent)
 
 
@@ -103,7 +109,7 @@ def _run_or_404(store: RunStore, slug: str, run_id: str) -> Run:
             openapi_extra={"x-mcp-expose": True})
 def list_runs(request: HttpRequest, slug: str, limit: int = 100) -> Page[RunSummary]:
     limit = min(limit, 500)
-    agent, store = _store_for(slug)
+    agent, store = _store_for(request, slug)
     items = store.list_runs(agent.slug)
     return paginate(items, offset=0, limit=limit)
 
@@ -111,7 +117,7 @@ def list_runs(request: HttpRequest, slug: str, limit: int = 100) -> Page[RunSumm
 @router.post("/{slug}/runs/", response={201: RunSummary}, summary="Create a run",
              openapi_extra={"x-mcp-expose": True})
 def create_run(request: HttpRequest, slug: str, payload: RunCreateIn) -> Status:
-    agent, store = _store_for(slug)
+    agent, store = _store_for(request, slug)
     try:
         summary = store.create_run(
             agent.slug,
@@ -131,14 +137,14 @@ def create_run(request: HttpRequest, slug: str, payload: RunCreateIn) -> Status:
 @router.get("/{slug}/runs/{run_id}/", response=Run, summary="Full run read model",
             openapi_extra={"x-mcp-expose": True})
 def get_run(request: HttpRequest, slug: str, run_id: str) -> Run:
-    agent, store = _store_for(slug)
+    agent, store = _store_for(request, slug)
     return _run_or_404(store, agent.slug, run_id)
 
 
 @router.get("/{slug}/runs/{run_id}/steps/", response=list[Step], summary="A run's steps",
             openapi_extra={"x-mcp-expose": True})
 def list_steps(request: HttpRequest, slug: str, run_id: str) -> list[Step]:
-    agent, store = _store_for(slug)
+    agent, store = _store_for(request, slug)
     _run_or_404(store, agent.slug, run_id)  # 404 if the run doesn't exist
     return store.list_steps(agent.slug, run_id)
 
@@ -148,7 +154,7 @@ def list_steps(request: HttpRequest, slug: str, run_id: str) -> list[Step]:
              openapi_extra={"x-mcp-expose": True})
 def record_gate(request: HttpRequest, slug: str, run_id: str, step_key: str,
                 payload: GateDecisionIn) -> Status:
-    agent, store = _store_for(slug)
+    agent, store = _store_for(request, slug)
     decided_by = payload.decided_by or getattr(request.user, "email", "")
     try:
         gate = store.record_gate(
@@ -165,7 +171,7 @@ def record_gate(request: HttpRequest, slug: str, run_id: str, step_key: str,
              openapi_extra={"x-mcp-expose": True})
 def record_verdict(request: HttpRequest, slug: str, run_id: str, step_key: str,
                    payload: VerdictIn) -> Status:
-    agent, store = _store_for(slug)
+    agent, store = _store_for(request, slug)
     try:
         verdict = store.record_verdict(
             agent.slug, run_id, step_key,
@@ -180,7 +186,7 @@ def record_verdict(request: HttpRequest, slug: str, run_id: str, step_key: str,
 @router.post("/{slug}/runs/{run_id}/fork", response={201: RunSummary}, summary="Fork a run",
              openapi_extra={"x-mcp-expose": True})
 def fork_run(request: HttpRequest, slug: str, run_id: str, payload: ForkIn) -> Status:
-    agent, store = _store_for(slug)
+    agent, store = _store_for(request, slug)
     try:
         summary = store.fork(
             agent.slug, run_id, payload.at_step,

@@ -28,6 +28,15 @@ class Agent(models.Model):
         related_name="agents",
         help_text="The human who operates the agent.",
     )
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="agents",
+        help_text="The tenant that owns this agent. Nullable for migration "
+        "safety; the API always assigns one (default workspace when unspecified).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
