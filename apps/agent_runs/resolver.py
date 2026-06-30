@@ -42,6 +42,22 @@ def _drive_root_for(slug: str) -> str | None:
     return root or None
 
 
+def _drive_cred_sources() -> dict:
+    """Resolve the Drive SA credential SOURCES from Django settings into the
+    keyword args the (Django-free) ``canopy_runs.drive.google_client`` factory
+    expects. This is the composition seam: settings are read HERE, never inside
+    the package.
+
+    Resolution precedence is the package's (`load_credentials`): inline JSON,
+    then a key-file path, then the shared canopy Drive SA as a fallback.
+    """
+    return {
+        "sa_key_json": getattr(settings, "AGENT_RUNS_DRIVE_SA_KEY_JSON", "") or "",
+        "sa_key_path": getattr(settings, "AGENT_RUNS_DRIVE_SA_KEY_PATH", "") or "",
+        "fallback_json": getattr(settings, "CANOPY_DRIVE_SA_KEY_JSON", "") or "",
+    }
+
+
 def get_run_store(agent) -> RunStore:
     """Return the `RunStore` backing `agent`'s runs.
 
@@ -59,15 +75,17 @@ def get_run_store(agent) -> RunStore:
         return DbRunStore()
 
     # Lazily import the Drive adapter + Google client so the DB path (and module
-    # import) never pulls in the Drive store or the Google SDK shim.
-    from .drive.google_client import (
+    # import) never pulls in the Drive store or the Google SDK shim. These now
+    # live in the installable, Django-free ``canopy_runs`` package.
+    from canopy_runs.drive.google_client import (
         DriveNotConfigured,
         credentials_configured,
         get_google_drive_client,
     )
-    from .drive.store import DriveRunStore
+    from canopy_runs.drive.store import DriveRunStore
 
-    if not credentials_configured():
+    cred_sources = _drive_cred_sources()
+    if not credentials_configured(**cred_sources):
         log.warning(
             "agent %r is mapped Drive-backed (root=%s) but no Drive SA "
             "credentials are configured; falling back to DbRunStore",
@@ -76,7 +94,7 @@ def get_run_store(agent) -> RunStore:
         return DbRunStore()
 
     try:
-        client = get_google_drive_client()
+        client = get_google_drive_client(**cred_sources)
     except DriveNotConfigured as exc:
         log.warning(
             "agent %r is mapped Drive-backed but Drive creds failed to load "

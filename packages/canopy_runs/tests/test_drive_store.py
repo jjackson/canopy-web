@@ -18,10 +18,10 @@ import datetime as dt
 
 import pytest
 
-from apps.agent_runs.drive.store import DriveRunStore, SkillMeta
-from apps.agent_runs.schemas import Run, RunSummary
-from apps.agent_runs.stores import RunStore
-from apps.agent_runs.tests.fixtures.fake_drive import FakeDriveClient
+from canopy_runs.drive.store import DriveRunStore, SkillMeta
+from canopy_runs.schemas import Run, RunSummary
+from canopy_runs.stores import RunStore
+from tests.fixtures.fake_drive import FakeDriveClient
 
 AGENT = "goofy-geese"
 RUN_ID = "20260620-1200"

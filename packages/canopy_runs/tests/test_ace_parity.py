@@ -30,9 +30,9 @@ from pathlib import Path
 
 import pytest
 
-from apps.agent_runs.drive.store import DriveRunStore, SkillMeta
-from apps.agent_runs.schemas import Run
-from apps.agent_runs.tests.fixtures.fake_drive import FakeDriveClient
+from canopy_runs.drive.store import DriveRunStore, SkillMeta
+from canopy_runs.schemas import Run
+from tests.fixtures.fake_drive import FakeDriveClient
 
 PARITY_DIR = Path(__file__).parent / "fixtures" / "parity"
 TREES = json.loads((PARITY_DIR / "trees.json").read_text())

@@ -9,10 +9,10 @@ from unittest.mock import patch
 
 from django.test import override_settings
 
-from apps.agent_runs.drive.google_client import DriveNotConfigured
-from apps.agent_runs.drive.store import DriveRunStore
 from apps.agent_runs.resolver import get_run_store
 from apps.agent_runs.stores import DbRunStore
+from canopy_runs.drive.google_client import DriveNotConfigured
+from canopy_runs.drive.store import DriveRunStore
 
 
 class _Agent:
@@ -43,7 +43,7 @@ def test_mapped_but_no_creds_falls_back_to_db_store():
 def test_mapped_with_creds_resolves_to_drive_store():
     sentinel_client = object()
     with patch(
-        "apps.agent_runs.drive.google_client.get_google_drive_client",
+        "canopy_runs.drive.google_client.get_google_drive_client",
         return_value=sentinel_client,
     ):
         store = get_run_store(_Agent("ace"))
@@ -60,7 +60,7 @@ def test_mapped_with_creds_resolves_to_drive_store():
 )
 def test_mapped_with_creds_but_load_fails_falls_back_to_db_store():
     with patch(
-        "apps.agent_runs.drive.google_client.get_google_drive_client",
+        "canopy_runs.drive.google_client.get_google_drive_client",
         side_effect=DriveNotConfigured("boom"),
     ):
         store = get_run_store(_Agent("ace"))
@@ -83,7 +83,7 @@ def test_other_agent_not_in_map_uses_db_store_even_when_one_is_drive_backed():
 def test_bare_slug_string_is_accepted():
     sentinel_client = object()
     with patch(
-        "apps.agent_runs.drive.google_client.get_google_drive_client",
+        "canopy_runs.drive.google_client.get_google_drive_client",
         return_value=sentinel_client,
     ):
         store = get_run_store("ace")

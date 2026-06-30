@@ -1,25 +1,27 @@
 """The real Google-backed `DriveClient` for the agent-run Drive adapter.
 
 This is the deploy-only half of the Drive path: a concrete implementation of
-the `DriveClient` Protocol (`apps.agent_runs.drive.client`) that talks to the
-live Google Drive v3 API. `DriveRunStore` is written against the Protocol, so
-swapping `FakeDriveClient` for this in production is a one-line resolver change
-(`apps.agent_runs.resolver`).
+the `DriveClient` Protocol (`canopy_runs.drive.client`) that talks to the live
+Google Drive v3 API. `DriveRunStore` is written against the Protocol, so
+swapping `FakeDriveClient` for this in production is a one-line change at the
+composition root (canopy-web's `apps.agent_runs.resolver`).
 
 Ported in shape from ace-web `apps/opps/drive_client.py` (the SDK calls, the
-Changes API, the content get/put, the transient-error retry) and aligned with
-canopy-web's own service-account convention (`apps/walkthroughs/drive_client.py`
-— `service_account.Credentials.from_service_account_info`, scope
-`.../auth/drive`).
+Changes API, the content get/put, the transient-error retry).
 
 SDK import discipline (the load-bearing constraint): the Google SDK
 (`googleapiclient`, `google.oauth2`) is imported **lazily**, inside `__init__`
 and the methods that need it — NEVER at module top level. Importing this module
-therefore requires no SDK and touches no network, which keeps the framework
+therefore requires no SDK and touches no network, which keeps the package
 import-clean and lets the unit tests mock the service object without installing
-or stubbing the SDK. `apps/agent_runs` is FRAMEWORK tier: no product-app import.
+or stubbing the SDK. Install the SDK via the package's `drive` extra
+(`pip install "canopy-runs[drive]"`).
 
-FRAMEWORK tier: stdlib + Django settings (read lazily) + the local Protocol.
+DJANGO-FREE: this module reads no `django.conf.settings`. Credential SOURCES
+(inline SA JSON / SA key path / a fallback JSON) are passed in as explicit
+parameters; the composition root (a Django settings reader, an env reader,
+whatever the host app uses) resolves them and calls in. That is the seam that
+keeps the package portable across canopy-web and ace-web.
 """
 from __future__ import annotations
 
@@ -36,7 +38,7 @@ log = logging.getLogger(__name__)
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
 
-# Scope the SA needs to read+write run folders. Matches walkthroughs' client.
+# Scope the SA needs to read+write run folders.
 DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 # Drive 5xx + 429 are transient; reads are idempotent so retrying is safe.
@@ -90,8 +92,8 @@ class GoogleDriveClient:
     """Real Google Drive v3 client — structurally satisfies `DriveClient`.
 
     Construct with already-built Google credentials, or via the
-    `get_google_drive_client()` factory which reads the SA key from settings.
-    Beyond the minimal Protocol it also exposes `upload_file` (a NEW-file
+    `get_google_drive_client()` factory which builds them from passed-in SA key
+    sources. Beyond the minimal Protocol it also exposes `upload_file` (a NEW-file
     write) because `DriveRunStore` calls it (via `getattr`) to create
     `decisions.yaml` and synthesize a fork's `run_state.yaml`.
     """
@@ -306,35 +308,45 @@ class GoogleDriveClient:
 
 
 # ---------------------------------------------------------------------------
-# Settings-driven factory
+# Credential factory (Django-free — sources are passed in, not read from settings)
 # ---------------------------------------------------------------------------
-def _load_credentials():
-    """Build Google SA credentials from settings (lazy — SDK + settings both
-    read here, never at import).
+def credentials_configured(
+    *, sa_key_json: str = "", sa_key_path: str = "", fallback_json: str = ""
+) -> bool:
+    """True when *some* SA credential source is set (cheap, no SDK import).
+
+    The composition root passes the three candidate sources it resolved (from
+    Django settings / env / etc.); this function just reports whether any is
+    non-empty. Keeping the predicate here (rather than in the host app) means
+    the resolution PRECEDENCE lives in one place: `load_credentials`.
+    """
+    return bool((sa_key_json or "") or (sa_key_path or "") or (fallback_json or ""))
+
+
+def load_credentials(
+    *, sa_key_json: str = "", sa_key_path: str = "", fallback_json: str = ""
+):
+    """Build Google SA credentials from explicit sources (lazy SDK import).
 
     Resolution order (first non-empty wins):
-      1. ``AGENT_RUNS_DRIVE_SA_KEY_JSON`` — inline service-account JSON.
-      2. ``AGENT_RUNS_DRIVE_SA_KEY_PATH`` — path to a service-account JSON file.
-      3. ``CANOPY_DRIVE_SA_KEY_JSON`` — the shared canopy Drive SA (fallback, so
-         an operator who already configured walkthrough Drive needn't duplicate
-         the key for agent runs).
+      1. ``sa_key_json`` — inline service-account JSON.
+      2. ``sa_key_path`` — path to a service-account JSON file.
+      3. ``fallback_json`` — a fallback inline JSON (e.g. a shared Drive SA the
+         host already configured for another feature).
 
     Raises ``DriveNotConfigured`` when none are set/valid.
     """
-    from django.conf import settings  # noqa: PLC0415
     from google.oauth2 import service_account  # noqa: PLC0415
 
-    inline = getattr(settings, "AGENT_RUNS_DRIVE_SA_KEY_JSON", "") or ""
-    path = getattr(settings, "AGENT_RUNS_DRIVE_SA_KEY_PATH", "") or ""
-    fallback = getattr(settings, "CANOPY_DRIVE_SA_KEY_JSON", "") or ""
+    inline = sa_key_json or ""
+    path = sa_key_path or ""
+    fallback = fallback_json or ""
 
     if inline:
         try:
             info = json.loads(inline)
         except json.JSONDecodeError as e:
-            raise DriveNotConfigured(
-                f"invalid JSON in AGENT_RUNS_DRIVE_SA_KEY_JSON: {e}"
-            ) from e
+            raise DriveNotConfigured(f"invalid JSON in inline SA key: {e}") from e
         return service_account.Credentials.from_service_account_info(
             info, scopes=DRIVE_SCOPES
         )
@@ -346,31 +358,24 @@ def _load_credentials():
         try:
             info = json.loads(fallback)
         except json.JSONDecodeError as e:
-            raise DriveNotConfigured(
-                f"invalid JSON in CANOPY_DRIVE_SA_KEY_JSON: {e}"
-            ) from e
+            raise DriveNotConfigured(f"invalid JSON in fallback SA key: {e}") from e
         return service_account.Credentials.from_service_account_info(
             info, scopes=DRIVE_SCOPES
         )
     raise DriveNotConfigured(
         "no agent-run Drive credentials configured "
-        "(set AGENT_RUNS_DRIVE_SA_KEY_JSON / _PATH or CANOPY_DRIVE_SA_KEY_JSON)"
+        "(pass sa_key_json / sa_key_path / fallback_json)"
     )
 
 
-def credentials_configured() -> bool:
-    """True when *some* SA credential source is set (cheap, no SDK import)."""
-    from django.conf import settings  # noqa: PLC0415
-
-    return bool(
-        (getattr(settings, "AGENT_RUNS_DRIVE_SA_KEY_JSON", "") or "")
-        or (getattr(settings, "AGENT_RUNS_DRIVE_SA_KEY_PATH", "") or "")
-        or (getattr(settings, "CANOPY_DRIVE_SA_KEY_JSON", "") or "")
-    )
-
-
-def get_google_drive_client() -> GoogleDriveClient:
-    """Return a live `GoogleDriveClient` from the settings-configured SA key.
+def get_google_drive_client(
+    *, sa_key_json: str = "", sa_key_path: str = "", fallback_json: str = ""
+) -> GoogleDriveClient:
+    """Return a live `GoogleDriveClient` built from the passed-in SA key sources.
 
     Raises `DriveNotConfigured` if no credentials are set."""
-    return GoogleDriveClient(_load_credentials())
+    return GoogleDriveClient(
+        load_credentials(
+            sa_key_json=sa_key_json, sa_key_path=sa_key_path, fallback_json=fallback_json
+        )
+    )

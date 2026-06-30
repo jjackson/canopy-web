@@ -1,0 +1,31 @@
+[project]
+name = "canopy-runs"
+version = "0.1.0"
+description = "Django-free run-lifecycle core: storage-agnostic read model, RunStore Protocol, in-memory + Drive adapters. Pip-installable into canopy-web / ace-web."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+drive = [
+    "google-api-python-client",
+    "google-auth",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["canopy_runs"]
+
+[tool.pytest.ini_options]
+# The package's own tests run with PLAIN pytest — no pytest-django, no DB.
+# `pythonpath = ["."]` makes the `tests` package (and its fixtures) importable
+# as `tests.fixtures...`; `canopy_runs` itself resolves via the editable install.
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

@@ -3,7 +3,7 @@
 Ported from ace-web `apps/opps/tests/fixtures/fake_drive.py`. This is the
 parity corpus engine: tests build run-folder trees as nested dicts and the
 fake serves them through canopy-web's own `DriveClient` Protocol
-(`apps.agent_runs.drive.client`) — no Google, no SDK.
+(`canopy_runs.drive.client`) — no Google, no SDK.
 
 Usage:
 
@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from itertools import count
 
-from apps.agent_runs.drive.client import (
+from canopy_runs.drive.client import (
     ChangesPage,
     DriveFile,
     FileContent,
