@@ -7,6 +7,8 @@
  * CSRF is attached for mutating calls, matching client.v2.ts.
  */
 
+import { apiUrl } from "./base";
+
 export type SessionVisibility = "private" | "link";
 export type MessageRole =
   | "user"
@@ -86,7 +88,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = csrfToken();
     if (token) headers.set("X-CSRFToken", token);
   }
-  const resp = await fetch(path, {
+  const resp = await fetch(apiUrl(path), {
     ...init,
     method,
     headers,

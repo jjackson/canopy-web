@@ -1,5 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./generated";
+import { API_BASE } from "./base";
 
 function getCsrfToken(): string {
   const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
@@ -26,10 +27,8 @@ function isPublicLinkRoute(): boolean {
   );
 }
 
-// Under a path prefix (e.g. /canopy), API calls must carry it too. BASE_URL is
-// "/" at root (→ "") and "/canopy/" as a labs tenant (→ "/canopy").
-const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
+// Under a path prefix (e.g. /canopy), API calls must carry it too. API_BASE is
+// "" at root and "/canopy" as a labs tenant (see ./base).
 export const apiV2 = createClient<paths>({
   baseUrl: API_BASE,
   credentials: "same-origin",

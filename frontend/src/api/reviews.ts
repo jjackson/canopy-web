@@ -384,14 +384,14 @@ export async function listReviews(params: ListReviewsParams = {}): Promise<Revie
   if (params.status) qs.set('status', params.status)
   if (params.order) qs.set('order', params.order)
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const resp = await fetch(`/api/reviews/${suffix}`, { credentials: 'same-origin' })
+  const resp = await fetch(`${API_BASE}/api/reviews/${suffix}`, { credentials: 'same-origin' })
   return parseResponse<ReviewListItem[]>(resp)
 }
 
 /** Delete a review request (dashboard cleanup). */
 export async function deleteReview(id: string): Promise<void> {
   const csrf = getCsrfToken()
-  const resp = await fetch(`/api/reviews/${id}/`, {
+  const resp = await fetch(`${API_BASE}/api/reviews/${id}/`, {
     method: 'DELETE',
     credentials: 'same-origin',
     headers: { ...(csrf ? { 'X-CSRFToken': csrf } : {}) },

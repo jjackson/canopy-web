@@ -9,6 +9,8 @@
 // (`npm run gen:api`), this file can be migrated to `apiV2.GET(...)` without
 // touching callers.
 
+import { apiUrl } from './base'
+
 export interface Page<T> {
   items: T[]
   total: number
@@ -169,7 +171,7 @@ function isPublicLinkRoute(): boolean {
 }
 
 async function getJson<T>(path: string, what: string): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method: 'GET',
     credentials: 'same-origin',
     headers: { Accept: 'application/json' },
@@ -188,7 +190,7 @@ function readCookie(name: string): string {
 async function csrfToken(): Promise<string> {
   let token = readCookie('csrftoken')
   if (!token) {
-    await fetch('/api/csrf/', { credentials: 'same-origin' })
+    await fetch(apiUrl('/api/csrf/'), { credentials: 'same-origin' })
     token = readCookie('csrftoken')
   }
   return token ? decodeURIComponent(token) : ''
@@ -196,7 +198,7 @@ async function csrfToken(): Promise<string> {
 
 async function postJson<T>(path: string, body: unknown, what: string): Promise<T> {
   const token = await csrfToken()
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method: 'POST',
     credentials: 'same-origin',
     headers: {

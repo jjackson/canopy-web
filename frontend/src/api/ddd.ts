@@ -6,6 +6,8 @@
  * `npm run gen:api` after the backend lands to migrate to openapi-fetch.
  */
 
+import { apiUrl } from './base'
+
 export type WalkthroughKind = 'html' | 'video'
 export type DddLinkKind = 'narrative' | 'companion' | 'reference'
 
@@ -130,7 +132,7 @@ export interface DddRunPackage {
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  const resp = await fetch(url, { credentials: 'same-origin' })
+  const resp = await fetch(apiUrl(url), { credentials: 'same-origin' })
   if (!resp.ok) {
     let detail = ''
     try {
@@ -149,7 +151,7 @@ function csrfToken(): string {
 
 async function del(url: string): Promise<void> {
   const csrf = csrfToken()
-  const resp = await fetch(url, {
+  const resp = await fetch(apiUrl(url), {
     method: 'DELETE',
     credentials: 'same-origin',
     headers: { ...(csrf ? { 'X-CSRFToken': decodeURIComponent(csrf) } : {}) },
@@ -168,7 +170,7 @@ async function del(url: string): Promise<void> {
 
 async function patchJson<T>(url: string, body: unknown): Promise<T> {
   const csrf = csrfToken()
-  const resp = await fetch(url, {
+  const resp = await fetch(apiUrl(url), {
     method: 'PATCH',
     credentials: 'same-origin',
     headers: {
