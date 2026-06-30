@@ -170,8 +170,13 @@ class Run(StrictModel):
     @property
     def overall_score(self) -> float | None:
         """Weakest-link (min) score across judge verdicts — the opp-eval roll-up.
-        None when no judge verdict carries a score."""
-        scores = [v.score for v in self.verdicts if v.kind == "judge" and v.score is not None]
+        QA gates the judge: a judge score on a step whose QA failed is excluded
+        (invalid). None when no qa-clean judge verdict carries a score."""
+        qa_failed = {v.step_key for v in self.verdicts if v.kind == "qa" and v.passed is False}
+        scores = [
+            v.score for v in self.verdicts
+            if v.kind == "judge" and v.score is not None and v.step_key not in qa_failed
+        ]
         return min(scores) if scores else None
 
     @computed_field

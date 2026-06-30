@@ -52,6 +52,29 @@ def test_qa_gate_ok_false_when_any_qa_failed():
     assert run.qa_gate_ok is False
 
 
+def test_qa_failed_step_judge_score_excluded_from_overall():
+    # s1 was judged a LOW 40 but its QA failed → that score is invalid and must
+    # be excluded; without the rule weakest-link would wrongly report 40. With
+    # it, only the qa-clean s2 (70) counts → overall 70, gate red.
+    run = _run([
+        Verdict(step_key="s1", kind="judge", score=40.0),
+        Verdict(step_key="s1", kind="qa", passed=False),
+        Verdict(step_key="s2", kind="judge", score=70.0),
+        Verdict(step_key="s2", kind="qa", passed=True),
+    ])
+    assert run.overall_score == 70.0
+    assert run.qa_gate_ok is False
+
+
+def test_overall_none_when_only_judged_step_failed_qa():
+    run = _run([
+        Verdict(step_key="s1", kind="judge", score=95.0),
+        Verdict(step_key="s1", kind="qa", passed=False),
+    ])
+    assert run.overall_score is None
+    assert run.qa_gate_ok is False
+
+
 def test_aggregate_fields_are_serialized():
     run = _run([Verdict(step_key="s1", kind="judge", score=80.0)])
     dumped = run.model_dump()
