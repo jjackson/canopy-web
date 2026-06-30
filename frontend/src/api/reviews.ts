@@ -260,14 +260,18 @@ export interface ReviewDetail {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// "" at root, "/canopy" as a labs tenant — these raw fetches (not openapi-fetch)
+// must carry the deployment path prefix themselves.
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
+
 function reviewUrl(id: string, token?: string | null): string {
   const t = token ? `?t=${encodeURIComponent(token)}` : ''
-  return `/api/reviews/${id}/${t}`
+  return `${API_BASE}/api/reviews/${id}/${t}`
 }
 
 function submitUrl(id: string, token?: string | null): string {
   const t = token ? `?t=${encodeURIComponent(token)}` : ''
-  return `/api/reviews/${id}/submit/${t}`
+  return `${API_BASE}/api/reviews/${id}/submit/${t}`
 }
 
 async function parseResponse<T>(resp: Response): Promise<T> {

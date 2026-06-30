@@ -4,7 +4,10 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+# Path prefix for the deployment (e.g. /canopy/ as a labs tenant). Defaults to
+# "/" (root / GCP). Drives Vite base → import.meta.env.BASE_URL.
+ARG VITE_BASE_PATH=/
+RUN VITE_BASE_PATH="$VITE_BASE_PATH" npm run build
 
 
 # ─── Stage 2: Python runtime ─────────────────────────────────────────

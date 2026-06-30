@@ -22,8 +22,12 @@ function isPublicLinkRoute(): boolean {
   );
 }
 
+// Under a path prefix (e.g. /canopy), API calls must carry it too. BASE_URL is
+// "/" at root (→ "") and "/canopy/" as a labs tenant (→ "/canopy").
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export const apiV2 = createClient<paths>({
-  baseUrl: "",
+  baseUrl: API_BASE,
   credentials: "same-origin",
 });
 
