@@ -13,7 +13,8 @@ const AuthContext = createContext<AuthState>({ status: 'loading', user: null })
 // and reviews. These are tokenless — the UUID in the URL is the only secret, and
 // the API self-enforces (private resources 404 to anonymous callers).
 function isPublicLinkRoute(): boolean {
-  const path = window.location.pathname
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+  const path = window.location.pathname.slice(base.length)
   return path.startsWith('/review/') || path.startsWith('/w/') || path.startsWith('/share/')
 }
 
@@ -63,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 function LoginPrompt() {
   const next = encodeURIComponent(window.location.pathname + window.location.search)
-  const loginHref = `/accounts/google/login/?next=${next}`
+  const loginHref = `${import.meta.env.BASE_URL}accounts/google/login/?next=${next}`
   return (
     <div className="min-h-screen bg-background text-foreground-secondary flex items-center justify-center px-6">
       <div className="max-w-md w-full bg-card border border-border rounded-xl p-8 text-center">

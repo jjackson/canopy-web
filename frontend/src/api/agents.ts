@@ -158,12 +158,13 @@ export interface NeedsYouOut {
 // Google login flow; everything else surfaces as a thrown Error.
 function redirectToLogin(): never {
   const next = encodeURIComponent(window.location.pathname + window.location.search)
-  window.location.href = `/accounts/google/login/?next=${next}`
+  window.location.href = `${import.meta.env.BASE_URL}accounts/google/login/?next=${next}`
   throw new Error('Redirecting to login')
 }
 
 function isPublicLinkRoute(): boolean {
-  const p = window.location.pathname
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+  const p = window.location.pathname.slice(base.length)
   return p.startsWith('/review/') || p.startsWith('/w/') || p.startsWith('/share/')
 }
 

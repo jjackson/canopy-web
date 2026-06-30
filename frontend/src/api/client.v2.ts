@@ -8,7 +8,9 @@ function getCsrfToken(): string {
 
 function redirectToLogin(): never {
   const next = encodeURIComponent(window.location.pathname + window.location.search);
-  window.location.href = `/accounts/google/login/?next=${next}`;
+  // Prefix-aware: BASE_URL is "/" at root and "/canopy/" as a labs tenant, so
+  // this stays under the deployment instead of bouncing to a sibling tenant.
+  window.location.href = `${import.meta.env.BASE_URL}accounts/google/login/?next=${next}`;
   throw new Error("Redirecting to login");
 }
 
@@ -16,7 +18,9 @@ function redirectToLogin(): never {
 // token, so a 401 from an incidental authenticated call (e.g. /api/me) must NOT
 // bounce an anonymous visitor to login. Keep in sync with AuthProvider.
 function isPublicLinkRoute(): boolean {
-  const p = window.location.pathname;
+  // Strip the deployment prefix (/canopy) before matching the app route.
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const p = window.location.pathname.slice(base.length);
   return (
     p.startsWith("/review/") || p.startsWith("/w/") || p.startsWith("/share/")
   );
