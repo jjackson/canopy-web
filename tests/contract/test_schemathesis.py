@@ -54,12 +54,12 @@ _parametrize = (
 )
 
 
+@_parametrize
 @settings(
     max_examples=_MAX_EXAMPLES,
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
-@_parametrize
 def test_api_conforms_to_schema(case):
     headers: dict[str, str] = {}
     if AUTH_BEARER:
