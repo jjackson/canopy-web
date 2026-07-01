@@ -1,6 +1,6 @@
 """The Django ORM `RunStore` adapter — `DbRunStore`.
 
-The Django-free pieces of this module moved to the installable ``canopy_runs``
+The Django-free pieces of this module moved to the installable ``canopy_agent_runs``
 package: the `RunStore` Protocol, `InMemoryRunStore`, the `FORK_MODES` /
 `_apply_decision_edit` fork contract, and the read model. What remains here is
 the ONE adapter that talks to the ORM (`apps.agent_runs.models`) — DB-as-truth
@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime as dt
 
 # Re-exported from the library so `apps.agent_runs.stores.<X>` keeps resolving.
-from canopy_runs.stores import (  # noqa: F401
+from canopy_agent_runs.stores import (  # noqa: F401
     FORK_MODES,
     InMemoryRunStore,
     RunStore,

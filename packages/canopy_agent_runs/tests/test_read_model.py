@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from canopy_runs.schemas import Gate, Run, Step, derive_status
+from canopy_agent_runs.schemas import Gate, Run, Step, derive_status
 
 
 def _step(key: str, status: str, ordinal: int = 0) -> Step:

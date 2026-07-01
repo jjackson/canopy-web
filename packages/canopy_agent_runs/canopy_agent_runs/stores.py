@@ -5,7 +5,7 @@
 Protocol — never on Drive or Postgres specifics. That one-way invariant is what
 lets ACE keep Drive-as-truth while canopy-hosted agents get DB-as-truth.
 
-This module is Django-free and ships in the installable `canopy_runs` package:
+This module is Django-free and ships in the installable `canopy_agent_runs` package:
 
 - `RunStore` — the Protocol every store satisfies.
 - `InMemoryRunStore` — dict-backed, for tests and as the reference behaviour.
@@ -14,7 +14,7 @@ This module is Django-free and ships in the installable `canopy_runs` package:
 
 The DB adapter (`DbRunStore`) lives in the Django app (`apps.agent_runs.stores`)
 because it talks to the ORM; it imports this Protocol + read model and implements
-the same contract. The Drive adapter (`canopy_runs.drive.store.DriveRunStore`)
+the same contract. The Drive adapter (`canopy_agent_runs.drive.store.DriveRunStore`)
 also lives here in the package.
 """
 from __future__ import annotations

@@ -165,9 +165,9 @@ wheels = [
 ]
 
 [[package]]
-name = "canopy-runs"
+name = "canopy-agent-runs"
 version = "0.1.0"
-source = { editable = "packages/canopy_runs" }
+source = { editable = "packages/canopy_agent_runs" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -188,7 +188,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
-    { name = "canopy-runs" },
+    { name = "canopy-agent-runs" },
     { name = "django" },
     { name = "django-allauth", extra = ["socialaccount"] },
     { name = "django-cors-headers" },
@@ -219,7 +219,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40,<1.0" },
-    { name = "canopy-runs", editable = "packages/canopy_runs" },
+    { name = "canopy-agent-runs", editable = "packages/canopy_agent_runs" },
     { name = "django", specifier = ">=5.0,<6.0" },
     { name = "django-allauth", extras = ["socialaccount"], specifier = ">=0.61,<1.0" },
     { name = "django-cors-headers", specifier = ">=4.3,<5.0" },
