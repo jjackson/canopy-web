@@ -8,6 +8,7 @@ import {
   type DddRunPackage,
 } from '@/api/ddd'
 import { sceneHashFragment, withSceneHash } from '@/lib/sceneHash'
+import { withBase } from '@/lib/basePath'
 import {
   runSectionDomId,
   useRunSectionNav,
@@ -137,7 +138,7 @@ function HtmlEmbed({
       <OpenLink href={withSceneHash(viewerUrl, sceneHash)} />
       <div className="overflow-hidden rounded-xl border border-border bg-white">
         <iframe
-          src={withSceneHash(contentUrl, sceneHash)}
+          src={withSceneHash(withBase(contentUrl), sceneHash)}
           title={title}
           sandbox="allow-scripts allow-same-origin"
           className="h-[70vh] w-full bg-white"
@@ -369,7 +370,7 @@ export function RunPackage({ runId }: { runId: string }) {
             <OpenLink href={run.video.viewer_url} />
             <div className="overflow-hidden rounded-xl border border-border bg-black">
               <video
-                src={run.video.content_url}
+                src={withBase(run.video.content_url)}
                 controls
                 className="max-h-[70vh] w-full bg-black"
               />
