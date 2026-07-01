@@ -44,6 +44,9 @@ def _get_agent_or_404(request: HttpRequest, slug: str):
     if agent is None:
         raise HttpError(404, f"agent '{slug}' not found")
     wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    if ws and agent.workspace_id != ws:
+        raise HttpError(404, f"agent '{slug}' not found")  # wrong tenant
     if agent.workspace_id and not wsvc.is_member(request.user, agent.workspace_id):
         raise HttpError(404, f"agent '{slug}' not found")
     return agent
@@ -54,11 +57,12 @@ def _get_agent_or_404(request: HttpRequest, slug: str):
 def list_agents(request: HttpRequest, limit: int = 100) -> Page[AgentOut]:
     limit = min(limit, 500)
     wsvc.auto_join_workspaces(request.user)
-    slugs = wsvc.user_workspace_slugs(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
     items = [
         AgentOut.model_validate(a)
         for a in services.list_agents()
-        if a.workspace_id is None or a.workspace_id in slugs
+        if a.workspace_id in slugs or (ws is None and a.workspace_id is None)
     ]
     return paginate(items, offset=0, limit=limit)
 
@@ -67,10 +71,14 @@ def list_agents(request: HttpRequest, limit: int = 100) -> Page[AgentOut]:
              openapi_extra={"x-mcp-expose": True})
 def upsert_agent(request: HttpRequest, payload: AgentIn) -> Status:
     agent = services.upsert_agent(payload)
-    # Always scope to a workspace; default when the caller didn't specify one,
-    # so an unchanged register() (e.g. Echo's) keeps working.
+    # Scope to the request's workspace (from the /w/{ws} prefix or the compat
+    # shim's default); fall back to the org default so an unchanged register()
+    # (e.g. Echo's) keeps working.
     if agent.workspace_id is None:
-        ws = wsvc.ensure_default_workspace()
+        pinned = getattr(request, "workspace_slug", None)
+        ws = (
+            wsvc.Workspace.objects.filter(slug=pinned).first() if pinned else None
+        ) or wsvc.ensure_default_workspace()
         if ws is not None:
             agent.workspace = ws
             agent.save(update_fields=["workspace"])

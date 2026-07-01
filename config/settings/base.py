@@ -99,6 +99,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.tokens.middleware.BearerTokenAuthMiddleware",  # PAT bearer auth (after AuthenticationMiddleware, before LoginRequired)
+    "apps.api.tenancy.WorkspaceResolveMiddleware",  # resolve /api/w/{ws}/ + flat-route compat shim (needs request.user)
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
