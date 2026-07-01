@@ -1,14 +1,12 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./generated";
-
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : "";
-}
+import { API_BASE, getCsrfToken } from "./base";
 
 function redirectToLogin(): never {
   const next = encodeURIComponent(window.location.pathname + window.location.search);
-  window.location.href = `/accounts/google/login/?next=${next}`;
+  // Prefix-aware: BASE_URL is "/" at root and "/canopy/" as a labs tenant, so
+  // this stays under the deployment instead of bouncing to a sibling tenant.
+  window.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/accounts/google/login/?next=${next}`;
   throw new Error("Redirecting to login");
 }
 
@@ -16,7 +14,9 @@ function redirectToLogin(): never {
 // token, so a 401 from an incidental authenticated call (e.g. /api/me) must NOT
 // bounce an anonymous visitor to login. Keep in sync with AuthProvider.
 function isPublicLinkRoute(): boolean {
-  const p = window.location.pathname;
+  // Strip the deployment prefix (/canopy) before matching the app route.
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const p = window.location.pathname.slice(base.length);
   return (
     p.startsWith("/review/") ||
     p.startsWith("/walkthrough/") ||
@@ -24,8 +24,10 @@ function isPublicLinkRoute(): boolean {
   );
 }
 
+// Under a path prefix (e.g. /canopy), API calls must carry it too. API_BASE is
+// "" at root and "/canopy" as a labs tenant (see ./base).
 export const apiV2 = createClient<paths>({
-  baseUrl: "",
+  baseUrl: API_BASE,
   credentials: "same-origin",
 });
 
@@ -45,7 +47,9 @@ const WS_SCOPED_API_PREFIXES = [
 ];
 
 function activeWorkspaceFromUrl(): string | null {
-  const m = window.location.pathname.match(/^\/w\/([^/]+)(?:\/|$)/);
+  // Strip the deployment prefix (/canopy) before reading the app route.
+  const p = window.location.pathname.slice(API_BASE.length);
+  const m = p.match(/^\/w\/([^/]+)(?:\/|$)/);
   return m ? m[1] : null;
 }
 
@@ -54,8 +58,11 @@ apiV2.use({
     const ws = activeWorkspaceFromUrl();
     if (!ws) return request;
     const url = new URL(request.url);
-    if (WS_SCOPED_API_PREFIXES.some((p) => url.pathname.startsWith(p))) {
-      url.pathname = `/api/w/${ws}${url.pathname.slice("/api".length)}`;
+    // openapi-fetch already prefixed API_BASE; match + rewrite against the
+    // deployment-relative path so /canopy/api/projects → /canopy/api/w/:ws/projects.
+    const rel = url.pathname.slice(API_BASE.length);
+    if (WS_SCOPED_API_PREFIXES.some((p) => rel.startsWith(p))) {
+      url.pathname = `${API_BASE}/api/w/${ws}${rel.slice("/api".length)}`;
       return new Request(url, request);
     }
     return request;

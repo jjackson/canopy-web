@@ -1,0 +1,204 @@
+name: Deploy to Labs (AWS)
+
+# Deploys canopy-web to the shared labs platform at
+# https://labs.connect.dimagi.com/canopy/ (AWS ECS Fargate, account 858923557655).
+# Manual-only: trigger via "Run workflow" on the Actions tab. Main-only.
+#
+# canopy-web is ONE container — the Dockerfile builds the SPA (stage 1) and Django
+# serves it via WhiteNoise, plus the API + MCP — so there's a single image / single
+# ECR repo (unlike ace-web's split backend/frontend).
+#
+# The CloudFormation stack (deploy/aws/canopy-web.cfn.yaml) is the one-time
+# provisioner (ECR repo, secrets, target group, listener rule, task def, service,
+# using the SHARED task/exec roles). This workflow handles every ongoing deploy:
+# it sources the live task def, swaps ONLY the image (so env/secrets/resources
+# never drift from the stack), optionally migrates, then rolls the service.
+#
+# Required GitHub secrets (see deploy/aws + Phase 2 of the labs migration):
+#   AWS_ROLE_ARN         — the shared github-actions-labs-deploy OIDC role
+#                          (trust policy must allow repo:jjackson/canopy-web:*)
+#   LABS_SUBNET          — a labs VPC subnet id (for the one-off migration task)
+#   LABS_SECURITY_GROUP  — the labs security group id
+#   CANOPY_PLUGIN_TOKEN  — read-only token for the private jjackson/canopy plugin
+#                          (optional; absent → /system shows an empty catalog)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: 'Run database migrations before cutover'
+        type: boolean
+        required: true
+        default: false
+
+concurrency:
+  group: deploy-labs-canopy-web
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 858923557655.dkr.ecr.us-east-1.amazonaws.com
+  ECS_CLUSTER: labs-jj-cluster
+  ECS_SERVICE: labs-jj-canopy-web
+  ECR_REPO: labs-jj-canopy-web
+  TASK_FAMILY: labs-jj-canopy-web
+  CONTAINER_NAME: canopy-web
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  guard:
+    name: Enforce main-only deploys
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check ref is refs/heads/main
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Deploys must run from main. Got ref=${{ github.ref }}. Merge to main, then re-run from branch=main."
+            exit 1
+          fi
+
+  build:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    needs: guard
+    steps:
+      - uses: actions/checkout@v5
+
+      # Vendor the private canopy plugin into the build context so apps.system
+      # can render the /system catalog. Absent → /system degrades to an empty
+      # catalog (the build still succeeds). Mirrors the retired deploy.sh step;
+      # the ./canopy dir is picked up by the Dockerfile's `COPY . .`.
+      - name: Vendor canopy plugin
+        env:
+          CANOPY_PLUGIN_TOKEN: ${{ secrets.CANOPY_PLUGIN_TOKEN }}
+        run: |
+          rm -rf canopy
+          if [ -n "$CANOPY_PLUGIN_TOKEN" ]; then
+            if git clone --depth 1 "https://x-access-token:${CANOPY_PLUGIN_TOKEN}@github.com/jjackson/canopy.git" canopy; then
+              rm -rf canopy/.git
+              echo "Vendored canopy plugin into build context."
+            else
+              echo "::warning::canopy plugin clone failed — /system will show an empty catalog."
+            fi
+          else
+            echo "::warning::CANOPY_PLUGIN_TOKEN not set — /system will show an empty catalog."
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          provenance: false
+          # canopy-web serves under the /canopy path prefix on the shared ALB.
+          # These MUST be passed or the SPA builds with base "/" (assets 404 at
+          # /assets/… instead of /canopy/assets/…) and reads the wrong CSRF
+          # cookie (writes 403). Mirrors config/settings/connectlabs.py.
+          build-args: |
+            VITE_BASE_PATH=/canopy/
+            VITE_CSRF_COOKIE_NAME=csrftoken_canopy
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:latest
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:buildcache
+          cache-to: type=registry,ref=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:buildcache,mode=max
+
+  deploy:
+    name: Deploy to Fargate
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Register new task definition revision (image swap only)
+        id: register-task
+        run: |
+          # Source of truth is the live, CFN-provisioned task def — we swap ONLY
+          # the container image so env/secrets/cpu/memory/log config never drift
+          # from the stack. Strip the read-only fields register-task-definition
+          # rejects, then register a new revision.
+          aws ecs describe-task-definition --task-definition "${{ env.TASK_FAMILY }}" \
+            --query 'taskDefinition' --output json > /tmp/current.json
+
+          jq --arg img "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ github.sha }}" \
+             --arg name "${{ env.CONTAINER_NAME }}" '
+               (.containerDefinitions[] | select(.name==$name) | .image) = $img
+               | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                     .compatibilities, .registeredAt, .registeredBy)
+             ' /tmp/current.json > /tmp/new.json
+
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/new.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "task-def-arn=$NEW_ARN" >> "$GITHUB_OUTPUT"
+          echo "::notice::Registered $NEW_ARN"
+
+      - name: Run database migrations
+        if: ${{ inputs.run_migrations == true }}
+        run: |
+          # One-off Fargate task on the NEW task def (new code), command
+          # overridden to `migrate`. Runs BEFORE the service cutover so new code
+          # never serves against an un-migrated schema.
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --task-definition "${{ steps.register-task.outputs.task-def-arn }}" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.LABS_SUBNET }}],securityGroups=[${{ secrets.LABS_SECURITY_GROUP }}],assignPublicIp=ENABLED}" \
+            --overrides '{"containerOverrides":[{"name":"${{ env.CONTAINER_NAME }}","command":["python","manage.py","migrate","--noinput"]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Migration task: $TASK_ARN"
+
+          aws ecs wait tasks-stopped --cluster "${{ env.ECS_CLUSTER }}" --tasks "$TASK_ARN"
+
+          EXIT=$(aws ecs describe-tasks --cluster "${{ env.ECS_CLUSTER }}" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[?name==`'"${{ env.CONTAINER_NAME }}"'`].exitCode | [0]' --output text)
+          if [ "$EXIT" = "0" ]; then
+            echo "Migrations completed successfully."
+          else
+            REASON=$(aws ecs describe-tasks --cluster "${{ env.ECS_CLUSTER }}" --tasks "$TASK_ARN" \
+              --query 'tasks[0].stoppedReason' --output text)
+            echo "::error::Migrations failed (exit=$EXIT). Stopped reason: $REASON"
+            exit 1
+          fi
+
+      - name: Deploy (rolling update)
+        run: |
+          aws ecs update-service \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --service "${{ env.ECS_SERVICE }}" \
+            --task-definition "${{ steps.register-task.outputs.task-def-arn }}" \
+            --force-new-deployment --output text > /dev/null
+          echo "Waiting for rollout (so 'done' means new code is serving)..."
+          aws ecs wait services-stable --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}"
+          echo "Rollout complete — new tasks running and healthy."
+
+      - name: Deployment summary
+        run: |
+          {
+            echo "## Deploy to Labs — canopy-web"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Ref | \`${{ github.ref_name }}\` @ \`${{ github.sha }}\` |"
+            echo "| Image | \`${{ env.ECR_REPO }}:${{ github.sha }}\` |"
+            echo "| Task definition | \`${{ steps.register-task.outputs.task-def-arn }}\` |"
+            echo "| Migrations run | \`${{ inputs.run_migrations }}\` |"
+            echo "| Service | \`${{ env.ECS_SERVICE }}\` |"
+            echo "| URL | https://labs.connect.dimagi.com/canopy/ |"
+          } >> "$GITHUB_STEP_SUMMARY"

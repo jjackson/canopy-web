@@ -10,6 +10,7 @@ import {
   type DddNarrativeRun,
   type DddNarrativeVersion,
 } from '@/api/ddd'
+import { withBase } from '@/lib/basePath'
 
 function fmtDate(iso: string | null): string {
   if (!iso) return ''
@@ -185,7 +186,7 @@ function VersionBlock({
           )}
           {version.video_url && (
             <video
-              src={version.video_url}
+              src={withBase(version.video_url)}
               controls
               preload="metadata"
               className="mb-3 w-full max-w-2xl rounded-lg border border-border bg-black"

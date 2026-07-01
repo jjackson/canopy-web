@@ -46,3 +46,13 @@ application = Starlette(
     # Run the MCP session-manager lifespan for the whole process.
     lifespan=_mcp_app.lifespan,
 )
+
+# When deployed under a path prefix (labs.connect.dimagi.com/canopy), strip it
+# from incoming scopes so the mounts above (MCP at /api/mcp, Django at /) match.
+# FORCE_SCRIPT_NAME independently re-adds the prefix to URLs Django generates.
+# No-op everywhere the env var is unset (GCP/dev/CI).
+from config.asgi_prefix import StripScriptName  # noqa: E402
+
+_script_name = os.environ.get("FORCE_SCRIPT_NAME", "")
+if _script_name:
+    application = StripScriptName(application, _script_name)

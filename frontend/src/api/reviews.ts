@@ -10,10 +10,7 @@
  *     backend's _token_ok() check succeeds for unauthenticated callers.
  */
 
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)
-  return match ? decodeURIComponent(match[1]) : ''
-}
+import { getCsrfToken } from './base'
 
 // ---------------------------------------------------------------------------
 // Types (mirrors apps/reviews/schemas.py)
@@ -260,14 +257,18 @@ export interface ReviewDetail {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// "" at root, "/canopy" as a labs tenant — these raw fetches (not openapi-fetch)
+// must carry the deployment path prefix themselves.
+const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
+
 function reviewUrl(id: string, token?: string | null): string {
   const t = token ? `?t=${encodeURIComponent(token)}` : ''
-  return `/api/reviews/${id}/${t}`
+  return `${API_BASE}/api/reviews/${id}/${t}`
 }
 
 function submitUrl(id: string, token?: string | null): string {
   const t = token ? `?t=${encodeURIComponent(token)}` : ''
-  return `/api/reviews/${id}/submit/${t}`
+  return `${API_BASE}/api/reviews/${id}/submit/${t}`
 }
 
 async function parseResponse<T>(resp: Response): Promise<T> {
@@ -380,14 +381,14 @@ export async function listReviews(params: ListReviewsParams = {}): Promise<Revie
   if (params.status) qs.set('status', params.status)
   if (params.order) qs.set('order', params.order)
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const resp = await fetch(`/api/reviews/${suffix}`, { credentials: 'same-origin' })
+  const resp = await fetch(`${API_BASE}/api/reviews/${suffix}`, { credentials: 'same-origin' })
   return parseResponse<ReviewListItem[]>(resp)
 }
 
 /** Delete a review request (dashboard cleanup). */
 export async function deleteReview(id: string): Promise<void> {
   const csrf = getCsrfToken()
-  const resp = await fetch(`/api/reviews/${id}/`, {
+  const resp = await fetch(`${API_BASE}/api/reviews/${id}/`, {
     method: 'DELETE',
     credentials: 'same-origin',
     headers: { ...(csrf ? { 'X-CSRFToken': csrf } : {}) },

@@ -5,10 +5,7 @@
  * short-lived session cookie for an AI assistant. NOT a Ninja v2
  * endpoint — it manipulates SessionStore directly. Out-of-band.
  */
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)
-  return match ? decodeURIComponent(match[1]) : ''
-}
+import { apiUrl, getCsrfToken } from './base'
 
 export interface MintDebugSessionResponse {
   cookie_name: string
@@ -21,7 +18,7 @@ export interface MintDebugSessionResponse {
 }
 
 export async function mintDebugSession(ttlSeconds?: number): Promise<MintDebugSessionResponse> {
-  const response = await fetch('/api/debug/mint-session/', {
+  const response = await fetch(apiUrl('/api/debug/mint-session/'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

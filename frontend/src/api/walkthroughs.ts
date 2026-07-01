@@ -1,5 +1,6 @@
 import { apiV2 } from "./client.v2";
 import type { components } from "./generated";
+import { withBase } from "../lib/basePath";
 
 export type WalkthroughKind = "html" | "video";
 export type WalkthroughVisibility = "private" | "link";
@@ -92,5 +93,7 @@ export async function uploadWalkthrough(
 }
 
 export function walkthroughContentUrl(id: string): string {
-  return `/w/${id}/content`;
+  // Base-aware so the `<video>`/`<iframe>` src resolves under the deployed
+  // sub-path (e.g. `/canopy/w/<id>/content`), not the origin root.
+  return withBase(`/w/${id}/content`);
 }

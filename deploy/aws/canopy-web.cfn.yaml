@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  canopy-web as the third tenant on the connect-labs platform
+  (labs.connect.dimagi.com/canopy). Creates canopy's own ECR repo, log group,
+  secrets, ALB target group + /canopy/* listener rule, ECS task definition, and
+  Fargate service. References the SHARED platform resources (VPC, subnets, SG,
+  ECS cluster, ALB HTTPS listener, IAM roles) by parameter — defaults are the
+  live connect-labs values discovered in account 858923557655 / us-east-1.
+
+  canopy-web is a single-container monolith (uvicorn serves the SPA + Django API
+  + MCP + websockets on :8000), so this is ONE container / ONE ECR repo — unlike
+  ace-web's 2-container (api + nginx) split.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-024df4c7bcc30cb01
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: "subnet-06646effb09be2f42,subnet-08a18eb47b48aff54"
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-0666a5ed512c97d9d
+  ClusterName:
+    Type: String
+    Default: labs-jj-cluster
+  HttpsListenerArn:
+    Type: String
+    Default: arn:aws:elasticloadbalancing:us-east-1:858923557655:listener/app/labs-jj-alb/ffecbe258260c7ee/95873265402e7831
+  ExecutionRoleArn:
+    Type: String
+    Default: arn:aws:iam::858923557655:role/labs-jj-ecs-task-execution-role
+  TaskRoleArn:
+    Type: String
+    Default: arn:aws:iam::858923557655:role/labs-jj-ecs-task-role
+  ContainerPort:
+    Type: Number
+    Default: 8000
+  ImageTag:
+    Type: String
+    Default: latest
+  DesiredCount:
+    Type: Number
+    Default: 0
+    Description: >
+      Start at 0 so the stack creates cleanly before secrets + image exist. Set
+      secret values + push the image, then update the stack with DesiredCount=1.
+
+Resources:
+  EcrRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: labs-jj-canopy-web
+      ImageScanningConfiguration: { ScanOnPush: true }
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/labs-jj-canopy-web
+      RetentionInDays: 30
+
+  # --- Secrets (containers; real values are set out-of-band via
+  #     `aws secretsmanager put-secret-value` before DesiredCount is raised) ---
+  DjangoSecretKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: canopy-web/django-secret-key
+      GenerateSecretString: { PasswordLength: 64, ExcludePunctuation: true }
+
+  DatabaseUrl:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: canopy-web/database-url
+      SecretString: "postgres://PLACEHOLDER@labs-jj-postgres.cs74wyie8cdf.us-east-1.rds.amazonaws.com:5432/canopy_web"
+
+  RedisUrl:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: canopy-web/redis-url
+      SecretString: "redis://labs-jj-redis.aceivh.0001.use1.cache.amazonaws.com:6379/1"
+
+  GoogleOauthClientId:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: canopy-web/google-oauth-client-id
+      SecretString: "PLACEHOLDER"
+
+  GoogleOauthClientSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: canopy-web/google-oauth-client-secret
+      SecretString: "PLACEHOLDER"
+
+  DriveSaKeyJson:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: canopy-web/drive-sa-key-json
+      SecretString: "PLACEHOLDER"
+
+  # --- ALB target group + /canopy/* rule (slots in at a free priority
+  #     alongside ace's /ace/* at prio 20 and the connect-labs default) ---
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: labs-jj-canopy-web-tg
+      VpcId: !Ref VpcId
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /canopy/health/
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      Matcher: { HttpCode: "200" }
+
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpsListenerArn
+      Priority: 30
+      Conditions:
+        - Field: path-pattern
+          Values: ["/canopy/*"]
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: labs-jj-canopy-web
+      Cpu: "1024"
+      Memory: "2048"
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !Ref ExecutionRoleArn
+      TaskRoleArn: !Ref TaskRoleArn
+      ContainerDefinitions:
+        - Name: canopy-web
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/labs-jj-canopy-web:${ImageTag}"
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+          Environment:
+            - { Name: DJANGO_SETTINGS_MODULE, Value: config.settings.connectlabs }
+            - { Name: FORCE_SCRIPT_NAME, Value: /canopy }
+            - { Name: ALLOWED_HOSTS, Value: labs.connect.dimagi.com }
+            - { Name: AWS_REGION, Value: !Ref "AWS::Region" }
+            - { Name: PORT, Value: !Ref ContainerPort }
+          Secrets:
+            - { Name: DJANGO_SECRET_KEY, ValueFrom: !Ref DjangoSecretKey }
+            - { Name: DATABASE_URL, ValueFrom: !Ref DatabaseUrl }
+            - { Name: REDIS_URL, ValueFrom: !Ref RedisUrl }
+            - { Name: GOOGLE_OAUTH_CLIENT_ID, ValueFrom: !Ref GoogleOauthClientId }
+            - { Name: GOOGLE_OAUTH_CLIENT_SECRET, ValueFrom: !Ref GoogleOauthClientSecret }
+            - { Name: CANOPY_DRIVE_SA_KEY_JSON, ValueFrom: !Ref DriveSaKeyJson }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref "AWS::Region"
+              awslogs-stream-prefix: canopy-web
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: ListenerRule
+    Properties:
+      ServiceName: labs-jj-canopy-web
+      Cluster: !Ref ClusterName
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      TaskDefinition: !Ref TaskDefinition
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: !Ref Subnets
+          SecurityGroups: [!Ref SecurityGroup]
+          AssignPublicIp: ENABLED
+      LoadBalancers:
+        - TargetGroupArn: !Ref TargetGroup
+          ContainerName: canopy-web
+          ContainerPort: !Ref ContainerPort
+
+Outputs:
+  EcrRepoUri:
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/labs-jj-canopy-web"
+  Url:
+    Value: https://labs.connect.dimagi.com/canopy/
+  ServiceName:
+    Value: !Ref Service

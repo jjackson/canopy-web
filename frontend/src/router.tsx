@@ -134,4 +134,8 @@ export const router = createBrowserRouter([
   // Public, chrome-less route — mounted OUTSIDE AppLayout so anonymous
   // visitors aren't bounced to login by the app shell's authed calls.
   { path: '/share/:token', element: <SessionSharePage /> },
-])
+], {
+  // "/" at root, "/canopy" as a labs tenant — keeps every route + <Link> under
+  // the deployment's path prefix (from Vite's import.meta.env.BASE_URL).
+  basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/',
+})
