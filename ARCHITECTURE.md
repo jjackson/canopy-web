@@ -13,7 +13,7 @@
   identity, board, command queue, transcripts, auth, timeline, MCP server, API
   plumbing. It knows nothing about what a particular agent *does*.
 - **PRODUCT** = canopy's *own* domain features — the self-improvement / DDD /
-  skill-authoring / portfolio surface. Another agent would not reuse these; they
+  portfolio surface. Another agent would not reuse these; they
   *are* canopy.
 
 The payoff: the blend stays **cuttable**. We never physically split the repo, but
@@ -39,9 +39,6 @@ the arrow's direction and enforce it in CI.
 | `mcp` | **framework** | MCP server infra + audit + rate-limit. (Individual *tools* may be product — see carve-outs.) |
 | `system` | **framework** | System metadata / AI-backend status. |
 | `projects` | **product** | Canopy's portfolio/insights feature: repos + which canopy skills ran (`skills[]`, `skill_name`, hygiene-skill frontend). Not a generic registry today — promote to framework only when a real second consumer needs one. |
-| `collections` | **product** | DDD source collections. |
-| `skills` | **product** | Canopy skill registry. |
-| `evals` | **product** | Eval suites tied to skills. |
 | `walkthroughs` | **product** | DDD walkthrough artifacts (HTML/video demos). |
 | `reviews` | **product** | DDD narrative review surface. |
 | `shareouts` | **product** | Team shareout briefings. |
@@ -59,10 +56,6 @@ The boundary holds everywhere except these documented, intentional places:
    composition-root shape as the api hub. **Candidate for inversion** later
    (let `projects` register its own tool via `AppConfig.ready`), which would
    remove this carve-out.
-
-`seed_demo` (demo-data seeder) used to live in framework `apps/common` and import
-product models — it now lives in `apps/workspace` (product), so the import is
-product→product. The command name is unchanged (`manage.py seed_demo`).
 
 ## Enforcement
 

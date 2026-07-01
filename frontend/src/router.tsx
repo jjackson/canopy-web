@@ -1,14 +1,10 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout/AppLayout'
-import { DiscoveryPage } from './pages/DiscoveryPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
 import { ShareoutsPage } from './pages/ShareoutsPage'
-import { NewCollectionPage } from './pages/NewCollectionPage'
-import { SkillDetailPage } from './pages/SkillDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { GuidePage } from './pages/GuidePage'
 import { WalkthroughsPage } from './pages/WalkthroughsPage'
 import { WalkthroughViewerPage } from './pages/WalkthroughViewerPage'
 import { ReviewPage } from './pages/ReviewPage'
@@ -65,7 +61,6 @@ export const router = createBrowserRouter([
       { path: '/insights', element: <InsightsPage /> },
       { path: '/shareouts', element: <ShareoutsPage /> },
       { path: '/shareouts/:period', element: <ShareoutsPage /> },
-      { path: '/skills', element: <DiscoveryPage /> },
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:id', element: <WalkthroughViewerPage /> },
       { path: '/sessions', element: <SessionsPage /> },
@@ -89,9 +84,6 @@ export const router = createBrowserRouter([
       { path: '/ddd-plans', element: <Navigate to="/ddd" replace /> },
       { path: '/reviews', element: <Navigate to="/ddd" replace /> },
       { path: '/review/:id', element: <ReviewPage /> },
-      { path: '/new', element: <NewCollectionPage /> },
-      { path: '/skills/:skillId', element: <SkillDetailPage /> },
-      { path: '/guide', element: <GuidePage /> },
       { path: '/settings', element: <SettingsPage /> },
     ],
   },

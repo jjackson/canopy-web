@@ -1,6 +1,7 @@
 # Canopy Web
 
-Collaborative web workspace for building reusable AI skills from conversations.
+Collaborative web workspace for the canopy agent ecosystem — portfolio insights,
+first-class AI agents, demo-driven development (DDD), walkthroughs, and shareouts.
 
 ## Architecture
 
@@ -11,10 +12,9 @@ Collaborative web workspace for building reusable AI skills from conversations.
   schema (`frontend/src/api/generated.ts`) and consumed via `openapi-fetch`.
 - **Frontend:** React 19 + Vite + Tailwind CSS 4 + shadcn/ui
 - **AI:** Anthropic Claude API via SSE streaming. Dual backend — direct API key (`AI_BACKEND=api`) or Claude Code CLI subscription (`AI_BACKEND=cli`), switchable at runtime via `/api/ai/switch/`.
-- **Runtime adapters:** `apps/skills/adapters/` produces skill artifacts for `web`, `claude_code`, and `open_claw` runtimes.
 - **MCP server:** `apps/mcp/` is a FastMCP 3.x Streamable-HTTP server mounted into the ASGI app at `/api/mcp/` (wired in `config/asgi.py`). Tools run **as the authenticated user** via per-user PAT (`CanopyPATVerifier`) and reuse the same service functions as the REST views, so the two surfaces can't drift. See `docs/architecture/mcp-surface.md`.
 - **Deployment:** GCP Cloud Run + Cloud SQL on the `canopy-494811` project. `./deploy.sh` builds via Cloud Build (`cloudbuild.yaml`) and `gcloud run deploy`s — no local Docker daemon required. Production settings in `config/settings/production.py`.
-- **Framework/product boundary (the one invariant):** apps split into **framework** (generic, agent-agnostic substrate — `agents`, `agent_runs`, `workspaces`, `api`, `common`, `timeline`, `tokens`, `session_sharing`, `issues`, `mcp`, `system`) and **product** (canopy's own features — `projects`, `collections`, `skills`, `evals`, `walkthroughs`, `reviews`, `shareouts`, `runs`). **Framework code must never import product code; product freely imports framework.** This keeps the blend cuttable (the framework apps could lift onto a standalone host without dragging canopy's product). It's a *direction, not a wall* — we don't move apps into `framework/`/`product/` folders. Enforced by `tests/test_architecture_boundary.py` (fails CI on a framework→product import, or on a new app left untiered). Full rationale, the per-app tier table, and the accepted carve-outs (the `api` composition root, the `mcp` insights tool): **`ARCHITECTURE.md`**. The framework apps are being harvested as the generic layer out of ACE — see `docs/superpowers/specs/2026-06-24-canopy-framework-harvest-design.md`.
+- **Framework/product boundary (the one invariant):** apps split into **framework** (generic, agent-agnostic substrate — `agents`, `agent_runs`, `workspaces`, `api`, `common`, `timeline`, `tokens`, `session_sharing`, `issues`, `mcp`, `system`) and **product** (canopy's own features — `projects`, `walkthroughs`, `reviews`, `shareouts`, `runs`). **Framework code must never import product code; product freely imports framework.** This keeps the blend cuttable (the framework apps could lift onto a standalone host without dragging canopy's product). It's a *direction, not a wall* — we don't move apps into `framework/`/`product/` folders. Enforced by `tests/test_architecture_boundary.py` (fails CI on a framework→product import, or on a new app left untiered). Full rationale, the per-app tier table, and the accepted carve-outs (the `api` composition root, the `mcp` insights tool): **`ARCHITECTURE.md`**. The framework apps are being harvested as the generic layer out of ACE — see `docs/superpowers/specs/2026-06-24-canopy-framework-harvest-design.md`.
 
 ## Development
 
@@ -65,10 +65,6 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/` — Project workbench. Tile grid dashboard with a "Today's top 3" insight hero, freshness chip, inline insights triage, and self-prioritizing tile order by insight count.
 - `/timeline` — Team activity timeline (cross-app activity feed; link-out only)
 - `/system` — Capability catalog + Workflows view (how canopy's plugin capabilities compose; read live from the canopy plugin)
-- `/skills` — Skill discovery feed
-- `/new` — New collection / source ingestion flow
-- `/skills/:skillId` — Skill detail + eval history
-- `/guide` — Interactive walkthrough using a "Discovery Call Debrief" sample collection (try-it / how-it-works / review / eval / deploy sections)
 - `/insights` — Cross-portfolio AI insights feed
 - `/shareouts` (+ `/shareouts/:period`) — Dated, teammate-facing work briefings (what shipped, why, how to leverage) posted by `/canopy:shareout`; `:period` is a copy-linkable permalink to one briefing
 - `/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
@@ -115,11 +111,6 @@ All endpoints are served by Django Ninja (Pydantic v2 typed) under `/api/`. Erro
 - `DELETE /api/insights/{id}/` — Dismiss an insight (OAuth only — bearer is GET-only here).
 - `POST /api/insights/clear/` — Clear insights (regeneration helper).
 
-### Collections
-- `POST /api/collections/` — Create collection
-- `GET /api/collections/{id}/` — Get collection with sources
-- `POST /api/collections/{id}/sources/` — Add source
-
 ### Workspaces (`apps/workspaces`) — multi-tenancy
 The tenant that owns agents + runs. `Workspace` + members (owner / editor / viewer) + email invites (ported from ace-web, domain-agnostic). Replaced the retired `apps/workspace` (singular) co-authoring session app — that whole SSE skill-authoring engine and its `/api/workspace/*` routes are gone.
 - `POST /api/workspaces/` — Create a workspace
@@ -138,18 +129,6 @@ A `canopy.origin` record store — GitHub issue provenance / evidence capture (t
 - `GET /api/issues/` — List origin records (paginated)
 - `GET /api/issues/{repo_slug}/{number}/` — Get an origin record
 - `DELETE /api/issues/{repo_slug}/{number}/` — Delete an origin record (cleanup)
-
-### Skills
-- `GET /api/skills/` — List skills
-- `GET /api/skills/{id}/` — Skill detail
-- `POST /api/skills/{id}/adapter/` — Generate runtime adapter
-
-### Evals
-- `GET /api/evals/{skill_id}/` — Eval suite detail
-- `POST /api/evals/{skill_id}/run/` — Run eval
-- `GET /api/evals/{skill_id}/history/` — Eval history
-- `POST /api/evals/{skill_id}/cases/` — Add eval case
-- `PATCH /api/evals/{skill_id}/cases/{case_id}/` — Edit / remove eval case
 
 ### AI backend (`apps/common`)
 - `GET /api/ai/status/` — Current backend + auth state
@@ -286,7 +265,7 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
   - **Status / categorical accents:** `success` (emerald — opportunity), `warning` (amber — ship-gap), `info` (sky — alignment), `special` (violet — pattern), `destructive` (red — errors). Each has a `-foreground` for solid fills; tinted badges use `bg-<token>/10 text-<token> border-<token>/30`.
   - **Exception:** `/share/:token` (`SessionSharePage` + the `transcript/` components) is a deliberate **light-themed** public viewer mounted outside the app shell (`bg-white`); it intentionally uses neutral literals and is the one surface that does not consume the dark token set.
 - APP UI: dense, readable, tables not cards
-- Overwrite-with-history versioning
+- SSE streaming for AI responses (Scout pattern)
 - **Auth:** Google OAuth via django-allauth (allowed-domain restricted via `AUTH_ALLOWED_EMAIL_DOMAIN` — comma-separated list, default `dimagi.com`; `dimagi-associate.com` is also allowed). Personal Access Tokens (`apps/tokens/`) authenticate machine callers via `Authorization: Bearer <raw>` — `BearerTokenAuthMiddleware` resolves them upstream of `LoginRequiredMiddleware`. `/api/debug/mint-session/` lets an authenticated user mint a short-lived session cookie to hand to an AI assistant.
 - **Multi-tenancy (scaffolding landed):** the `apps/workspaces` app provides `Workspace` + members (owner/editor/viewer) + email invites; `agents` and `agent_runs` carry a `workspace` FK (a default workspace is assigned when unspecified, so the change was non-breaking / Echo-safe). The product surface is still effectively single-tenant; full per-tenant scoping of the product apps is tracked in `TODOS.md`.
 - PostgreSQL on Cloud SQL (GCP `canopy-494811`)
