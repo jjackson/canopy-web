@@ -53,6 +53,19 @@ class ReviewRequest(models.Model):
         blank=True,
         related_name="review_requests",
     )
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reviews",
+        help_text=(
+            "The tenant that owns this review. Nullable for migration safety; the "
+            "API always assigns one (default workspace when unspecified). A review "
+            "with a narrative_slug is a DDD narrative version, but it is still its "
+            "own tenant root via this FK."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
 

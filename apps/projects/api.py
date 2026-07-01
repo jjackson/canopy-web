@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 from django.db import IntegrityError
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.http import HttpRequest
 from ninja import Body, Router, Status
 
 from apps.api.auth import session_auth
 from apps.projects import services
+from apps.workspaces import services as wsvc
 from apps.api.errors import (
     TYPE_CONFLICT,
     TYPE_NOT_FOUND,
@@ -111,16 +112,61 @@ router = Router(auth=session_auth, tags=["projects"])
 insights_router = Router(auth=session_auth, tags=["insights"])
 
 
-def _get_project_or_404_ninja(slug: str) -> Project:
-    try:
-        return Project.objects.get(slug=slug)
-    except Project.DoesNotExist:
+def _scoped_project_queryset(request: HttpRequest):
+    """Return a Project queryset limited to the caller's workspace scope.
+
+    Mirrors the agents surface: when a workspace is pinned (the `/api/w/{ws}`
+    prefix) filter to exactly that tenant; on the flat mount filter to every
+    workspace the caller is a member of, plus any still-unscoped (null) rows.
+    """
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    qs = Project.objects.all()
+    if ws:
+        return qs.filter(workspace_id=ws)
+    slugs = wsvc.user_workspace_slugs(request.user)
+    return qs.filter(Q(workspace_id__in=slugs) | Q(workspace__isnull=True))
+
+
+def _member_project(request: HttpRequest, slug: str) -> Project | None:
+    """Return the project if it exists and the caller may access it in the
+    current workspace scope, else None (a non-member is indistinguishable from
+    a missing project — no existence leak)."""
+    project = Project.objects.filter(slug=slug).first()
+    if project is None:
+        return None
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    if ws and project.workspace_id != ws:
+        return None  # wrong tenant
+    if project.workspace_id and not wsvc.is_member(request.user, project.workspace_id):
+        return None
+    return project
+
+
+def _get_project_or_404_ninja(request: HttpRequest, slug: str) -> Project:
+    project = _member_project(request, slug)
+    if project is None:
         raise ProblemError(
             404,
             "Project not found",
             type_=TYPE_NOT_FOUND,
             detail=f"No project with slug '{slug}'.",
         )
+    return project
+
+
+def _resolve_create_workspace(request: HttpRequest):
+    """Resolve the workspace a newly created project belongs to and ensure the
+    caller is a member. Uses the pinned `/api/w/{ws}` workspace when present,
+    else the org default (so an unchanged flat client keeps working)."""
+    pinned = getattr(request, "workspace_slug", None)
+    ws = (
+        wsvc.Workspace.objects.filter(slug=pinned).first() if pinned else None
+    ) or wsvc.ensure_default_workspace()
+    if ws is not None:
+        wsvc.ensure_member(ws, request.user)
+    return ws
 
 
 def _project_to_detail_out(project: Project) -> ProjectDetailOut:
@@ -200,7 +246,7 @@ def list_projects(
     offset: int = 0,
     limit: int = 100,
 ) -> Page[ProjectListOut]:
-    qs = Project.objects.all().order_by("-updated_at")
+    qs = _scoped_project_queryset(request).order_by("-updated_at")
     serialized = _build_project_list_data(qs)
     items = [ProjectListOut.model_validate(item) for item in serialized]
     return paginate(items, offset=offset, limit=limit)
@@ -211,6 +257,7 @@ def create_project(
     request: HttpRequest,
     payload: ProjectCreateIn,
 ) -> Status:
+    ws = _resolve_create_workspace(request)
     try:
         project = Project.objects.create(
             name=payload.name,
@@ -220,6 +267,7 @@ def create_project(
             visibility=payload.visibility,
             status=payload.status,
             skills=[s.model_dump() for s in payload.skills],
+            workspace=ws,
         )
     except IntegrityError:
         raise ProblemError(
@@ -238,9 +286,10 @@ def create_project(
     openapi_extra={"x-mcp-expose": True},
 )
 def get_project_slugs(request: HttpRequest) -> list[ProjectSlugOut]:
-    """Slim machine-readable slug list (Bearer-readable)."""
+    """Slim machine-readable slug list (Bearer-readable), workspace-scoped."""
     projects = (
-        Project.objects.filter(status="active")
+        _scoped_project_queryset(request)
+        .filter(status="active")
         .order_by("slug")
         .values("slug", "name", "status", "visibility")
     )
@@ -252,6 +301,7 @@ def seed_projects(
     request: HttpRequest,
     payload: list[ProjectCreateIn] = Body(...),
 ) -> Status:
+    ws = _resolve_create_workspace(request)
     results = []
     for item in payload:
         project, _ = Project.objects.get_or_create(
@@ -263,6 +313,7 @@ def seed_projects(
                 "visibility": item.visibility,
                 "status": item.status,
                 "skills": [s.model_dump() for s in item.skills],
+                "workspace": ws,
             },
         )
         results.append(_project_to_detail_out(project))
@@ -281,9 +332,8 @@ def batch_context(
     """Create context entries across multiple projects. Bearer-writable xfail (Phase 5.4)."""
     counts: dict[str, int] = {}
     for slug, entries in payload.updates.items():
-        try:
-            project = Project.objects.get(slug=slug)
-        except Project.DoesNotExist:
+        project = _member_project(request, slug)
+        if project is None:
             counts[slug] = 0
             continue
         created = 0
@@ -311,9 +361,8 @@ def batch_actions(
     """Create action entries across multiple projects. Bearer-writable xfail (Phase 5.4)."""
     counts: dict[str, int] = {}
     for slug, entries in payload.updates.items():
-        try:
-            project = Project.objects.get(slug=slug)
-        except Project.DoesNotExist:
+        project = _member_project(request, slug)
+        if project is None:
             counts[slug] = 0
             continue
         created = 0
@@ -335,7 +384,7 @@ def batch_actions(
 
 @router.get("/{slug}/", response=ProjectDetailOut, summary="Get project detail")
 def get_project(request: HttpRequest, slug: str) -> ProjectDetailOut:
-    project = _get_project_or_404_ninja(slug)
+    project = _get_project_or_404_ninja(request, slug)
     return _project_to_detail_out(project)
 
 
@@ -345,7 +394,7 @@ def patch_project(
     slug: str,
     payload: ProjectPatchIn,
 ) -> ProjectDetailOut:
-    project = _get_project_or_404_ninja(slug)
+    project = _get_project_or_404_ninja(request, slug)
     updates = payload.model_dump(exclude_unset=True)
     if "skills" in updates and updates["skills"] is not None:
         updates["skills"] = [
@@ -363,7 +412,7 @@ def delete_project(
     request: HttpRequest,
     slug: str,
 ) -> Status:
-    project = _get_project_or_404_ninja(slug)
+    project = _get_project_or_404_ninja(request, slug)
     project.delete()
     return Status(204, None)
 
@@ -374,7 +423,7 @@ def delete_project(
     summary="List context entries",
 )
 def list_context(request: HttpRequest, slug: str) -> list[ProjectContextEntryOut]:
-    project = _get_project_or_404_ninja(slug)
+    project = _get_project_or_404_ninja(request, slug)
     contexts = project.contexts.order_by("-created_at")
     return [
         ProjectContextEntryOut(
@@ -399,7 +448,7 @@ def create_context(
     payload: ProjectContextCreateIn,
 ) -> Status:
     """Bearer-writable xfail (Phase 5.4)."""
-    project = _get_project_or_404_ninja(slug)
+    project = _get_project_or_404_ninja(request, slug)
     ctx = ProjectContext.objects.create(
         project=project,
         context_type=payload.context_type,
@@ -421,7 +470,7 @@ def create_context(
     summary="Latest context per type",
 )
 def get_context_latest(request: HttpRequest, slug: str) -> ProjectContextLatestOut:
-    project = _get_project_or_404_ninja(slug)
+    project = _get_project_or_404_ninja(request, slug)
     result: dict[str, ProjectContextOut] = {}
     for ctx in project.contexts.order_by("-created_at"):
         if ctx.context_type not in result:
@@ -443,7 +492,7 @@ def list_actions(
     slug: str,
     skill: str | None = None,
 ) -> list[ProjectActionOut]:
-    project = _get_project_or_404_ninja(slug)
+    project = _get_project_or_404_ninja(request, slug)
     actions = project.actions.all()
     if skill:
         actions = actions.filter(skill_name=skill)
@@ -474,7 +523,7 @@ def create_action(
     payload: ProjectActionCreateIn,
 ) -> Status:
     """Bearer-writable xfail (Phase 5.4)."""
-    project = _get_project_or_404_ninja(slug)
+    project = _get_project_or_404_ninja(request, slug)
     action = ProjectAction.objects.create(
         project=project,
         skill_name=payload.skill_name,
@@ -507,7 +556,7 @@ def get_actions_summary(
     request: HttpRequest,
     slug: str,
 ) -> list[ProjectActionSummaryOut]:
-    project = _get_project_or_404_ninja(slug)
+    project = _get_project_or_404_ninja(request, slug)
     seen: set[str] = set()
     result = []
     for action in project.actions.order_by("-started_at"):

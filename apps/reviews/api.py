@@ -28,6 +28,7 @@ from ninja import Router, Status
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, ProblemError
 from apps.common.ddd import narrative_slug_from_run_id
+from apps.workspaces import services as wsvc
 
 from .models import ReviewRequest
 from .schemas import (
@@ -169,7 +170,18 @@ def list_reviews(
     and `order` ∈ {-last_activity, last_activity, -created, created, narrative_slug}.
     Default sort is most-recently-edited first.
     """
-    qs = ReviewRequest.objects.all()
+    # Workspace scoping: honor the /w/{ws} prefix when present (already
+    # membership-checked by WorkspaceResolveMiddleware); on the flat mount,
+    # scope to every workspace the caller belongs to. Domain teammates are
+    # auto-joined first so the default-workspace case keeps working. Legacy
+    # rows with workspace=None stay visible on the flat mount (backfill safety).
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
+
+    qs = ReviewRequest.objects.filter(workspace_id__in=slugs)
+    if ws is None:
+        qs = qs | ReviewRequest.objects.filter(workspace__isnull=True)
     if status in (ReviewRequest.STATUS_PENDING, ReviewRequest.STATUS_RESOLVED):
         qs = qs.filter(status=status)
 
@@ -242,6 +254,16 @@ def create_review(request: HttpRequest, payload: ReviewCreateIn) -> Status:
         else:
             version = max(ReviewRequest.next_version(narrative_slug) - 1, 1)
 
+    # Assign the owning workspace: the /w/{ws} prefix pins it (membership already
+    # verified upstream); else fall back to the org default so an unchanged
+    # orchestrator call keeps working. ensure_member keeps the creator's access.
+    pinned = getattr(request, "workspace_slug", None)
+    ws = (
+        wsvc.Workspace.objects.filter(slug=pinned).first() if pinned else None
+    ) or wsvc.ensure_default_workspace()
+    if ws is not None and request.user.is_authenticated:
+        wsvc.ensure_member(ws, request.user)
+
     review = ReviewRequest.objects.create(
         run_id=run_id,
         narrative_slug=narrative_slug,
@@ -252,6 +274,7 @@ def create_review(request: HttpRequest, payload: ReviewCreateIn) -> Status:
         response_json=None,
         visibility=payload.visibility,
         owner=request.user if request.user.is_authenticated else None,
+        workspace=ws,
     )
 
     # Build the hosted-review URL.  The frontend SPA handles /review/<id>.
