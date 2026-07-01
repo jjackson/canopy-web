@@ -6,6 +6,8 @@
  * generated OpenAPI types yet — run `npm run gen:api` to migrate to openapi-fetch.
  */
 
+import { apiUrl } from './base'
+
 export type CapabilityKind = 'skill' | 'agent' | 'command'
 
 export interface CapabilityItem {
@@ -29,7 +31,7 @@ export interface CapabilityCatalog {
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  const resp = await fetch(url, { credentials: 'same-origin' })
+  const resp = await fetch(apiUrl(url), { credentials: 'same-origin' })
   if (!resp.ok) {
     let detail = ''
     try {

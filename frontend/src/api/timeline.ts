@@ -5,6 +5,8 @@
  * conventions as api/ddd.ts. Run `npm run gen:api` to migrate to openapi-fetch.
  */
 
+import { apiUrl } from './base'
+
 export interface TimelineEvent {
   subsystem: string
   kind: string
@@ -37,7 +39,7 @@ export interface ListTimelineParams {
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  const resp = await fetch(url, { credentials: 'same-origin' })
+  const resp = await fetch(apiUrl(url), { credentials: 'same-origin' })
   if (!resp.ok) {
     let detail = ''
     try {

@@ -6,6 +6,8 @@
  * is intentionally out-of-band because it sets a cookie via Django's
  * @ensure_csrf_cookie decorator, which doesn't fit the Ninja pattern.
  */
+import { apiUrl } from './base'
+
 export async function bootstrapCsrf(): Promise<void> {
-  await fetch('/api/csrf/', { credentials: 'same-origin' })
+  await fetch(apiUrl('/api/csrf/'), { credentials: 'same-origin' })
 }
