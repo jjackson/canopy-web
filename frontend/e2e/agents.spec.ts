@@ -4,19 +4,25 @@ const cmd = (page: Page) =>
   page.waitForResponse((r) => r.url().includes('/commands') && r.request().method() === 'POST')
 
 test('agents list shows the Echo agent', async ({ page }) => {
+  await page.goto('/w/dimagi/agents')
+  await expect(page.getByText('Echo').first()).toBeVisible()
+})
+
+test('legacy /agents redirects to the active workspace', async ({ page }) => {
   await page.goto('/agents')
+  await expect(page).toHaveURL(/\/w\/dimagi\/agents$/)
   await expect(page.getByText('Echo').first()).toBeVisible()
 })
 
 test('workspace rail exposes the sections', async ({ page }) => {
-  await page.goto('/agents/echo')
+  await page.goto('/w/dimagi/agents/echo')
   await expect(page.locator('a[href$="/agents/echo/tasks"]')).toBeVisible()
   await expect(page.locator('a[href$="/agents/echo/syncs"]')).toBeVisible()
   await expect(page.locator('a[href$="/agents/echo/skills"]')).toBeVisible()
 })
 
 test('needs-you is the default landing with typed, ranked actionable items', async ({ page }) => {
-  await page.goto('/agents/echo')
+  await page.goto('/w/dimagi/agents/echo')
   await expect(page).toHaveURL(/\/agents\/echo\/needs-you$/)
   await expect(page.getByRole('heading', { name: 'Needs you' })).toBeVisible()
   // review band: a suggested task awaiting validate/decline
@@ -32,7 +38,7 @@ test('needs-you is the default landing with typed, ranked actionable items', asy
 })
 
 test('needs-you cards are the actionable board card, not a bounce link', async ({ page }) => {
-  await page.goto('/agents/echo/needs-you')
+  await page.goto('/w/dimagi/agents/echo/needs-you')
   const review = page.getByTestId('needsyou-band-review')
   // The real board card (rationale + inline Accept/Decline), so you act here...
   await expect(review.getByText(/Why:/).first()).toBeVisible()
@@ -43,33 +49,33 @@ test('needs-you cards are the actionable board card, not a bounce link', async (
 })
 
 test('the rail exposes the Needs you inbox', async ({ page }) => {
-  await page.goto('/agents/echo/tasks')
+  await page.goto('/w/dimagi/agents/echo/tasks')
   await expect(page.locator('a[href$="/agents/echo/needs-you"]')).toBeVisible()
 })
 
 test('overview shows the latest sync', async ({ page }) => {
-  await page.goto('/agents/echo/overview')
+  await page.goto('/w/dimagi/agents/echo/overview')
   await expect(page.getByText('Manager sync 1')).toBeVisible()
 })
 
 test('syncs section lists the sync with its self-grades', async ({ page }) => {
-  await page.goto('/agents/echo/syncs')
+  await page.goto('/w/dimagi/agents/echo/syncs')
   await expect(page.getByText('Manager sync 1')).toBeVisible()
   await expect(page.getByText(/C\+/)).toBeVisible()
 })
 
 test('work products section lists the deliverable', async ({ page }) => {
-  await page.goto('/agents/echo/work-products')
+  await page.goto('/w/dimagi/agents/echo/work-products')
   await expect(page.getByText('Demo story RUWOYD')).toBeVisible()
 })
 
 test('skills section lists the catalog', async ({ page }) => {
-  await page.goto('/agents/echo/skills')
+  await page.goto('/w/dimagi/agents/echo/skills')
   await expect(page.getByText('email-communicator')).toBeVisible()
 })
 
 test('task board groups by who has the ball, with context + queue badge', async ({ page }) => {
-  await page.goto('/agents/echo/tasks')
+  await page.goto('/w/dimagi/agents/echo/tasks')
   for (const label of ['Suggested', 'Waiting on a human', 'Echo working', 'Done']) {
     await expect(page.getByText(label, { exact: false }).first()).toBeVisible()
   }
@@ -80,14 +86,14 @@ test('task board groups by who has the ball, with context + queue badge', async 
 })
 
 test('an applied command surfaces its result + timestamp on the task card', async ({ page }) => {
-  await page.goto('/agents/echo/tasks')
+  await page.goto('/w/dimagi/agents/echo/tasks')
   const card = page.getByTestId('task-t5') // done, with a seeded applied command
   await expect(card.getByTestId('task-last-activity')).toContainText('Shipped the agent workspace board.')
   await expect(card.getByTestId('task-last-activity')).toContainText(/Jun 17/)
 })
 
 test('the queue badge expands to the pending commands; activity stream lists history', async ({ page }) => {
-  await page.goto('/agents/echo/tasks')
+  await page.goto('/w/dimagi/agents/echo/tasks')
   // The badge starts as a count; clicking reveals which commands are pending.
   await page.getByRole('button', { name: /queued for Echo/i }).click()
   await expect(page.getByText(/dispatched/i).first()).toBeVisible()
@@ -97,14 +103,14 @@ test('the queue badge expands to the pending commands; activity stream lists his
 })
 
 test('a suggested card links its grounded source next to the rationale', async ({ page }) => {
-  await page.goto('/agents/echo/tasks')
+  await page.goto('/w/dimagi/agents/echo/tasks')
   const card = page.getByTestId('task-t1')
   const source = card.getByRole('link', { name: /source/i })
   await expect(source).toHaveAttribute('href', 'https://example.com/zegcawis')
 })
 
 test('accept flips a suggested task to in progress and clears its Accept button', async ({ page }) => {
-  await page.goto('/agents/echo/tasks')
+  await page.goto('/w/dimagi/agents/echo/tasks')
   const card = page.getByTestId('task-t2')
   await expect(card).toHaveAttribute('data-status', 'suggested')
   const [resp] = await Promise.all([cmd(page), card.getByRole('button', { name: /^Accept$/ }).click()])
@@ -114,7 +120,7 @@ test('accept flips a suggested task to in progress and clears its Accept button'
 })
 
 test('decline takes a reason and moves the task to declined', async ({ page }) => {
-  await page.goto('/agents/echo/tasks')
+  await page.goto('/w/dimagi/agents/echo/tasks')
   const card = page.getByTestId('task-t1')
   await card.getByRole('button', { name: /^Decline$/ }).click()
   await card.getByRole('textbox').fill('not a fit right now')
@@ -124,14 +130,14 @@ test('decline takes a reason and moves the task to declined', async ({ page }) =
 })
 
 test('dispatch queues a "do it now" command for the agent', async ({ page }) => {
-  await page.goto('/agents/echo/tasks')
+  await page.goto('/w/dimagi/agents/echo/tasks')
   const card = page.getByTestId('task-t3') // waiting-on-a-human, in progress
   const [resp] = await Promise.all([cmd(page), card.getByRole('button', { name: /do this now/i }).click()])
   expect(resp.status()).toBe(201)
 })
 
 test('mark done moves an in-progress task to Done', async ({ page }) => {
-  await page.goto('/agents/echo/tasks')
+  await page.goto('/w/dimagi/agents/echo/tasks')
   const card = page.getByTestId('task-t4') // Echo working
   const [resp] = await Promise.all([cmd(page), card.getByRole('button', { name: /Mark done/i }).click()])
   expect(resp.status()).toBe(201)

@@ -11,13 +11,21 @@ from django.contrib.sessions.backends.db import SessionStore
 from apps.agents.models import (
     Agent, AgentSkill, AgentSync, AgentTask, AgentTaskCommand, AgentWorkProduct,
 )
+from apps.workspaces import services as wsvc
 
 User = get_user_model()
 user, _ = User.objects.get_or_create(username="e2e", defaults={"email": "e2e@dimagi.com"})
 
+# Agents are workspace-scoped: give the e2e user a workspace + membership and
+# assign Echo to it (mirrors production, where register() assigns a workspace),
+# so /w/<slug>/agents resolves and the frontend switcher/redirects work.
+ws = wsvc.ensure_default_workspace()  # slug "dimagi"; owner = first user (the e2e user)
+if ws is not None:
+    wsvc.ensure_member(ws, user)
+
 a, _ = Agent.objects.update_or_create(slug="echo", defaults=dict(
     name="Echo", email="echo@dimagi-ai.com", description="Marketing agent for Connect.",
-    persona="Email-driven marketing agent."))
+    persona="Email-driven marketing agent.", workspace=ws))
 a.tasks.all().delete()
 a.commands.all().delete()
 
