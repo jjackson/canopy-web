@@ -146,6 +146,11 @@ Resources:
             - { Name: ALLOWED_HOSTS, Value: labs.connect.dimagi.com }
             - { Name: AWS_REGION, Value: !Ref "AWS::Region" }
             - { Name: PORT, Value: !Ref ContainerPort }
+            # Google Drive root folder for walkthrough storage. Not a secret
+            # (folder ID isn't sensitive) — plain env var, matching the retired
+            # GCP deploy. The matching SA key is the CANOPY_DRIVE_SA_KEY_JSON
+            # secret below.
+            - { Name: CANOPY_DRIVE_ROOT_FOLDER_ID, Value: 1cUv7wQXOvVwuZ86PdhkxpFcuB4Lm9fPz }
           Secrets:
             - { Name: DJANGO_SECRET_KEY, ValueFrom: !Ref DjangoSecretKey }
             - { Name: DATABASE_URL, ValueFrom: !Ref DatabaseUrl }
