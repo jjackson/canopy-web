@@ -3,10 +3,10 @@
  *
  * canopy-web can be served under a sub-path (e.g. `https://labs.connect.dimagi.com/canopy/`).
  * Vite builds the SPA with `base=/canopy/`, so assets and the router resolve
- * correctly — but content URLs like `/w/<id>/content` (built by
+ * correctly — but content URLs like `/walkthrough/<id>/content` (built by
  * `walkthroughContentUrl`, or returned by the run-package API as
  * `content_url`) are ROOT-relative. As a `<video>`/`<iframe>` `src` those
- * resolve against the origin (`/w/<id>/content`), bypassing the `/canopy`
+ * resolve against the origin (`/walkthrough/<id>/content`), bypassing the `/canopy`
  * prefix, so the reverse proxy never routes them to canopy-web → 404 and the
  * video never loads.
  *
