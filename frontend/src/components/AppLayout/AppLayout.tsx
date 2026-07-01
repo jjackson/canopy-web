@@ -11,12 +11,10 @@ const NAV_ITEMS = [
   { path: '/timeline', label: 'Timeline' },
   { path: '/insights', label: 'Insights' },
   { path: '/shareouts', label: 'Shareouts' },
-  { path: '/skills', label: 'Skills' },
   { path: '/walkthroughs', label: 'Walkthroughs' },
   { path: '/sessions', label: 'Sessions' },
   { path: '/agents', label: 'Agents' },
   { path: '/ddd', label: 'DDD' },
-  { path: '/guide', label: 'Guide' },
 ]
 
 const BACKENDS = [

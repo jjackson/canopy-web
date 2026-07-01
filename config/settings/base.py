@@ -74,9 +74,6 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.google",
     # Local apps
     "apps.common",
-    "apps.collections",
-    "apps.skills",
-    "apps.evals",
     "apps.projects",
     "apps.issues",
     "apps.walkthroughs",

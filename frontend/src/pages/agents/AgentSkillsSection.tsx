@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { listAgentSkills, type AgentSkillOut } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { SkillCard } from '@/components/agents/cards'
-import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from 'canopy-ui'
 
 export function AgentSkillsSection() {
   const { agent } = useOutletContext<AgentOutletContext>()

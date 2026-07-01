@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import { WorkbenchRail, WorkbenchNavItem } from '@canopy/workbench'
+import { WorkbenchRail, WorkbenchNavItem } from 'canopy-ui'
 import { getNeedsYou, type AgentDetailOut } from '@/api/agents'
 
 type NavItem = { to: string; label: string; count?: number }

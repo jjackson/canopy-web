@@ -10,7 +10,7 @@ import {
 } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { TaskCard } from '@/components/TasksBoard'
-import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from 'canopy-ui'
 
 // The three bands, in rank order. Each is a distinct kind of human attention:
 // a decision to make (review), an answer Echo is blocked on (question), or an

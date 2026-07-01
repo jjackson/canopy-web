@@ -1,0 +1,45 @@
+{
+  "name": "canopy-ui",
+  "version": "0.3.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jjackson/canopy-web.git",
+    "directory": "frontend/packages/canopy-ui"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./lib": "./src/lib/index.ts",
+    "./ui": "./src/ui/index.ts",
+    "./shell": "./src/shell/index.ts",
+    "./tokens": "./src/tokens/index.ts",
+    "./tokens/preset.css": "./src/tokens/preset.css",
+    "./tokens/tokens.css": "./src/tokens/tokens.css"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@base-ui/react": "^1.3.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.8.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0"
+  },
+  "peerDependenciesMeta": {
+    "lucide-react": {
+      "optional": true
+    },
+    "sonner": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "sonner": "^2.0.7"
+  },
+  "files": ["src"]
+}

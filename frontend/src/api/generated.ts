@@ -315,212 +315,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/collections/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Create Collection */
-        readonly post: operations["apps_collections_api_create_collection"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/collections/{pk}/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Get Collection */
-        readonly get: operations["apps_collections_api_get_collection"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/collections/{pk}/sources/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Add Source */
-        readonly post: operations["apps_collections_api_add_source"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/skills/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** List skills */
-        readonly get: operations["apps_skills_api_list_skills"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/skills/{pk}/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** Get skill detail */
-        readonly get: operations["apps_skills_api_get_skill"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/skills/{pk}/adapter/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /** Generate runtime adapter */
-        readonly post: operations["apps_skills_api_generate_adapter"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/evals/{skill_id}/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Eval suite detail
-         * @description Return the eval suite for a skill. Auto-creates the suite on first read.
-         */
-        readonly get: operations["apps_evals_api_eval_suite_detail"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/evals/{skill_id}/run/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /**
-         * Run eval suite
-         * @description Execute the eval suite and return the run result.
-         */
-        readonly post: operations["apps_evals_api_run_eval"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/evals/{skill_id}/history/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Eval run history
-         * @description Return paginated eval runs for a skill, ordered newest first.
-         */
-        readonly get: operations["apps_evals_api_eval_history"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/evals/{skill_id}/cases/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        /**
-         * Create eval case
-         * @description Add a new eval case to the suite. Auto-creates the suite if missing.
-         */
-        readonly post: operations["apps_evals_api_create_eval_case"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/evals/{skill_id}/cases/{case_id}/": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        readonly post?: never;
-        /**
-         * Delete eval case
-         * @description Delete an eval case.
-         */
-        readonly delete: operations["apps_evals_api_delete_eval_case"];
-        readonly options?: never;
-        readonly head?: never;
-        /**
-         * Update eval case
-         * @description Partial update of an eval case.
-         */
-        readonly patch: operations["apps_evals_api_patch_eval_case"];
-        readonly trace?: never;
-    };
     readonly "/api/ai/status/": {
         readonly parameters: {
             readonly query?: never;
@@ -944,7 +738,7 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /** Upload a Claude .jsonl transcript (multipart) */
-        readonly post: operations["apps_sessions_api_upload_session"];
+        readonly post: operations["apps_session_sharing_api_upload_session"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -959,7 +753,7 @@ export interface paths {
             readonly cookie?: never;
         };
         /** List my shared sessions */
-        readonly get: operations["apps_sessions_api_list_sessions"];
+        readonly get: operations["apps_session_sharing_api_list_sessions"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -976,10 +770,10 @@ export interface paths {
             readonly cookie?: never;
         };
         /** List my arcs */
-        readonly get: operations["apps_sessions_api_list_arcs"];
+        readonly get: operations["apps_session_sharing_api_list_arcs"];
         readonly put?: never;
         /** Create an arc from owned sessions (ordered) */
-        readonly post: operations["apps_sessions_api_create_arc"];
+        readonly post: operations["apps_session_sharing_api_create_arc"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -994,15 +788,15 @@ export interface paths {
             readonly cookie?: never;
         };
         /** Get one arc (owner) */
-        readonly get: operations["apps_sessions_api_get_arc"];
+        readonly get: operations["apps_session_sharing_api_get_arc"];
         readonly put?: never;
         readonly post?: never;
         /** Delete an arc (owner) */
-        readonly delete: operations["apps_sessions_api_delete_arc"];
+        readonly delete: operations["apps_session_sharing_api_delete_arc"];
         readonly options?: never;
         readonly head?: never;
         /** Update an arc (owner) */
-        readonly patch: operations["apps_sessions_api_patch_arc"];
+        readonly patch: operations["apps_session_sharing_api_patch_arc"];
         readonly trace?: never;
     };
     readonly "/api/sessions/arcs/{slug}/rotate-token": {
@@ -1015,7 +809,7 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /** Rotate arc share token (owner) */
-        readonly post: operations["apps_sessions_api_rotate_arc_token"];
+        readonly post: operations["apps_session_sharing_api_rotate_arc_token"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1030,15 +824,15 @@ export interface paths {
             readonly cookie?: never;
         };
         /** Get one session (owner) */
-        readonly get: operations["apps_sessions_api_get_session"];
+        readonly get: operations["apps_session_sharing_api_get_session"];
         readonly put?: never;
         readonly post?: never;
         /** Delete a session (owner) */
-        readonly delete: operations["apps_sessions_api_delete_session"];
+        readonly delete: operations["apps_session_sharing_api_delete_session"];
         readonly options?: never;
         readonly head?: never;
         /** Update a session (owner) */
-        readonly patch: operations["apps_sessions_api_patch_session"];
+        readonly patch: operations["apps_session_sharing_api_patch_session"];
         readonly trace?: never;
     };
     readonly "/api/sessions/{slug}/rotate-token": {
@@ -1051,7 +845,7 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /** Rotate share token (owner) */
-        readonly post: operations["apps_sessions_api_rotate_token"];
+        readonly post: operations["apps_session_sharing_api_rotate_token"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1564,7 +1358,7 @@ export interface paths {
             readonly cookie?: never;
         };
         /** Public read-only view of a shared session or arc */
-        readonly get: operations["apps_sessions_api_public_share_view"];
+        readonly get: operations["apps_session_sharing_api_public_share_view"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -2152,276 +1946,6 @@ export interface components {
         readonly InsightDismissOut: {
             /** Dismissed */
             readonly dismissed: number;
-        };
-        /** CollectionOut */
-        readonly CollectionOut: {
-            /** Id */
-            readonly id: number;
-            /** Name */
-            readonly name: string;
-            /**
-             * Description
-             * @default
-             */
-            readonly description: string;
-            /** Sources */
-            readonly sources: readonly components["schemas"]["SourceOut"][];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            readonly updated_at: string;
-        };
-        /** SourceOut */
-        readonly SourceOut: {
-            /** Id */
-            readonly id: number;
-            /**
-             * Source Type
-             * @enum {string}
-             */
-            readonly source_type: "slack" | "transcript" | "document" | "text";
-            /**
-             * Title
-             * @default
-             */
-            readonly title: string;
-            /** Content */
-            readonly content: string;
-            /** Metadata */
-            readonly metadata?: {
-                readonly [key: string]: unknown;
-            };
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-        };
-        /** CollectionCreateIn */
-        readonly CollectionCreateIn: {
-            /** Name */
-            readonly name: string;
-            /**
-             * Description
-             * @default
-             */
-            readonly description: string;
-        };
-        /** SourceCreateIn */
-        readonly SourceCreateIn: {
-            /**
-             * Source Type
-             * @enum {string}
-             */
-            readonly source_type: "slack" | "transcript" | "document" | "text";
-            /**
-             * Title
-             * @default
-             */
-            readonly title: string;
-            /** Content */
-            readonly content: string;
-            /** Metadata */
-            readonly metadata?: {
-                readonly [key: string]: unknown;
-            };
-        };
-        /** Page[SkillOut] */
-        readonly Page_SkillOut_: {
-            /** Items */
-            readonly items: readonly components["schemas"]["SkillOut"][];
-            /** Total */
-            readonly total: number;
-            /** Offset */
-            readonly offset: number;
-            /** Limit */
-            readonly limit: number;
-        };
-        /** SkillOut */
-        readonly SkillOut: {
-            /** Id */
-            readonly id: number;
-            /** Name */
-            readonly name: string;
-            /**
-             * Description
-             * @default
-             */
-            readonly description: string;
-            /** Definition */
-            readonly definition: {
-                readonly [key: string]: unknown;
-            };
-            /** Version */
-            readonly version: number;
-            /** Usage Count */
-            readonly usage_count: number;
-            /** Eval Score */
-            readonly eval_score?: number | null;
-            /** Eval Trend */
-            readonly eval_trend?: ("improving" | "declining" | "stable") | null;
-            /** Last Eval At */
-            readonly last_eval_at?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            readonly updated_at: string;
-        };
-        /** AdapterOut */
-        readonly AdapterOut: {
-            /**
-             * Runtime
-             * @enum {string}
-             */
-            readonly runtime: "web" | "claude_code" | "open_claw";
-            /** Content */
-            readonly content: string;
-            /**
-             * Format
-             * @enum {string}
-             */
-            readonly format: "markdown" | "json" | "yaml";
-        };
-        /** AdapterIn */
-        readonly AdapterIn: {
-            /**
-             * Runtime
-             * @enum {string}
-             */
-            readonly runtime: "web" | "claude_code" | "open_claw";
-        };
-        /** EvalCaseOut */
-        readonly EvalCaseOut: {
-            /** Id */
-            readonly id: number;
-            /** Name */
-            readonly name: string;
-            /** Input Data */
-            readonly input_data: {
-                readonly [key: string]: unknown;
-            };
-            /** Expected Output */
-            readonly expected_output: {
-                readonly [key: string]: unknown;
-            };
-            /**
-             * Source Excerpt
-             * @default
-             */
-            readonly source_excerpt: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-        };
-        /** EvalRunOut */
-        readonly EvalRunOut: {
-            /** Id */
-            readonly id: number;
-            /**
-             * Status
-             * @enum {string}
-             */
-            readonly status: "pending" | "running" | "completed" | "failed";
-            /** Results */
-            readonly results: {
-                readonly [key: string]: unknown;
-            };
-            /** Overall Score */
-            readonly overall_score?: number | null;
-            /**
-             * Runtime
-             * @default web
-             */
-            readonly runtime: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-        };
-        /** EvalSuiteOut */
-        readonly EvalSuiteOut: {
-            /** Id */
-            readonly id: number;
-            /** Cases */
-            readonly cases: readonly components["schemas"]["EvalCaseOut"][];
-            /** Runs */
-            readonly runs: readonly components["schemas"]["EvalRunOut"][];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-        };
-        /**
-         * EvalRunIn
-         * @description Body of POST /evals/<id>/run/.
-         */
-        readonly EvalRunIn: {
-            /**
-             * Runtime
-             * @default web
-             * @enum {string}
-             */
-            readonly runtime: "web" | "claude_code" | "open_claw";
-        };
-        /** Page[EvalRunOut] */
-        readonly Page_EvalRunOut_: {
-            /** Items */
-            readonly items: readonly components["schemas"]["EvalRunOut"][];
-            /** Total */
-            readonly total: number;
-            /** Offset */
-            readonly offset: number;
-            /** Limit */
-            readonly limit: number;
-        };
-        /** EvalCaseCreateIn */
-        readonly EvalCaseCreateIn: {
-            /** Name */
-            readonly name: string;
-            /** Input Data */
-            readonly input_data: {
-                readonly [key: string]: unknown;
-            };
-            /** Expected Output */
-            readonly expected_output: {
-                readonly [key: string]: unknown;
-            };
-            /**
-             * Source Excerpt
-             * @default
-             */
-            readonly source_excerpt: string;
-        };
-        /** EvalCasePatchIn */
-        readonly EvalCasePatchIn: {
-            /** Name */
-            readonly name?: string | null;
-            /** Input Data */
-            readonly input_data?: {
-                readonly [key: string]: unknown;
-            } | null;
-            /** Expected Output */
-            readonly expected_output?: {
-                readonly [key: string]: unknown;
-            } | null;
-            /** Source Excerpt */
-            readonly source_excerpt?: string | null;
         };
         /** AiStatusOut */
         readonly AiStatusOut: {
@@ -5339,307 +4863,6 @@ export interface operations {
             };
         };
     };
-    readonly apps_collections_api_create_collection: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["CollectionCreateIn"];
-            };
-        };
-        readonly responses: {
-            /** @description Created */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["CollectionOut"];
-                };
-            };
-        };
-    };
-    readonly apps_collections_api_get_collection: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly pk: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["CollectionOut"];
-                };
-            };
-        };
-    };
-    readonly apps_collections_api_add_source: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly pk: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["SourceCreateIn"];
-            };
-        };
-        readonly responses: {
-            /** @description Created */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["SourceOut"];
-                };
-            };
-        };
-    };
-    readonly apps_skills_api_list_skills: {
-        readonly parameters: {
-            readonly query?: {
-                readonly offset?: number;
-                readonly limit?: number;
-            };
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["Page_SkillOut_"];
-                };
-            };
-        };
-    };
-    readonly apps_skills_api_get_skill: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly pk: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["SkillOut"];
-                };
-            };
-        };
-    };
-    readonly apps_skills_api_generate_adapter: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly pk: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["AdapterIn"];
-            };
-        };
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["AdapterOut"];
-                };
-            };
-        };
-    };
-    readonly apps_evals_api_eval_suite_detail: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly skill_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["EvalSuiteOut"];
-                };
-            };
-        };
-    };
-    readonly apps_evals_api_run_eval: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly skill_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["EvalRunIn"];
-            };
-        };
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["EvalRunOut"];
-                };
-            };
-            /** @description Bad Request */
-            readonly 400: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": {
-                        readonly [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    readonly apps_evals_api_eval_history: {
-        readonly parameters: {
-            readonly query?: {
-                readonly offset?: number;
-                readonly limit?: number;
-            };
-            readonly header?: never;
-            readonly path: {
-                readonly skill_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["Page_EvalRunOut_"];
-                };
-            };
-        };
-    };
-    readonly apps_evals_api_create_eval_case: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly skill_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["EvalCaseCreateIn"];
-            };
-        };
-        readonly responses: {
-            /** @description Created */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["EvalCaseOut"];
-                };
-            };
-        };
-    };
-    readonly apps_evals_api_delete_eval_case: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly skill_id: number;
-                readonly case_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description No Content */
-            readonly 204: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    readonly apps_evals_api_patch_eval_case: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly skill_id: number;
-                readonly case_id: number;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["EvalCasePatchIn"];
-            };
-        };
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["EvalCaseOut"];
-                };
-            };
-        };
-    };
     readonly apps_common_api_ai_status: {
         readonly parameters: {
             readonly query?: never;
@@ -6368,7 +5591,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_upload_session: {
+    readonly apps_session_sharing_api_upload_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6429,7 +5652,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_list_sessions: {
+    readonly apps_session_sharing_api_list_sessions: {
         readonly parameters: {
             readonly query?: {
                 readonly project?: string;
@@ -6451,7 +5674,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_list_arcs: {
+    readonly apps_session_sharing_api_list_arcs: {
         readonly parameters: {
             readonly query?: {
                 readonly project?: string;
@@ -6473,7 +5696,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_create_arc: {
+    readonly apps_session_sharing_api_create_arc: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6497,7 +5720,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_get_arc: {
+    readonly apps_session_sharing_api_get_arc: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6519,7 +5742,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_delete_arc: {
+    readonly apps_session_sharing_api_delete_arc: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6539,7 +5762,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_patch_arc: {
+    readonly apps_session_sharing_api_patch_arc: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6565,7 +5788,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_rotate_arc_token: {
+    readonly apps_session_sharing_api_rotate_arc_token: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6587,7 +5810,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_get_session: {
+    readonly apps_session_sharing_api_get_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6609,7 +5832,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_delete_session: {
+    readonly apps_session_sharing_api_delete_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6629,7 +5852,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_patch_session: {
+    readonly apps_session_sharing_api_patch_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6655,7 +5878,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_rotate_token: {
+    readonly apps_session_sharing_api_rotate_token: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -7540,7 +6763,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_sessions_api_public_share_view: {
+    readonly apps_session_sharing_api_public_share_view: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
