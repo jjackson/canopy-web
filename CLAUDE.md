@@ -58,7 +58,7 @@ cd frontend && npm run build                     # Frontend type check + build
 cd frontend && npm run gen:api                   # Regenerate TypeScript types from OpenAPI schema
 ```
 
-CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deploy is a separate manual job in the same workflow — trigger it from the Actions tab via "Run workflow"; the deploy step waits for the test jobs to pass before shipping. Walkthrough QA spec at `docs/walkthroughs/canopy-web-demo.yaml` (run via `/walkthrough canopy-web-demo`).
+CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deploy is a separate manual job in the same workflow — trigger it from the Actions tab via "Run workflow"; the deploy step waits for the test jobs to pass before shipping. Walkthrough QA spec at `docs/walkthroughs/project-workbench.yaml` (run via `/walkthrough project-workbench`).
 
 ## Key URLs
 
@@ -292,7 +292,6 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 - `docs/superpowers/specs/2026-06-29-wave2-3-harvest-execution.md` — Wave 2/3 execution spec (run-step verdicts + multi-tenant workspaces; shipped PRs #158–#162)
 - `docs/designs/canopy-web-design.md` — Product design + glossary (open claw, skill, collection, eval suite, workspace session)
 - `docs/designs/ceo-plan-conversation-to-agent.md` — CEO review, scope decisions, deferred work
-- `docs/walkthroughs/canopy-web-demo.yaml` — Walkthrough QA spec (5 skills, varied scores)
 - `docs/walkthroughs/project-workbench.yaml` — Project workbench walkthrough spec
 - `docs/case-studies/workbench-self-improvement.md` — Self-improvement case study
 - `docs/personas/jonathan.md` — Primary user persona
