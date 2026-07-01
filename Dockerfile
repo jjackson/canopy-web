@@ -7,7 +7,13 @@ COPY frontend/ ./
 # Path prefix for the deployment (e.g. /canopy/ as a labs tenant). Defaults to
 # "/" (root / GCP). Drives Vite base → import.meta.env.BASE_URL.
 ARG VITE_BASE_PATH=/
-RUN VITE_BASE_PATH="$VITE_BASE_PATH" npm run build
+# Django CSRF cookie name. Path-scoped per tenant on the shared labs host
+# (csrftoken_canopy for /canopy) so writes send the right token; defaults to
+# Django's "csrftoken" for the root deployment.
+ARG VITE_CSRF_COOKIE_NAME=csrftoken
+RUN VITE_BASE_PATH="$VITE_BASE_PATH" \
+    VITE_CSRF_COOKIE_NAME="$VITE_CSRF_COOKIE_NAME" \
+    npm run build
 
 
 # ─── Stage 2: Python runtime ─────────────────────────────────────────

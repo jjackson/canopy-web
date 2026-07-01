@@ -9,7 +9,7 @@
 // (`npm run gen:api`), this file can be migrated to `apiV2.GET(...)` without
 // touching callers.
 
-import { apiUrl } from './base'
+import { apiUrl, CSRF_COOKIE_NAME } from './base'
 
 export interface Page<T> {
   items: T[]
@@ -185,13 +185,14 @@ function readCookie(name: string): string {
   return document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))?.[1] ?? ''
 }
 
-// Django's session auth (Ninja) enforces CSRF on unsafe methods. Read the
-// csrftoken cookie (bootstrapping it from /api/csrf/ if absent) and send it.
+// Django's session auth (Ninja) enforces CSRF on unsafe methods. Read the CSRF
+// cookie (name is tenant-specific — csrftoken_canopy under /canopy), bootstrapping
+// it from /api/csrf/ if absent, and send it.
 async function csrfToken(): Promise<string> {
-  let token = readCookie('csrftoken')
+  let token = readCookie(CSRF_COOKIE_NAME)
   if (!token) {
     await fetch(apiUrl('/api/csrf/'), { credentials: 'same-origin' })
-    token = readCookie('csrftoken')
+    token = readCookie(CSRF_COOKIE_NAME)
   }
   return token ? decodeURIComponent(token) : ''
 }

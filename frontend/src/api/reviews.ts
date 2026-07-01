@@ -10,10 +10,7 @@
  *     backend's _token_ok() check succeeds for unauthenticated callers.
  */
 
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)
-  return match ? decodeURIComponent(match[1]) : ''
-}
+import { getCsrfToken } from './base'
 
 // ---------------------------------------------------------------------------
 // Types (mirrors apps/reviews/schemas.py)

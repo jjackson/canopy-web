@@ -6,7 +6,7 @@
  * `npm run gen:api` after the backend lands to migrate to openapi-fetch.
  */
 
-import { apiUrl } from './base'
+import { apiUrl, getCsrfToken } from './base'
 
 export type WalkthroughKind = 'html' | 'video'
 export type DddLinkKind = 'narrative' | 'companion' | 'reference'
@@ -145,16 +145,12 @@ async function getJson<T>(url: string): Promise<T> {
   return resp.json() as Promise<T>
 }
 
-function csrfToken(): string {
-  return document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? ''
-}
-
 async function del(url: string): Promise<void> {
-  const csrf = csrfToken()
+  const csrf = getCsrfToken()
   const resp = await fetch(apiUrl(url), {
     method: 'DELETE',
     credentials: 'same-origin',
-    headers: { ...(csrf ? { 'X-CSRFToken': decodeURIComponent(csrf) } : {}) },
+    headers: { ...(csrf ? { 'X-CSRFToken': csrf } : {}) },
   })
   if (!resp.ok) {
     let detail = ''
@@ -169,13 +165,13 @@ async function del(url: string): Promise<void> {
 }
 
 async function patchJson<T>(url: string, body: unknown): Promise<T> {
-  const csrf = csrfToken()
+  const csrf = getCsrfToken()
   const resp = await fetch(apiUrl(url), {
     method: 'PATCH',
     credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      ...(csrf ? { 'X-CSRFToken': decodeURIComponent(csrf) } : {}),
+      ...(csrf ? { 'X-CSRFToken': csrf } : {}),
     },
     body: JSON.stringify(body),
   })

@@ -34,3 +34,23 @@ export const API_BASE = normalizeBase(import.meta.env.BASE_URL)
 export function apiUrl(path: string): string {
   return joinBase(import.meta.env.BASE_URL, path)
 }
+
+/** Extract (and URL-decode) a named cookie from a cookie string. Pure, so the
+ *  parsing is unit-testable without a DOM. */
+export function readCookieFrom(cookieString: string, name: string): string {
+  const m = cookieString.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))
+  return m ? decodeURIComponent(m[1]) : ''
+}
+
+/**
+ * Django's CSRF cookie name. Default "csrftoken"; the /canopy labs tenant
+ * path-scopes it to "csrftoken_canopy" so it can't collide with the sibling
+ * tenants on the shared host. Inlined at build time via Vite `define` (see
+ * vite.config.ts). Reading the wrong name means writes ship no CSRF token → 403.
+ */
+export const CSRF_COOKIE_NAME: string = __CSRF_COOKIE_NAME__
+
+/** Read the CSRF token from its (deployment-specific) cookie. */
+export function getCsrfToken(): string {
+  return readCookieFrom(document.cookie, CSRF_COOKIE_NAME)
+}

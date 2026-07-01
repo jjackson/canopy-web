@@ -5,12 +5,7 @@
  * short-lived session cookie for an AI assistant. NOT a Ninja v2
  * endpoint — it manipulates SessionStore directly. Out-of-band.
  */
-import { apiUrl } from './base'
-
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)
-  return match ? decodeURIComponent(match[1]) : ''
-}
+import { apiUrl, getCsrfToken } from './base'
 
 export interface MintDebugSessionResponse {
   cookie_name: string

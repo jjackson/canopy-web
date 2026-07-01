@@ -1,11 +1,6 @@
 import createClient from "openapi-fetch";
 import type { paths } from "./generated";
-import { API_BASE } from "./base";
-
-function getCsrfToken(): string {
-  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : "";
-}
+import { API_BASE, getCsrfToken } from "./base";
 
 function redirectToLogin(): never {
   const next = encodeURIComponent(window.location.pathname + window.location.search);

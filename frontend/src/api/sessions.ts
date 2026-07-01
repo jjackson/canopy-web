@@ -7,7 +7,7 @@
  * CSRF is attached for mutating calls, matching client.v2.ts.
  */
 
-import { apiUrl } from "./base";
+import { apiUrl, getCsrfToken } from "./base";
 
 export type SessionVisibility = "private" | "link";
 export type MessageRole =
@@ -76,16 +76,11 @@ export class ApiError extends Error {
   }
 }
 
-function csrfToken(): string {
-  const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
-  return m ? decodeURIComponent(m[1]) : "";
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-    const token = csrfToken();
+    const token = getCsrfToken();
     if (token) headers.set("X-CSRFToken", token);
   }
   const resp = await fetch(apiUrl(path), {
