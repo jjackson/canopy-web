@@ -5,6 +5,7 @@ Authenticated callers (via session cookie OR Personal Access Token via
 automatically — `request.user.is_authenticated` becomes True for both.
 """
 import re
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -108,4 +109,9 @@ class LoginRequiredMiddleware:
         if request.path.startswith("/api/"):
             return JsonResponse({"detail": "Authentication required"}, status=401)
 
-        return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+        # Build the post-login target from SCRIPT_NAME + path_info so it works
+        # both locally (no prefix) and on the labs sub-path deployment, where
+        # request.path is prefix-stripped by the StripScriptName ASGI wrapper —
+        # a bare request.path would bounce the user to a sibling tenant's path.
+        next_target = request.META.get("SCRIPT_NAME", "") + request.get_full_path_info()
+        return redirect(f"{settings.LOGIN_URL}?{urlencode({'next': next_target})}")
