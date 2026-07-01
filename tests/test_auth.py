@@ -43,7 +43,28 @@ def test_page_requires_auth_redirects_to_login(db):
     resp = client.get("/some-spa-route")
     assert resp.status_code == 302
     assert resp["Location"].startswith("/accounts/google/login/")
-    assert "next=/some-spa-route" in resp["Location"]
+    assert "next=%2Fsome-spa-route" in resp["Location"]
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_login_redirect_next_preserves_query_string(db):
+    resp = Client().get("/some-spa-route?tab=syncs")
+    assert resp.status_code == 302
+    assert "next=%2Fsome-spa-route%3Ftab%3Dsyncs" in resp["Location"]
+
+
+@override_settings(
+    REQUIRE_AUTH=True,
+    FORCE_SCRIPT_NAME="/canopy",
+    LOGIN_URL="/canopy/accounts/google/login/",
+)
+def test_login_redirect_next_carries_script_prefix(db):
+    # On the labs sub-path deployment the post-login bounce must land back
+    # on /canopy/..., not on the root tenant's path.
+    resp = Client().get("/w/dimagi/agents")
+    assert resp.status_code == 302
+    assert resp["Location"].startswith("/canopy/accounts/google/login/")
+    assert "next=%2Fcanopy%2Fw%2Fdimagi%2Fagents" in resp["Location"]
 
 
 @override_settings(REQUIRE_AUTH=True)
