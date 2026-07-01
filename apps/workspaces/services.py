@@ -76,3 +76,30 @@ def user_workspace_slugs(user) -> set[str]:
 
 def is_member(user, slug: str) -> bool:
     return WorkspaceMembership.objects.filter(user=user, workspace_id=slug).exists()
+
+
+def user_default_workspace(user) -> Workspace | None:
+    """The user's workspace when unambiguous — their sole membership, else None
+    (0 or 2+ memberships). Used to resolve a default for headless PAT callers."""
+    rows = list(
+        WorkspaceMembership.objects.filter(user=user).select_related("workspace")[:2]
+    )
+    return rows[0].workspace if len(rows) == 1 else None
+
+
+def current_workspace(user, explicit: str | None = None) -> Workspace:
+    """Resolve the workspace a caller is acting in.
+
+    explicit slug (caller must be a member) -> that workspace;
+    else the caller's sole membership; else ValueError (none / ambiguous).
+    Single resolution point for PAT callers, MCP tools, and the flat compat shim.
+    """
+    if explicit:
+        ws = Workspace.objects.filter(slug=explicit).first()
+        if ws is None or not is_member(user, explicit):
+            raise ValueError(f"workspace '{explicit}' not found or not a member")
+        return ws
+    ws = user_default_workspace(user)
+    if ws is None:
+        raise ValueError("no unambiguous workspace for user; specify one")
+    return ws
