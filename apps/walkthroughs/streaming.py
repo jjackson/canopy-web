@@ -3,7 +3,8 @@
 Preserved as a bare Django view (NOT ported to Ninja) — HTTP Range support
 (for ``<video>`` scrubbing) doesn't fit cleanly into Ninja's contract.
 
-Mounted at /w/<uuid:wid>/content in config/urls.py.
+Mounted at /walkthrough/<uuid:wid>/content in config/urls.py (/w/ is now the
+workspace tenant prefix).
 """
 from __future__ import annotations
 

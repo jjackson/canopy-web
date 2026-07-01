@@ -47,7 +47,7 @@ def test_build_run_surfaces_video_slides_and_documentation_as_first_class():
     assert run["slides"]["id"] == slides.id
     assert run["documentation"]["id"] == docs.id
     assert run["narrative_slug"] == "microplans"
-    assert run["video"]["content_url"] == f"/w/{hero.id}/content"
+    assert run["video"]["content_url"] == f"/walkthrough/{hero.id}/content"
 
 
 def test_build_run_unroled_html_falls_back_to_documentation():

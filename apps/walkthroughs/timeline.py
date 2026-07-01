@@ -31,7 +31,7 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
             summary=truncate(w.description),
             project_slug=w.project_slug,
             actor=actor_name(w.owner),
-            href=f"/w/{w.id}",
+            href=f"/walkthrough/{w.id}",
             id=f"walkthrough:{w.id}",
             icon="video" if w.kind == Walkthrough.KIND_VIDEO else "deck",
         )

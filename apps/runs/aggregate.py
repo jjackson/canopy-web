@@ -121,11 +121,11 @@ def _narrative_slug_map(walkthroughs) -> dict[str, str]:
 def _content_url(w: Walkthrough) -> str:
     """In-app viewer stream. Session auth covers private artifacts; public
     (visibility=link) artifacts stream tokenlessly to anyone with the URL."""
-    return f"/w/{w.id}/content"
+    return f"/walkthrough/{w.id}/content"
 
 
 def _viewer_url(w: Walkthrough) -> str:
-    return f"/w/{w.id}"
+    return f"/walkthrough/{w.id}"
 
 
 def _artifact_payload(w: Walkthrough | None) -> dict | None:

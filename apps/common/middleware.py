@@ -47,13 +47,14 @@ def _is_review_link(path: str) -> bool:
 
 
 def _is_walkthrough_link(request) -> bool:
-    # Everything under /w/ — the viewer SPA shell (/w/<uuid>) and the content
-    # stream (/w/<uuid>/content) — plus the per-walkthrough detail GET
-    # self-enforce tokenless public access, so let anonymous callers through
-    # the middleware. The bare collection (/api/walkthroughs/) is NOT included —
-    # list/upload still require auth.
+    # The public walkthrough viewer SPA shell (/walkthrough/<uuid>) and the
+    # content stream (/walkthrough/<uuid>/content), plus the per-walkthrough
+    # detail GET, self-enforce tokenless public access, so let anonymous callers
+    # through the middleware. /w/ now means "workspace" (the authed tenant shell)
+    # and is NOT allowlisted. The bare collection (/api/walkthroughs/) is NOT
+    # included — list/upload still require auth.
     path = request.path
-    if path.startswith("/w/"):
+    if path.startswith("/walkthrough/"):
         return True
     return (
         request.method == "GET"
