@@ -18,6 +18,7 @@ import {
   type ProductFindingsResponseJson,
 } from '../api/reviews'
 import { walkthroughContentUrl } from '../api/walkthroughs'
+import { withBase } from '../lib/basePath'
 import {
   ReviewEditorProvider,
   useReviewEditor,
@@ -1138,7 +1139,7 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
     )
   } else if (req.video?.url) {
     videoElement = (
-      <video src={req.video.url} controls className="w-full max-h-[60vh] bg-black" />
+      <video src={withBase(req.video.url)} controls className="w-full max-h-[60vh] bg-black" />
     )
   } else {
     videoElement = (

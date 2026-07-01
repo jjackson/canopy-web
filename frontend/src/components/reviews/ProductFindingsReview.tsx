@@ -23,6 +23,7 @@ import type {
   ProductFindingsRequestJson,
   ProductFindingsResponseJson,
 } from '../../api/reviews'
+import { withBase } from '../../lib/basePath'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -514,7 +515,7 @@ export function ProductFindingsReview({
           <div className="rounded-lg border border-stone-700 bg-black overflow-hidden">
             <video
               ref={videoRef}
-              src={review.video.url}
+              src={withBase(review.video.url)}
               controls
               preload="metadata"
               className="w-full max-h-[60vh] bg-black"
