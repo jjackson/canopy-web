@@ -18,6 +18,30 @@ from apps.reviews.models import ReviewRequest
 from apps.walkthroughs.models import Walkthrough
 
 # ---------------------------------------------------------------------------
+# Workspace scoping
+#
+# Every base ``Walkthrough`` / ``ReviewRequest`` queryset reached from an API
+# handler is narrowed to the caller's workspaces. ``workspace_slugs`` is a set of
+# ``Workspace`` slugs (the FK value is the slug string, stored in
+# ``workspace_id``). ``None`` means "no scoping" — a safe no-op kept so the pure
+# aggregation functions stay unit-testable without a tenant and so non-handler
+# callers (e.g. the walkthrough upload path) are unaffected.
+# ---------------------------------------------------------------------------
+
+
+def _scope(qs, workspace_slugs: set[str] | None):
+    """Narrow a Walkthrough/ReviewRequest queryset to ``workspace_slugs``.
+
+    A member of workspace A must never read (or, via the delete helpers, mutate)
+    workspace B's rows — even a pinned single-id lookup is filtered so cross-tenant
+    ids resolve to nothing.
+    """
+    if workspace_slugs is None:
+        return qs
+    return qs.filter(workspace_id__in=workspace_slugs)
+
+
+# ---------------------------------------------------------------------------
 # Small predicates
 # ---------------------------------------------------------------------------
 
@@ -56,18 +80,22 @@ def _is_narrative_version(r: ReviewRequest) -> bool:
     return _review_has_narrative(r) and r.gate not in _NON_NARRATIVE_GATES
 
 
-def _narrative_versions_for(narrative_slug: str) -> list[ReviewRequest]:
+def _narrative_versions_for(
+    narrative_slug: str, workspace_slugs: set[str] | None = None
+) -> list[ReviewRequest]:
     """Narrative-version reviews for a narrative_slug, oldest version first."""
     out = [
         r
-        for r in ReviewRequest.objects.all()
+        for r in _scope(ReviewRequest.objects.all(), workspace_slugs)
         if narrative_of_review(r) == narrative_slug and _is_narrative_version(r)
     ]
     out.sort(key=lambda r: (r.version, r.created_at))
     return out
 
 
-def has_narrative_version(narrative_slug: str) -> bool:
+def has_narrative_version(
+    narrative_slug: str, workspace_slugs: set[str] | None = None
+) -> bool:
     """True iff ``narrative_slug`` has at least one story-bearing narrative version.
 
     A narrative version is a ``concept_change`` review carrying a story (see
@@ -75,7 +103,9 @@ def has_narrative_version(narrative_slug: str) -> bool:
     for this narrative. When this is False, any run uploaded under ``narrative_slug``
     renders as **"no narrative"**, so the upload path refuses to publish it.
     """
-    return bool(_narrative_versions_for((narrative_slug or "").strip()))
+    return bool(
+        _narrative_versions_for((narrative_slug or "").strip(), workspace_slugs)
+    )
 
 
 def _narrative_payload(r: ReviewRequest | None) -> dict | None:
@@ -121,11 +151,11 @@ def _narrative_slug_map(walkthroughs) -> dict[str, str]:
 def _content_url(w: Walkthrough) -> str:
     """In-app viewer stream. Session auth covers private artifacts; public
     (visibility=link) artifacts stream tokenlessly to anyone with the URL."""
-    return f"/w/{w.id}/content"
+    return f"/walkthrough/{w.id}/content"
 
 
 def _viewer_url(w: Walkthrough) -> str:
-    return f"/w/{w.id}"
+    return f"/walkthrough/{w.id}"
 
 
 def _artifact_payload(w: Walkthrough | None) -> dict | None:
@@ -187,10 +217,15 @@ def _scene_count(r: ReviewRequest | None) -> int:
 # ---------------------------------------------------------------------------
 
 
-def build_run(run_id: str) -> dict | None:
+def build_run(run_id: str, workspace_slugs: set[str] | None = None) -> dict | None:
     """Aggregate one run_id into a package dict, or ``None`` if nothing matches."""
-    wts = list(Walkthrough.objects.filter(run_id=run_id).select_related("owner"))
-    revs = list(ReviewRequest.objects.filter(run_id=run_id))  # -created_at default
+    wts = list(
+        _scope(Walkthrough.objects.filter(run_id=run_id), workspace_slugs)
+        .select_related("owner")
+    )
+    revs = list(
+        _scope(ReviewRequest.objects.filter(run_id=run_id), workspace_slugs)
+    )  # -created_at default
     if not wts and not revs:
         return None
 
@@ -225,11 +260,13 @@ def build_run(run_id: str) -> dict | None:
     stamped = next((w.narrative_review_id for w in wts if w.narrative_review_id), None)
     narrative_review = None
     if stamped:
-        narrative_review = ReviewRequest.objects.filter(pk=stamped).first()
+        narrative_review = _scope(
+            ReviewRequest.objects.filter(pk=stamped), workspace_slugs
+        ).first()
     if narrative_review is None:
         narrative_review = next((r for r in revs if _is_narrative_version(r)), None)
     if narrative_review is None:
-        versions = _narrative_versions_for(narrative_slug)
+        versions = _narrative_versions_for(narrative_slug, workspace_slugs)
         narrative_review = versions[-1] if versions else None
 
     narrative_payload = _narrative_payload(narrative_review)
@@ -319,15 +356,20 @@ def _max(a: datetime | None, b: datetime | None) -> datetime | None:
     return a if a >= b else b
 
 
-def _aggregate(project: str | None, owner_id: int | None) -> dict[str, dict]:
+def _aggregate(
+    project: str | None,
+    owner_id: int | None,
+    workspace_slugs: set[str] | None = None,
+) -> dict[str, dict]:
     """Build the per-narrative aggregate map from both tables. Filters are
     applied at the narrative level afterwards by the callers."""
     wts = list(
-        Walkthrough.objects.exclude(run_id__isnull=True)
-        .exclude(run_id="")
-        .select_related("owner")
+        _scope(
+            Walkthrough.objects.exclude(run_id__isnull=True).exclude(run_id=""),
+            workspace_slugs,
+        ).select_related("owner")
     )
-    revs = list(ReviewRequest.objects.all())
+    revs = list(_scope(ReviewRequest.objects.all(), workspace_slugs))
 
     feature_map = _narrative_slug_map(wts)
 
@@ -382,10 +424,12 @@ def _aggregate(project: str | None, owner_id: int | None) -> dict[str, dict]:
 
 
 def list_narratives(
-    project: str | None = None, owner_id: int | None = None
+    project: str | None = None,
+    owner_id: int | None = None,
+    workspace_slugs: set[str] | None = None,
 ) -> list[dict]:
     """Narrative list items, newest activity first."""
-    narr = _aggregate(project, owner_id)
+    narr = _aggregate(project, owner_id, workspace_slugs)
     items = [
         {
             "slug": a["slug"],
@@ -430,22 +474,29 @@ def _agg_visibility(visibilities: set[str]) -> str:
     return "mixed"
 
 
-def build_narrative(slug: str) -> dict | None:
+def build_narrative(
+    slug: str, workspace_slugs: set[str] | None = None
+) -> dict | None:
     """Narrative landing: version-grouped — each narrative version with its runs
     nested beneath it (newest version first)."""
-    narr = _aggregate(project=None, owner_id=None)
+    narr = _aggregate(project=None, owner_id=None, workspace_slugs=workspace_slugs)
     a = narr.get(slug)
     if a is None:
         return None
 
     wts = [
         w
-        for w in Walkthrough.objects.exclude(run_id__isnull=True)
-        .exclude(run_id="")
-        .select_related("owner")
+        for w in _scope(
+            Walkthrough.objects.exclude(run_id__isnull=True).exclude(run_id=""),
+            workspace_slugs,
+        ).select_related("owner")
         if narrative_of_walkthrough(w) == slug
     ]
-    revs = [r for r in ReviewRequest.objects.all() if narrative_of_review(r) == slug]
+    revs = [
+        r
+        for r in _scope(ReviewRequest.objects.all(), workspace_slugs)
+        if narrative_of_review(r) == slug
+    ]
 
     wts_by_run: dict[str, list[Walkthrough]] = {}
     for w in wts:
@@ -467,9 +518,12 @@ def build_narrative(slug: str) -> dict | None:
     # narrative-version video may carry no run_id. Ascending order → latest wins.
     video_by_review: dict[str, Walkthrough] = {}
     if versions:
-        for w in Walkthrough.objects.filter(
-            kind=Walkthrough.KIND_VIDEO,
-            narrative_review_id__in=[r.id for r in versions],
+        for w in _scope(
+            Walkthrough.objects.filter(
+                kind=Walkthrough.KIND_VIDEO,
+                narrative_review_id__in=[r.id for r in versions],
+            ),
+            workspace_slugs,
         ).order_by("created_at"):
             video_by_review[str(w.narrative_review_id)] = w
 
@@ -556,7 +610,9 @@ def build_narrative(slug: str) -> dict | None:
     }
 
 
-def set_narrative_visibility(slug: str, visibility: str) -> tuple[int, int]:
+def set_narrative_visibility(
+    slug: str, visibility: str, workspace_slugs: set[str] | None = None
+) -> tuple[int, int]:
     """Set visibility on every walkthrough + review grouped under ``slug``.
 
     Matches the exact same rows the narrative aggregate displays (explicit
@@ -565,7 +621,10 @@ def set_narrative_visibility(slug: str, visibility: str) -> tuple[int, int]:
     """
     slug = (slug or "").strip()
     wts = list(
-        Walkthrough.objects.exclude(run_id__isnull=True).exclude(run_id="")
+        _scope(
+            Walkthrough.objects.exclude(run_id__isnull=True).exclude(run_id=""),
+            workspace_slugs,
+        )
     )
     # Resolve membership exactly as build_narrative does for the /ddd page:
     # walkthroughs via narrative_of_walkthrough, reviews via narrative_of_review
@@ -574,7 +633,7 @@ def set_narrative_visibility(slug: str, visibility: str) -> tuple[int, int]:
     wt_pks = [w.pk for w in wts if narrative_of_walkthrough(w) == slug]
     rev_pks = [
         r.pk
-        for r in ReviewRequest.objects.all()
+        for r in _scope(ReviewRequest.objects.all(), workspace_slugs)
         if narrative_of_review(r) == slug
     ]
     wt_n = Walkthrough.objects.filter(pk__in=wt_pks).update(visibility=visibility)

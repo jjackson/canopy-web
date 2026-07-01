@@ -8,6 +8,7 @@ from ninja import Router, Status
 
 from apps.api.auth import session_auth
 from apps.api.pagination import Page, paginate
+from apps.workspaces import services as wsvc
 
 from . import services
 from .schemas import (
@@ -34,10 +35,21 @@ def list_shareouts(
     project: str | None = None,
     limit: int = 100,
 ) -> Page[ShareoutOut]:
-    """List dated work briefings, newest period first. Filters AND-combine."""
+    """List dated work briefings, newest period first. Filters AND-combine.
+
+    Tenant-scoped: on a /w/{ws} request, only that workspace's rows; on the flat
+    mount, every workspace the caller is a member of (the PAT resolves to a real
+    user, so machine producers see their tenant's rows too)."""
     limit = min(limit, 500)
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
     rows = services.list_shareouts(
-        date_from=date_from, date_to=date_to, project=project, limit=limit
+        date_from=date_from,
+        date_to=date_to,
+        project=project,
+        limit=limit,
+        workspace_slugs=slugs,
     )
     items = [ShareoutOut.model_validate(row) for row in rows]
     return paginate(items, offset=0, limit=limit)
@@ -54,8 +66,18 @@ def create_shareouts(
     payload: ShareoutBatchIn,
 ) -> Status:
     """Create a batch of briefings. Re-posting the same period from the same
-    source replaces the prior rows (see services.upsert_shareouts)."""
-    result = services.upsert_shareouts(payload.shareouts)
+    source replaces the prior rows (see services.upsert_shareouts).
+
+    Rows are assigned to the request's workspace (the /w/{ws} prefix, or the org
+    default when unspecified) and the creator is kept a member so their own
+    listing keeps showing what they just posted."""
+    pinned = getattr(request, "workspace_slug", None)
+    ws = (
+        wsvc.Workspace.objects.filter(slug=pinned).first() if pinned else None
+    ) or wsvc.ensure_default_workspace()
+    if ws is not None:
+        wsvc.ensure_member(ws, request.user)
+    result = services.upsert_shareouts(payload.shareouts, workspace=ws)
     return Status(201, ShareoutBatchOut(**result))
 
 
@@ -69,11 +91,13 @@ def clear_shareouts(
     request: HttpRequest,
     payload: ShareoutsClearIn,
 ) -> ShareoutsClearOut:
-    """Delete shareouts matching the filters. An empty body clears all."""
+    """Delete shareouts matching the filters. An empty body clears all — but on a
+    /w/{ws} request the clear is confined to that workspace's rows."""
     count = services.clear_shareouts(
         source=payload.source,
         project=payload.project,
         date_from=payload.date_from,
         date_to=payload.date_to,
+        workspace_slug=getattr(request, "workspace_slug", None),
     )
     return ShareoutsClearOut(cleared=count)

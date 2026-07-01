@@ -14,12 +14,18 @@ import datetime as dt
 from .models import AgentSync, AgentTask, AgentWorkProduct
 
 
-def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
+def recent_events(
+    *, limit: int, before: dt.datetime | None, user, workspace_slugs=None
+) -> list:
     from apps.timeline.types import ActivityEvent, cursor_page, truncate
 
     events: list[ActivityEvent] = []
 
-    syncs = AgentSync.objects.select_related("agent").order_by("-period_end")
+    def _scope(qs):
+        # Agent sub-objects inherit tenancy via their agent's workspace.
+        return qs if workspace_slugs is None else qs.filter(agent__workspace_id__in=workspace_slugs)
+
+    syncs = _scope(AgentSync.objects.select_related("agent")).order_by("-period_end")
     for s in cursor_page(syncs, "period_end", before=before, limit=limit):
         events.append(
             ActivityEvent(
@@ -34,7 +40,7 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
             )
         )
 
-    wps = AgentWorkProduct.objects.select_related("agent").order_by("-created_at")
+    wps = _scope(AgentWorkProduct.objects.select_related("agent")).order_by("-created_at")
     for w in cursor_page(wps, "created_at", before=before, limit=limit):
         events.append(
             ActivityEvent(
@@ -50,7 +56,7 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
             )
         )
 
-    tasks = AgentTask.objects.select_related("agent").order_by("-created_at")
+    tasks = _scope(AgentTask.objects.select_related("agent")).order_by("-created_at")
     for t in cursor_page(tasks, "created_at", before=before, limit=limit):
         events.append(
             ActivityEvent(

@@ -54,6 +54,22 @@ class Walkthrough(models.Model):
         on_delete=models.PROTECT,
         related_name="walkthroughs",
     )
+    # The tenant that owns this walkthrough. A walkthrough is its OWN tenant root
+    # (it may carry a project_slug, but tenancy is by workspace, not project).
+    # Nullable for migration safety; the API always assigns one (the request's
+    # workspace, else the default workspace when unspecified).
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="walkthroughs",
+        help_text=(
+            "The tenant that owns this walkthrough. Nullable for migration "
+            "safety; the API always assigns one (default workspace when "
+            "unspecified)."
+        ),
+    )
     visibility = models.CharField(
         max_length=10, choices=VISIBILITY_CHOICES, default=VISIBILITY_PRIVATE
     )

@@ -38,14 +38,14 @@ def _stub_download():
 def test_public_content_served_to_anonymous_without_token(owner):
     w = _make(owner, visibility="link")
     with _stub_download():
-        resp = Client().get(f"/w/{w.id}/content")
+        resp = Client().get(f"/walkthrough/{w.id}/content")
     assert resp.status_code == 200
 
 
 @override_settings(REQUIRE_AUTH=True)
 def test_private_content_404s_anonymous(owner):
     w = _make(owner, visibility="private")
-    resp = Client().get(f"/w/{w.id}/content")
+    resp = Client().get(f"/walkthrough/{w.id}/content")
     assert resp.status_code == 404
 
 
@@ -55,7 +55,7 @@ def test_owner_sees_private_content(owner):
     client = Client()
     client.force_login(owner)
     with _stub_download():
-        resp = client.get(f"/w/{w.id}/content")
+        resp = client.get(f"/walkthrough/{w.id}/content")
     assert resp.status_code == 200
 
 
@@ -70,7 +70,7 @@ def test_authed_non_owner_sees_private_content(owner):
     client = Client()
     client.force_login(other)
     with _stub_download():
-        resp = client.get(f"/w/{w.id}/content")
+        resp = client.get(f"/walkthrough/{w.id}/content")
     assert resp.status_code == 200
 
 
@@ -106,7 +106,7 @@ def test_private_detail_api_404s_anonymous(owner):
 @override_settings(REQUIRE_AUTH=True)
 def test_walkthrough_shell_served_to_anonymous(owner):
     w = _make(owner, visibility="link")
-    resp = Client().get(f"/w/{w.id}")
+    resp = Client().get(f"/walkthrough/{w.id}")
     # Middleware passes the request through (not a login redirect).
     # spa_view returns 200 when the frontend is built, 503 when it isn't
     # (test environment has no build output). Either way, auth did not block it.

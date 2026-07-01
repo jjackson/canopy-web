@@ -33,10 +33,14 @@ def _period_slug(start: dt.datetime, end: dt.datetime) -> str:
     return f"{_ymd(s)}-{s.hour:02d}{s.minute:02d}"
 
 
-def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
+def recent_events(
+    *, limit: int, before: dt.datetime | None, user, workspace_slugs=None
+) -> list:
     from apps.timeline.types import ActivityEvent, cursor_page, truncate
 
     qs = Shareout.objects.select_related("project").order_by("-period_end")
+    if workspace_slugs is not None:
+        qs = qs.filter(workspace_id__in=workspace_slugs)
     return [
         ActivityEvent(
             subsystem="shareouts",

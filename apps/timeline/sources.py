@@ -12,6 +12,7 @@ cursor is given), so worst-case work is ``len(sources) * limit`` rows.
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 import logging
 from collections.abc import Callable
 from importlib import import_module
@@ -47,12 +48,28 @@ def _resolve(module_path: str, attr: str) -> Callable[..., list[ActivityEvent]]:
     return getattr(import_module(module_path), attr)
 
 
+def _call_source(fn, *, limit, before, user, workspace_slugs) -> list[ActivityEvent]:
+    """Invoke a source, passing ``workspace_slugs`` only if it opts in.
+
+    Workspace scoping is a *seam*, not a signature change: a source that lives in
+    a product app scopes its own querysets by adding a ``workspace_slugs`` kwarg,
+    and the aggregator (framework) offers it here without ever importing that
+    app's models — so the framework→product boundary holds. Sources that don't
+    accept the kwarg are called exactly as before (models with no workspace FK, or
+    not-yet-scoped sources, stay unscoped)."""
+    kwargs = {"limit": limit, "before": before, "user": user}
+    if "workspace_slugs" in inspect.signature(fn).parameters:
+        kwargs["workspace_slugs"] = workspace_slugs
+    return fn(**kwargs) or []
+
+
 def gather(
     *,
     subsystem: str | None,
     limit: int,
     before: tuple[dt.datetime, str] | None,
     user,
+    workspace_slugs: set[str] | None = None,
 ) -> list[ActivityEvent]:
     """Merged, newest-first events across the enabled sources, capped at ``limit``.
 
@@ -61,6 +78,9 @@ def gather(
     lost; the aggregator then applies the exact ``(at, id)`` tuple bound. This
     keeps "show more" from silently skipping events that share a timestamp (e.g.
     two day-aligned shareouts both stamped 23:59:59).
+
+    ``workspace_slugs`` scopes the feed to the caller's tenants. It's offered to
+    each source that opts in (see :func:`_call_source`); ``None`` means unscoped.
     """
     before_at = before[0] if before else None
     entries = [e for e in _REGISTRY if subsystem is None or e[0] == subsystem]
@@ -68,7 +88,15 @@ def gather(
     for key, _label, module_path, attr in entries:
         try:
             fn = _resolve(module_path, attr)
-            events.extend(fn(limit=limit, before=before_at, user=user) or [])
+            events.extend(
+                _call_source(
+                    fn,
+                    limit=limit,
+                    before=before_at,
+                    user=user,
+                    workspace_slugs=workspace_slugs,
+                )
+            )
         except Exception:  # one bad source must not blank the feed
             logger.exception("timeline source %r failed", key)
     # Total order with id as the tiebreak so the compound cursor is exact.

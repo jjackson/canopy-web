@@ -1,20 +1,22 @@
 import { useEffect, useState, useRef } from 'react'
-import { Outlet, Link, useLocation } from 'react-router-dom'
+import { Outlet, Link, useLocation, useParams, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { aiStatus, aiSwitch } from '@/api/ai'
 import { useAuth } from '@/auth/AuthProvider'
 import { useTheme } from '@/theme/ThemeProvider'
+import { WorkspaceProvider, useWorkspace } from '@/workspace/WorkspaceProvider'
 
+// `tenant` items live under /w/:workspace; the rest are personal/global (root).
 const NAV_ITEMS = [
-  { path: '/', label: 'Projects' },
-  { path: '/system', label: 'System' },
-  { path: '/timeline', label: 'Timeline' },
-  { path: '/insights', label: 'Insights' },
-  { path: '/shareouts', label: 'Shareouts' },
-  { path: '/walkthroughs', label: 'Walkthroughs' },
-  { path: '/sessions', label: 'Sessions' },
-  { path: '/agents', label: 'Agents' },
-  { path: '/ddd', label: 'DDD' },
+  { path: '', label: 'Projects', tenant: true },
+  { path: 'ddd', label: 'DDD', tenant: true },
+  { path: 'agents', label: 'Agents', tenant: true },
+  { path: 'walkthroughs', label: 'Walkthroughs', tenant: true },
+  { path: 'shareouts', label: 'Shareouts', tenant: true },
+  { path: 'timeline', label: 'Timeline', tenant: true },
+  { path: '/insights', label: 'Insights', tenant: false },
+  { path: '/sessions', label: 'Sessions', tenant: false },
+  { path: '/system', label: 'System', tenant: false },
 ]
 
 const BACKENDS = [
@@ -178,9 +180,51 @@ function UserMenu() {
   )
 }
 
+// Tenant switcher — navigates between the caller's workspaces by rewriting the
+// :workspace URL segment. Hidden when there's nothing to switch to (the common
+// single-tenant case), so today's UI is unchanged.
+function WorkspaceSwitcher() {
+  const { workspaces, active } = useWorkspace()
+  const navigate = useNavigate()
+  if (workspaces.length <= 1) return null
+  return (
+    <select
+      aria-label="Workspace"
+      className="bg-input border border-input text-foreground text-[13px] rounded px-2 py-1"
+      value={active ?? ''}
+      onChange={(e) => navigate(`/w/${e.target.value}/agents`)}
+    >
+      {workspaces.map((w) => (
+        <option key={w.slug} value={w.slug}>
+          {w.display_name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 export function AppLayout() {
+  const { workspace } = useParams()
+  return (
+    <WorkspaceProvider urlSlug={workspace ?? null}>
+      <AppShell />
+    </WorkspaceProvider>
+  )
+}
+
+function AppShell() {
   const location = useLocation()
+  const { active } = useWorkspace()
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Tenant nav items resolve to /w/:active/<path>; personal/global items keep
+  // their absolute path. Tenant items are hidden until the active workspace is
+  // known (avoids linking to a broken /w//… path on first paint).
+  const navItems = NAV_ITEMS.flatMap((item) => {
+    if (!item.tenant) return [{ path: item.path, label: item.label }]
+    if (!active) return []
+    return [{ path: `/w/${active}${item.path ? `/${item.path}` : ''}`, label: item.label }]
+  })
 
   // Collapse the mobile menu whenever the route changes (e.g. tapping a link).
   useEffect(() => {
@@ -188,9 +232,12 @@ export function AppLayout() {
   }, [location.pathname])
 
   function navLinkClass(path: string, block: boolean) {
+    // The workspace index (/w/<slug>) is a prefix of every tenant route, so it
+    // must match exactly (else "Projects" highlights on every tenant page).
+    const isIndex = path === '/' || /^\/w\/[^/]+$/.test(path)
     const isActive =
       location.pathname === path ||
-      (path !== '/' && location.pathname.startsWith(path))
+      (!isIndex && location.pathname.startsWith(path + '/'))
     return clsx(
       'text-sm font-medium rounded transition-colors',
       block ? 'block px-3 py-2' : 'px-3 py-1.5',
@@ -209,12 +256,13 @@ export function AppLayout() {
             {/* Full inline nav only once all items fit (~xl); below that it
                 overflows the viewport, so we collapse it into the menu below. */}
             <nav className="hidden xl:flex gap-1">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <Link key={item.path} to={item.path} className={navLinkClass(item.path, false)}>
                   {item.label}
                 </Link>
               ))}
             </nav>
+            <WorkspaceSwitcher />
             <UserMenu />
             <button
               type="button"
@@ -251,7 +299,7 @@ export function AppLayout() {
               className="xl:hidden fixed inset-0 top-[53px] z-30 bg-background/40 cursor-default"
             />
             <nav className="xl:hidden absolute left-0 right-0 top-full z-40 border-b border-border bg-background px-3 py-2 shadow-lg flex flex-col gap-1 max-h-[calc(100vh-53px)] overflow-y-auto">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <Link key={item.path} to={item.path} className={navLinkClass(item.path, true)}>
                   {item.label}
                 </Link>

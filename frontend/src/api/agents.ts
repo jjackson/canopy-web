@@ -165,13 +165,27 @@ function redirectToLogin(): never {
 }
 
 function isPublicLinkRoute(): boolean {
+  // Strip the deployment prefix (/canopy) before matching the app route.
   const base = import.meta.env.BASE_URL.replace(/\/$/, '')
   const p = window.location.pathname.slice(base.length)
-  return p.startsWith('/review/') || p.startsWith('/w/') || p.startsWith('/share/')
+  return p.startsWith('/review/') || p.startsWith('/walkthrough/') || p.startsWith('/share/')
+}
+
+// Agents are workspace-scoped. When viewing under /w/:ws/agents, rewrite the
+// flat /api/agents prefix to the tenant path /api/w/:ws/agents so calls hit the
+// active workspace. Off a tenant route (no :ws in the URL) the flat path is used
+// and the backend's compat shim resolves the caller's default workspace. Callers
+// wrap the result in apiUrl() for the deployment base prefix.
+function scopedAgentsPath(path: string): string {
+  if (!path.startsWith('/api/agents')) return path
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+  const p = window.location.pathname.slice(base.length)
+  const m = p.match(/^\/w\/([^/]+)\//)
+  return m ? `/api/w/${m[1]}/agents${path.slice('/api/agents'.length)}` : path
 }
 
 async function getJson<T>(path: string, what: string): Promise<T> {
-  const res = await fetch(apiUrl(path), {
+  const res = await fetch(apiUrl(scopedAgentsPath(path)), {
     method: 'GET',
     credentials: 'same-origin',
     headers: { Accept: 'application/json' },
@@ -199,7 +213,7 @@ async function csrfToken(): Promise<string> {
 
 async function postJson<T>(path: string, body: unknown, what: string): Promise<T> {
   const token = await csrfToken()
-  const res = await fetch(apiUrl(path), {
+  const res = await fetch(apiUrl(scopedAgentsPath(path)), {
     method: 'POST',
     credentials: 'same-origin',
     headers: {

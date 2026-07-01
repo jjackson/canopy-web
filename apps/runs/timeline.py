@@ -29,7 +29,13 @@ def _run_stamp(run_id: str) -> str:
     return m.group(1) if m else (run_id or "")
 
 
-def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
+def recent_events(
+    *,
+    limit: int,
+    before: dt.datetime | None,
+    user,
+    workspace_slugs: set[str] | None = None,
+) -> list:
     from apps.timeline.types import ActivityEvent, actor_name
 
     # Full rollup over both tables, exactly like apps.runs.aggregate (the /ddd
@@ -37,12 +43,17 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
     # review) so it can't be pushed to a per-row `before` filter without
     # splitting a run across the boundary; we filter run events by `before` in
     # Python below. Bounded by the team's DDD history (tens–hundreds of runs).
+    #
+    # ``workspace_slugs`` (offered by the timeline aggregator when the caller is
+    # workspace-scoped) narrows both tables to the caller's tenants; ``None`` is a
+    # no-op so the source stays usable unscoped.
     wts = list(
-        Walkthrough.objects.exclude(run_id__isnull=True)
-        .exclude(run_id="")
-        .select_related("owner")
+        agg._scope(
+            Walkthrough.objects.exclude(run_id__isnull=True).exclude(run_id=""),
+            workspace_slugs,
+        ).select_related("owner")
     )
-    revs = list(ReviewRequest.objects.all())
+    revs = list(agg._scope(ReviewRequest.objects.all(), workspace_slugs))
     feature_map = agg._narrative_slug_map(wts)
 
     # Latest narrative-version review per narrative drives the run title. Gated on

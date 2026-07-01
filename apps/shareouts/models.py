@@ -21,6 +21,18 @@ class Shareout(models.Model):
         blank=True,
         help_text="Null = cross-project roll-up for the period.",
     )
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.PROTECT,
+        related_name="shareouts",
+        null=True,
+        blank=True,
+        help_text=(
+            "The tenant that owns this shareout. Shareout is its own tenant root "
+            "(the project FK is orthogonal). Nullable for migration safety; the "
+            "API always assigns one (default workspace when unspecified)."
+        ),
+    )
     # Timestamps (not dates): a shareout is rarely run on a clean day boundary,
     # so the window is precise to the second and consecutive shareouts chain
     # exactly (next.period_start == prev.period_end).

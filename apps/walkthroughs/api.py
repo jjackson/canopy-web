@@ -6,6 +6,7 @@ import logging
 from uuid import UUID
 
 from django.conf import settings
+from django.db import models
 from django.http import Http404, HttpRequest
 from pydantic import ValidationError
 
@@ -26,6 +27,7 @@ from apps.api.errors import (
 
 from apps.common.ddd import narrative_slug_from_run_id
 from apps.runs.aggregate import has_narrative_version
+from apps.workspaces import services as wsvc
 
 from . import storage
 from .drive_client import DriveNotConfigured
@@ -211,6 +213,16 @@ def upload_walkthrough(
             ),
         )
 
+    # Resolve the owning workspace (tenant root). Scope to the request's
+    # workspace (from the /w/{ws} prefix), else the org default so an unchanged
+    # uploader keeps working; the creator is ensured a member either way.
+    pinned = getattr(request, "workspace_slug", None)
+    ws = (
+        wsvc.Workspace.objects.filter(slug=pinned).first() if pinned else None
+    ) or wsvc.ensure_default_workspace()
+    if ws is not None:
+        wsvc.ensure_member(ws, request.user)  # creator keeps access
+
     # Create ORM row first — if Drive fails, delete to avoid orphan row.
     w = Walkthrough.objects.create(
         title=resolved_title,
@@ -218,6 +230,7 @@ def upload_walkthrough(
         kind=kind,
         project_slug=resolved_project_slug,
         owner=request.user,
+        workspace=ws,
         visibility=visibility,
         links=resolved_links,
         run_id=resolved_run_id,
@@ -307,7 +320,20 @@ def list_walkthroughs(
 ) -> list[WalkthroughListItemOut]:
     _require_enabled()
 
+    # Scope to the caller's workspace(s): the /w/{ws} prefix pins one workspace;
+    # a flat call spans every workspace the caller belongs to. Legacy rows with
+    # no workspace (pre-backfill / fresh DB) stay visible on flat calls only.
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
+
     qs = Walkthrough.objects.select_related("owner").all()
+    if ws:
+        qs = qs.filter(workspace_id=ws)
+    else:
+        qs = qs.filter(
+            models.Q(workspace_id__in=slugs) | models.Q(workspace_id__isnull=True)
+        )
     if project:
         qs = qs.filter(project_slug=project)
     if kind in (Walkthrough.KIND_HTML, Walkthrough.KIND_VIDEO):

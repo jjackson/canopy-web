@@ -19,6 +19,15 @@ class Project(models.Model):
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default="public")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
     skills = models.JSONField(default=list, blank=True)
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="projects",
+        help_text="The tenant that owns this project. Nullable for migration "
+        "safety; the API always assigns one (default workspace when unspecified).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -31,16 +31,19 @@ def _resolve_project(slug: str | None) -> tuple[Project | None, bool]:
         return None, False
 
 
-def upsert_shareouts(items: list) -> dict:
+def upsert_shareouts(items: list, *, workspace=None) -> dict:
     """Create shareouts, replacing prior rows in the same group.
 
-    Idempotency group = (project, period_start, period_end, source). For each
-    distinct group present in the incoming batch we delete pre-existing rows in
-    that group once (counted as `replaced`) before creating the new ones, so
-    re-running a period from the same source overwrites rather than duplicates.
+    Idempotency group = (workspace, project, period_start, period_end, source).
+    For each distinct group present in the incoming batch we delete pre-existing
+    rows in that group once (counted as `replaced`) before creating the new ones,
+    so re-running a period from the same source overwrites rather than duplicates.
+    Scoping the group to `workspace` keeps a re-post in one tenant from touching
+    another tenant's rows.
 
     `items` is a list of ShareoutIn-like objects (anything with the attribute
-    names). Items whose `project_slug` doesn't resolve are skipped.
+    names). Items whose `project_slug` doesn't resolve are skipped. `workspace`
+    is the tenant these rows belong to (assigned on create).
 
     Returns {created, replaced, skipped}.
     """
@@ -56,6 +59,7 @@ def upsert_shareouts(items: list) -> dict:
         period_start = _aware(item.period_start)
         period_end = _aware(item.period_end)
         group = (
+            workspace.pk if workspace else None,
             project.pk if project else None,
             period_start,
             period_end,
@@ -63,6 +67,7 @@ def upsert_shareouts(items: list) -> dict:
         )
         if group not in cleared_groups:
             existing = Shareout.objects.filter(
+                workspace=workspace,
                 project=project,
                 period_start=period_start,
                 period_end=period_end,
@@ -73,6 +78,7 @@ def upsert_shareouts(items: list) -> dict:
             cleared_groups.add(group)
 
         Shareout.objects.create(
+            workspace=workspace,
             project=project,
             period_start=period_start,
             period_end=period_end,
@@ -95,18 +101,22 @@ def clear_shareouts(
     project: str | None = None,
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
+    workspace_slug: str | None = None,
 ) -> int:
     """Delete shareouts matching the filters (AND-combined); return the count.
 
-    - source:    exact source match (e.g. a prior run's source tag)
-    - project:   project slug exact match
-    - date_from: period_end date >= date_from
-    - date_to:   period_start date <= date_to
+    - source:         exact source match (e.g. a prior run's source tag)
+    - project:        project slug exact match
+    - date_from:      period_end date >= date_from
+    - date_to:        period_start date <= date_to
+    - workspace_slug: when set (a /w/{ws} request), only clears that tenant's rows
 
-    A call with no filters deletes ALL shareouts — intended (matches the
-    insights clear contract).
+    A call with no filters (and no workspace) deletes ALL shareouts — intended
+    (matches the insights clear contract).
     """
     qs = Shareout.objects.all()
+    if workspace_slug:
+        qs = qs.filter(workspace_id=workspace_slug)
     if source:
         qs = qs.filter(source=source)
     if project:
@@ -126,16 +136,22 @@ def list_shareouts(
     date_to: dt.date | None = None,
     project: str | None = None,
     limit: int = 100,
+    workspace_slugs: set[str] | None = None,
 ) -> list[dict]:
     """Return up to `limit` shareouts (newest period first) as dicts shaped
     for ShareoutOut. Filters AND-combine.
 
-    - date_from: period_end >= date_from
-    - date_to:   period_start <= date_to
-    - project:   project slug exact match (does not include roll-ups)
+    - date_from:       period_end >= date_from
+    - date_to:         period_start <= date_to
+    - project:         project slug exact match (does not include roll-ups)
+    - workspace_slugs: when provided, only rows in these tenants (a caller's
+                       memberships, or the single pinned /w/{ws}); None = no
+                       tenant scoping (used by non-scoped callers/tests).
     """
     limit = min(max(limit, 0), 500)
     qs = Shareout.objects.select_related("project").all()
+    if workspace_slugs is not None:
+        qs = qs.filter(workspace_id__in=workspace_slugs)
     if date_from is not None:
         qs = qs.filter(period_end__date__gte=date_from)
     if date_to is not None:

@@ -162,6 +162,9 @@ api.add_router("/reviews", reviews_router)
 api.add_router("/ddd", runs_router)
 api.add_router("/shareouts", shareouts_router)
 api.add_router("/sessions", sessions_router)
+# Agents are workspace-scoped. Mounted flat (single, clean schema); the canonical
+# tenant URL /api/w/{ws}/agents/... is gated + stripped to this flat path by
+# apps.api.tenancy.WorkspaceResolveMiddleware, which also sets request.workspace_slug.
 api.add_router("/agents", agents_router)
 api.add_router("/agents", agent_runs_router)  # unified run lifecycle under the agents namespace
 api.add_router("/workspaces", workspaces_router)

@@ -40,16 +40,20 @@ def insight_events(*, limit: int, before: dt.datetime | None, user) -> list:
     ]
 
 
-def project_events(*, limit: int, before: dt.datetime | None, user) -> list:
+def project_events(
+    *, limit: int, before: dt.datetime | None, user, workspace_slugs=None
+) -> list:
     from apps.timeline.types import ActivityEvent, cursor_page, first_line
 
     events: list[ActivityEvent] = []
 
-    ctx = (
-        ProjectContext.objects.exclude(context_type="insight")
-        .select_related("project")
-        .order_by("-created_at")
-    )
+    def _scope(qs):
+        # Context/action rows inherit tenancy via their project's workspace.
+        return qs if workspace_slugs is None else qs.filter(project__workspace_id__in=workspace_slugs)
+
+    ctx = _scope(
+        ProjectContext.objects.exclude(context_type="insight").select_related("project")
+    ).order_by("-created_at")
     for c in cursor_page(ctx, "created_at", before=before, limit=limit):
         label = dict(ProjectContext.CONTEXT_TYPES).get(c.context_type, c.context_type)
         events.append(
@@ -66,7 +70,7 @@ def project_events(*, limit: int, before: dt.datetime | None, user) -> list:
             )
         )
 
-    acts = ProjectAction.objects.select_related("project").order_by("-started_at")
+    acts = _scope(ProjectAction.objects.select_related("project")).order_by("-started_at")
     for a in cursor_page(acts, "started_at", before=before, limit=limit):
         events.append(
             ActivityEvent(

@@ -17,7 +17,7 @@ urlpatterns = [
     path("api/csrf/", csrf_view, name="csrf"),
     path("api/debug/", include("apps.common.urls_debug")),
     path("auth/cli/authorize/", views_cli_authorize, name="cli_authorize"),
-    path("w/<uuid:wid>/content", views_walkthrough_content, name="walkthrough-content"),
+    path("walkthrough/<uuid:wid>/content", views_walkthrough_content, name="walkthrough-content"),
     path("api/", api_v2.urls),
     path("api/docs/", scalar_docs, name="api_docs_scalar"),
     path("api/redoc/", redoc_docs, name="api_docs_redoc"),
