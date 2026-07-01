@@ -12,6 +12,7 @@ from ninja import Router, Status
 
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_NOT_FOUND, ProblemError
+from apps.workspaces import services as wsvc
 
 from . import aggregate, delete
 from .schemas import (
@@ -23,6 +24,17 @@ from .schemas import (
 )
 
 router = Router(auth=session_auth, tags=["ddd"])
+
+
+def _workspace_slugs(request: HttpRequest) -> set[str]:
+    """The caller's in-scope workspace slugs, mirroring the agents surface: a
+    ``/api/w/{ws}/`` prefix pins one workspace (already membership-gated by
+    ``WorkspaceResolveMiddleware``); a flat ``/api/`` call spans every workspace
+    the user belongs to. Domain teammates are auto-joined first so the default
+    workspace keeps resolving."""
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    return {ws} if ws else wsvc.user_workspace_slugs(request.user)
 
 
 @router.get(
@@ -37,7 +49,9 @@ def list_narratives(
         request.user.id if (mine == "true" and request.user.is_authenticated) else None
     )
     items = aggregate.list_narratives(
-        project=project.strip() or None, owner_id=owner_id
+        project=project.strip() or None,
+        owner_id=owner_id,
+        workspace_slugs=_workspace_slugs(request),
     )
     return [NarrativeListItemOut.model_validate(it) for it in items]
 
@@ -48,7 +62,7 @@ def list_narratives(
     summary="Get a narrative + its runs",
 )
 def get_narrative(request: HttpRequest, slug: str) -> NarrativeDetailOut:
-    data = aggregate.build_narrative(slug)
+    data = aggregate.build_narrative(slug, workspace_slugs=_workspace_slugs(request))
     if data is None:
         raise ProblemError(404, "Narrative not found", type_=TYPE_NOT_FOUND)
     return NarrativeDetailOut.model_validate(data)
@@ -60,7 +74,7 @@ def get_narrative(request: HttpRequest, slug: str) -> NarrativeDetailOut:
     summary="Get a run package (video + deck + narrative + links)",
 )
 def get_run(request: HttpRequest, run_id: str) -> RunPackageOut:
-    data = aggregate.build_run(run_id)
+    data = aggregate.build_run(run_id, workspace_slugs=_workspace_slugs(request))
     if data is None:
         raise ProblemError(404, "Run not found", type_=TYPE_NOT_FOUND)
     return RunPackageOut.model_validate(data)
@@ -74,8 +88,11 @@ def get_run(request: HttpRequest, run_id: str) -> RunPackageOut:
 def set_narrative_visibility(
     request: HttpRequest, slug: str, payload: NarrativeVisibilityIn
 ) -> NarrativeVisibilityOut:
-    wt_n, rev_n = aggregate.set_narrative_visibility(slug, payload.visibility)
-    detail = aggregate.build_narrative(slug)
+    slugs = _workspace_slugs(request)
+    wt_n, rev_n = aggregate.set_narrative_visibility(
+        slug, payload.visibility, workspace_slugs=slugs
+    )
+    detail = aggregate.build_narrative(slug, workspace_slugs=slugs)
     status = detail["visibility"] if detail else (
         "public" if payload.visibility == "link" else "private"
     )
@@ -104,7 +121,7 @@ def set_narrative_visibility(
     summary="Delete a run (its walkthroughs + reviews)",
 )
 def delete_run(request: HttpRequest, run_id: str):
-    if delete.delete_run(run_id) is None:
+    if delete.delete_run(run_id, workspace_slugs=_workspace_slugs(request)) is None:
         raise ProblemError(404, "Run not found", type_=TYPE_NOT_FOUND)
     return Status(204, None)
 
@@ -115,7 +132,9 @@ def delete_run(request: HttpRequest, run_id: str):
     summary="Delete a narrative version (and the runs under it)",
 )
 def delete_version(request: HttpRequest, slug: str, version: int):
-    if delete.delete_version(slug, version) is None:
+    if delete.delete_version(
+        slug, version, workspace_slugs=_workspace_slugs(request)
+    ) is None:
         raise ProblemError(404, "Narrative version not found", type_=TYPE_NOT_FOUND)
     return Status(204, None)
 
@@ -126,6 +145,6 @@ def delete_version(request: HttpRequest, slug: str, version: int):
     summary="Delete an entire narrative (all versions + runs)",
 )
 def delete_narrative(request: HttpRequest, slug: str):
-    if delete.delete_narrative(slug) is None:
+    if delete.delete_narrative(slug, workspace_slugs=_workspace_slugs(request)) is None:
         raise ProblemError(404, "Narrative not found", type_=TYPE_NOT_FOUND)
     return Status(204, None)

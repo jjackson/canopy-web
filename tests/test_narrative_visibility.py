@@ -6,18 +6,30 @@ from django.test import Client, override_settings
 from apps.reviews.models import ReviewRequest
 from apps.runs import aggregate
 from apps.walkthroughs.models import Walkthrough
+from apps.workspaces import services as wsvc
+from apps.workspaces.models import Workspace, WorkspaceMembership
 
 
 @pytest.fixture
 def owner(db):
-    return get_user_model().objects.create_user(
+    u = get_user_model().objects.create_user(
         username="owner@dimagi.com", email="owner@dimagi.com",
     )
+    # Content is workspace-scoped; give the owner a workspace + membership so the
+    # DDD read-model (which filters by the caller's workspaces) sees it — mirrors
+    # production, where the upload API always assigns a workspace.
+    ws = Workspace.objects.create(slug="dimagi", display_name="Dimagi", created_by=u)
+    wsvc.ensure_member(ws, u, WorkspaceMembership.OWNER)
+    return u
+
+
+def _ws():
+    return Workspace.objects.get(slug="dimagi")
 
 
 def _wt(owner, **kw):
     defaults = dict(
-        title="art", kind="video", owner=owner,
+        title="art", kind="video", owner=owner, workspace=_ws(),
         drive_file_id="f", drive_folder_id="d",
         content_type="video/mp4", size_bytes=1,
         run_id="demo-2026-06-09-001", narrative_slug="demo",
@@ -28,7 +40,7 @@ def _wt(owner, **kw):
 
 def _rev(owner, **kw):
     defaults = dict(
-        run_id="demo-2026-06-09-001", narrative_slug="demo",
+        run_id="demo-2026-06-09-001", narrative_slug="demo", workspace=_ws(),
         gate="narrative-agreement", request_json={"narrative": "s"}, owner=owner,
     )
     defaults.update(kw)

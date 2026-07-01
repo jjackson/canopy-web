@@ -14,6 +14,7 @@ from django.http import HttpRequest
 from ninja import Router
 
 from apps.api.auth import session_auth
+from apps.workspaces import services as wsvc
 
 from . import sources
 from .schemas import ActivityEventOut, SubsystemOut, TimelineOut
@@ -61,7 +62,20 @@ def list_timeline(
     limit = max(1, min(limit, _MAX_LIMIT))
     sub = sources.valid_subsystem(subsystem)
     cursor = _parse_cursor(before)
-    events = sources.gather(subsystem=sub, limit=limit, before=cursor, user=request.user)
+    # Scope to the caller's workspaces, mirroring the agents surface: a
+    # `/api/w/{ws}/` prefix pins one workspace (membership-gated upstream), a flat
+    # `/api/` call spans every workspace the user belongs to. Sources opt into the
+    # scope (see sources._call_source); framework never imports product models.
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    workspace_slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
+    events = sources.gather(
+        subsystem=sub,
+        limit=limit,
+        before=cursor,
+        user=request.user,
+        workspace_slugs=workspace_slugs,
+    )
     # A full page means there may be more; the tail event seeds the next cursor.
     next_before = _encode_cursor(events[-1]) if len(events) == limit else None
     return TimelineOut(

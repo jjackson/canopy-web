@@ -20,6 +20,7 @@ from apps.walkthroughs.models import Walkthrough
 
 from .aggregate import (
     _is_narrative_version,
+    _scope,
     build_narrative,
     narrative_of_review,
     narrative_of_walkthrough,
@@ -52,10 +53,14 @@ def _drop_walkthrough(w: Walkthrough) -> None:
     w.delete()
 
 
-def delete_run(run_id: str) -> dict | None:
-    """Delete a single run: every Walkthrough + ReviewRequest sharing ``run_id``."""
-    wts = list(Walkthrough.objects.filter(run_id=run_id))
-    revs = list(ReviewRequest.objects.filter(run_id=run_id))
+def delete_run(run_id: str, workspace_slugs: set[str] | None = None) -> dict | None:
+    """Delete a single run: every Walkthrough + ReviewRequest sharing ``run_id``.
+
+    Scoped to ``workspace_slugs`` so a member of workspace A can't delete
+    workspace B's run (a cross-tenant run_id resolves to nothing → 404).
+    """
+    wts = list(_scope(Walkthrough.objects.filter(run_id=run_id), workspace_slugs))
+    revs = list(_scope(ReviewRequest.objects.filter(run_id=run_id), workspace_slugs))
     if not wts and not revs:
         return None
     for w in wts:
@@ -66,14 +71,16 @@ def delete_run(run_id: str) -> dict | None:
     return {"run_id": run_id, "walkthroughs": len(wts), "reviews": n_rev}
 
 
-def delete_version(slug: str, version: int) -> dict | None:
+def delete_version(
+    slug: str, version: int, workspace_slugs: set[str] | None = None
+) -> dict | None:
     """Delete one narrative version and the runs nested under it.
 
     Uses the same grouping the narrative page shows (``build_narrative``) so the
     blast radius matches exactly what the user saw under that version: its runs
     plus the version's own story review row(s).
     """
-    data = build_narrative(slug)
+    data = build_narrative(slug, workspace_slugs)
     if data is None:
         return None
     vp = next((v for v in data["versions"] if v.get("version") == version), None)
@@ -82,13 +89,13 @@ def delete_version(slug: str, version: int) -> dict | None:
 
     runs = 0
     for r in vp.get("runs", []):
-        if delete_run(r["run_id"]) is not None:
+        if delete_run(r["run_id"], workspace_slugs) is not None:
             runs += 1
 
     # The version's story review(s) — these are not "runs", they ARE the version.
     version_revs = [
         r
-        for r in ReviewRequest.objects.all()
+        for r in _scope(ReviewRequest.objects.all(), workspace_slugs)
         if narrative_of_review(r) == slug
         and _is_narrative_version(r)
         and r.version == version
@@ -99,10 +106,20 @@ def delete_version(slug: str, version: int) -> dict | None:
     return {"slug": slug, "version": version, "runs": runs, "reviews": len(version_revs)}
 
 
-def delete_narrative(slug: str) -> dict | None:
+def delete_narrative(
+    slug: str, workspace_slugs: set[str] | None = None
+) -> dict | None:
     """Delete an entire narrative: every row (all versions + all runs) for ``slug``."""
-    wts = [w for w in Walkthrough.objects.all() if narrative_of_walkthrough(w) == slug]
-    revs = [r for r in ReviewRequest.objects.all() if narrative_of_review(r) == slug]
+    wts = [
+        w
+        for w in _scope(Walkthrough.objects.all(), workspace_slugs)
+        if narrative_of_walkthrough(w) == slug
+    ]
+    revs = [
+        r
+        for r in _scope(ReviewRequest.objects.all(), workspace_slugs)
+        if narrative_of_review(r) == slug
+    ]
     if not wts and not revs:
         return None
     for w in wts:
