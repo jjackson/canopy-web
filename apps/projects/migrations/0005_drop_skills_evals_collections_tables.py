@@ -5,33 +5,46 @@ build-reusable-skills-from-conversations surface is gone. Their tables were
 left behind at that point (harmless, but dead). This migration drops them.
 
 Lives in `projects` (a product app with an active migration chain) purely as a
-host; the dropped tables all belonged to now-deleted product apps. `IF EXISTS`
-keeps it a no-op on fresh databases (CI/test SQLite DBs, new deploys) where
-these tables were never created.
+host; the dropped tables all belonged to now-deleted product apps.
 
-The SQL is portable across Postgres (production) and SQLite (tests): no
-`CASCADE` — tables are dropped child-before-parent so the intra-group FKs
-(evals→skills, source→collection) never block a drop, and no retained table
-references any of them.
+Portability + real-DB dependents: on Postgres we drop with ``CASCADE`` because
+the *live* labs DB still carries legacy tables from the long-retired co-authoring
+app (`workspace_workspacesession`) whose FK constraints reference
+`collections_collection` / `skills_skill`. Those tables don't exist in the SQLite
+test DB, so a plain drop passed CI but failed on Postgres. ``CASCADE`` drops only
+the dead dependent *constraints* (no retained table references any of these);
+SQLite doesn't support ``CASCADE`` (and has no such dependents), so we omit it
+there. ``IF EXISTS`` keeps the whole thing a no-op on fresh DBs.
 
-Irreversible: the data is gone. `reverse` is a no-op so the migration can be
+Irreversible: the data is gone. ``reverse`` is a no-op so the migration can be
 unapplied in the graph without error (it does not recreate the tables/data).
 """
 from __future__ import annotations
 
 from django.db import migrations
 
-# Child tables before their parents so no FK blocks the drop (no CASCADE needed).
-_DROP = [
-    "DROP TABLE IF EXISTS evals_evalrun;",
-    "DROP TABLE IF EXISTS evals_evalcase;",
-    "DROP TABLE IF EXISTS evals_evalsuite;",
-    "DROP TABLE IF EXISTS skills_skill;",
-    "DROP TABLE IF EXISTS collections_source;",
-    "DROP TABLE IF EXISTS collections_collection;",
-    # Tidy the migration ledger so nothing dangles for the removed apps.
-    "DELETE FROM django_migrations WHERE app IN ('skills', 'evals', 'collections');",
+# Child tables before their parents; CASCADE (Postgres) also clears any legacy
+# external FK constraints still pointing at these dead tables.
+_TABLES = [
+    "evals_evalrun",
+    "evals_evalcase",
+    "evals_evalsuite",
+    "skills_skill",
+    "collections_source",
+    "collections_collection",
 ]
+
+
+def _drop_tables(apps, schema_editor):
+    conn = schema_editor.connection
+    cascade = " CASCADE" if conn.vendor == "postgresql" else ""
+    with conn.cursor() as cursor:
+        for table in _TABLES:
+            cursor.execute(f"DROP TABLE IF EXISTS {table}{cascade};")
+        # Tidy the migration ledger so nothing dangles for the removed apps.
+        cursor.execute(
+            "DELETE FROM django_migrations WHERE app IN ('skills', 'evals', 'collections');"
+        )
 
 
 class Migration(migrations.Migration):
@@ -40,5 +53,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(sql="\n".join(_DROP), reverse_sql=migrations.RunSQL.noop),
+        migrations.RunPython(_drop_tables, migrations.RunPython.noop),
     ]
