@@ -1,45 +1,13 @@
-name: CI / Deploy
+name: CI
 
 # Runs backend tests + frontend build on every PR and push to main.
-# Deploy is manual-only: trigger via the "Run workflow" button on the
-# Actions tab (workflow_dispatch). When triggered, the deploy job waits
-# for both test jobs to pass before shipping images to Cloud Run.
-#
-# One-time GCP setup required for the deploy job to authenticate via
-# Workload Identity Federation (no long-lived service account keys):
-#
-#   gcloud iam service-accounts create canopy-web-deployer \
-#     --project=canopy-494811
-#
-#   gcloud iam workload-identity-pools create github \
-#     --project=canopy-494811 --location=global \
-#     --display-name="GitHub Actions"
-#
-#   gcloud iam workload-identity-pools providers create-oidc github \
-#     --project=canopy-494811 --location=global \
-#     --workload-identity-pool=github \
-#     --display-name="GitHub" \
-#     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner" \
-#     --attribute-condition="assertion.repository_owner=='jjackson'" \
-#     --issuer-uri="https://token.actions.githubusercontent.com"
-#
-#   gcloud iam service-accounts add-iam-policy-binding \
-#     canopy-web-deployer@canopy-494811.iam.gserviceaccount.com \
-#     --project=canopy-494811 \
-#     --role=roles/iam.workloadIdentityUser \
-#     --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/jjackson/canopy-web"
-#
-# Then grant the deployer SA the roles it needs (run, artifact registry,
-# cloud sql, secret manager accessor) and add these GitHub repo secrets:
-#
-#   GCP_WIF_PROVIDER  →  projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github
-#   GCP_SERVICE_ACCOUNT  →  canopy-web-deployer@canopy-494811.iam.gserviceaccount.com
+# Deploys are a separate, manual workflow: .github/workflows/deploy-labs.yml
+# (GitHub → AWS labs / ECS Fargate).
 
 on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -85,60 +53,3 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
-
-  deploy:
-    name: Deploy to Cloud Run
-    needs: [test-backend, test-frontend]
-    # Manual-only: must be triggered from the Actions tab via "Run workflow".
-    # Tests still gate the deploy because of `needs:` above. The first step
-    # also hard-fails unless the dispatched ref is `main` — production ships
-    # from main only, never from a feature branch.
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write  # Required for Workload Identity Federation
-    steps:
-      - name: Guard — deploy from main only
-        run: |
-          if [ "${{ github.ref_name }}" != "main" ]; then
-            echo "::error::Refusing to deploy from '${{ github.ref_name }}'. Production deploys must run from main — merge your branch, then dispatch the deploy from main."
-            exit 1
-          fi
-          echo "Ref guard OK: deploying from main (${{ github.sha }})."
-
-      - uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
-      - name: Deploy
-        env:
-          SKIP_TESTS: '1'  # Already verified in test-backend / test-frontend jobs
-          # Read-only token for the private jjackson/canopy plugin; deploy.sh
-          # clones it into the build context so /system renders the catalog.
-          # Optional — when unset the build still succeeds (empty catalog).
-          CANOPY_PLUGIN_TOKEN: ${{ secrets.CANOPY_PLUGIN_TOKEN }}
-        run: ./deploy.sh ${{ github.sha }}
-
-      # deploy.sh ships the service image but NOT migrations. Run the migrate
-      # Cloud Run job against the exact image we just deployed, so a schema
-      # change can never ship half-applied (the new code live with the old
-      # schema → 500s on the new tables). Idempotent: no-op when there's nothing
-      # to migrate.
-      - name: Run database migrations
-        run: |
-          IMG="us-central1-docker.pkg.dev/canopy-494811/canopy-web/canopy-web:${{ github.sha }}"
-          gcloud run jobs update canopy-web-migrate \
-            --image="$IMG" --region=us-central1 --quiet
-          gcloud run jobs execute canopy-web-migrate \
-            --region=us-central1 --wait
