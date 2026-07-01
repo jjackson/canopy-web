@@ -13,7 +13,7 @@ first-class AI agents, demo-driven development (DDD), walkthroughs, and shareout
 - **Frontend:** React 19 + Vite + Tailwind CSS 4 + shadcn/ui
 - **AI:** Anthropic Claude API via SSE streaming. Dual backend — direct API key (`AI_BACKEND=api`) or Claude Code CLI subscription (`AI_BACKEND=cli`), switchable at runtime via `/api/ai/switch/`.
 - **MCP server:** `apps/mcp/` is a FastMCP 3.x Streamable-HTTP server mounted into the ASGI app at `/api/mcp/` (wired in `config/asgi.py`). Tools run **as the authenticated user** via per-user PAT (`CanopyPATVerifier`) and reuse the same service functions as the REST views, so the two surfaces can't drift. See `docs/architecture/mcp-surface.md`.
-- **Deployment:** GCP Cloud Run + Cloud SQL on the `canopy-494811` project. `./deploy.sh` builds via Cloud Build (`cloudbuild.yaml`) and `gcloud run deploy`s — no local Docker daemon required. Production settings in `config/settings/production.py`.
+- **Deployment:** AWS on the shared **connect-labs** environment — the `/canopy` tenant at `labs.connect.dimagi.com/canopy` (ECS Fargate behind a path-prefix-routed ALB, shared RDS Postgres + ElastiCache Redis). `./deploy-labs.sh` builds the image locally, pushes to ECR, and rolls the ECS service (requires `aws sso login --profile labs` + Docker). Infra-as-code in `deploy/aws/canopy-web.cfn.yaml`; tenant settings in `config/settings/connectlabs.py` (the `/canopy` path prefix, tenant-scoped cookies, `FORCE_SCRIPT_NAME`), which inherit `config/settings/production.py`. (Migrated off GCP Cloud Run / Cloud SQL — `canopy-494811` — on 2026-06-30.)
 - **Framework/product boundary (the one invariant):** apps split into **framework** (generic, agent-agnostic substrate — `agents`, `agent_runs`, `workspaces`, `api`, `common`, `timeline`, `tokens`, `session_sharing`, `issues`, `mcp`, `system`) and **product** (canopy's own features — `projects`, `walkthroughs`, `reviews`, `shareouts`, `runs`). **Framework code must never import product code; product freely imports framework.** This keeps the blend cuttable (the framework apps could lift onto a standalone host without dragging canopy's product). It's a *direction, not a wall* — we don't move apps into `framework/`/`product/` folders. Enforced by `tests/test_architecture_boundary.py` (fails CI on a framework→product import, or on a new app left untiered). Full rationale, the per-app tier table, and the accepted carve-outs (the `api` composition root, the `mcp` insights tool): **`ARCHITECTURE.md`**. The framework apps are being harvested as the generic layer out of ACE — see `docs/superpowers/specs/2026-06-24-canopy-framework-harvest-design.md`.
 
 ## Development
@@ -37,14 +37,13 @@ uv run honcho start -f Procfile.dev
 # Docker (backend + frontend + Postgres)
 docker compose up
 
-# Deploy to GCP Cloud Run. CI also has a manual deploy job — trigger it from
-# the Actions tab ("CI / Deploy" → Run workflow).
-# Production ships from `main` ONLY — merge your branch first. Both deploy
-# paths enforce this: deploy.sh refuses unless on main + in sync with
-# origin/main; the CI deploy job hard-fails unless dispatched from main.
-./deploy.sh                  # Cloud Build → push → gcloud run deploy (must be on main)
-SKIP_TESTS=1 ./deploy.sh     # bypass test gate (emergencies only)
-ALLOW_NON_MAIN_DEPLOY=1 ./deploy.sh   # bypass the main-branch guard (emergencies only)
+# Deploy to AWS connect-labs (labs.connect.dimagi.com/canopy). Requires
+# `aws sso login --profile labs` + a running Docker daemon. Builds locally,
+# pushes to ECR, rolls the ECS Fargate service.
+# Production ships from `main` ONLY — merge your branch first (the script
+# refuses to deploy from a non-main branch).
+./deploy-labs.sh                       # build → push to ECR → roll ECS (must be on main)
+ALLOW_NON_MAIN_DEPLOY=1 ./deploy-labs.sh   # bypass the main-branch guard (emergencies only)
 ```
 
 When `AI_BACKEND=cli`, the `claude` binary must be on PATH and authenticated. In Docker, use the headless auth flow at `/settings` (drives `claude setup-token` via PTY; token persists in `CLAUDE_CODE_OAUTH_TOKEN`).
@@ -268,7 +267,7 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 - SSE streaming for AI responses (Scout pattern)
 - **Auth:** Google OAuth via django-allauth (allowed-domain restricted via `AUTH_ALLOWED_EMAIL_DOMAIN` — comma-separated list, default `dimagi.com`; `dimagi-associate.com` is also allowed). Personal Access Tokens (`apps/tokens/`) authenticate machine callers via `Authorization: Bearer <raw>` — `BearerTokenAuthMiddleware` resolves them upstream of `LoginRequiredMiddleware`. `/api/debug/mint-session/` lets an authenticated user mint a short-lived session cookie to hand to an AI assistant.
 - **Multi-tenancy (scaffolding landed):** the `apps/workspaces` app provides `Workspace` + members (owner/editor/viewer) + email invites; `agents` and `agent_runs` carry a `workspace` FK (a default workspace is assigned when unspecified, so the change was non-breaking / Echo-safe). The product surface is still effectively single-tenant; full per-tenant scoping of the product apps is tracked in `TODOS.md`.
-- PostgreSQL on Cloud SQL (GCP `canopy-494811`)
+- PostgreSQL on the shared connect-labs RDS (a dedicated `canopy_web` database)
 - Dual AI backend lets users run either against an API key or their own Claude Code subscription
 
 ## Reference Docs
