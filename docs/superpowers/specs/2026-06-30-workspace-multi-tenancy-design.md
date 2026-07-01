@@ -240,6 +240,29 @@ routes and legacy redirects once the plugin fleet has migrated.
 - **Uneven ownership graph** → resolved by "anchor roots, inherit children";
   project-less walkthroughs are their own roots.
 
+## 8.5 Implementation status (as-built, 2026-06-30)
+
+Shipped on `emdash/tenant-9n48g` (all backend tests + frontend build green):
+- **Foundation** — `current_workspace()`; `WorkspaceResolveMiddleware` (gate +
+  prefix-strip); `/w/` reclaim → `/walkthrough/`; frontend `WorkspaceProvider`,
+  switcher, and the full `/w/:workspace` route tree; central openapi-fetch rewrite
+  of scoped calls to `/api/w/:ws/…`.
+- **Tenant roots scoped** — `Agent`, `Project`, `Walkthrough`, `ReviewRequest`,
+  `Shareout` each carry a `workspace` FK + backfill; children (`Review`/`Run` via
+  narrative; `ProjectContext`/`ProjectAction` via project) inherit. DDD read-model
+  (`apps/runs`) filters every base queryset by the caller's workspaces.
+- **Preserved** — tokenless public reads (`visibility=link` walkthroughs/reviews),
+  review-submit login rule, and the flat-route compat for the PAT/plugin fleet.
+
+Known partials / deferred (consistent with how `agents` shipped):
+- **Timeline** scopes only its DDD source today; a `_call_source` signature-opt-in
+  seam lets the other product sources (walkthroughs/projects/shareouts/agents) scope
+  in a follow-up **without** the framework-tier `timeline` app importing product
+  models (architecture-boundary-safe).
+- **Non-null FKs** left nullable + always-assigned (matches `agents`); `workspace_id`
+  is indexed by Django's default FK index, so no hardening migration was needed.
+- **Insights** + **sessions/arcs** remain user/global-scoped (decision #2).
+
 ## 9. Out of scope / deferred
 
 - Per-tenant scoping of insights and shared sessions/arcs (decision #2).
