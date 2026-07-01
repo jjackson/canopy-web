@@ -119,3 +119,14 @@ def test_walkthrough_collection_still_gated(db):
     # The list/upload collection must NOT be public.
     resp = Client().get("/api/walkthroughs/")
     assert resp.status_code == 401
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_legacy_w_content_path_redirects_to_walkthrough(owner):
+    # /w/<id>/content was the pre-reclaim stream URL; old artifacts have it
+    # baked in. Anonymous holders must get redirected to the new route, not
+    # bounced to login or handed the SPA shell.
+    w = _make(owner, visibility="link")
+    resp = Client().get(f"/w/{w.id}/content")
+    assert resp.status_code in (301, 302)
+    assert resp.headers["Location"] == f"/walkthrough/{w.id}/content"

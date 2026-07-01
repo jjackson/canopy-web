@@ -4,6 +4,8 @@ Authenticated callers (via session cookie OR Personal Access Token via
 `apps.tokens.middleware.BearerTokenAuthMiddleware`) bypass this gate
 automatically — `request.user.is_authenticated` becomes True for both.
 """
+import re
+
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import redirect
@@ -46,15 +48,25 @@ def _is_review_link(path: str) -> bool:
     return path.startswith("/api/reviews/") and path != "/api/reviews/"
 
 
+# Pre-reclaim content-stream URL, baked into already-rendered artifacts
+# (DDD decks, review embeds). UUID-shaped only — workspace slugs never match.
+_LEGACY_W_CONTENT = re.compile(
+    r"^/w/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/content$"
+)
+
+
 def _is_walkthrough_link(request) -> bool:
     # The public walkthrough viewer SPA shell (/walkthrough/<uuid>) and the
     # content stream (/walkthrough/<uuid>/content), plus the per-walkthrough
     # detail GET, self-enforce tokenless public access, so let anonymous callers
     # through the middleware. /w/ now means "workspace" (the authed tenant shell)
-    # and is NOT allowlisted. The bare collection (/api/walkthroughs/) is NOT
-    # included — list/upload still require auth.
+    # and is NOT allowlisted — except the legacy /w/<uuid>/content path, which
+    # must reach its back-compat redirect. The bare collection
+    # (/api/walkthroughs/) is NOT included — list/upload still require auth.
     path = request.path
     if path.startswith("/walkthrough/"):
+        return True
+    if _LEGACY_W_CONTENT.match(path):
         return True
     return (
         request.method == "GET"

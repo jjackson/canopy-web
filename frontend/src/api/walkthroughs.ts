@@ -94,6 +94,6 @@ export async function uploadWalkthrough(
 
 export function walkthroughContentUrl(id: string): string {
   // Base-aware so the `<video>`/`<iframe>` src resolves under the deployed
-  // sub-path (e.g. `/canopy/w/<id>/content`), not the origin root.
-  return withBase(`/w/${id}/content`);
+  // sub-path (e.g. `/canopy/walkthrough/<id>/content`), not the origin root.
+  return withBase(`/walkthrough/${id}/content`);
 }
