@@ -35,6 +35,9 @@ second workspace becomes a real isolation boundary rather than a latent column.
    (`/sessions`, `/share/:token`) stay user-owned personal transcripts, and the
    **insights** feed (`/insights`) stays as-is (global/portfolio). Neither gets a
    `workspace` FK now. Revisit later if the portfolio feed should be per-tenant.
+   **`/system` is app-global** too — it reads the canopy plugin's capability
+   catalog live from the plugin, so it stays at root. `timeline`, by contrast,
+   *is* per-tenant (only this workspace's activity).
 3. **URL — `/w/:workspace/` is the tenant prefix.** Every surface that renders
    workspace-owned data lives under it. `/w/` is reclaimed from the public
    walkthrough viewer, which moves to the full word `/walkthrough/:id`.
@@ -55,8 +58,11 @@ second workspace becomes a real isolation boundary rather than a latent column.
 /w/:ws/walkthroughs       → walkthrough LIST
 /w/:ws/shareouts          → shareouts           (/w/:ws/shareouts/:period)
 /w/:ws/timeline           → activity feed (scoped to tenant)
-/w/:ws/system             → capability catalog (scoped to tenant)
 ```
+`timeline` shows only the activity of *this* workspace's objects, so its
+aggregation must filter by workspace — which depends on the underlying apps
+carrying a `workspace` FK. Timeline scoping therefore lands *after* the per-app
+FKs (Increments 1–4), not in the foundation.
 
 ### 3.2 Reclaiming `/w/`
 ```
@@ -77,10 +83,14 @@ membership (same as today's tokenless model).
 /review/:id          (public review read; submit still requires Dimagi login)
 ```
 
-### 3.4 Personal / global — stay at root (user-scoped, per decision #2)
+### 3.4 Personal / global — stay at root (not tenant-prefixed)
 ```
-/sessions   /insights   /settings
+/sessions   /insights   /settings   /system
 ```
+`/sessions` + `/insights` are **user/portfolio-scoped** (decision #2). `/system`
+is **app-global**: it's the canopy plugin's capability catalog read live from the
+plugin, not tenant data, so it is not workspace-prefixed. `/settings` is
+per-user (AI backend, theme, debug).
 
 ### 3.5 Defaults & redirects
 Bare `/` and any legacy unprefixed path (`/ddd`, `/agents`, `/shareouts`, …)
@@ -122,7 +132,10 @@ dependency / router `auth`), then dispatches to child handlers:
 /api/w/{ws}/projects/       /api/w/{ws}/walkthroughs/
 /api/w/{ws}/ddd/…           /api/w/{ws}/shareouts/
 /api/w/{ws}/agents/…        (migrate; already gated)
+/api/w/{ws}/timeline/       (moves under parent once events carry workspace)
 ```
+`/api/system/…` stays flat (app-global capability catalog — not tenant data).
+`/api/sessions/…` and `/api/insights/…` also stay flat (user/portfolio-scoped).
 Compat: the existing flat routes (`/api/projects/…`, `/api/shareouts/…`, …) stay
 mounted as a **thin deprecated shim** that fills `workspace = current_workspace(user)`
 (default) and calls the **same service**. So the agent/plugin fleet keeps working
@@ -176,6 +189,12 @@ Projects → Walkthroughs → DDD (Narrative root; Review/Run inherit) → Share
 Each: nullable `workspace` FK + backfill migration (mirror agents `0006`/`0007`),
 `workspace` threaded into services, router mounted under the parent + compat shim,
 frontend route moved under `/w/:ws`, real query filtering + membership gate, tests.
+
+**Increment 4b — Timeline scoping.**
+Filter the timeline aggregation to the active workspace and move it under
+`/w/:ws/timeline` + `/api/w/{ws}/timeline`. Lands after 1–4 because it can only
+scope events whose source apps already carry a `workspace` FK. (`/system` stays
+app-global and is not touched.)
 
 **Increment 5 — Hardening.**
 Flip FKs non-null, add indexes/constraints, deprecate & remove the flat compat
