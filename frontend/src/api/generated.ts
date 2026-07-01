@@ -51,7 +51,7 @@ export interface paths {
         };
         /**
          * List project slugs
-         * @description Slim machine-readable slug list (Bearer-readable).
+         * @description Slim machine-readable slug list (Bearer-readable), workspace-scoped.
          */
         readonly get: operations["apps_projects_api_get_project_slugs"];
         readonly put?: never;
@@ -693,6 +693,10 @@ export interface paths {
         /**
          * List shareouts
          * @description List dated work briefings, newest period first. Filters AND-combine.
+         *
+         *     Tenant-scoped: on a /w/{ws} request, only that workspace's rows; on the flat
+         *     mount, every workspace the caller is a member of (the PAT resolves to a real
+         *     user, so machine producers see their tenant's rows too).
          */
         readonly get: operations["apps_shareouts_api_list_shareouts"];
         readonly put?: never;
@@ -700,6 +704,10 @@ export interface paths {
          * Create shareouts (batch, idempotent per period+source)
          * @description Create a batch of briefings. Re-posting the same period from the same
          *     source replaces the prior rows (see services.upsert_shareouts).
+         *
+         *     Rows are assigned to the request's workspace (the /w/{ws} prefix, or the org
+         *     default when unspecified) and the creator is kept a member so their own
+         *     listing keeps showing what they just posted.
          */
         readonly post: operations["apps_shareouts_api_create_shareouts"];
         readonly delete?: never;
@@ -719,7 +727,8 @@ export interface paths {
         readonly put?: never;
         /**
          * Clear shareouts by source / project / date (AND-combined)
-         * @description Delete shareouts matching the filters. An empty body clears all.
+         * @description Delete shareouts matching the filters. An empty body clears all — but on a
+         *     /w/{ws} request the clear is confined to that workspace's rows.
          */
         readonly post: operations["apps_shareouts_api_clear_shareouts"];
         readonly delete?: never;
