@@ -145,6 +145,20 @@ The invariant lives below HTTP: **service functions in `apps/<app>/services.py`
 gain an explicit `workspace` argument.** Both the parent router and the compat
 shim funnel through them, so REST, MCP, and agents can't drift.
 
+**Implementation note (Increment 0, as-built).** ninja forbids mounting one
+`Router` instance twice, and double-mounting with `url_name_prefix` collides
+operation IDs (the prefixed paths drop out of the schema). So the "parent router"
+is realized as `apps.api.tenancy.WorkspaceResolveMiddleware`: scoped routers stay
+mounted **flat once** (single clean OpenAPI schema), and the middleware gates
+membership on `/api/w/{ws}/…`, pins `request.workspace_slug`, and **strips** the
+`/w/{ws}` segment so the request reroutes to the flat mount. The middleware is
+generic — it strips/pins for *any* `/api/w/{ws}/<app>/…`, so each per-app
+increment only adds a `workspace` FK + query filtering, not routing plumbing.
+Legacy flat `/api/<app>/…` calls fall through untouched (`workspace_slug` stays
+`None` → handler default logic). The one concession vs. the original wording: the
+schema documents the flat canonical paths; the `/api/w/{ws}/…` form is an
+enforced routing alias (the frontend targets it; the schema type is the flat path).
+
 ### 4.4 Enforcement
 - List/read: `.filter(workspace=ws)` (or `narrative__workspace=ws` for children).
 - Detail/write: resolve object, assert `is_member(user, obj.workspace_id)`, else 404.
