@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from 'react'
-import { Outlet, Link, useLocation } from 'react-router-dom'
+import { Outlet, Link, useLocation, useParams, useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 import { aiStatus, aiSwitch } from '@/api/ai'
 import { useAuth } from '@/auth/AuthProvider'
 import { useTheme } from '@/theme/ThemeProvider'
+import { WorkspaceProvider, useWorkspace } from '@/workspace/WorkspaceProvider'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Projects' },
@@ -178,9 +179,48 @@ function UserMenu() {
   )
 }
 
+// Tenant switcher — navigates between the caller's workspaces by rewriting the
+// :workspace URL segment. Hidden when there's nothing to switch to (the common
+// single-tenant case), so today's UI is unchanged.
+function WorkspaceSwitcher() {
+  const { workspaces, active } = useWorkspace()
+  const navigate = useNavigate()
+  if (workspaces.length <= 1) return null
+  return (
+    <select
+      aria-label="Workspace"
+      className="bg-input border border-input text-foreground text-[13px] rounded px-2 py-1"
+      value={active ?? ''}
+      onChange={(e) => navigate(`/w/${e.target.value}/agents`)}
+    >
+      {workspaces.map((w) => (
+        <option key={w.slug} value={w.slug}>
+          {w.display_name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 export function AppLayout() {
+  const { workspace } = useParams()
+  return (
+    <WorkspaceProvider urlSlug={workspace ?? null}>
+      <AppShell />
+    </WorkspaceProvider>
+  )
+}
+
+function AppShell() {
   const location = useLocation()
+  const { active } = useWorkspace()
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // The Agents surface is workspace-scoped; point its nav item at the active
+  // tenant. Bare /agents still works (it redirects to the default workspace).
+  const navItems = NAV_ITEMS.map((item) =>
+    item.path === '/agents' && active ? { ...item, path: `/w/${active}/agents` } : item,
+  )
 
   // Collapse the mobile menu whenever the route changes (e.g. tapping a link).
   useEffect(() => {
@@ -209,12 +249,13 @@ export function AppLayout() {
             {/* Full inline nav only once all items fit (~xl); below that it
                 overflows the viewport, so we collapse it into the menu below. */}
             <nav className="hidden xl:flex gap-1">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <Link key={item.path} to={item.path} className={navLinkClass(item.path, false)}>
                   {item.label}
                 </Link>
               ))}
             </nav>
+            <WorkspaceSwitcher />
             <UserMenu />
             <button
               type="button"
@@ -251,7 +292,7 @@ export function AppLayout() {
               className="xl:hidden fixed inset-0 top-[53px] z-30 bg-background/40 cursor-default"
             />
             <nav className="xl:hidden absolute left-0 right-0 top-full z-40 border-b border-border bg-background px-3 py-2 shadow-lg flex flex-col gap-1 max-h-[calc(100vh-53px)] overflow-y-auto">
-              {NAV_ITEMS.map((item) => (
+              {navItems.map((item) => (
                 <Link key={item.path} to={item.path} className={navLinkClass(item.path, true)}>
                   {item.label}
                 </Link>

@@ -18,7 +18,9 @@ function redirectToLogin(): never {
 function isPublicLinkRoute(): boolean {
   const p = window.location.pathname;
   return (
-    p.startsWith("/review/") || p.startsWith("/w/") || p.startsWith("/share/")
+    p.startsWith("/review/") ||
+    p.startsWith("/walkthrough/") ||
+    p.startsWith("/share/")
   );
 }
 
