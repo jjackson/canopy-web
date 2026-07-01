@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { mintDebugSession, type MintDebugSessionResponse } from '@/api/debug'
 import { aiStatus as fetchAiStatus, aiAuthStart, aiAuthComplete, aiAuthPoll } from '@/api/ai'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from 'canopy-ui/ui'
+import { Input } from 'canopy-ui/ui'
 
 type Step = 'idle' | 'loading' | 'awaiting_code' | 'submitting' | 'complete' | 'error'
 
@@ -79,38 +79,38 @@ export function SettingsPage() {
   return (
     <div className="space-y-5 max-w-xl">
       <div>
-        <h1 className="text-lg font-semibold text-stone-100">Settings</h1>
-        <p className="mt-0.5 text-xs text-stone-500">
+        <h1 className="text-lg font-semibold text-foreground">Settings</h1>
+        <p className="mt-0.5 text-xs text-muted-foreground">
           Manage your AI backend and authentication.
         </p>
       </div>
 
       {/* Current status */}
-      <div className="rounded-xl border border-stone-800 bg-stone-900 p-5 space-y-3">
-        <h2 className="text-[10px] uppercase tracking-wider font-semibold text-stone-500">AI Backend</h2>
+      <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+        <h2 className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">AI Backend</h2>
         {aiStatus ? (
           <div className="flex items-center gap-3">
             <span className={
               aiStatus.ready
-                ? 'inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-400/10 border border-emerald-400/30 px-2 py-1 rounded'
-                : 'inline-flex items-center gap-1.5 text-xs font-medium text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-1 rounded'
+                ? 'inline-flex items-center gap-1.5 text-xs font-medium text-success bg-success/10 border border-success/30 px-2 py-1 rounded'
+                : 'inline-flex items-center gap-1.5 text-xs font-medium text-warning bg-warning/10 border border-warning/30 px-2 py-1 rounded'
             }>
-              <span className={`w-1.5 h-1.5 rounded-full ${aiStatus.ready ? 'bg-emerald-400 shadow-[0_0_6px_rgba(74,222,128,0.5)]' : 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${aiStatus.ready ? 'bg-success shadow-[0_0_6px_rgba(74,222,128,0.5)]' : 'bg-warning shadow-[0_0_6px_rgba(251,191,36,0.5)]'}`} />
               {aiStatus.ready ? 'Connected' : 'Not connected'}
             </span>
-            <span className="text-sm text-stone-400">{aiStatus.detail}</span>
+            <span className="text-sm text-foreground-secondary">{aiStatus.detail}</span>
           </div>
         ) : (
-          <span className="text-sm text-stone-600">Loading...</span>
+          <span className="text-sm text-muted-foreground">Loading...</span>
         )}
       </div>
 
       {/* Login flow */}
       {aiStatus && !aiStatus.ready && (
-        <div className="rounded-xl border border-stone-800 bg-stone-900 p-5 space-y-4">
+        <div className="rounded-xl border border-border bg-card p-5 space-y-4">
           <div>
-            <h2 className="text-sm font-semibold text-stone-100">Connect Claude Subscription</h2>
-            <p className="mt-1 text-sm text-stone-500">
+            <h2 className="text-sm font-semibold text-foreground">Connect Claude Subscription</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               Sign in with your Anthropic account to use your Claude subscription for AI calls.
             </p>
           </div>
@@ -129,30 +129,30 @@ export function SettingsPage() {
                 ) : 'Start Login'}
               </Button>
               {step === 'loading' && (
-                <p className="text-xs text-stone-500">Generating authorization link (a few seconds)...</p>
+                <p className="text-xs text-muted-foreground">Generating authorization link (a few seconds)...</p>
               )}
               {error && (
-                <p className="text-sm text-red-400">{error}</p>
+                <p className="text-sm text-destructive">{error}</p>
               )}
             </div>
           ) : step === 'awaiting_code' ? (
             <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-sm text-stone-300">
-                  <span className="text-orange-400 font-semibold">1.</span> Click the link below to authorize:
+                <p className="text-sm text-foreground-secondary">
+                  <span className="text-primary font-semibold">1.</span> Click the link below to authorize:
                 </p>
                 <a
                   href={authUrl!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block text-sm text-orange-400 hover:text-orange-300 underline underline-offset-2 break-all"
+                  className="block text-sm text-primary hover:text-primary underline underline-offset-2 break-all"
                 >
                   Open Anthropic Login ↗
                 </a>
               </div>
               <div className="space-y-2">
-                <p className="text-sm text-stone-300">
-                  <span className="text-orange-400 font-semibold">2.</span> After authorizing, paste the code shown on the callback page:
+                <p className="text-sm text-foreground-secondary">
+                  <span className="text-primary font-semibold">2.</span> After authorizing, paste the code shown on the callback page:
                 </p>
                 <div className="flex gap-2">
                   <Input
@@ -168,23 +168,23 @@ export function SettingsPage() {
                 </div>
               </div>
               {error && (
-                <p className="text-sm text-red-400">{error}</p>
+                <p className="text-sm text-destructive">{error}</p>
               )}
             </div>
           ) : step === 'submitting' ? (
-            <p className="text-sm text-stone-400">Completing authentication...</p>
+            <p className="text-sm text-foreground-secondary">Completing authentication...</p>
           ) : null}
         </div>
       )}
 
       {/* Success state — only after completing CLI auth flow, not for general readiness */}
       {step === 'complete' && aiStatus?.backend === 'cli' && (
-        <div className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4 space-y-1">
-          <p className="text-sm font-semibold text-emerald-400">Authenticated</p>
+        <div className="rounded-xl border border-success/30 bg-success/10 p-4 space-y-1">
+          <p className="text-sm font-semibold text-success">Authenticated</p>
           {tokenPreview && (
-            <p className="text-xs text-emerald-400/80 font-mono">{tokenPreview}</p>
+            <p className="text-xs text-success/80 font-mono">{tokenPreview}</p>
           )}
-          <p className="text-xs text-emerald-400/70">
+          <p className="text-xs text-success/70">
             Claude CLI is connected via your subscription. Token persists across container restarts.
           </p>
         </div>
@@ -239,17 +239,17 @@ function DebugAccessPanel() {
     : null
 
   return (
-    <div className="rounded-xl border border-stone-800 bg-stone-900 p-5 space-y-4">
+    <div className="rounded-xl border border-border bg-card p-5 space-y-4">
       <div>
-        <h2 className="text-sm font-semibold text-stone-100">Debug access</h2>
-        <p className="mt-1 text-sm text-stone-500">
+        <h2 className="text-sm font-semibold text-foreground">Debug access</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           Mint a short-lived session cookie you can hand to an AI assistant
           (or any HTTP client). It authenticates as you, for the TTL you pick.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-stone-500">Valid for:</span>
+        <span className="text-xs text-muted-foreground">Valid for:</span>
         <div className="flex gap-1">
           {TTL_OPTIONS.map((opt) => (
             <button
@@ -258,8 +258,8 @@ function DebugAccessPanel() {
               onClick={() => setTtl(opt.seconds)}
               className={`text-xs px-2.5 py-1 rounded border transition-colors ${
                 ttl === opt.seconds
-                  ? 'bg-orange-400/10 border-orange-400/30 text-orange-400'
-                  : 'bg-stone-950 border-stone-800 text-stone-500 hover:text-stone-300 hover:border-stone-700'
+                  ? 'bg-primary/10 border-primary/30 text-primary'
+                  : 'bg-background border-border text-muted-foreground hover:text-foreground-secondary hover:border-input'
               }`}
             >
               {opt.label}
@@ -273,12 +273,12 @@ function DebugAccessPanel() {
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {mint && (
         <div className="space-y-3">
-          <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-300/80">
-            <strong className="text-amber-300">Treat this like a password.</strong>{' '}
+          <div className="rounded-lg border border-warning/20 bg-warning/5 p-3 text-xs text-warning/80">
+            <strong className="text-warning">Treat this like a password.</strong>{' '}
             Anyone with this cookie has your access until {expiresRelative}.
           </div>
 
@@ -298,7 +298,7 @@ function DebugAccessPanel() {
             onCopy={() => copy(mint.curl_example, 'curl')}
           />
 
-          <div className="text-[11px] text-stone-600">
+          <div className="text-[11px] text-muted-foreground">
             Minted for {mint.email} · expires {expiresRelative} ({new Date(mint.expires_at).toLocaleString()})
           </div>
         </div>
@@ -313,16 +313,16 @@ function CopyBlock({
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] uppercase tracking-wider text-stone-600 font-semibold">{label}</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</span>
         <button
           type="button"
           onClick={onCopy}
-          className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
+          className="text-xs text-primary hover:text-primary transition-colors"
         >
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="bg-stone-950 border border-stone-800 rounded-lg p-3 text-xs text-stone-300 font-mono overflow-x-auto whitespace-pre-wrap break-all">
+      <pre className="bg-background border border-border rounded-lg p-3 text-xs text-foreground-secondary font-mono overflow-x-auto whitespace-pre-wrap break-all">
         {value}
       </pre>
     </div>

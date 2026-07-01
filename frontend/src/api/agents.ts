@@ -9,6 +9,8 @@
 // (`npm run gen:api`), this file can be migrated to `apiV2.GET(...)` without
 // touching callers.
 
+import { apiUrl, CSRF_COOKIE_NAME } from './base'
+
 export interface Page<T> {
   items: T[]
   total: number
@@ -158,17 +160,18 @@ export interface NeedsYouOut {
 // Google login flow; everything else surfaces as a thrown Error.
 function redirectToLogin(): never {
   const next = encodeURIComponent(window.location.pathname + window.location.search)
-  window.location.href = `/accounts/google/login/?next=${next}`
+  window.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/accounts/google/login/?next=${next}`
   throw new Error('Redirecting to login')
 }
 
 function isPublicLinkRoute(): boolean {
-  const p = window.location.pathname
-  return p.startsWith('/review/') || p.startsWith('/share/')
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+  const p = window.location.pathname.slice(base.length)
+  return p.startsWith('/review/') || p.startsWith('/w/') || p.startsWith('/share/')
 }
 
 async function getJson<T>(path: string, what: string): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method: 'GET',
     credentials: 'same-origin',
     headers: { Accept: 'application/json' },
@@ -182,20 +185,21 @@ function readCookie(name: string): string {
   return document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))?.[1] ?? ''
 }
 
-// Django's session auth (Ninja) enforces CSRF on unsafe methods. Read the
-// csrftoken cookie (bootstrapping it from /api/csrf/ if absent) and send it.
+// Django's session auth (Ninja) enforces CSRF on unsafe methods. Read the CSRF
+// cookie (name is tenant-specific — csrftoken_canopy under /canopy), bootstrapping
+// it from /api/csrf/ if absent, and send it.
 async function csrfToken(): Promise<string> {
-  let token = readCookie('csrftoken')
+  let token = readCookie(CSRF_COOKIE_NAME)
   if (!token) {
-    await fetch('/api/csrf/', { credentials: 'same-origin' })
-    token = readCookie('csrftoken')
+    await fetch(apiUrl('/api/csrf/'), { credentials: 'same-origin' })
+    token = readCookie(CSRF_COOKIE_NAME)
   }
   return token ? decodeURIComponent(token) : ''
 }
 
 async function postJson<T>(path: string, body: unknown, what: string): Promise<T> {
   const token = await csrfToken()
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method: 'POST',
     credentials: 'same-origin',
     headers: {

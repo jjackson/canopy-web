@@ -58,7 +58,7 @@ function InsightBadge({ slug, count, compact }: { slug: string; count: number; c
       to={`/insights?project=${encodeURIComponent(slug)}`}
       onClick={(e) => e.stopPropagation()}
       title={`${count} insight${count === 1 ? '' : 's'} for this project — click to filter the feed`}
-      className={`font-semibold text-orange-400/90 hover:text-orange-300 bg-orange-400/10 border border-orange-400/25 rounded transition-colors shrink-0 ${
+      className={`font-semibold text-primary/90 hover:text-primary bg-primary/10 border border-primary/25 rounded transition-colors shrink-0 ${
         compact ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2 py-0.5'
       }`}
     >
@@ -81,8 +81,8 @@ function InlineInsightStrip({
 }) {
   if (!insights.length) return null
   return (
-    <div className="px-6 py-4 bg-stone-950/40 border-b border-stone-800">
-      <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-3">
+    <div className="px-6 py-4 bg-background/40 border-b border-border">
+      <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
         Insights ({insights.length})
       </div>
       <div className="space-y-2">
@@ -98,7 +98,7 @@ function InlineInsightStrip({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, x: -32, transition: { duration: 0.18 } }}
                 transition={{ type: 'spring', stiffness: 400, damping: 35 }}
-                className="flex items-start gap-3 text-xs text-stone-300"
+                className="flex items-start gap-3 text-xs text-foreground-secondary"
               >
                 <div className="pt-0.5 shrink-0">
                   <CategoryBadge category={category} />
@@ -106,7 +106,7 @@ function InlineInsightStrip({
                 <p className="flex-1 leading-relaxed">{body}</p>
                 <button
                   onClick={(e) => { e.stopPropagation(); onDismiss(insight.id) }}
-                  className="text-stone-700 hover:text-stone-400 text-sm shrink-0 leading-none mt-0.5"
+                  className="text-foreground-subtle hover:text-foreground-secondary text-sm shrink-0 leading-none mt-0.5"
                   aria-label="Dismiss insight"
                   title="Dismiss"
                 >
@@ -123,10 +123,10 @@ function InlineInsightStrip({
 
 function StatusDot({ status }: { status: string }) {
   const color = status === 'active'
-    ? 'bg-orange-400 shadow-[0_0_6px_rgba(251,146,60,0.3)]'
+    ? 'bg-primary shadow-[0_0_6px_rgba(251,146,60,0.3)]'
     : status === 'stale'
-      ? 'bg-stone-500'
-      : 'bg-stone-700'
+      ? 'bg-muted-foreground'
+      : 'bg-input'
   return <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${color}`} />
 }
 
@@ -138,9 +138,9 @@ function DeployBadge({ url, compact }: { url: string; compact?: boolean }) {
   return (
     <a href={url} target="_blank" rel="noopener noreferrer"
       title={hostname}
-      className={`flex items-center gap-1.5 min-w-0 ${compact ? 'text-[10px] max-w-[110px]' : 'text-[11px] max-w-[240px]'} bg-stone-800 text-stone-400 px-2 py-0.5 rounded hover:text-stone-200 transition-colors overflow-hidden`}
+      className={`flex items-center gap-1.5 min-w-0 ${compact ? 'text-[10px] max-w-[110px]' : 'text-[11px] max-w-[240px]'} bg-muted text-foreground-secondary px-2 py-0.5 rounded hover:text-foreground-secondary transition-colors overflow-hidden`}
       onClick={(e) => e.stopPropagation()}>
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse-slow shadow-[0_0_4px_rgba(74,222,128,0.4)]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0 animate-pulse-slow shadow-[0_0_4px_rgba(74,222,128,0.4)]" />
       <span className="truncate">{hostname}</span>
     </a>
   )
@@ -148,7 +148,7 @@ function DeployBadge({ url, compact }: { url: string; compact?: boolean }) {
 
 function PrivateBadge() {
   return (
-    <span className="text-[9px] text-stone-500 border border-orange-400/15 bg-orange-400/5 px-1.5 py-0.5 rounded uppercase tracking-wide">
+    <span className="text-[9px] text-muted-foreground border border-primary/15 bg-primary/5 px-1.5 py-0.5 rounded uppercase tracking-wide">
       private
     </span>
   )
@@ -178,24 +178,24 @@ function TopThreeHero({
     // isn't a missing-section gap. The freshness line tells the user how to
     // populate it.
     return (
-      <div className="mb-6 bg-stone-900 border border-stone-800 rounded-xl p-5">
-        <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-1">
+      <div className="mb-6 bg-card border border-border rounded-xl p-5">
+        <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">
           Today's top 3
         </div>
-        <p className="text-sm text-stone-500">
-          No insights yet — run <code className="text-stone-300">canopy:portfolio-review</code> to populate the feed.
+        <p className="text-sm text-muted-foreground">
+          No insights yet — run <code className="text-foreground-secondary">canopy:portfolio-review</code> to populate the feed.
         </p>
       </div>
     )
   }
 
   return (
-    <div className="mb-6 bg-stone-900 border border-stone-800 rounded-xl p-5">
+    <div className="mb-6 bg-card border border-border rounded-xl p-5">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold">
+        <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
           Today's top 3
         </div>
-        <div className="text-[10px] text-stone-600 flex items-center gap-2">
+        <div className="text-[10px] text-muted-foreground flex items-center gap-2">
           {newest && (
             <span title={new Date(newest).toLocaleString()}>
               Refreshed {relativeTime(newest)}
@@ -203,7 +203,7 @@ function TopThreeHero({
           )}
           {isStale && (
             <span
-              className="text-amber-400/90 bg-amber-400/10 border border-amber-400/25 px-2 py-0.5 rounded"
+              className="text-warning/90 bg-warning/10 border border-warning/25 px-2 py-0.5 rounded"
               title="Run `canopy:portfolio-review` locally to refresh"
             >
               stale · run portfolio-review
@@ -219,14 +219,14 @@ function TopThreeHero({
             <button
               key={insight.id}
               onClick={() => onActivate(insight.project_slug)}
-              className="w-full flex items-center gap-3 text-left bg-stone-950/40 hover:bg-stone-950/70 border border-stone-800 hover:border-stone-700 rounded-lg px-3 py-2 transition-colors group"
+              className="w-full flex items-center gap-3 text-left bg-background/40 hover:bg-background/70 border border-border hover:border-input rounded-lg px-3 py-2 transition-colors group"
             >
               <CategoryBadge category={category} />
-              <span className="text-[11px] text-stone-500 shrink-0 w-32 truncate">
+              <span className="text-[11px] text-muted-foreground shrink-0 w-32 truncate">
                 {insight.project_name}
               </span>
-              <span className="text-xs text-stone-300 truncate flex-1">{body}</span>
-              <span className="text-[11px] text-stone-600 group-hover:text-orange-400 transition-colors shrink-0">
+              <span className="text-xs text-foreground-secondary truncate flex-1">{body}</span>
+              <span className="text-[11px] text-muted-foreground group-hover:text-primary transition-colors shrink-0">
                 Open →
               </span>
             </button>
@@ -245,24 +245,24 @@ function CollapsedTile({ project, onExpand }: { project: Project; onExpand: () =
     ? (Date.now() - new Date(summaryDate).getTime()) / (1000 * 60 * 60 * 24) > 7
     : false
   const borderClass = isStale
-    ? 'border border-l-2 border-stone-800 border-l-amber-400/30 hover:border-stone-700 hover:border-l-amber-400/50'
-    : 'border border-stone-800 hover:border-stone-700'
+    ? 'border border-l-2 border-border border-l-amber-400/30 hover:border-input hover:border-l-amber-400/50'
+    : 'border border-border hover:border-input'
   return (
     <div
-      className={`bg-stone-900 ${borderClass} rounded-lg p-4 cursor-pointer transition-colors h-full`}
+      className={`bg-card ${borderClass} rounded-lg p-4 cursor-pointer transition-colors h-full`}
       onClick={onExpand}
     >
       <div className="flex items-center gap-3 mb-2 min-w-0">
         <StatusDot status={project.status} />
-        <span className="text-sm font-semibold text-stone-100 truncate min-w-0">{project.name}</span>
+        <span className="text-sm font-semibold text-foreground truncate min-w-0">{project.name}</span>
         <div className="ml-auto flex items-center gap-2 min-w-0 shrink">
           <InsightBadge slug={project.slug} count={project.insight_count || 0} compact />
           {project.visibility === 'private' && <PrivateBadge />}
           {project.deploy_url && <DeployBadge url={project.deploy_url} compact />}
         </div>
       </div>
-      <div className="text-xs text-stone-500 leading-relaxed line-clamp-2">
-        {summaryText || <span className="text-stone-700 italic">No summary yet</span>}
+      <div className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+        {summaryText || <span className="text-foreground-subtle italic">No summary yet</span>}
       </div>
     </div>
   )
@@ -291,20 +291,20 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDis
   return (
     <div
       ref={cardRef}
-      className="bg-stone-900 border border-stone-700 rounded-xl overflow-hidden"
+      className="bg-card border border-input rounded-xl overflow-hidden"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-stone-800">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
         <StatusDot status={project.status} />
-        <span className="text-base font-bold text-stone-100">{project.name}</span>
+        <span className="text-base font-bold text-foreground">{project.name}</span>
         <InsightBadge slug={project.slug} count={project.insight_count || 0} />
         {project.visibility === 'private' && <PrivateBadge />}
         {project.deploy_url && <DeployBadge url={project.deploy_url} />}
         <div className="ml-auto flex items-center gap-4 text-[11px]">
           <Link
             to={`/insights?project=${encodeURIComponent(project.slug)}`}
-            className="text-orange-400/70 hover:text-orange-400 transition-colors"
+            className="text-primary/70 hover:text-primary transition-colors"
             onClick={(e) => e.stopPropagation()}
             title={`See insights for ${project.name}`}
           >
@@ -312,14 +312,14 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDis
           </Link>
           {project.repo_url && (
             <a href={project.repo_url} target="_blank" rel="noopener noreferrer"
-              className="text-orange-400/70 hover:text-orange-400 transition-colors"
+              className="text-primary/70 hover:text-primary transition-colors"
               onClick={(e) => e.stopPropagation()}>
               GitHub ↗
             </a>
           )}
           {project.deploy_url && (
             <a href={project.deploy_url} target="_blank" rel="noopener noreferrer"
-              className="text-orange-400/70 hover:text-orange-400 transition-colors"
+              className="text-primary/70 hover:text-primary transition-colors"
               onClick={(e) => e.stopPropagation()}>
               Live Site ↗
             </a>
@@ -327,7 +327,7 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDis
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); onClose() }}
-          className="text-stone-700 hover:text-stone-400 text-lg ml-2"
+          className="text-foreground-subtle hover:text-foreground-secondary text-lg ml-2"
           aria-label="Close"
         >✕</button>
       </div>
@@ -336,27 +336,27 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDis
       <InlineInsightStrip insights={insights} onDismiss={onDismissInsight} />
 
       {/* Body — 3 columns */}
-      <div className="grid grid-cols-1 md:grid-cols-3 divide-x divide-stone-800">
+      <div className="grid grid-cols-1 md:grid-cols-3 divide-x divide-border">
         {/* Column 1: Summary */}
         <div className="p-6">
-          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Summary</div>
+          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-4">Summary</div>
           {ctx.summary ? (
             <div>
-              <div className="bg-stone-950 border-l-2 border-orange-400 rounded-r-lg p-3 text-xs text-stone-400 leading-relaxed">
+              <div className="bg-background border-l-2 border-primary rounded-r-lg p-3 text-xs text-foreground-secondary leading-relaxed">
                 {ctx.summary.content}
               </div>
-              <div className="text-[10px] text-stone-700 mt-2">
+              <div className="text-[10px] text-foreground-subtle mt-2">
                 {ctx.summary.source} · {new Date(ctx.summary.created_at).toLocaleDateString()}
               </div>
             </div>
           ) : (
-            <div className="text-xs text-stone-700 italic">No summary yet — run canopy:activity-summary</div>
+            <div className="text-xs text-foreground-subtle italic">No summary yet — run canopy:activity-summary</div>
           )}
         </div>
 
         {/* Column 2: Actions */}
         <div className="p-6">
-          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Actions</div>
+          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-4">Actions</div>
           {(() => {
             const actions = project.latest_actions || {}
             return (
@@ -365,16 +365,16 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDis
                   const action = actions[key]
                   return (
                     <div key={key} className="flex items-center justify-between text-[11px]">
-                      <span className="text-stone-400">{label}</span>
+                      <span className="text-foreground-secondary">{label}</span>
                       {action ? (
                         <div className="flex items-center gap-2">
-                          <span className="text-stone-600">{relativeTime(action.completed_at || action.started_at)}</span>
-                          {action.status === 'completed' && <span className="text-emerald-400">&#10003;</span>}
-                          {action.status === 'failed' && <span className="text-red-400">&#10007;</span>}
-                          {action.status === 'started' && <span className="text-orange-400">&#9679;</span>}
+                          <span className="text-muted-foreground">{relativeTime(action.completed_at || action.started_at)}</span>
+                          {action.status === 'completed' && <span className="text-success">&#10003;</span>}
+                          {action.status === 'failed' && <span className="text-destructive">&#10007;</span>}
+                          {action.status === 'started' && <span className="text-primary">&#9679;</span>}
                         </div>
                       ) : (
-                        <span className="text-stone-800">never</span>
+                        <span className="text-foreground-subtle">never</span>
                       )}
                     </div>
                   )
@@ -386,47 +386,47 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDis
 
         {/* Column 3: Details + Skills */}
         <div className="p-6">
-          <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-4">Details</div>
+          <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-4">Details</div>
           <div className="space-y-2 mb-6">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-600">Repo</span>
+              <span className="text-muted-foreground">Repo</span>
               {project.repo_url ? (
                 <a href={project.repo_url} target="_blank" rel="noopener noreferrer"
-                  className="text-orange-400/80 hover:text-orange-400 truncate ml-3 max-w-[180px]"
+                  className="text-primary/80 hover:text-primary truncate ml-3 max-w-[180px]"
                   onClick={(e) => e.stopPropagation()}>
                   {project.repo_url.replace('https://github.com/', '')}
                 </a>
-              ) : <span className="text-stone-700">—</span>}
+              ) : <span className="text-foreground-subtle">—</span>}
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-600">Deploy</span>
+              <span className="text-muted-foreground">Deploy</span>
               {project.deploy_url ? (
                 <a href={project.deploy_url} target="_blank" rel="noopener noreferrer"
-                  className="text-orange-400/80 hover:text-orange-400 truncate ml-3 max-w-[180px]"
+                  className="text-primary/80 hover:text-primary truncate ml-3 max-w-[180px]"
                   onClick={(e) => e.stopPropagation()}>
                   {(() => { try { return new URL(project.deploy_url).hostname } catch { return project.deploy_url } })()}
                 </a>
-              ) : <span className="text-stone-700">—</span>}
+              ) : <span className="text-foreground-subtle">—</span>}
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-600">Visibility</span>
-              <span className="text-stone-300">{project.visibility}</span>
+              <span className="text-muted-foreground">Visibility</span>
+              <span className="text-foreground-secondary">{project.visibility}</span>
             </div>
           </div>
 
           {/* Last actions */}
           {project.latest_actions && Object.keys(project.latest_actions).length > 0 && (
             <div className="mb-6">
-              <div className="text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-2">Last actions</div>
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Last actions</div>
               <div className="space-y-1">
                 {Object.entries(project.latest_actions).map(([name, action]) => (
                   <div key={name} className="flex items-center justify-between text-[11px]">
-                    <span className="text-stone-400 truncate mr-2">{name}</span>
+                    <span className="text-foreground-secondary truncate mr-2">{name}</span>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-stone-600">{relativeTime(action.completed_at || action.started_at)}</span>
-                      {action.status === 'completed' && <span className="text-emerald-400">&#10003;</span>}
-                      {action.status === 'failed' && <span className="text-red-400">&#10007;</span>}
-                      {action.status === 'started' && <span className="text-orange-400">&#9679;</span>}
+                      <span className="text-muted-foreground">{relativeTime(action.completed_at || action.started_at)}</span>
+                      {action.status === 'completed' && <span className="text-success">&#10003;</span>}
+                      {action.status === 'failed' && <span className="text-destructive">&#10007;</span>}
+                      {action.status === 'started' && <span className="text-primary">&#9679;</span>}
                     </div>
                   </div>
                 ))}
@@ -440,7 +440,7 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDis
               <Link
                 to={`/walkthroughs?project=${project.slug}`}
                 onClick={(e) => e.stopPropagation()}
-                className="text-[11px] text-stone-300 hover:text-stone-100"
+                className="text-[11px] text-foreground-secondary hover:text-foreground"
               >
                 Walkthroughs · {project.walkthrough_count}
               </Link>
@@ -451,20 +451,20 @@ function ExpandedCard({ project, onClose, scrollIntoViewOnMount, insights, onDis
           <div>
             <button
               onClick={(e) => { e.stopPropagation(); setSkillsExpanded(!skillsExpanded) }}
-              className="flex items-center gap-2 text-[9px] uppercase tracking-wider text-stone-600 font-semibold mb-2 hover:text-stone-400 transition-colors">
+              className="flex items-center gap-2 text-[9px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 hover:text-foreground-secondary transition-colors">
               <span>Skills ({skills.length})</span>
               <span>{skillsExpanded ? '▾' : '▸'}</span>
             </button>
             {skillsExpanded && (
               <div className="space-y-1">
                 {skills.length === 0 ? (
-                  <div className="text-[11px] text-stone-700 italic">No skills discovered</div>
+                  <div className="text-[11px] text-foreground-subtle italic">No skills discovered</div>
                 ) : (
                   skills.map((skill, i) => (
-                    <div key={i} className="text-[11px] text-stone-400 py-1">
-                      <div className="font-medium text-stone-300">{skill.name}</div>
+                    <div key={i} className="text-[11px] text-foreground-secondary py-1">
+                      <div className="font-medium text-foreground-secondary">{skill.name}</div>
                       {skill.description && (
-                        <div className="text-stone-600 text-[10px] line-clamp-2">{skill.description}</div>
+                        <div className="text-muted-foreground text-[10px] line-clamp-2">{skill.description}</div>
                       )}
                     </div>
                   ))
@@ -482,8 +482,8 @@ function LoadingSkeleton() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-stone-100">Projects</h1>
-        <span className="text-xs text-stone-700 bg-stone-900 px-2.5 py-1 rounded">
+        <h1 className="text-lg font-semibold text-foreground">Projects</h1>
+        <span className="text-xs text-foreground-subtle bg-card px-2.5 py-1 rounded">
           loading…
         </span>
       </div>
@@ -491,16 +491,16 @@ function LoadingSkeleton() {
         {Array.from({ length: 8 }).map((_, i) => (
           <div
             key={i}
-            className="bg-stone-900 border border-stone-800 rounded-lg p-4 animate-pulse"
+            className="bg-card border border-border rounded-lg p-4 animate-pulse"
             style={{ animationDelay: `${i * 60}ms` }}
           >
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-[7px] h-[7px] rounded-full bg-stone-800 shrink-0" />
-              <div className="h-3 bg-stone-800 rounded w-1/2" />
+              <div className="w-[7px] h-[7px] rounded-full bg-muted shrink-0" />
+              <div className="h-3 bg-muted rounded w-1/2" />
             </div>
             <div className="space-y-2">
-              <div className="h-2 bg-stone-800/70 rounded w-full" />
-              <div className="h-2 bg-stone-800/70 rounded w-4/5" />
+              <div className="h-2 bg-muted/70 rounded w-full" />
+              <div className="h-2 bg-muted/70 rounded w-4/5" />
             </div>
           </div>
         ))}
@@ -632,7 +632,7 @@ export function ProjectsPage() {
     return <LoadingSkeleton />
   }
   if (error) {
-    return <div className="flex items-center justify-center h-64 text-red-400 text-sm">{error}</div>
+    return <div className="flex items-center justify-center h-64 text-destructive text-sm">{error}</div>
   }
 
   const expandedSet = new Set(expandedOrder)
@@ -652,8 +652,8 @@ export function ProjectsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-stone-100">Projects</h1>
-        <span className="text-xs text-stone-600 bg-stone-900 px-2.5 py-1 rounded">
+        <h1 className="text-lg font-semibold text-foreground">Projects</h1>
+        <span className="text-xs text-muted-foreground bg-card px-2.5 py-1 rounded">
           {projects.length} projects
         </span>
       </div>
@@ -712,7 +712,7 @@ export function ProjectsPage() {
           <div className="mt-6">
             <button
               onClick={() => setShowStale((v) => !v)}
-              className="text-[11px] text-stone-500 hover:text-stone-300 transition-colors flex items-center gap-2"
+              className="text-[11px] text-muted-foreground hover:text-foreground-secondary transition-colors flex items-center gap-2"
               aria-expanded={showStale}
             >
               <span>{showStale ? '▾' : '▸'}</span>

@@ -1,6 +1,7 @@
 # Canopy Web
 
-Collaborative web workspace for building reusable AI skills from conversations.
+Collaborative web workspace for the canopy agent ecosystem — portfolio insights,
+first-class AI agents, demo-driven development (DDD), walkthroughs, and shareouts.
 
 ## Architecture
 
@@ -11,9 +12,9 @@ Collaborative web workspace for building reusable AI skills from conversations.
   schema (`frontend/src/api/generated.ts`) and consumed via `openapi-fetch`.
 - **Frontend:** React 19 + Vite + Tailwind CSS 4 + shadcn/ui
 - **AI:** Anthropic Claude API via SSE streaming. Dual backend — direct API key (`AI_BACKEND=api`) or Claude Code CLI subscription (`AI_BACKEND=cli`), switchable at runtime via `/api/ai/switch/`.
-- **Runtime adapters:** `apps/skills/adapters/` produces skill artifacts for `web`, `claude_code`, and `open_claw` runtimes.
 - **MCP server:** `apps/mcp/` is a FastMCP 3.x Streamable-HTTP server mounted into the ASGI app at `/api/mcp/` (wired in `config/asgi.py`). Tools run **as the authenticated user** via per-user PAT (`CanopyPATVerifier`) and reuse the same service functions as the REST views, so the two surfaces can't drift. See `docs/architecture/mcp-surface.md`.
-- **Deployment:** GCP Cloud Run + Cloud SQL on the `canopy-494811` project. `./deploy.sh` builds via Cloud Build (`cloudbuild.yaml`) and `gcloud run deploy`s — no local Docker daemon required. Production settings in `config/settings/production.py`.
+- **Deployment:** AWS ECS Fargate on the shared labs platform (account `858923557655`, `us-east-1`), served at `https://labs.connect.dimagi.com/canopy/` behind the shared ALB. One container (Django serves the built SPA + API + MCP). Deploys run from GitHub via the **Deploy to Labs (AWS)** workflow (`.github/workflows/deploy-labs.yml`): build → push to ECR (`labs-jj-canopy-web`) → register task-def revision → optional migrate → roll the ECS service. Infra is provisioned by `deploy/aws/canopy-web.cfn.yaml` (CloudFormation). Runtime settings in `config/settings/connectlabs.py` (extends `production.py`; `FORCE_SCRIPT_NAME=/canopy`, shared RDS `canopy_web` DB).
+- **Framework/product boundary (the one invariant):** apps split into **framework** (generic, agent-agnostic substrate — `agents`, `agent_runs`, `workspaces`, `api`, `common`, `timeline`, `tokens`, `session_sharing`, `issues`, `mcp`, `system`) and **product** (canopy's own features — `projects`, `walkthroughs`, `reviews`, `shareouts`, `runs`). **Framework code must never import product code; product freely imports framework.** This keeps the blend cuttable (the framework apps could lift onto a standalone host without dragging canopy's product). It's a *direction, not a wall* — we don't move apps into `framework/`/`product/` folders. Enforced by `tests/test_architecture_boundary.py` (fails CI on a framework→product import, or on a new app left untiered). Full rationale, the per-app tier table, and the accepted carve-outs (the `api` composition root, the `mcp` insights tool): **`ARCHITECTURE.md`**. The framework apps are being harvested as the generic layer out of ACE — see `docs/superpowers/specs/2026-06-24-canopy-framework-harvest-design.md`.
 
 ## Development
 
@@ -24,7 +25,7 @@ Backend uses [`uv`](https://docs.astral.sh/uv/) for dependency management (uv.lo
 cp .env.example .env  # Set AI_BACKEND=api + ANTHROPIC_API_KEY, or AI_BACKEND=cli
 uv sync --extra dev
 uv run python manage.py migrate
-uv run python manage.py seed_demo   # optional: 5 demo skills with eval history
+uv run python manage.py seed_projects   # optional: seed the initial 13 portfolio projects
 uv run python manage.py runserver
 
 # Frontend
@@ -36,14 +37,15 @@ uv run honcho start -f Procfile.dev
 # Docker (backend + frontend + Postgres)
 docker compose up
 
-# Deploy to GCP Cloud Run. CI also has a manual deploy job — trigger it from
-# the Actions tab ("CI / Deploy" → Run workflow).
-# Production ships from `main` ONLY — merge your branch first. Both deploy
-# paths enforce this: deploy.sh refuses unless on main + in sync with
-# origin/main; the CI deploy job hard-fails unless dispatched from main.
-./deploy.sh                  # Cloud Build → push → gcloud run deploy (must be on main)
-SKIP_TESTS=1 ./deploy.sh     # bypass test gate (emergencies only)
-ALLOW_NON_MAIN_DEPLOY=1 ./deploy.sh   # bypass the main-branch guard (emergencies only)
+# Deploy to AWS labs (https://labs.connect.dimagi.com/canopy/). Deploys run from
+# GitHub only — trigger the "Deploy to Labs (AWS)" workflow from the Actions tab
+# (workflow_dispatch), or:
+gh workflow run "Deploy to Labs (AWS)" --ref main -f run_migrations=false
+gh workflow run "Deploy to Labs (AWS)" --ref main -f run_migrations=true   # when the change has a migration
+# Production ships from `main` ONLY — the workflow hard-fails on any other ref.
+# It builds+pushes the image to ECR, registers a task-def revision (image swap
+# only), optionally migrates on a one-off Fargate task, then rolls the ECS
+# service. See .github/workflows/deploy-labs.yml + deploy/aws/canopy-web.cfn.yaml.
 ```
 
 When `AI_BACKEND=cli`, the `claude` binary must be on PATH and authenticated. In Docker, use the headless auth flow at `/settings` (drives `claude setup-token` via PTY; token persists in `CLAUDE_CODE_OAUTH_TOKEN`).
@@ -52,22 +54,18 @@ When `AI_BACKEND=cli`, the `claude` binary must be on PATH and authenticated. In
 
 ```bash
 uv run pytest                                    # All backend tests
-uv run pytest tests/test_workspace_engine.py -v  # Specific
+uv run pytest tests/test_agents.py -v            # Specific
 cd frontend && npm run build                     # Frontend type check + build
 cd frontend && npm run gen:api                   # Regenerate TypeScript types from OpenAPI schema
 ```
 
-CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deploy is a separate manual job in the same workflow — trigger it from the Actions tab via "Run workflow"; the deploy step waits for the test jobs to pass before shipping. Walkthrough QA spec at `docs/walkthroughs/canopy-web-demo.yaml` (run via `/walkthrough canopy-web-demo`).
+CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deploy is a separate manual job in the same workflow — trigger it from the Actions tab via "Run workflow"; the deploy step waits for the test jobs to pass before shipping. Walkthrough QA spec at `docs/walkthroughs/project-workbench.yaml` (run via `/walkthrough project-workbench`).
 
 ## Key URLs
 
 - `/` — Project workbench. Tile grid dashboard with a "Today's top 3" insight hero, freshness chip, inline insights triage, and self-prioritizing tile order by insight count.
-- `/skills` — Skill discovery feed
-- `/workspaces` — Workspace session list (resume in-progress sessions)
-- `/new` — New collection / source ingestion flow
-- `/workspace/:sessionId` — Co-authoring workspace
-- `/skills/:skillId` — Skill detail + eval history
-- `/guide` — Interactive walkthrough using a "Discovery Call Debrief" sample collection (try-it / how-it-works / review / eval / deploy sections)
+- `/timeline` — Team activity timeline (cross-app activity feed; link-out only)
+- `/system` — Capability catalog + Workflows view (how canopy's plugin capabilities compose; read live from the canopy plugin)
 - `/insights` — Cross-portfolio AI insights feed
 - `/shareouts` (+ `/shareouts/:period`) — Dated, teammate-facing work briefings (what shipped, why, how to leverage) posted by `/canopy:shareout`; `:period` is a copy-linkable permalink to one briefing
 - `/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
@@ -75,10 +73,10 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 - `/ddd` (+ `/ddd/:narrative`, `/ddd/:narrative/:runId`) — Demo-driven-development (DDD) views: narrative → version → run → package (video + deck + narrative + links). `/ddd-plans` and `/reviews` redirect here
 - `/review/:id` — Editable narrative review surface for DDD (approve / redraft a story before build); public (link-visibility) reviews are readable by anyone with the URL, but submitting a decision requires a Dimagi login
 - `/agents` — First-class AI agents list (e.g. "Echo")
-- `/agents/:slug` — Agent workspace: a full-bleed rail + scrolling main built on `@canopy/workbench`. Sub-routes (rail): **Needs you** (the default landing — a typed/ranked supervisor inbox), Overview, Tasks (the "who has the ball" board), Syncs, Work products, Skills
+- `/agents/:slug` — Agent workspace: a full-bleed rail + scrolling main built on `canopy-ui`. Sub-routes (rail): **Needs you** (the default landing — a typed/ranked supervisor inbox), Overview, Tasks (the "who has the ball" board), Syncs, Work products, Skills
 - `/sessions` — My shared Claude Code sessions (transcripts uploaded via `/canopy:share-session`)
 - `/share/:token` — Public, chrome-less read-only viewer for a shared session (no login; mounted outside the app shell)
-- `/settings` — AI backend status, switch backends, headless Claude CLI auth, debug-session minting
+- `/settings` — AI backend status, switch backends, headless Claude CLI auth, theme toggle, and debug-session minting (consolidated under the user menu)
 - `/api/` — REST API
 - `/admin/` — Django admin
 - `/health/` — Health check
@@ -114,30 +112,24 @@ All endpoints are served by Django Ninja (Pydantic v2 typed) under `/api/`. Erro
 - `DELETE /api/insights/{id}/` — Dismiss an insight (OAuth only — bearer is GET-only here).
 - `POST /api/insights/clear/` — Clear insights (regeneration helper).
 
-### Collections
-- `POST /api/collections/` — Create collection
-- `GET /api/collections/{id}/` — Get collection with sources
-- `POST /api/collections/{id}/sources/` — Add source
+### Workspaces (`apps/workspaces`) — multi-tenancy
+The tenant that owns agents + runs. `Workspace` + members (owner / editor / viewer) + email invites (ported from ace-web, domain-agnostic). Replaced the retired `apps/workspace` (singular) co-authoring session app — that whole SSE skill-authoring engine and its `/api/workspace/*` routes are gone.
+- `POST /api/workspaces/` — Create a workspace
+- `GET /api/workspaces/` — List my workspaces
+- `GET /api/workspaces/{slug}/` — Get a workspace (member-only)
+- `GET /api/workspaces/{slug}/members/` — List members (member-only)
+- `DELETE /api/workspaces/{slug}/members/{user_id}/` — Remove a member (owner-only)
+- `POST /api/workspaces/{slug}/invites/` — Invite by email (owner-only)
+- `GET /api/workspaces/{slug}/invites/` — List invites (member-only)
+- `POST /api/workspaces/{slug}/invites/{invite_id}/revoke` — Revoke an invite (owner-only)
+- `POST /api/workspaces/invites/{token}/accept` — Accept an invite
 
-### Workspace
-- `GET /api/workspace/` — List workspace sessions (filter: ?status=proposed, ?collection=id, ?limit=50)
-- `POST /api/workspace/start/{collection_id}/` — Start workspace (SSE stream)
-- `POST /api/workspace/analyze/{collection_id}/` — Run AI analysis to propose approach + eval
-- `GET /api/workspace/{session_id}/` — Get workspace state
-- `PATCH /api/workspace/{session_id}/edit/` — Edit skill draft
-- `POST /api/workspace/{session_id}/publish/` — Publish skill
-
-### Skills
-- `GET /api/skills/` — List skills
-- `GET /api/skills/{id}/` — Skill detail
-- `POST /api/skills/{id}/adapter/` — Generate runtime adapter
-
-### Evals
-- `GET /api/evals/{skill_id}/` — Eval suite detail
-- `POST /api/evals/{skill_id}/run/` — Run eval
-- `GET /api/evals/{skill_id}/history/` — Eval history
-- `POST /api/evals/{skill_id}/cases/` — Add eval case
-- `PATCH /api/evals/{skill_id}/cases/{case_id}/` — Edit / remove eval case
+### Issues (`apps/issues`)
+A `canopy.origin` record store — GitHub issue provenance / evidence capture (the issues ACE files as it runs).
+- `POST /api/issues/` — Upsert an origin record
+- `GET /api/issues/` — List origin records (paginated)
+- `GET /api/issues/{repo_slug}/{number}/` — Get an origin record
+- `DELETE /api/issues/{repo_slug}/{number}/` — Delete an origin record (cleanup)
 
 ### AI backend (`apps/common`)
 - `GET /api/ai/status/` — Current backend + auth state
@@ -220,15 +212,41 @@ An `Agent` (e.g. "Echo") is a first-class entity — distinct from a code Projec
 - `GET /api/agents/{slug}/commands` — List commands (the agent reads `?status=pending`; each carries `result_note` + `applied_at`)
 - `POST /api/agents/{slug}/commands/{cmd_id}/apply` — Mark a command applied (the agent calls this after acting)
 
-### Sessions (`apps/sessions`) — shared Claude Code transcripts
-Token-based session sharing (the `/canopy:share-session` flow). Note this is a **separate** token model from the tokenless walkthrough/review visibility above — shared sessions carry a rotatable `share_token`.
+### Agent runs (`apps/agent_runs`, mounted under `/api/agents`)
+The unified agent **run lifecycle** (run → step → artifact → verdict/QA → decision → gate → fork) as a storage-agnostic read model behind a `RunStore` Protocol (DB adapter persists rows; Drive adapter reads ACE's YAML). The keystone of the framework harvest — see `docs/superpowers/specs/2026-06-29-unified-agent-run-lifecycle-design.md`. Backed by the installable Django-free `canopy_runs` library.
+- `GET /api/agents/{slug}/runs/` — List an agent's runs (paginated)
+- `POST /api/agents/{slug}/runs/` — Create a run
+- `GET /api/agents/{slug}/runs/{run_id}/` — Full run read model
+- `GET /api/agents/{slug}/runs/{run_id}/steps/` — A run's steps
+- `POST /api/agents/{slug}/runs/{run_id}/steps/{step_key}/gate` — Record a gate decision on a step
+- `POST /api/agents/{slug}/runs/{run_id}/steps/{step_key}/verdict` — Record a step verdict (QA/eval aggregate)
+- `POST /api/agents/{slug}/runs/{run_id}/fork` — Fork a run at a step boundary
+
+### Sessions (`apps/session_sharing`) — shared Claude Code transcripts
+Token-based session sharing (the `/canopy:share-session` flow); the app was renamed from `sessions` to `session_sharing` to free the `sessions` name for the live-session harness. Routers still mount at `/api/sessions` + `/api/share`. This is a **separate** token model from the tokenless walkthrough/review visibility above — shared sessions (and arcs) carry a rotatable `share_token`.
 - `POST /api/sessions/upload` — Upload a Claude `.jsonl` transcript (multipart)
 - `GET /api/sessions/` — List my shared sessions
 - `GET /api/sessions/{slug}` — Get one session (owner)
 - `PATCH /api/sessions/{slug}` — Update a session (owner)
 - `DELETE /api/sessions/{slug}` — Delete a session (owner)
 - `POST /api/sessions/{slug}/rotate-token` — Rotate the share token (owner) — invalidates the old `/share/<token>` link
+
+**Arcs** — a multi-session "arc" groups several transcripts into one shareable build (the `/share` for a whole build):
+- `POST /api/sessions/arcs` — Create an arc
+- `GET /api/sessions/arcs` — List my arcs (filter: `?project=<slug>`)
+- `GET /api/sessions/arcs/{slug}` — Get one arc (owner)
+- `PATCH /api/sessions/arcs/{slug}` — Update an arc (owner)
+- `DELETE /api/sessions/arcs/{slug}` — Delete an arc (owner)
+- `POST /api/sessions/arcs/{slug}/rotate-token` — Rotate an arc's share token (owner)
+
 - `GET /api/share/{token}` — Public read-only view of a shared session (no login; `share_router` mounted at `/api/share`, drives `/share/:token`)
+
+### Timeline (`apps/timeline`)
+- `GET /api/timeline/` — Team activity timeline. Generic activity-log aggregation that reads other apps' events via a string registry (cursor-paginated; link-out only). See `docs/superpowers/specs/2026-06-19-team-activity-timeline-design.md`.
+
+### System (`apps/system`)
+- `GET /api/system/overview` — Capability catalog: the canopy plugin's skills/agents/commands, read live from the plugin.
+- `GET /api/system/{kind}/{name}` — Capability detail for one skill/agent/command. Drives the `/system` Workflows view.
 
 ### MCP (`apps/mcp`, mounted at `/api/mcp/`)
 Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config/asgi.py`. Auth is enforced inside the server via `MultiAuth` (per-user PAT `CanopyPATVerifier`, always on; interactive Google OAuth is an env-gated seam, `MCP_OAUTH_ENABLED`). Every tool call writes an `MCPAuditLog` row; mutating tools are rate-limited per user. Tools today: `list_insights` (read) + `clear_insights` (write). The legacy single-shared `CANOPY_MCP_BEARER` and the hand-rolled ASGI gate are gone. See `docs/architecture/mcp-surface.md`.
@@ -236,17 +254,22 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 ## Design Decisions
 
 - **API is Pydantic-first via Django Ninja**: every request/response is a Pydantic v2 model declared in `apps/<app>/schemas.py`. Routes live in `apps/<app>/api.py`, registered on the single `NinjaAPI` instance in `apps/api/api.py`. Errors are RFC 7807 `application/problem+json`. Frontend types are generated from the OpenAPI 3.1 schema by `openapi-typescript` into `frontend/src/api/generated.ts` and consumed via `openapi-fetch`. The `regen-openapi.yml` GitHub workflow auto-commits regenerated types on PRs touching `apps/**/api.py` or `apps/**/schemas.py`.
-- **Streaming endpoints stay on Django**: `POST /api/workspace/start/<id>/` returns `StreamingHttpResponse` directly from a Ninja handler (declared as `response=None`); the SSE event format is the contract. `GET /w/<uuid>/content` (the walkthrough viewer) stays as a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range support (for `<video>` scrubbing) doesn't fit the Ninja contract.
+- **Streaming endpoints stay on Django**: `GET /w/<uuid>/content` (the walkthrough viewer) is a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range support (for `<video>` scrubbing) doesn't fit the Ninja contract. It is the only `StreamingHttpResponse` left now that the co-authoring workspace SSE engine has been retired.
 - **Bare Django views**: `/api/csrf/`, `/api/debug/mint-session/`, `/auth/cli/authorize/`, and `/health/` (the last is also Ninja-mountable via `public_router`) — they manipulate sessions/cookies/redirects directly. Matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
 - **MCP is in-process FastMCP, not OpenAPI-derived**: `apps/mcp/` mounts a FastMCP 3.x Streamable-HTTP server at `/api/mcp/` whose tools are explicit Python functions calling the same service layer as the REST views (no HTTP self-loopback). Auth is per-user PAT inside the server (fail-closed), every call is audited, and writes are rate-limited.
 - **Visibility is tokenless Public/Private:** `visibility=link` means "anyone with the URL" (the UUID is the only secret) for walkthroughs + reviews; `private` is Dimagi-OAuth-gated and 404s to anonymous. Walkthrough content/detail and review *read* are public when `link`; review *submit* and all mutations require auth. The login middleware allowlists the `/w/` shell + walkthrough detail GET (alongside the review-link allowlist). The narrative-level toggle (`PATCH /api/ddd/narratives/{slug}/visibility/`) cascades to every artifact + review under a narrative; the dormant `share_token` column is retained for reversibility. See `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md`.
-- **Shared Workbench shell:** the DDD and Agent workspaces share a two-pane (left rail + scrolling main) shell extracted to `frontend/packages/workbench` (`@canopy/workbench`, published to GitHub Packages). Surfaces consume it instead of re-implementing chrome, and use semantic design tokens (`bg-card` / `border-border` / `text-foreground` / `text-muted-foreground` / `text-primary`) — not raw `stone-*`/`orange-*` palette literals. See `docs/superpowers/specs/2026-06-17-shared-workbench-package-design.md`.
+- **Shared frontend kit (`canopy-ui`):** the DDD and Agent workspaces share a two-pane (left rail + scrolling main) shell plus the broader design-system primitives, all extracted to `frontend/packages/canopy-ui` (imported as `canopy-ui` / `canopy-ui/ui` / `canopy-ui/lib`; published to public npm as `canopy-ui`, also mirrored as `@marshellis/canopy-ui`). Started life as `@canopy/workbench` (just the Workbench shell) and was expanded + renamed in 0.2.0→0.3.0. Surfaces consume it instead of re-implementing chrome, and use semantic design tokens (`bg-card` / `border-border` / `text-foreground` / `text-muted-foreground` / `text-primary`) — not raw `stone-*`/`orange-*` palette literals. See `docs/superpowers/specs/2026-06-17-shared-workbench-package-design.md`.
+- **Light + dark themes via one token set.** The app ships **both** themes off the same semantic tokens in `frontend/src/index.css`: `:root` = Warm Earth **light**, `.dark` = Warm Earth **dark** (the default). `index.html` applies `.dark` before first paint (default dark; an explicit `light` choice in `localStorage` removes it — no flash), and `src/theme/ThemeProvider.tsx` (`useTheme` / `<ThemeToggle/>`, mounted in the `AppLayout` header) toggles + persists the class on `<html>`. Because components only reference token names (never `dark:` variants), both themes "just work." The light palette deepens brand/status hues (~600) for contrast on white.
+- **Design tokens are the single source of truth (no raw palette literals).** The whole authenticated app styles off the semantic tokens (`@theme inline` maps `--color-*` → the per-theme vars). Do **not** introduce raw Tailwind palette literals (`stone-*`, `orange-*`, `zinc-*`, `slate-*`, `red-*`, `amber-*`, `emerald-*`, `sky-*`, `violet-*`); use the tokens:
+  - **Surfaces:** `bg-background` (page), `bg-card` (cards/popovers), `bg-muted` (fills/hover), `bg-input` (elevated controls). Borders: `border-border` (default), `border-input` (elevated/controls). Brand: `bg-primary` / `text-primary` / `border-primary` (+ `hover:bg-primary/90` for the button-hover darken).
+  - **Text emphasis ladder** (brightest → dimmest): `text-foreground` (primary/headings) → `text-foreground-secondary` (secondary/body) → `text-muted-foreground` (meta/captions) → `text-foreground-subtle` (faint).
+  - **Status / categorical accents:** `success` (emerald — opportunity), `warning` (amber — ship-gap), `info` (sky — alignment), `special` (violet — pattern), `destructive` (red — errors). Each has a `-foreground` for solid fills; tinted badges use `bg-<token>/10 text-<token> border-<token>/30`.
+  - **Exception:** `/share/:token` (`SessionSharePage` + the `transcript/` components) is a deliberate **light-themed** public viewer mounted outside the app shell (`bg-white`); it intentionally uses neutral literals and is the one surface that does not consume the dark token set.
 - APP UI: dense, readable, tables not cards
-- Workspace flow: Ingest → AI proposes Approach + Eval → Review/Edit → Test → Publish
 - SSE streaming for AI responses (Scout pattern)
-- Overwrite-with-history versioning
-- **Auth:** Google OAuth via django-allauth (allowed-domain restricted via `AUTH_ALLOWED_EMAIL_DOMAIN` — comma-separated list, default `dimagi.com`). Personal Access Tokens (`apps/tokens/`) authenticate machine callers via `Authorization: Bearer <raw>` — `BearerTokenAuthMiddleware` resolves them upstream of `LoginRequiredMiddleware`. `/api/debug/mint-session/` lets an authenticated user mint a short-lived session cookie to hand to an AI assistant. Single-tenant in V1; multi-tenant scaffolding tracked in `TODOS.md`.
-- PostgreSQL on Cloud SQL (GCP `canopy-494811`)
+- **Auth:** Google OAuth via django-allauth (allowed-domain restricted via `AUTH_ALLOWED_EMAIL_DOMAIN` — comma-separated list, default `dimagi.com`; `dimagi-associate.com` is also allowed). Personal Access Tokens (`apps/tokens/`) authenticate machine callers via `Authorization: Bearer <raw>` — `BearerTokenAuthMiddleware` resolves them upstream of `LoginRequiredMiddleware`. `/api/debug/mint-session/` lets an authenticated user mint a short-lived session cookie to hand to an AI assistant.
+- **Multi-tenancy (scaffolding landed):** the `apps/workspaces` app provides `Workspace` + members (owner/editor/viewer) + email invites; `agents` and `agent_runs` carry a `workspace` FK (a default workspace is assigned when unspecified, so the change was non-breaking / Echo-safe). The product surface is still effectively single-tenant; full per-tenant scoping of the product apps is tracked in `TODOS.md`.
+- PostgreSQL on the shared labs RDS (`canopy_web` DB on `labs-jj-postgres`)
 - Dual AI backend lets users run either against an API key or their own Claude Code subscription
 
 ## Reference Docs
@@ -261,11 +284,15 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 - `docs/superpowers/specs/2026-06-03-ddd-narrative-run-versioning-design.md` — DDD narrative/version/run model design spec
 - `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md` — Tokenless Public/Private + narrative-level visibility design spec (shipped, PR #105)
 - `docs/superpowers/plans/2026-06-09-tokenless-narrative-visibility.md` — Tokenless visibility implementation plan (shipped, PR #105)
-- `docs/superpowers/specs/2026-06-17-shared-workbench-package-design.md` — `@canopy/workbench` shared Workbench shell design (shipped, PRs #123/#124)
-- `docs/superpowers/plans/2026-06-17-shared-workbench-package.md` — `@canopy/workbench` extraction + migration plan (shipped, PRs #123/#124)
+- `docs/superpowers/specs/2026-06-17-shared-workbench-package-design.md` — shared Workbench shell design (shipped as `@canopy/workbench`, since expanded + renamed to `canopy-ui`; PRs #123/#124)
+- `docs/superpowers/plans/2026-06-17-shared-workbench-package.md` — Workbench extraction + migration plan (shipped, PRs #123/#124)
+- `docs/superpowers/specs/2026-06-19-team-activity-timeline-design.md` — `/timeline` team activity feed design (shipped, PR #138)
+- `docs/superpowers/specs/2026-06-24-canopy-framework-harvest-design.md` — Canopy-as-the-framework harvest strategy (umbrella for Waves 0–4: the framework/product boundary + what moves out of ACE)
+- `docs/superpowers/specs/2026-06-28-shared-agent-client-design.md` + `docs/superpowers/plans/2026-06-28-shared-agent-client.md` — Shared agent-client, the framework's first harvested piece
+- `docs/superpowers/specs/2026-06-29-unified-agent-run-lifecycle-design.md` — Unified agent⊕run lifecycle (Wave 1 keystone; the `apps/agent_runs` + `canopy_runs` library, shipped PR #154)
+- `docs/superpowers/specs/2026-06-29-wave2-3-harvest-execution.md` — Wave 2/3 execution spec (run-step verdicts + multi-tenant workspaces; shipped PRs #158–#162)
 - `docs/designs/canopy-web-design.md` — Product design + glossary (open claw, skill, collection, eval suite, workspace session)
 - `docs/designs/ceo-plan-conversation-to-agent.md` — CEO review, scope decisions, deferred work
-- `docs/walkthroughs/canopy-web-demo.yaml` — Walkthrough QA spec (5 skills, varied scores)
 - `docs/walkthroughs/project-workbench.yaml` — Project workbench walkthrough spec
 - `docs/case-studies/workbench-self-improvement.md` — Self-improvement case study
 - `docs/personas/jonathan.md` — Primary user persona

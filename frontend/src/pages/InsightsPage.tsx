@@ -31,13 +31,13 @@ function InsightCard({ insight, onDismiss }: { insight: Insight; onDismiss: (id:
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: -40, transition: { duration: 0.2 } }}
       transition={{ type: 'spring', stiffness: 400, damping: 35 }}
-      className={`bg-stone-900 border rounded-lg p-4 ${style ? style.border : 'border-stone-800'}`}
+      className={`bg-card border rounded-lg p-4 ${style ? style.border : 'border-border'}`}
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <Link
             to={`/?expand=${encodeURIComponent(insight.project_slug)}`}
-            className="text-xs font-medium text-stone-400 hover:text-orange-400 transition-colors shrink-0"
+            className="text-xs font-medium text-foreground-secondary hover:text-primary transition-colors shrink-0"
             title={`Open ${insight.project_name} on the dashboard`}
           >
             {insight.project_name}
@@ -46,14 +46,14 @@ function InsightCard({ insight, onDismiss }: { insight: Insight; onDismiss: (id:
         </div>
         <button
           onClick={() => onDismiss(insight.id)}
-          className="text-stone-700 hover:text-stone-400 text-sm shrink-0 leading-none"
+          className="text-foreground-subtle hover:text-foreground-secondary text-sm shrink-0 leading-none"
           aria-label="Dismiss"
         >
           ✕
         </button>
       </div>
-      <p className="text-sm text-stone-300 leading-relaxed mb-2">{body}</p>
-      <div className="flex items-center gap-2 text-[10px] text-stone-600">
+      <p className="text-sm text-foreground-secondary leading-relaxed mb-2">{body}</p>
+      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
         <span>{insight.source}</span>
         <span>·</span>
         <span>{new Date(insight.created_at).toLocaleDateString()}</span>
@@ -65,20 +65,20 @@ function InsightCard({ insight, onDismiss }: { insight: Insight; onDismiss: (id:
 function SkeletonCard({ delay }: { delay: number }) {
   return (
     <div
-      className="bg-stone-900 border border-stone-800 rounded-lg p-4 animate-pulse"
+      className="bg-card border border-border rounded-lg p-4 animate-pulse"
       style={{ animationDelay: `${delay}ms` }}
     >
       <div className="flex items-center gap-3 mb-3">
-        <div className="h-3 bg-stone-800 rounded w-20" />
-        <div className="h-4 bg-stone-800 rounded w-16" />
+        <div className="h-3 bg-muted rounded w-20" />
+        <div className="h-4 bg-muted rounded w-16" />
       </div>
       <div className="space-y-2">
-        <div className="h-3 bg-stone-800/70 rounded w-full" />
-        <div className="h-3 bg-stone-800/70 rounded w-4/5" />
+        <div className="h-3 bg-muted/70 rounded w-full" />
+        <div className="h-3 bg-muted/70 rounded w-4/5" />
       </div>
       <div className="flex items-center gap-2 mt-3">
-        <div className="h-2 bg-stone-800/50 rounded w-24" />
-        <div className="h-2 bg-stone-800/50 rounded w-16" />
+        <div className="h-2 bg-muted/50 rounded w-24" />
+        <div className="h-2 bg-muted/50 rounded w-16" />
       </div>
     </div>
   )
@@ -185,19 +185,19 @@ export function InsightsPage() {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold text-stone-100">Insights</h1>
+        <h1 className="text-lg font-semibold text-foreground">Insights</h1>
         <div className="flex items-center gap-2">
           {!loading && !error && insights.length > 0 && (
             <button
               onClick={handleClear}
               disabled={clearing}
-              className="text-xs font-medium text-stone-400 hover:text-red-400 border border-stone-800 hover:border-red-400/40 bg-stone-900 px-2.5 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="text-xs font-medium text-foreground-secondary hover:text-destructive border border-border hover:border-destructive/40 bg-card px-2.5 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="Clear the insights currently in view"
             >
               {clearing ? 'Clearing…' : 'Clear'}
             </button>
           )}
-          <span className="text-xs text-stone-600 bg-stone-900 px-2.5 py-1 rounded">
+          <span className="text-xs text-muted-foreground bg-card px-2.5 py-1 rounded">
             {loading ? 'loading...' : `${insights.length} insights`}
           </span>
         </div>
@@ -205,7 +205,7 @@ export function InsightsPage() {
 
       {/* Clear confirmation notice */}
       {notice && (
-        <div className="mb-3 text-xs text-stone-400 bg-stone-900 border border-stone-800 px-3 py-2 rounded">
+        <div className="mb-3 text-xs text-foreground-secondary bg-card border border-border px-3 py-2 rounded">
           {notice}
         </div>
       )}
@@ -213,12 +213,12 @@ export function InsightsPage() {
       {/* Active project filter chip */}
       {projectFilter && (
         <div className="mb-3 flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-stone-300 bg-stone-900 border border-orange-400/30 px-2.5 py-1 rounded">
-            <span className="text-stone-500">Project:</span>
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-foreground-secondary bg-card border border-primary/30 px-2.5 py-1 rounded">
+            <span className="text-muted-foreground">Project:</span>
             <span className="font-medium">{projectFilterLabel}</span>
             <button
               onClick={clearProjectFilter}
-              className="text-stone-600 hover:text-stone-300 leading-none ml-0.5"
+              className="text-muted-foreground hover:text-foreground-secondary leading-none ml-0.5"
               aria-label="Clear project filter"
               title="Clear project filter"
             >
@@ -229,15 +229,15 @@ export function InsightsPage() {
       )}
 
       {/* Category filter tabs */}
-      <div className="flex gap-1 mb-6 bg-stone-900 rounded-lg p-1 overflow-x-auto">
+      <div className="flex gap-1 mb-6 bg-card rounded-lg p-1 overflow-x-auto">
         {CATEGORIES.map((cat) => (
           <button
             key={cat.key}
             onClick={() => setActiveFilter(cat.key)}
             className={`text-xs font-medium px-3 py-1.5 rounded transition-colors whitespace-nowrap ${
               activeFilter === cat.key
-                ? 'text-stone-100 bg-stone-800'
-                : 'text-stone-500 hover:text-stone-300 hover:bg-stone-800/50'
+                ? 'text-foreground bg-muted'
+                : 'text-muted-foreground hover:text-foreground-secondary hover:bg-muted/50'
             }`}
           >
             {cat.label}
@@ -247,7 +247,7 @@ export function InsightsPage() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center justify-center h-48 text-red-400 text-sm">{error}</div>
+        <div className="flex items-center justify-center h-48 text-destructive text-sm">{error}</div>
       )}
 
       {/* Loading skeleton */}
@@ -271,9 +271,9 @@ export function InsightsPage() {
           {/* Empty state */}
           {insights.length === 0 && (
             <div className="flex flex-col items-center justify-center h-48 text-center">
-              <p className="text-sm text-stone-500 mb-1">{emptyMessage}</p>
-              <p className="text-xs text-stone-700">
-                Run <code className="text-orange-400/70 bg-stone-900 px-1.5 py-0.5 rounded">canopy:portfolio-review</code> to generate insights.
+              <p className="text-sm text-muted-foreground mb-1">{emptyMessage}</p>
+              <p className="text-xs text-foreground-subtle">
+                Run <code className="text-primary/70 bg-card px-1.5 py-0.5 rounded">canopy:portfolio-review</code> to generate insights.
               </p>
             </div>
           )}

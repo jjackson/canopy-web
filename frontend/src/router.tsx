@@ -1,20 +1,16 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout/AppLayout'
-import { WorkspacePage } from './pages/WorkspacePage'
-import { WorkspacesPage } from './pages/WorkspacesPage'
-import { DiscoveryPage } from './pages/DiscoveryPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
 import { ShareoutsPage } from './pages/ShareoutsPage'
-import { NewCollectionPage } from './pages/NewCollectionPage'
-import { SkillDetailPage } from './pages/SkillDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { GuidePage } from './pages/GuidePage'
 import { WalkthroughsPage } from './pages/WalkthroughsPage'
 import { WalkthroughViewerPage } from './pages/WalkthroughViewerPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { DddPage } from './pages/DddPage'
+import { TimelinePage } from './pages/TimelinePage'
+import { SystemPage } from './pages/SystemPage'
 import { SessionsPage } from './pages/SessionsPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { AgentWorkspacePage } from './pages/AgentWorkspacePage'
@@ -47,7 +43,7 @@ function LazySection({ children }: { children: React.ReactNode }) {
   return (
     <Suspense
       fallback={
-        <div className="max-w-4xl px-6 py-8 text-[13px] text-stone-600">Loading…</div>
+        <div className="max-w-4xl px-6 py-8 text-[13px] text-muted-foreground">Loading…</div>
       }
     >
       {children}
@@ -60,10 +56,11 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { path: '/', element: <ProjectsPage /> },
+      { path: '/timeline', element: <TimelinePage /> },
+      { path: '/system', element: <SystemPage /> },
       { path: '/insights', element: <InsightsPage /> },
       { path: '/shareouts', element: <ShareoutsPage /> },
       { path: '/shareouts/:period', element: <ShareoutsPage /> },
-      { path: '/skills', element: <DiscoveryPage /> },
       { path: '/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:id', element: <WalkthroughViewerPage /> },
       { path: '/sessions', element: <SessionsPage /> },
@@ -87,15 +84,14 @@ export const router = createBrowserRouter([
       { path: '/ddd-plans', element: <Navigate to="/ddd" replace /> },
       { path: '/reviews', element: <Navigate to="/ddd" replace /> },
       { path: '/review/:id', element: <ReviewPage /> },
-      { path: '/new', element: <NewCollectionPage /> },
-      { path: '/workspaces', element: <WorkspacesPage /> },
-      { path: '/workspace/:sessionId', element: <WorkspacePage /> },
-      { path: '/skills/:skillId', element: <SkillDetailPage /> },
-      { path: '/guide', element: <GuidePage /> },
       { path: '/settings', element: <SettingsPage /> },
     ],
   },
   // Public, chrome-less route — mounted OUTSIDE AppLayout so anonymous
   // visitors aren't bounced to login by the app shell's authed calls.
   { path: '/share/:token', element: <SessionSharePage /> },
-])
+], {
+  // "/" at root, "/canopy" as a labs tenant — keeps every route + <Link> under
+  // the deployment's path prefix (from Vite's import.meta.env.BASE_URL).
+  basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/',
+})

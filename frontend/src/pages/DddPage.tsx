@@ -21,7 +21,7 @@ export function DddPage() {
       ) : narrative ? (
         <NarrativeLanding key={narrative} slug={narrative} />
       ) : (
-        <div className="flex h-full items-center justify-center text-sm text-stone-600">
+        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
           Select a narrative to see its runs.
         </div>
       )}

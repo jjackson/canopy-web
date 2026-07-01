@@ -104,7 +104,7 @@ function EchoWorking(): JSX.Element {
 // The "ball is in a human's court" affordance: an amber waiting chip.
 function WaitingChip({ who }: { who: string }): JSX.Element {
   return (
-    <span className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-300">
+    <span className="inline-flex items-center gap-1 rounded border border-warning/30 bg-warning/15 px-1.5 py-0.5 text-[11px] font-medium text-warning">
       Waiting on {who}
     </span>
   )
@@ -452,13 +452,13 @@ function SectionHeader({
   return (
     <div
       className={`mb-2 flex items-center gap-2 border-b pb-1.5 ${
-        accent ? 'border-amber-500/30' : 'border-border'
+        accent ? 'border-warning/30' : 'border-border'
       }`}
     >
       {dotClass && <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />}
       <span
         className={`text-[11px] font-bold uppercase tracking-[0.06em] ${
-          accent ? 'text-amber-300' : 'text-foreground'
+          accent ? 'text-warning' : 'text-foreground'
         }`}
       >
         {label}
@@ -641,7 +641,7 @@ export function TasksBoard({
       )}
 
       {waitingHuman.length > 0 && (
-        <section className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3">
+        <section className="rounded-xl border border-warning/25 bg-warning/5 p-3">
           <SectionHeader label="Waiting on a human" count={waitingHuman.length} accent />
           <CardGrid tasks={waitingHuman} onChanged={onChanged} lastByTask={lastByTask} />
         </section>

@@ -133,28 +133,26 @@ def _auth_smoke(request: HttpRequest) -> dict:
     return {"email": getattr(request.user, "email", "")}
 
 
-from apps.collections.api import router as collections_router  # noqa: E402
 from apps.common.api import ai_router, common_router, public_router  # noqa: E402
-from apps.evals.api import router as evals_router  # noqa: E402
 from apps.projects.api import insights_router  # noqa: E402
 from apps.projects.api import router as projects_router  # noqa: E402
-from apps.skills.api import router as skills_router  # noqa: E402
+from apps.issues.api import router as issues_router  # noqa: E402
 from apps.tokens.api import router as tokens_router  # noqa: E402
 from apps.reviews.api import router as reviews_router  # noqa: E402
 from apps.runs.api import router as runs_router  # noqa: E402
 from apps.walkthroughs.api import router as walkthroughs_router  # noqa: E402
-from apps.workspace.api import router as workspace_router  # noqa: E402
 from apps.shareouts.api import router as shareouts_router  # noqa: E402
-from apps.sessions.api import router as sessions_router  # noqa: E402
-from apps.sessions.api import share_router as session_share_router  # noqa: E402
+from apps.session_sharing.api import router as sessions_router  # noqa: E402
+from apps.session_sharing.api import share_router as session_share_router  # noqa: E402
 from apps.agents.api import router as agents_router  # noqa: E402
+from apps.agent_runs.api import router as agent_runs_router  # noqa: E402
+from apps.workspaces.api import router as workspaces_router  # noqa: E402
+from apps.timeline.api import router as timeline_router  # noqa: E402
+from apps.system.api import router as system_router  # noqa: E402
 
 api.add_router("/projects", projects_router)
+api.add_router("/issues", issues_router)
 api.add_router("/insights", insights_router)
-api.add_router("/collections", collections_router)
-api.add_router("/skills", skills_router)
-api.add_router("/evals", evals_router)
-api.add_router("/workspace", workspace_router)
 api.add_router("/ai", ai_router)
 api.add_router("", common_router)
 api.add_router("", public_router)
@@ -165,4 +163,8 @@ api.add_router("/ddd", runs_router)
 api.add_router("/shareouts", shareouts_router)
 api.add_router("/sessions", sessions_router)
 api.add_router("/agents", agents_router)
+api.add_router("/agents", agent_runs_router)  # unified run lifecycle under the agents namespace
+api.add_router("/workspaces", workspaces_router)
+api.add_router("/timeline", timeline_router)
+api.add_router("/system", system_router)
 api.add_router("/share", session_share_router)

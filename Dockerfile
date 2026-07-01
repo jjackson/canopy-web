@@ -4,7 +4,16 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+# Path prefix for the deployment (e.g. /canopy/ as a labs tenant). Defaults to
+# "/" (root / GCP). Drives Vite base → import.meta.env.BASE_URL.
+ARG VITE_BASE_PATH=/
+# Django CSRF cookie name. Path-scoped per tenant on the shared labs host
+# (csrftoken_canopy for /canopy) so writes send the right token; defaults to
+# Django's "csrftoken" for the root deployment.
+ARG VITE_CSRF_COOKIE_NAME=csrftoken
+RUN VITE_BASE_PATH="$VITE_BASE_PATH" \
+    VITE_CSRF_COOKIE_NAME="$VITE_CSRF_COOKIE_NAME" \
+    npm run build
 
 
 # ─── Stage 2: Python runtime ─────────────────────────────────────────
@@ -21,11 +30,19 @@ RUN npm install -g @anthropic-ai/claude-code
 
 WORKDIR /app
 
-# Install Python deps first for better layer caching
-COPY pyproject.toml ./
-RUN pip install .
+# Install Python deps first for better layer caching. canopy-web depends on the
+# in-repo `canopy-runs` package (a uv path source — see [tool.uv.sources]), so
+# copy it into the context and install via uv (which resolves path sources);
+# plain `pip install .` can't find canopy-runs on PyPI.
+COPY pyproject.toml uv.lock ./
+COPY packages/ ./packages/
+RUN pip install uv && uv pip install --system .
 
-# Application code
+# Application code. This includes ./canopy when the deploy step has cloned the
+# (private) canopy plugin into the build context — see deploy.sh. apps.system
+# reads it at /app/canopy/plugins/canopy to render the /system catalog;
+# settings' _resolve_canopy_plugin_path() locates it. When absent (local builds,
+# missing token), the catalog degrades to an empty state with a warning.
 COPY . .
 
 # Built SPA from stage 1

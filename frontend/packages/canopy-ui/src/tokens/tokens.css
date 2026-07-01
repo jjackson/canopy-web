@@ -1,0 +1,105 @@
+/**
+ * canopy-ui — DEFAULT token VALUES (the palette baseline).
+ *
+ * These are the default values for the CSS-variable names declared by the
+ * preset (preset.css). They are a complete, working "Warm Earth" palette so a
+ * consuming app renders correctly out of the box. Each app is expected to
+ * OVERRIDE these in its own globals (define `:root` / `.dark` AFTER importing
+ * this file); identical var names mean only the values shift per app.
+ *
+ * The app defaults to `.dark` (apps apply the `.dark` class pre-render); the
+ * `:root` light set is the opt-in companion. App-specific concerns (font face,
+ * custom animations) are NOT defined here — they live in each app's globals.
+ */
+:root {
+    /* Warm Earth LIGHT — the opt-in companion. */
+    --background: oklch(0.985 0.002 106.42);     /* warm off-white (~stone-50) */
+    --foreground: oklch(0.216 0.006 56.04);      /* ~stone-900 */
+    --card: oklch(1 0 0);                          /* white */
+    --card-foreground: oklch(0.216 0.006 56.04);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.216 0.006 56.04);
+    --primary: oklch(0.646 0.222 41.12);          /* ~orange-600 (readable on white) */
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.970 0.001 106.42);       /* ~stone-100 */
+    --secondary-foreground: oklch(0.216 0.006 56.04);
+    --muted: oklch(0.970 0.001 106.42);           /* ~stone-100 */
+    --muted-foreground: oklch(0.553 0.013 58.07); /* ~stone-500 */
+    --foreground-secondary: oklch(0.374 0.01 67.56); /* ~stone-700 — secondary text */
+    --foreground-subtle: oklch(0.709 0.01 56.26);    /* ~stone-400 — faint text */
+    --accent: oklch(0.970 0.001 106.42);
+    --accent-foreground: oklch(0.216 0.006 56.04);
+    --destructive: oklch(0.577 0.245 27.325);     /* ~red-600 */
+    --destructive-foreground: oklch(1 0 0);
+    --success: oklch(0.596 0.145 163.22);         /* ~emerald-600 */
+    --success-foreground: oklch(1 0 0);
+    --warning: oklch(0.666 0.179 58.32);          /* ~amber-600 */
+    --warning-foreground: oklch(1 0 0);
+    --info: oklch(0.588 0.158 241.97);            /* ~sky-600 */
+    --info-foreground: oklch(1 0 0);
+    --special: oklch(0.541 0.281 293.0);          /* ~violet-600 */
+    --special-foreground: oklch(1 0 0);
+    --border: oklch(0.869 0.005 56.37);           /* ~stone-200 */
+    --input: oklch(0.869 0.005 56.37);            /* ~stone-200 */
+    --ring: oklch(0.646 0.222 41.12 / 0.4);       /* orange-600/40 */
+    --chart-1: oklch(0.646 0.222 41.12);
+    --chart-2: oklch(0.553 0.013 58.07);
+    --chart-3: oklch(0.709 0.01 56.26);
+    --chart-4: oklch(0.809 0.005 56.0);
+    --chart-5: oklch(0.869 0.005 56.37);
+    --radius: 0.625rem;                            /* theme-agnostic; inherited by .dark */
+    --sidebar: oklch(0.985 0.002 106.42);
+    --sidebar-foreground: oklch(0.216 0.006 56.04);
+    --sidebar-primary: oklch(0.646 0.222 41.12);
+    --sidebar-primary-foreground: oklch(1 0 0);
+    --sidebar-accent: oklch(0.970 0.001 106.42);
+    --sidebar-accent-foreground: oklch(0.216 0.006 56.04);
+    --sidebar-border: oklch(0.869 0.005 56.37);
+    --sidebar-ring: oklch(0.646 0.222 41.12 / 0.4);
+}
+
+.dark {
+    /* Warm Earth DARK — the default. */
+    --background: oklch(0.147 0.004 49.25);      /* ~stone-950 */
+    --foreground: oklch(0.923 0.003 48.72);      /* ~stone-100 */
+    --card: oklch(0.216 0.006 56.04);            /* ~stone-900 */
+    --card-foreground: oklch(0.923 0.003 48.72);
+    --popover: oklch(0.216 0.006 56.04);
+    --popover-foreground: oklch(0.923 0.003 48.72);
+    --primary: oklch(0.757 0.161 53.57);         /* orange-400 */
+    --primary-foreground: oklch(0.147 0.004 49.25);
+    --secondary: oklch(0.268 0.007 34.3);        /* ~stone-800 */
+    --secondary-foreground: oklch(0.923 0.003 48.72);
+    --muted: oklch(0.268 0.007 34.3);            /* ~stone-800 */
+    --muted-foreground: oklch(0.553 0.013 58.07);/* ~stone-500 */
+    --foreground-secondary: oklch(0.809 0.005 56.0); /* ~stone-300 — secondary text */
+    --foreground-subtle: oklch(0.374 0.01 67.56);    /* ~stone-700 — faint text */
+    --accent: oklch(0.268 0.007 34.3);
+    --accent-foreground: oklch(0.923 0.003 48.72);
+    --destructive: oklch(0.704 0.191 22.216);    /* ~red-500 — errors / destructive */
+    --destructive-foreground: oklch(0.985 0 0);
+    --success: oklch(0.765 0.177 163.22);        /* ~emerald-400 — success / opportunity */
+    --success-foreground: oklch(0.147 0.004 49.25);
+    --warning: oklch(0.828 0.189 84.43);         /* ~amber-400 — warning / ship-gap */
+    --warning-foreground: oklch(0.147 0.004 49.25);
+    --info: oklch(0.746 0.16 232.66);            /* ~sky-400 — info / alignment */
+    --info-foreground: oklch(0.147 0.004 49.25);
+    --special: oklch(0.606 0.25 292.72);         /* ~violet-400 — pattern / highlight */
+    --special-foreground: oklch(0.985 0 0);
+    --border: oklch(0.268 0.007 34.3);           /* ~stone-800 */
+    --input: oklch(0.374 0.01 67.56);            /* ~stone-700 */
+    --ring: oklch(0.757 0.161 53.57 / 0.4);      /* orange-400/40 */
+    --chart-1: oklch(0.757 0.161 53.57);
+    --chart-2: oklch(0.553 0.013 58.07);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.147 0.004 49.25);
+    --sidebar-foreground: oklch(0.923 0.003 48.72);
+    --sidebar-primary: oklch(0.757 0.161 53.57);
+    --sidebar-primary-foreground: oklch(0.147 0.004 49.25);
+    --sidebar-accent: oklch(0.216 0.006 56.04);
+    --sidebar-accent-foreground: oklch(0.923 0.003 48.72);
+    --sidebar-border: oklch(0.268 0.007 34.3);
+    --sidebar-ring: oklch(0.757 0.161 53.57 / 0.4);
+}

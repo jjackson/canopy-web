@@ -13,8 +13,9 @@ const AuthContext = createContext<AuthState>({ status: 'loading', user: null })
 // and reviews. These are tokenless — the UUID in the URL is the only secret, and
 // the API self-enforces (private resources 404 to anonymous callers).
 function isPublicLinkRoute(): boolean {
-  const path = window.location.pathname
-  return path.startsWith('/review/') || path.startsWith('/w/')
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+  const path = window.location.pathname.slice(base.length)
+  return path.startsWith('/review/') || path.startsWith('/w/') || path.startsWith('/share/')
 }
 
 export function useAuth(): AuthState {
@@ -45,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   if (state.status === 'loading') {
     return (
-      <div className="min-h-screen bg-stone-950 text-stone-500 flex items-center justify-center text-sm">
+      <div className="min-h-screen bg-background text-muted-foreground flex items-center justify-center text-sm">
         Loading…
       </div>
     )
@@ -63,19 +64,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 function LoginPrompt() {
   const next = encodeURIComponent(window.location.pathname + window.location.search)
-  const loginHref = `/accounts/google/login/?next=${next}`
+  const loginHref = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/accounts/google/login/?next=${next}`
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-200 flex items-center justify-center px-6">
-      <div className="max-w-md w-full bg-stone-900 border border-stone-800 rounded-xl p-8 text-center">
-        <h1 className="text-2xl font-semibold text-stone-100 mb-2">
-          Canopy<span className="text-orange-400">.</span>
+    <div className="min-h-screen bg-background text-foreground-secondary flex items-center justify-center px-6">
+      <div className="max-w-md w-full bg-card border border-border rounded-xl p-8 text-center">
+        <h1 className="text-2xl font-semibold text-foreground mb-2">
+          Canopy<span className="text-primary">.</span>
         </h1>
-        <p className="text-sm text-stone-400 mb-6">
+        <p className="text-sm text-foreground-secondary mb-6">
           Sign in with your Dimagi Google account to continue.
         </p>
         <a
           href={loginHref}
-          className="inline-block w-full rounded-lg bg-orange-500 text-white font-medium py-2.5 hover:bg-orange-400 transition-colors"
+          className="inline-block w-full rounded-lg bg-primary text-white font-medium py-2.5 hover:bg-primary/90 transition-colors"
         >
           Sign in with Google
         </a>

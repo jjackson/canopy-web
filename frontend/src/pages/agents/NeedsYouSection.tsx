@@ -10,14 +10,14 @@ import {
 } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { TaskCard } from '@/components/TasksBoard'
-import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from 'canopy-ui'
 
 // The three bands, in rank order. Each is a distinct kind of human attention:
 // a decision to make (review), an answer Echo is blocked on (question), or an
 // FYI with no gate (notify).
 const BANDS: { type: NeedsYouType; label: string; blurb: string; dot: string }[] = [
   { type: 'review', label: 'Review', blurb: 'Suggestions awaiting your validate / decline', dot: 'bg-muted-foreground' },
-  { type: 'question', label: 'Question', blurb: 'Echo is blocked and needs a decision', dot: 'bg-amber-400' },
+  { type: 'question', label: 'Question', blurb: 'Echo is blocked and needs a decision', dot: 'bg-warning' },
   { type: 'notify', label: 'Notify', blurb: 'Recent work — no action needed', dot: 'bg-primary/50' },
 ]
 

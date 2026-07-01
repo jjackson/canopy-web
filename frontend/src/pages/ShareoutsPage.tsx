@@ -55,19 +55,19 @@ function Markdown({ children }: { children: string }) {
   return (
     <div
       className="
-        text-sm leading-relaxed text-stone-300 max-w-none
+        text-sm leading-relaxed text-foreground-secondary max-w-none
         [&_h2]:text-[11px] [&_h2]:font-bold [&_h2]:uppercase [&_h2]:tracking-[0.08em]
-        [&_h2]:text-orange-300 [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:pt-4
-        [&_h2]:border-t [&_h2]:border-stone-800
+        [&_h2]:text-primary [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:pt-4
+        [&_h2]:border-t [&_h2]:border-border
         [&_h2:first-child]:border-t-0 [&_h2:first-child]:pt-0 [&_h2:first-child]:mt-0
-        [&_h3]:text-stone-200 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1
-        [&_p]:text-stone-300 [&_p]:my-2
+        [&_h3]:text-foreground-secondary [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1
+        [&_p]:text-foreground-secondary [&_p]:my-2
         [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5
         [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1.5
-        [&_li]:text-stone-300 [&_li]:pl-1 [&_li]:marker:text-orange-400/70
-        [&_strong]:text-stone-100 [&_strong]:font-semibold
-        [&_a]:text-orange-400 [&_a]:no-underline [&_a:hover]:underline
-        [&_code]:text-orange-300 [&_code]:bg-stone-950 [&_code]:px-1 [&_code]:py-0.5
+        [&_li]:text-foreground-secondary [&_li]:pl-1 [&_li]:marker:text-primary/70
+        [&_strong]:text-foreground [&_strong]:font-semibold
+        [&_a]:text-primary [&_a]:no-underline [&_a:hover]:underline
+        [&_code]:text-primary [&_code]:bg-background [&_code]:px-1 [&_code]:py-0.5
         [&_code]:rounded [&_code]:text-[0.85em]
       "
     >
@@ -86,9 +86,9 @@ function LinkChips({ links }: { links: Shareout['links'] }) {
           href={l.url}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 text-[11px] font-medium text-stone-300 hover:text-orange-300 bg-stone-950/80 border border-stone-700/60 hover:border-orange-400/50 px-2 py-1 rounded-md transition-colors"
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground-secondary hover:text-primary bg-background/80 border border-input/60 hover:border-primary/50 px-2 py-1 rounded-md transition-colors"
         >
-          <span className="text-orange-400/70">↗</span>
+          <span className="text-primary/70">↗</span>
           {l.label}
         </a>
       ))}
@@ -97,24 +97,24 @@ function LinkChips({ links }: { links: Shareout['links'] }) {
 }
 
 const PR_STATE_STYLE: Record<string, string> = {
-  MERGED: 'text-violet-300 bg-violet-400/10 border-violet-400/30',
-  OPEN: 'text-green-300 bg-green-400/10 border-green-400/30',
-  CLOSED: 'text-stone-400 bg-stone-700/20 border-stone-600/40',
+  MERGED: 'text-special bg-special/10 border-special/30',
+  OPEN: 'text-success bg-success/10 border-success/30',
+  CLOSED: 'text-foreground-secondary bg-input/20 border-input/40',
 }
 
 function AllPRs({ prs }: { prs: Shareout['all_prs'] }) {
   if (!prs || prs.length === 0) return null
   return (
     <details className="mt-3 group">
-      <summary className="cursor-pointer select-none text-[11px] font-medium text-stone-400 hover:text-stone-200 list-none flex items-center gap-1.5">
-        <span className="transition-transform group-open:rotate-90 text-stone-600">▶</span>
+      <summary className="cursor-pointer select-none text-[11px] font-medium text-foreground-secondary hover:text-foreground-secondary list-none flex items-center gap-1.5">
+        <span className="transition-transform group-open:rotate-90 text-muted-foreground">▶</span>
         All {prs.length} PR{prs.length === 1 ? '' : 's'} this period
       </summary>
-      <ul className="mt-2 ml-1 space-y-1 border-l border-stone-800 pl-3">
+      <ul className="mt-2 ml-1 space-y-1 border-l border-border pl-3">
         {prs.map((pr, i) => (
           <li key={i} className="flex items-start gap-2 text-[12px]">
             <span
-              className={`shrink-0 mt-0.5 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${PR_STATE_STYLE[pr.state ?? ''] ?? 'text-stone-400 bg-stone-800/40 border-stone-700/50'}`}
+              className={`shrink-0 mt-0.5 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${PR_STATE_STYLE[pr.state ?? ''] ?? 'text-foreground-secondary bg-muted/40 border-input/50'}`}
             >
               {pr.state || '—'}
             </span>
@@ -122,9 +122,9 @@ function AllPRs({ prs }: { prs: Shareout['all_prs'] }) {
               href={pr.url}
               target="_blank"
               rel="noreferrer"
-              className="text-stone-400 hover:text-orange-300 leading-snug"
+              className="text-foreground-secondary hover:text-primary leading-snug"
             >
-              {pr.number != null && <span className="text-stone-600">#{pr.number} </span>}
+              {pr.number != null && <span className="text-muted-foreground">#{pr.number} </span>}
               {pr.title}
             </a>
           </li>
@@ -136,15 +136,15 @@ function AllPRs({ prs }: { prs: Shareout['all_prs'] }) {
 
 function RollupCard({ shareout }: { shareout: Shareout }) {
   return (
-    <div className="bg-gradient-to-b from-stone-900 to-stone-900/60 border border-orange-400/30 rounded-xl p-5 sm:p-6 shadow-lg shadow-black/20">
+    <div className="bg-gradient-to-b from-card to-card/60 border border-primary/30 rounded-xl p-5 sm:p-6 shadow-lg shadow-black/20">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-orange-300 bg-orange-400/10 border border-orange-400/20 px-2 py-0.5 rounded">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded">
           Roll-up
         </span>
       </div>
-      <h3 className="text-lg font-semibold text-stone-50 mb-2 leading-snug">{shareout.title}</h3>
+      <h3 className="text-lg font-semibold text-foreground mb-2 leading-snug">{shareout.title}</h3>
       {shareout.summary && (
-        <p className="text-sm text-stone-400 mb-3 leading-relaxed">{shareout.summary}</p>
+        <p className="text-sm text-foreground-secondary mb-3 leading-relaxed">{shareout.summary}</p>
       )}
       <Markdown>{shareout.content}</Markdown>
       <LinkChips links={shareout.links} />
@@ -154,26 +154,26 @@ function RollupCard({ shareout }: { shareout: Shareout }) {
 
 function ProjectCard({ shareout }: { shareout: Shareout }) {
   return (
-    <details className="group bg-stone-900/70 border border-stone-800 rounded-xl overflow-hidden open:border-stone-700 open:bg-stone-900 transition-colors">
-      <summary className="cursor-pointer select-none list-none p-4 sm:p-5 hover:bg-stone-800/30 transition-colors">
+    <details className="group bg-card/70 border border-border rounded-xl overflow-hidden open:border-input open:bg-card transition-colors">
+      <summary className="cursor-pointer select-none list-none p-4 sm:p-5 hover:bg-muted/30 transition-colors">
         <div className="flex items-start gap-3">
-          <span className="mt-1 shrink-0 text-stone-600 text-xs transition-transform group-open:rotate-90">▶</span>
+          <span className="mt-1 shrink-0 text-muted-foreground text-xs transition-transform group-open:rotate-90">▶</span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               {shareout.project_slug && (
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400 bg-stone-800 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-foreground-secondary bg-muted px-1.5 py-0.5 rounded">
                   {shareout.project_name ?? shareout.project_slug}
                 </span>
               )}
               {shareout.all_prs && shareout.all_prs.length > 0 && (
-                <span className="text-[10px] text-stone-600">
+                <span className="text-[10px] text-muted-foreground">
                   {shareout.all_prs.length} PR{shareout.all_prs.length === 1 ? '' : 's'}
                 </span>
               )}
             </div>
-            <h3 className="text-[15px] font-semibold text-stone-100 mt-1.5 leading-snug">{shareout.title}</h3>
+            <h3 className="text-[15px] font-semibold text-foreground mt-1.5 leading-snug">{shareout.title}</h3>
             {shareout.summary && (
-              <p className="text-[13px] text-stone-400 mt-1 leading-relaxed">{shareout.summary}</p>
+              <p className="text-[13px] text-foreground-secondary mt-1 leading-relaxed">{shareout.summary}</p>
             )}
           </div>
         </div>
@@ -185,7 +185,7 @@ function ProjectCard({ shareout }: { shareout: Shareout }) {
         {shareout.project_slug && (
           <Link
             to={`/?expand=${encodeURIComponent(shareout.project_slug)}`}
-            className="inline-block mt-3 text-[11px] text-stone-500 hover:text-orange-400 transition-colors"
+            className="inline-block mt-3 text-[11px] text-muted-foreground hover:text-primary transition-colors"
           >
             Open {shareout.project_name ?? shareout.project_slug} on the dashboard →
           </Link>
@@ -236,9 +236,9 @@ function PeriodRail({
   return (
     <nav
       aria-label="Shareouts by date"
-      className="md:w-56 md:shrink-0 md:sticky md:top-6 self-start"
+      className="min-w-0 md:w-56 md:shrink-0 md:sticky md:top-6 md:self-start"
     >
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-600 mb-2 px-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-2">
         By date
       </div>
       <ul className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible pb-1">
@@ -253,19 +253,19 @@ function PeriodRail({
                 aria-current={active ? 'true' : undefined}
                 className={`block rounded-lg border px-3 py-2 transition-colors ${
                   active
-                    ? 'bg-stone-800/70 border-orange-400/40 text-stone-100'
-                    : 'bg-transparent border-transparent text-stone-400 hover:bg-stone-900 hover:text-stone-200'
+                    ? 'bg-muted/70 border-primary/40 text-foreground'
+                    : 'bg-transparent border-transparent text-foreground-secondary hover:bg-card hover:text-foreground-secondary'
                 }`}
               >
                 <div className="flex items-center gap-2">
                   <span
-                    className={`h-3 w-[3px] rounded-full ${active ? 'bg-orange-400' : 'bg-transparent'}`}
+                    className={`h-3 w-[3px] rounded-full ${active ? 'bg-primary' : 'bg-transparent'}`}
                   />
                   <span className="text-[13px] font-medium whitespace-nowrap">
                     {formatRail(p.periodStart, p.periodEnd)}
                   </span>
                 </div>
-                <div className="text-[10px] text-stone-500 mt-0.5 ml-[11px] whitespace-nowrap">
+                <div className="text-[10px] text-muted-foreground mt-0.5 ml-[11px] whitespace-nowrap">
                   {p.projects.length} project{p.projects.length === 1 ? '' : 's'}
                   {prTotal(p) > 0 && ` · ${prTotal(p)} PRs`}
                 </div>
@@ -294,9 +294,9 @@ function CopyLinkButton({ period }: { period: ShareoutPeriod }) {
     <button
       onClick={copy}
       title={`Copy link to this shareout — ${url}`}
-      className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-medium text-stone-400 hover:text-orange-300 border border-stone-800 hover:border-orange-400/40 bg-stone-900 px-2.5 py-1 rounded-md transition-colors"
+      className="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-medium text-foreground-secondary hover:text-primary border border-border hover:border-primary/40 bg-card px-2.5 py-1 rounded-md transition-colors"
     >
-      <span className="text-orange-400/70">🔗</span>
+      <span className="text-primary/70">🔗</span>
       {copied ? 'Copied!' : 'Copy link'}
     </button>
   )
@@ -307,10 +307,10 @@ function PeriodMain({ period }: { period: ShareoutPeriod }) {
     <section className="min-w-0 flex-1 max-w-3xl">
       <div className="mb-5 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-stone-100">
+          <h2 className="text-lg font-semibold text-foreground">
             {formatPeriod(period.periodStart, period.periodEnd)}
           </h2>
-          <p className="text-[12px] text-stone-500 mt-0.5">
+          <p className="text-[12px] text-muted-foreground mt-0.5">
             {period.projects.length} project{period.projects.length === 1 ? '' : 's'}
             {prTotal(period) > 0 && ` · ${prTotal(period)} PRs`}
           </p>
@@ -366,14 +366,14 @@ export function ShareoutsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-stone-100">Shareouts</h1>
-        <p className="text-[13px] text-stone-500 mt-1">
+        <h1 className="text-xl font-semibold text-foreground">Shareouts</h1>
+        <p className="text-[13px] text-muted-foreground mt-1">
           What shipped, why it matters, and how to leverage it. Pick a date on the left; tap a project to read the briefing.
         </p>
       </div>
 
       {error && (
-        <div className="flex items-center justify-center h-48 text-red-400 text-sm">{error}</div>
+        <div className="flex items-center justify-center h-48 text-destructive text-sm">{error}</div>
       )}
 
       {loading && (
@@ -381,12 +381,12 @@ export function ShareoutsPage() {
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="bg-stone-900 border border-stone-800 rounded-xl p-5 animate-pulse"
+              className="bg-card border border-border rounded-xl p-5 animate-pulse"
               style={{ animationDelay: `${i * 80}ms` }}
             >
-              <div className="h-3 bg-stone-800 rounded w-24 mb-3" />
-              <div className="h-4 bg-stone-800 rounded w-2/3 mb-2" />
-              <div className="h-3 bg-stone-800/70 rounded w-full" />
+              <div className="h-3 bg-muted rounded w-24 mb-3" />
+              <div className="h-4 bg-muted rounded w-2/3 mb-2" />
+              <div className="h-3 bg-muted/70 rounded w-full" />
             </div>
           ))}
         </div>
@@ -401,10 +401,10 @@ export function ShareoutsPage() {
 
       {!loading && !error && periods.length === 0 && (
         <div className="flex flex-col items-center justify-center h-48 text-center">
-          <p className="text-sm text-stone-500 mb-1">No shareouts yet.</p>
-          <p className="text-xs text-stone-700">
+          <p className="text-sm text-muted-foreground mb-1">No shareouts yet.</p>
+          <p className="text-xs text-foreground-subtle">
             Run{' '}
-            <code className="text-orange-400/70 bg-stone-900 px-1.5 py-0.5 rounded">
+            <code className="text-primary/70 bg-card px-1.5 py-0.5 rounded">
               canopy:shareout
             </code>{' '}
             to publish a briefing.

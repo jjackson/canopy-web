@@ -279,30 +279,113 @@ def _task_item(item_type: str, task: AgentTask) -> dict:
     }
 
 
+def _run_ref_id(run_id: str) -> int:
+    """The NeedsYouItem.ref_id is an int; DB run pks are ints. Cast safely so a
+    non-int store id (a future Drive adapter) degrades to 0 rather than raising."""
+    try:
+        return int(run_id)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _run_inbox_items(agent: Agent) -> tuple[list[dict], list[dict], list[dict]]:
+    """Project an agent's RUN STATE onto the inbox bands (spec §5), reusing the
+    existing review/question/notify types — no new types invented:
+
+      - an OPEN gate awaiting a human decision -> a 'review'  (subtitle: gate step)
+      - a FAILED step / blocked gate           -> a 'question'
+      - a COMPLETED run                        -> a 'notify'
+
+    Runs are resolved through the store resolver (DbRunStore for canopy-hosted).
+    Lazy-imported here so apps.agents doesn't import apps.agent_runs at module
+    load (both are framework; agent_runs imports apps.agents.models — eager
+    import would cycle).
+
+    Returns (review, question, notify) bands so the caller can interleave them
+    with the task bands and keep the Review → Question → Notify ranking.
+    """
+    from apps.agent_runs.resolver import get_run_store
+
+    store = get_run_store(agent)
+    review: list[dict] = []
+    question: list[dict] = []
+    notify: list[dict] = []
+
+    for summary in store.list_runs(agent.slug):
+        run = store.get_run(agent.slug, summary.id)
+        ref_id = _run_ref_id(run.id)
+        label = (run.label or "").strip() or f"Run {run.id}"
+        url = (run.session_link or "").strip()
+
+        # Open gate → review (the human owes a decision before the run proceeds).
+        for gate in run.gates:
+            if gate.is_open:
+                review.append({
+                    "type": "review", "ref_kind": "run", "ref_id": ref_id,
+                    "title": label, "subtitle": f"Gate awaiting decision: {gate.step_key}",
+                    "url": url, "created_at": run.created_at,
+                })
+
+        # Failed step → question (the run is blocked; the agent needs help).
+        for step in run.steps:
+            if step.status == "failed":
+                detail = (step.error or "").strip()
+                subtitle = f"Step '{step.key}' failed"
+                if detail:
+                    subtitle = f"{subtitle}: {detail}"
+                question.append({
+                    "type": "question", "ref_kind": "run", "ref_id": ref_id,
+                    "title": label, "subtitle": subtitle,
+                    "url": url, "created_at": run.created_at,
+                })
+
+        # Completed run → notify (FYI, no gate).
+        if run.status == "complete":
+            notify.append({
+                "type": "notify", "ref_kind": "run", "ref_id": ref_id,
+                "title": label, "subtitle": "Run complete",
+                "url": url, "created_at": run.completed_at or run.created_at,
+            })
+
+    return review, question, notify
+
+
 def needs_you(agent: Agent, notify_limit: int = 5) -> dict:
     """The supervisor's "what does the agent need from me right now?" view.
 
-    Aggregates human-actionable items across the board, typed and ranked:
-      - review:   Suggested tasks awaiting validate/decline.
-      - question: In-progress tasks blocked on a human (Echo needs a decision).
-      - notify:   Recent FYI with no gate (a sync posted, a work product shipped).
+    Aggregates human-actionable items across the board AND the run lifecycle,
+    typed and ranked:
+      - review:   Suggested tasks awaiting validate/decline; runs with an OPEN
+                  gate awaiting a human decision.
+      - question: In-progress tasks blocked on a human; runs with a FAILED step.
+      - notify:   Recent FYI with no gate (a sync posted, a work product shipped,
+                  a run completed).
     Ranked Review → Question → Notify. `waiting_count` counts only the gated
     (review + question) items — the "N waiting on you" badge."""
-    items: list[dict] = []
+    review: list[dict] = []
+    question: list[dict] = []
 
     # Review — every suggestion needs a human to validate or decline it.
     for t in agent.tasks.filter(status=AgentTask.SUGGESTED).order_by("position", "id"):
-        items.append(_task_item("review", t))
+        review.append(_task_item("review", t))
 
     # Question — Echo is mid-task but the next step waits on a named person.
     for t in agent.tasks.filter(status=AgentTask.IN_PROGRESS).order_by("position", "id"):
         if _is_human(t.assigned):
-            items.append(_task_item("question", t))
+            question.append(_task_item("question", t))
 
+    # Run-state projection (spec §5): open gates → review, failed steps →
+    # question, completed runs → notify.
+    run_review, run_question, run_notify = _run_inbox_items(agent)
+    review.extend(run_review)
+    question.extend(run_question)
+
+    items: list[dict] = review + question
     waiting_count = len(items)  # review + question are the gated items
 
-    # Notify — recent FYI, newest first, capped. Merge syncs + work products.
-    notify: list[dict] = []
+    # Notify — recent FYI, newest first, capped. Merge syncs + work products +
+    # completed runs.
+    notify: list[dict] = list(run_notify)
     for s in agent.syncs.all()[:notify_limit]:
         notify.append({
             "type": "notify", "ref_kind": "sync", "ref_id": s.id,

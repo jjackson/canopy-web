@@ -1,0 +1,70 @@
+{
+  "_README": "Declarative description of each ACE run folder. Rebuild the IDENTICAL tree in a sibling FakeDriveClient by creating each file at `files[path]` with the given string body. Layout is the current ACE multi-run shape: ACE/<slug>/opp.yaml + ACE/<slug>/runs/<run_id>/...  Folders are implied by path separators; any path not ending a known file is a folder.",
+  "ace_root": "ACE",
+  "runs": {
+    "decisions_open_gate": {
+      "opp_files": {
+        "opp.yaml": "display_name: tb-decisions-gate\nslug: tb-decisions-gate\ncreated_at: '2026-06-01T00:00:00Z'\ncreated_by: ace@dimagi-ai.com\n"
+      },
+      "run_files": {
+        "app-summaries/deliver-app-summary.md": "nova_app_id: app-401\n5 forms",
+        "app-summaries/learn-app-summary.md": "nova_app_id: app-400\n7 modules",
+        "decisions.yaml": "decisions:\n- id: d1\n  phase: 1-design\n  skill: idea-to-pdd\n  question: Which program archetype best fits this idea?\n  ai-default: Verify-and-Pay\n  options:\n  - Verify-and-Pay\n  - Monitor-and-Refer\n  - Train-and-Certify\n  reasoning: Source describes piecework payment on verified delivery.\n  status: ai-default\n  source: idea.md\n  evidence_basis: stated\n- id: d2\n  phase: 2-commcare\n  skill: pdd-to-learn-app\n  question: How many training modules should the Learn app have?\n  ai-default: 5 modules\n  options:\n  - 3 modules\n  - 5 modules\n  - 7 modules\n  reasoning: Default cadence for a 6-week onboarding.\n  status: overridden\n  override: 7 modules\n  override_reasoning: Partner requires two extra compliance modules.\n  source: pdd.md\n  evidence_basis: inferred\n",
+        "gate-briefs/app-deploy.md": "# Gate brief app-deploy\n\n- [ ] Both apps released",
+        "gate-briefs/idea-to-pdd.md": "# Gate brief idea-to-pdd\n\n- [x] EM specified",
+        "idea.md": "TB contact-tracing pilot.",
+        "pdd.md": "# TB PDD\n\nVerify-and-Pay archetype.",
+        "run_state.yaml": "current_phase: commcare-setup\ncurrent_step: app-deploy\nmode: review\nstarted_at: '2026-06-04T11:15:00Z'\ninitiated_by: ace@dimagi-ai.com\nlast_actor: ace@dimagi-ai.com\nlast_actor_at: '2026-06-01T12:00:00Z'\nphases:\n  design-review:\n    status: complete\n    steps:\n      idea-to-pdd:\n        status: done\n      pdd-to-test-prompts:\n        status: done\n  commcare-setup:\n    status: running\n    steps:\n      pdd-to-learn-app:\n        status: done\n      pdd-to-deliver-app:\n        status: done\n      app-deploy:\n        status: running\n      app-test:\n        status: pending\n      training-materials:\n        status: pending\n  connect-setup:\n    status: pending\n    steps:\n      connect-program-setup:\n        status: pending\n      connect-opp-setup:\n        status: pending\n  ocs-setup:\n    status: pending\n    steps:\n      ocs-agent-setup:\n        status: pending\n      ocs-chatbot-qa:\n        status: pending\n      ocs-chatbot-eval:\n        status: pending\n  llo-management:\n    status: pending\n    steps:\n      llo-invite:\n        status: pending\n      llo-onboarding:\n        status: pending\n      llo-uat:\n        status: pending\n      llo-launch:\n        status: pending\n      timeline-monitor:\n        status: pending\n      flw-data-review:\n        status: pending\n  closeout:\n    status: pending\n    steps:\n      opp-closeout:\n        status: pending\n      llo-feedback:\n        status: pending\n      learnings-summary:\n        status: pending\n      cycle-grade:\n        status: pending\ngates:\n  idea-to-pdd:\n    decision: approved\n    decided_by: neal@dimagi.com\n    decided_at: '2026-06-04T11:20:00Z'\n    note: PDD passes EM stress test.\n  app-deploy:\n    decision: pending\n    decided_by: ''\n    decided_at: '2026-06-04T11:40:00Z'\n    note: ''\n",
+        "verdicts/idea-to-pdd-deep.yaml": "skill: idea-to-pdd\nverdict: pass\noverall_score: 90\nevaluated_at: 2026-06-04T11:18:00Z\n"
+      },
+      "run_id": "20260604-1115",
+      "slug": "tb-decisions-gate"
+    },
+    "judge_and_qa_failed": {
+      "opp_files": {
+        "opp.yaml": "display_name: cholera-qa-gate\nslug: cholera-qa-gate\ncreated_at: '2026-06-01T00:00:00Z'\ncreated_by: ace@dimagi-ai.com\n"
+      },
+      "run_files": {
+        "2-commcare/pdd-to-deliver-app-qa_result.yaml": "skill: pdd-to-deliver-app-qa\nverdict: fail\nran_at: '2026-06-03T13:55:00Z'\nstats:\n  checks_run: 6\n  checks_passed: 4\n  checks_failed: 2\nfailures:\n- check: form-count-matches-pdd\n  type: static\n  detail: PDD specifies 5 deliver forms; built app has 3.\n  auto_fix_hint: Regenerate deliver app with the 2 missing forms.\nauto_fix:\n  attempted: true\n  attempts: 2\n  succeeded: false\n",
+        "app-summaries/learn-app-summary.md": "nova_app_id: app-300\n7 modules",
+        "idea.md": "Cholera outbreak response.",
+        "pdd.md": "# Cholera PDD\n\nVerify-and-Pay archetype.",
+        "run_state.yaml": "current_phase: commcare-setup\ncurrent_step: pdd-to-deliver-app\nmode: review\nstarted_at: '2026-06-03T14:00:00Z'\ninitiated_by: ace@dimagi-ai.com\nlast_actor: ace@dimagi-ai.com\nlast_actor_at: '2026-06-01T12:00:00Z'\nphases:\n  design-review:\n    status: complete\n    steps:\n      idea-to-pdd:\n        status: done\n      pdd-to-test-prompts:\n        status: done\n  commcare-setup:\n    status: running\n    steps:\n      pdd-to-learn-app:\n        status: done\n      pdd-to-deliver-app:\n        status: running\n      app-deploy:\n        status: pending\n      app-test:\n        status: pending\n      training-materials:\n        status: pending\n  connect-setup:\n    status: pending\n    steps:\n      connect-program-setup:\n        status: pending\n      connect-opp-setup:\n        status: pending\n  ocs-setup:\n    status: pending\n    steps:\n      ocs-agent-setup:\n        status: pending\n      ocs-chatbot-qa:\n        status: pending\n      ocs-chatbot-eval:\n        status: pending\n  llo-management:\n    status: pending\n    steps:\n      llo-invite:\n        status: pending\n      llo-onboarding:\n        status: pending\n      llo-uat:\n        status: pending\n      llo-launch:\n        status: pending\n      timeline-monitor:\n        status: pending\n      flw-data-review:\n        status: pending\n  closeout:\n    status: pending\n    steps:\n      opp-closeout:\n        status: pending\n      llo-feedback:\n        status: pending\n      learnings-summary:\n        status: pending\n      cycle-grade:\n        status: pending\n",
+        "verdicts/idea-to-pdd-deep.yaml": "skill: idea-to-pdd\nverdict: pass\noverall_score: 88\nevaluated_at: 2026-06-03T13:10:00Z\n",
+        "verdicts/pdd-to-learn-app-deep.yaml": "skill: pdd-to-learn-app\nverdict: pass\noverall_score: 81\nevaluated_at: 2026-06-03T13:40:00Z\n"
+      },
+      "run_id": "20260603-1400",
+      "slug": "cholera-qa-gate"
+    },
+    "mid_flight": {
+      "opp_files": {
+        "opp.yaml": "display_name: nutrition-midflight\nslug: nutrition-midflight\ncreated_at: '2026-06-01T00:00:00Z'\ncreated_by: ace@dimagi-ai.com\n"
+      },
+      "run_files": {
+        "app-summaries/deliver-app-summary.md": "nova_app_id: app-201\n3 forms",
+        "app-summaries/learn-app-summary.md": "nova_app_id: app-200\n6 modules",
+        "connect-setup/program.md": "Connect program created.",
+        "idea.md": "Infant nutrition monitoring.",
+        "pdd.md": "# Nutrition PDD\n\nMonitor-and-Refer archetype.",
+        "run_state.yaml": "current_phase: connect-setup\ncurrent_step: connect-program-setup\nmode: review\nstarted_at: '2026-06-02T10:30:00Z'\ninitiated_by: ace@dimagi-ai.com\nlast_actor: ace@dimagi-ai.com\nlast_actor_at: '2026-06-01T12:00:00Z'\nphases:\n  design-review:\n    status: complete\n    steps:\n      idea-to-pdd:\n        status: done\n      pdd-to-test-prompts:\n        status: done\n  commcare-setup:\n    status: complete\n    steps:\n      pdd-to-learn-app:\n        status: done\n      pdd-to-deliver-app:\n        status: done\n      app-deploy:\n        status: done\n      app-test:\n        status: done\n      training-materials:\n        status: done\n  connect-setup:\n    status: running\n    steps:\n      connect-program-setup:\n        status: running\n      connect-opp-setup:\n        status: pending\n  ocs-setup:\n    status: pending\n    steps:\n      ocs-agent-setup:\n        status: pending\n      ocs-chatbot-qa:\n        status: pending\n      ocs-chatbot-eval:\n        status: pending\n  llo-management:\n    status: pending\n    steps:\n      llo-invite:\n        status: pending\n      llo-onboarding:\n        status: pending\n      llo-uat:\n        status: pending\n      llo-launch:\n        status: pending\n      timeline-monitor:\n        status: pending\n      flw-data-review:\n        status: pending\n  closeout:\n    status: pending\n    steps:\n      opp-closeout:\n        status: pending\n      llo-feedback:\n        status: pending\n      learnings-summary:\n        status: pending\n      cycle-grade:\n        status: pending\n"
+      },
+      "run_id": "20260602-1030",
+      "slug": "nutrition-midflight"
+    },
+    "simple_complete": {
+      "opp_files": {
+        "opp.yaml": "display_name: malaria-rdt-simple\nslug: malaria-rdt-simple\ncreated_at: '2026-06-01T00:00:00Z'\ncreated_by: ace@dimagi-ai.com\n"
+      },
+      "run_files": {
+        "app-summaries/deliver-app-summary.md": "nova_app_id: app-101\n4 forms",
+        "app-summaries/learn-app-summary.md": "nova_app_id: app-100\n8 modules",
+        "closeout/cycle-grade.md": "# Cycle Grade\n\nOverall: A-",
+        "idea.md": "FLW-administered malaria RDT screening pilot.",
+        "pdd.md": "# Malaria RDT PDD\n\nVerify-and-Pay archetype.",
+        "run_state.yaml": "current_phase: closeout\ncurrent_step: cycle-grade\nmode: autopilot\nstarted_at: '2026-06-01T09:00:00Z'\ninitiated_by: ace@dimagi-ai.com\nlast_actor: ace@dimagi-ai.com\nlast_actor_at: '2026-06-01T12:00:00Z'\nphases:\n  design-review:\n    status: complete\n    steps:\n      idea-to-pdd:\n        status: done\n      pdd-to-test-prompts:\n        status: done\n  commcare-setup:\n    status: complete\n    steps:\n      pdd-to-learn-app:\n        status: done\n      pdd-to-deliver-app:\n        status: done\n      app-deploy:\n        status: done\n      app-test:\n        status: done\n      training-materials:\n        status: done\n  connect-setup:\n    status: complete\n    steps:\n      connect-program-setup:\n        status: done\n      connect-opp-setup:\n        status: done\n  ocs-setup:\n    status: complete\n    steps:\n      ocs-agent-setup:\n        status: done\n      ocs-chatbot-qa:\n        status: done\n      ocs-chatbot-eval:\n        status: done\n  llo-management:\n    status: complete\n    steps:\n      llo-invite:\n        status: done\n      llo-onboarding:\n        status: done\n      llo-uat:\n        status: done\n      llo-launch:\n        status: done\n      timeline-monitor:\n        status: done\n      flw-data-review:\n        status: done\n  closeout:\n    status: complete\n    steps:\n      opp-closeout:\n        status: done\n      llo-feedback:\n        status: done\n      learnings-summary:\n        status: done\n      cycle-grade:\n        status: done\n"
+      },
+      "run_id": "20260601-0900",
+      "slug": "malaria-rdt-simple"
+    }
+  }
+}

@@ -41,7 +41,7 @@ function DeleteButton({
       onClick={onClick}
       disabled={busy}
       title={label}
-      className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-stone-500 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+      className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
     >
       {busy ? '…' : 'Delete'}
     </button>
@@ -87,23 +87,23 @@ function RunCard({
       tabIndex={0}
       onClick={() => navigate(href)}
       onKeyDown={(e) => e.key === 'Enter' && navigate(href)}
-      className="group cursor-pointer rounded-xl border border-stone-800 bg-stone-900 p-4 transition-colors hover:border-stone-700"
+      className="group cursor-pointer rounded-xl border border-border bg-card p-4 transition-colors hover:border-input"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-mono text-sm text-stone-200">{run.run_id}</span>
+        <span className="truncate font-mono text-sm text-foreground-secondary">{run.run_id}</span>
         <div className="flex shrink-0 items-center gap-2">
           {latest && (
-            <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[9px] text-orange-300">
+            <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[9px] text-primary">
               latest
             </span>
           )}
           <DeleteButton label="Delete run" busy={busy} onClick={onDelete} />
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-stone-500">
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
         {run.gate && <span>{run.gate}</span>}
         {run.status && (
-          <span className="rounded bg-stone-800 px-1.5 py-0.5 text-stone-400">{run.status}</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-foreground-secondary">{run.status}</span>
         )}
         <span>· {run.scene_count} scenes</span>
         {run.has_video && <span title="has video">🎬</span>}
@@ -151,23 +151,23 @@ function VersionBlock({
   }
 
   return (
-    <section className="rounded-xl border border-stone-800 bg-stone-950/30">
+    <section className="rounded-xl border border-border bg-background/30">
       <div className="flex items-center gap-2 px-4 py-3">
         <button
           onClick={() => setOpen((o) => !o)}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
-          <span aria-hidden className="text-stone-600">
+          <span aria-hidden className="text-muted-foreground">
             {open ? '▾' : '▸'}
           </span>
-          <span className="font-mono text-xs text-orange-300">{label}</span>
+          <span className="font-mono text-xs text-primary">{label}</span>
           {isCurrent && (
-            <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[9px] text-orange-300">
+            <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[9px] text-primary">
               current
             </span>
           )}
-          <span className="truncate text-sm text-stone-300">{version.title || ''}</span>
-          <span className="ml-auto shrink-0 text-[11px] text-stone-600">
+          <span className="truncate text-sm text-foreground-secondary">{version.title || ''}</span>
+          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
             {version.runs.length} run{version.runs.length === 1 ? '' : 's'} ·{' '}
             {fmtDate(version.created_at)}
           </span>
@@ -178,9 +178,9 @@ function VersionBlock({
       </div>
 
       {open && (
-        <div className="border-t border-stone-800 px-4 py-3">
+        <div className="border-t border-border px-4 py-3">
           {version.story && (
-            <p className="mb-3 whitespace-pre-line text-sm leading-relaxed text-stone-300">
+            <p className="mb-3 whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
               {version.story}
             </p>
           )}
@@ -189,13 +189,13 @@ function VersionBlock({
               src={withBase(version.video_url)}
               controls
               preload="metadata"
-              className="mb-3 w-full max-w-2xl rounded-lg border border-stone-800 bg-black"
+              className="mb-3 w-full max-w-2xl rounded-lg border border-border bg-black"
             />
           )}
           {version.review_id && (
             <a
               href={`/review/${version.review_id}`}
-              className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs text-orange-300 transition-colors hover:bg-orange-500/20"
+              className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary transition-colors hover:bg-primary/20"
             >
               Edit narrative <span aria-hidden>→</span>
             </a>
@@ -213,7 +213,7 @@ function VersionBlock({
               ))}
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed border-stone-800 px-4 py-4 text-center text-xs text-stone-600">
+            <div className="rounded-lg border border-dashed border-border px-4 py-4 text-center text-xs text-muted-foreground">
               No runs rendered from this version yet.
             </div>
           )}
@@ -276,21 +276,21 @@ export function NarrativeLanding({ slug }: { slug: string }) {
     }
   }
 
-  if (error) return <div className="p-8 text-sm text-red-400/90">Error: {error}</div>
-  if (!detail) return <div className="p-8 text-sm text-stone-500">Loading…</div>
+  if (error) return <div className="p-8 text-sm text-destructive/90">Error: {error}</div>
+  if (!detail) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>
 
   const currentVersion = detail.current_version?.version ?? null
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-6">
-      <header className="flex items-start justify-between gap-4">
+    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-8">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wider text-stone-500">Narrative</div>
-          <h1 className="text-2xl font-semibold text-stone-100">{detail.title || detail.slug}</h1>
-          <div className="mt-1 flex items-center gap-3 text-xs text-stone-500">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Narrative</div>
+          <h1 className="text-2xl font-semibold text-foreground">{detail.title || detail.slug}</h1>
+          <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="font-mono">{detail.slug}</span>
             {detail.phase && (
-              <span className="rounded border border-stone-700 bg-stone-800/60 px-2 py-0.5 text-stone-300">
+              <span className="rounded border border-input bg-muted/60 px-2 py-0.5 text-foreground-secondary">
                 {detail.phase}
               </span>
             )}
@@ -305,8 +305,8 @@ export function NarrativeLanding({ slug }: { slug: string }) {
             title="Toggle whether this whole narrative (video, deck, docs, reviews) is public"
             className={`rounded-lg border px-3 py-1 text-sm transition-colors disabled:opacity-50 ${
               detail.visibility === 'public'
-                ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-400/90 hover:bg-emerald-400/20'
-                : 'border-stone-700 bg-stone-800/60 text-stone-300 hover:bg-stone-800'
+                ? 'border-success/25 bg-success/10 text-success/90 hover:bg-success/20'
+                : 'border-input bg-muted/60 text-foreground-secondary hover:bg-muted'
             }`}
           >
             {vizBusy
@@ -321,7 +321,7 @@ export function NarrativeLanding({ slug }: { slug: string }) {
             type="button"
             onClick={onDeleteNarrative}
             disabled={deletingNarrative}
-            className="rounded-md border border-stone-800 px-2.5 py-1 text-xs text-stone-500 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
           >
             {deletingNarrative ? 'Deleting…' : 'Delete narrative'}
           </button>
@@ -329,11 +329,11 @@ export function NarrativeLanding({ slug }: { slug: string }) {
       </header>
 
       <div className="mt-6 flex items-baseline gap-2">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+        <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           Versions &amp; runs
         </h2>
-        <span className="text-[11px] text-stone-600">{detail.versions.length}</span>
-        <span className="h-px flex-1 bg-stone-800" />
+        <span className="text-[11px] text-muted-foreground">{detail.versions.length}</span>
+        <span className="h-px flex-1 bg-muted" />
       </div>
 
       <div className="mt-3 flex flex-col gap-3">
@@ -347,7 +347,7 @@ export function NarrativeLanding({ slug }: { slug: string }) {
           />
         ))}
         {detail.versions.length === 0 && (
-          <div className="rounded-xl border border-dashed border-stone-800 px-4 py-6 text-center text-sm text-stone-600">
+          <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
             No narrative versions yet.
           </div>
         )}

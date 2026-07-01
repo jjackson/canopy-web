@@ -8,7 +8,7 @@ import {
   type DddNarrativeListItem,
 } from '@/api/ddd'
 import { listReviews, type ReviewListItem } from '@/api/reviews'
-import { WorkbenchRail, WorkbenchNavItem } from '@canopy/workbench'
+import { WorkbenchRail, WorkbenchNavItem } from 'canopy-ui'
 import { useRunSectionNav } from './runSectionNav'
 
 /**
@@ -33,7 +33,7 @@ function FindingsReviewEntry({
         active
           ? 'text-primary'
           : pending
-            ? 'text-amber-300/90 hover:text-amber-200'
+            ? 'text-warning/90 hover:text-warning'
             : 'text-muted-foreground hover:text-foreground',
       )}
     >
@@ -41,7 +41,7 @@ function FindingsReviewEntry({
         aria-hidden
         className={clsx(
           'h-1 w-1 shrink-0 rounded-full',
-          pending ? 'bg-amber-400' : 'bg-muted-foreground',
+          pending ? 'bg-warning' : 'bg-muted-foreground',
         )}
       />
       <span className="truncate">
@@ -301,7 +301,7 @@ export function DddLeftNav({
   )
 
   return (
-    <WorkbenchRail width="w-72" header={header}>
+    <WorkbenchRail width="md:w-72" header={header}>
       <nav className="px-2 py-2">
         {error && <div className="px-3 py-2 text-xs text-destructive">{error}</div>}
         {!narratives && !error && (

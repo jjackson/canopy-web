@@ -36,6 +36,27 @@ DEBUG = env("DEBUG")
 
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
+# Path to the canopy plugin source (skills/ agents/ commands/) read by
+# apps.system to render the capability catalog at /system. In production the
+# Docker build clones jjackson/canopy into CANOPY_DIR; for local dev, point this
+# at your installed plugin cache, e.g.
+#   CANOPY_PLUGIN_PATH=~/.claude/plugins/cache/canopy/canopy/<version>
+# When the path is absent the catalog renders empty with a warning (never 500s).
+#
+# The jjackson/canopy marketplace repo NESTS the plugin under plugins/canopy/;
+# a bare plugin checkout (the cache) has skills/ at its root. Auto-detect both.
+def _resolve_canopy_plugin_path() -> str:
+    explicit = env.str("CANOPY_PLUGIN_PATH", default="")
+    if explicit:
+        return explicit
+    for cand in (CANOPY_DIR / "plugins" / "canopy", CANOPY_DIR):
+        if (cand / "skills").is_dir():
+            return str(cand)
+    return str(CANOPY_DIR)
+
+
+CANOPY_PLUGIN_PATH = _resolve_canopy_plugin_path()
+
 # Application definition
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -53,19 +74,20 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.google",
     # Local apps
     "apps.common",
-    "apps.collections",
-    "apps.workspace",
-    "apps.skills",
-    "apps.evals",
     "apps.projects",
+    "apps.issues",
     "apps.walkthroughs",
     "apps.tokens",
     "apps.reviews",
     "apps.runs",
     "apps.shareouts",
     "apps.mcp",
-    "apps.sessions",
+    "apps.session_sharing",
     "apps.agents",
+    "apps.agent_runs",
+    "apps.workspaces",
+    "apps.timeline",
+    "apps.system",
 ]
 
 MIDDLEWARE = [
@@ -185,6 +207,28 @@ CANOPY_DRIVE_ROOT_FOLDER_ID = env("CANOPY_DRIVE_ROOT_FOLDER_ID", default="")
 WALKTHROUGH_MAX_UPLOAD_BYTES = env.int(
     "WALKTHROUGH_MAX_UPLOAD_BYTES", default=75 * 1024 * 1024,
 )
+
+# --- Agent-run Drive backing (apps/agent_runs) -----------------------
+# Drive-as-truth run store for agents whose runs live in a Google Drive
+# tree (e.g. ACE opps under ACE/<slug>/runs/<run-id>/). All knobs are
+# optional and empty by default: with nothing set, every agent resolves
+# to the DB-backed run store (apps.agent_runs.resolver.get_run_store) and
+# nothing here is touched — so a deploy without Drive creds is unaffected.
+#
+# Credentials (first non-empty wins; see
+# apps.agent_runs.drive.google_client._load_credentials):
+#   AGENT_RUNS_DRIVE_SA_KEY_JSON  — inline service-account JSON, or
+#   AGENT_RUNS_DRIVE_SA_KEY_PATH  — path to a service-account JSON file, or
+#   CANOPY_DRIVE_SA_KEY_JSON      — the shared canopy Drive SA (fallback).
+AGENT_RUNS_DRIVE_SA_KEY_JSON = env("AGENT_RUNS_DRIVE_SA_KEY_JSON", default="")
+AGENT_RUNS_DRIVE_SA_KEY_PATH = env("AGENT_RUNS_DRIVE_SA_KEY_PATH", default="")
+
+# Which agents are Drive-backed, and the Drive root folder each one's runs
+# live under (the folder that contains `runs/<run-id>/` and optionally
+# `opp.yaml`). JSON map of {agent_slug: drive_root_folder_id}. Empty = no
+# agent is Drive-backed. Example:
+#   AGENT_RUNS_DRIVE_ROOTS='{"ace": "0AbCdEf...root-folder-id"}'
+AGENT_RUNS_DRIVE_ROOTS = env.json("AGENT_RUNS_DRIVE_ROOTS", default={})
 
 # Machine-caller authentication: see apps/tokens/ for Personal Access
 # Tokens. Mint with `manage.py create_token --email X --label Y`; the

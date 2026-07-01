@@ -38,9 +38,9 @@ function fmtTime(totalSeconds: number): string {
 }
 
 const SEVERITY_STYLES: Record<FindingsSeverity, string> = {
-  high: 'bg-red-500/15 text-red-300 border-red-500/30',
-  medium: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-  low: 'bg-stone-500/15 text-stone-300 border-stone-600/40',
+  high: 'bg-destructive/15 text-destructive border-destructive/30',
+  medium: 'bg-warning/15 text-warning border-warning/30',
+  low: 'bg-muted-foreground/15 text-foreground-secondary border-input/40',
 }
 
 const DECISION_META: Record<
@@ -60,9 +60,9 @@ const DECISION_META: Record<
 }
 
 const DECISION_SELECTED: Record<string, string> = {
-  emerald: 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-500/30',
-  sky: 'border-sky-500/60 bg-sky-500/15 text-sky-200 ring-1 ring-sky-500/30',
-  stone: 'border-stone-500 bg-stone-700 text-stone-100 ring-1 ring-stone-500/30',
+  emerald: 'border-success/60 bg-success/15 text-success ring-1 ring-success/30',
+  sky: 'border-info/60 bg-info/15 text-info ring-1 ring-info/30',
+  stone: 'border-muted-foreground bg-input text-foreground ring-1 ring-muted-foreground/30',
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +83,7 @@ function Chip({
       title={title}
       className={[
         'inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium select-none border',
-        className ?? 'bg-stone-800/60 text-stone-300 border-stone-700',
+        className ?? 'bg-muted/60 text-foreground-secondary border-input',
       ].join(' ')}
     >
       {children}
@@ -122,7 +122,7 @@ function DecisionControl({
                 'flex items-center gap-2 cursor-pointer rounded border px-3 py-1.5 text-sm transition-colors',
                 isSelected
                   ? DECISION_SELECTED[meta.accent] ?? DECISION_SELECTED.stone
-                  : 'border-stone-700 text-stone-400 hover:border-stone-500 hover:text-stone-200',
+                  : 'border-input text-foreground-secondary hover:border-muted-foreground hover:text-foreground-secondary',
                 readOnly ? 'pointer-events-none opacity-80' : '',
               ].join(' ')}
             >
@@ -159,28 +159,28 @@ function EvidenceCard({
 }) {
   const deckHref = deckUrl ? `${deckUrl}${evidence.deck_anchor ?? ''}` : null
   return (
-    <figure className="flex flex-col gap-1.5 rounded-lg border border-stone-800 bg-stone-900/60 p-2">
+    <figure className="flex flex-col gap-1.5 rounded-lg border border-border bg-card/60 p-2">
       {evidence.thumb ? (
         <img
           src={evidence.thumb}
           alt={`Scene ${evidence.scene} evidence`}
-          className="h-40 w-full rounded border border-stone-800 bg-black object-cover object-top"
+          className="h-40 w-full rounded border border-border bg-black object-cover object-top"
           loading="lazy"
         />
       ) : (
-        <div className="flex h-24 items-center justify-center rounded border border-stone-800 text-[11px] text-stone-600">
+        <div className="flex h-24 items-center justify-center rounded border border-border text-[11px] text-muted-foreground">
           No thumbnail
         </div>
       )}
       <figcaption className="flex items-center justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-wider text-stone-600">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
           Scene {evidence.scene}
         </span>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => onWatch(evidence.video_t)}
-            className="rounded border border-stone-700 px-2 py-0.5 text-[11px] text-stone-300 hover:border-stone-500 hover:text-stone-100 transition-colors"
+            className="rounded border border-input px-2 py-0.5 text-[11px] text-foreground-secondary hover:border-muted-foreground hover:text-foreground transition-colors"
             title={`Seek the clip to ${fmtTime(evidence.video_t)}`}
           >
             ▶ Watch @ {fmtTime(evidence.video_t)}
@@ -190,7 +190,7 @@ function EvidenceCard({
               href={deckHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded border border-stone-700 px-2 py-0.5 text-[11px] text-stone-400 hover:border-stone-500 hover:text-stone-200 transition-colors"
+              className="rounded border border-input px-2 py-0.5 text-[11px] text-foreground-secondary hover:border-muted-foreground hover:text-foreground-secondary transition-colors"
               title="Open this scene in the deck"
             >
               Deck ↗
@@ -239,12 +239,12 @@ const ClusterCard = memo(function ClusterCard({
     // clicking Skip blanked the left rail + half the page until a scroll forced a repaint),
     // and offscreen cards (24 image-heavy ones) skip painting entirely.
     <div
-      className="rounded-lg border border-stone-700 bg-stone-950 p-4 space-y-3"
+      className="rounded-lg border border-input bg-background p-4 space-y-3"
       style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 420px' }}
     >
       {/* Chips */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-semibold text-stone-500 tabular-nums">
+        <span className="text-[11px] font-semibold text-muted-foreground tabular-nums">
           #{index + 1}
         </span>
         {cluster.severity && (
@@ -256,7 +256,7 @@ const ClusterCard = memo(function ClusterCard({
           <Chip title="Fix kind">{cluster.fix_kind}</Chip>
         )}
         {cluster.route && (
-          <Chip className="bg-violet-500/15 text-violet-300 border-violet-500/30" title="Route">
+          <Chip className="bg-special/15 text-special border-special/30" title="Route">
             {cluster.route}
           </Chip>
         )}
@@ -271,22 +271,22 @@ const ClusterCard = memo(function ClusterCard({
       </div>
 
       {/* Title */}
-      <h3 className="text-sm font-medium text-stone-100 leading-snug">{cluster.title}</h3>
+      <h3 className="text-sm font-medium text-foreground leading-snug">{cluster.title}</h3>
 
       {/* Suggested fix */}
       {cluster.suggested_fix && (
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-stone-600 mb-0.5">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
             Suggested fix
           </p>
-          <p className="text-sm text-stone-300 leading-relaxed">{cluster.suggested_fix}</p>
+          <p className="text-sm text-foreground-secondary leading-relaxed">{cluster.suggested_fix}</p>
         </div>
       )}
 
       {/* Evidence */}
       {evidence.length > 0 && (
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-stone-600 mb-1.5">Evidence</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Evidence</p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {evidence.map((ev, i) => (
               <EvidenceCard
@@ -302,7 +302,7 @@ const ClusterCard = memo(function ClusterCard({
 
       {/* Decision + per-finding comment */}
       <div className="pt-1 space-y-2">
-        <p className="text-[10px] uppercase tracking-wider text-stone-600">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
           {readOnly ? 'Decision' : 'What should we do?'}
         </p>
         <DecisionControl
@@ -313,8 +313,8 @@ const ClusterCard = memo(function ClusterCard({
         />
         {readOnly ? (
           comment ? (
-            <p className="text-sm text-stone-300 rounded border border-stone-800 bg-stone-900/60 px-3 py-2 whitespace-pre-wrap">
-              <span className="text-[10px] uppercase tracking-wider text-stone-600 block mb-0.5">
+            <p className="text-sm text-foreground-secondary rounded border border-border bg-card/60 px-3 py-2 whitespace-pre-wrap">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-0.5">
                 Your comment
               </span>
               {comment}
@@ -327,7 +327,7 @@ const ClusterCard = memo(function ClusterCard({
             rows={2}
             placeholder="Comment on this finding (optional) — what to change, or why skip…"
             aria-label={`Comment on finding ${index + 1}`}
-            className="w-full rounded border border-stone-800 bg-stone-900 px-3 py-2 text-sm text-stone-200 placeholder:text-stone-600 focus:border-stone-500 focus:outline-none transition-colors"
+            className="w-full rounded border border-border bg-card px-3 py-2 text-sm text-foreground-secondary placeholder:text-muted-foreground focus:border-muted-foreground focus:outline-none transition-colors"
           />
         )}
       </div>
@@ -455,22 +455,22 @@ export function ProductFindingsReview({
       {/* Header */}
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold text-stone-100">
+          <h1 className="text-xl font-semibold text-foreground">
             Findings review
-            {review.feature ? <span className="text-stone-400"> · {review.feature}</span> : null}
+            {review.feature ? <span className="text-foreground-secondary"> · {review.feature}</span> : null}
             {review.iteration != null ? (
-              <span className="text-stone-500"> · iteration {review.iteration}</span>
+              <span className="text-muted-foreground"> · iteration {review.iteration}</span>
             ) : null}
           </h1>
-          <p className="text-sm text-stone-500 mt-0.5">{review.run_id}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{review.run_id}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {summary?.verdict && (
             <Chip
               className={
                 /fail/i.test(summary.verdict)
-                  ? 'bg-red-500/15 text-red-300 border-red-500/30'
-                  : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  ? 'bg-destructive/15 text-destructive border-destructive/30'
+                  : 'bg-success/15 text-success border-success/30'
               }
               title="Eval verdict"
             >
@@ -479,7 +479,7 @@ export function ProductFindingsReview({
           )}
           {summary?.concept_score != null && (
             <Chip
-              className="bg-violet-500/15 text-violet-300 border-violet-500/30"
+              className="bg-special/15 text-special border-special/30"
               title="Concept eval score"
             >
               concept {summary.concept_score}
@@ -487,7 +487,7 @@ export function ProductFindingsReview({
           )}
           {summary?.user_score != null && (
             <Chip
-              className="bg-violet-500/15 text-violet-300 border-violet-500/30"
+              className="bg-special/15 text-special border-special/30"
               title="User-artifact eval score"
             >
               user {summary.user_score}
@@ -497,8 +497,8 @@ export function ProductFindingsReview({
             className={[
               'shrink-0 rounded px-2 py-0.5 text-xs font-medium',
               readOnly
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                : 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+                ? 'bg-success/20 text-success border border-success/30'
+                : 'bg-warning/20 text-warning border border-warning/30',
             ].join(' ')}
           >
             {readOnly ? 'Resolved' : 'Needs your input'}
@@ -509,10 +509,10 @@ export function ProductFindingsReview({
       {/* Embedded iteration clip */}
       {review.video?.url ? (
         <section>
-          <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider mb-2">
+          <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-2">
             Iteration clip
           </h2>
-          <div className="rounded-lg border border-stone-700 bg-black overflow-hidden">
+          <div className="rounded-lg border border-input bg-black overflow-hidden">
             <video
               ref={videoRef}
               src={withBase(review.video.url)}
@@ -521,7 +521,7 @@ export function ProductFindingsReview({
               className="w-full max-h-[60vh] bg-black"
             />
           </div>
-          <p className="text-xs text-stone-600 mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             Each finding's “Watch @ m:ss” seeks this clip to that scene.
           </p>
         </section>
@@ -529,11 +529,11 @@ export function ProductFindingsReview({
 
       {/* Clusters */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold text-stone-400 uppercase tracking-wider">
+        <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider">
           Findings ({clusters.length})
         </h2>
         {clusters.length === 0 ? (
-          <p className="text-sm text-stone-500 rounded border border-stone-800 bg-stone-900/40 px-3 py-2">
+          <p className="text-sm text-muted-foreground rounded border border-border bg-card/40 px-3 py-2">
             No findings in this review.
           </p>
         ) : (
@@ -556,41 +556,41 @@ export function ProductFindingsReview({
 
       {/* Error */}
       {error && (
-        <p className="text-sm text-red-400 rounded border border-red-500/30 bg-red-500/10 px-3 py-2">
+        <p className="text-sm text-destructive rounded border border-destructive/30 bg-destructive/10 px-3 py-2">
           {error}
         </p>
       )}
 
       {/* Footer — Save Edits + apply instruction */}
-      <section className="space-y-4 border-t border-stone-800 pt-6">
+      <section className="space-y-4 border-t border-border pt-6">
         {readOnly || submitted ? (
-          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 space-y-2">
-            <p className="text-sm text-emerald-300 font-medium">
+          <div className="rounded-lg border border-success/30 bg-success/10 px-4 py-3 space-y-2">
+            <p className="text-sm text-success font-medium">
               ✓ Edits saved
               {resolvedAt ? ` · ${new Date(resolvedAt).toLocaleString()}` : ''}
             </p>
-            <p className="text-sm text-stone-300">
+            <p className="text-sm text-foreground-secondary">
               To apply them, tell your AI agent to retrieve this review and implement what you said:
             </p>
             <div className="flex items-start gap-2">
-              <code className="flex-1 rounded border border-stone-700 bg-stone-900 px-3 py-2 text-xs text-stone-200 whitespace-pre-wrap">
+              <code className="flex-1 rounded border border-input bg-card px-3 py-2 text-xs text-foreground-secondary whitespace-pre-wrap">
                 {applyPrompt}
               </code>
               <button
                 type="button"
                 onClick={() => void navigator.clipboard?.writeText(applyPrompt)}
-                className="shrink-0 rounded border border-stone-700 px-2 py-1 text-xs text-stone-300 hover:border-stone-500 hover:text-stone-100 transition-colors"
+                className="shrink-0 rounded border border-input px-2 py-1 text-xs text-foreground-secondary hover:border-muted-foreground hover:text-foreground transition-colors"
               >
                 Copy
               </button>
             </div>
-            <p className="text-[11px] text-stone-500">
+            <p className="text-[11px] text-muted-foreground">
               It reads your implement / skip picks and per-finding comments from this review.
             </p>
           </div>
         ) : (
           <div className="flex flex-col items-end gap-1.5">
-            <p className="text-[11px] text-stone-500 text-right">
+            <p className="text-[11px] text-muted-foreground text-right">
               {decidedCount} of {clusters.length} decided · partial saves are fine.
             </p>
             <button
@@ -600,8 +600,8 @@ export function ProductFindingsReview({
               className={[
                 'px-6 py-2 rounded font-medium text-sm transition-colors',
                 !canSubmit
-                  ? 'bg-stone-700 text-stone-400 cursor-not-allowed'
-                  : 'bg-orange-500 hover:bg-orange-400 text-white',
+                  ? 'bg-input text-foreground-secondary cursor-not-allowed'
+                  : 'bg-primary hover:bg-primary/90 text-white',
               ].join(' ')}
             >
               {busy ? 'Saving…' : 'Save Edits'}

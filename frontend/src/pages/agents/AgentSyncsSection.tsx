@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom'
 import { listAgentSyncs, type AgentSyncOut } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { SyncCard } from '@/components/agents/cards'
-import { WorkbenchSubHeader, WorkbenchSkeleton } from '@canopy/workbench'
+import { WorkbenchSubHeader, WorkbenchSkeleton } from 'canopy-ui'
 
 export function AgentSyncsSection() {
   const { agent } = useOutletContext<AgentOutletContext>()
