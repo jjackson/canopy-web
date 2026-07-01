@@ -80,3 +80,52 @@ def test_ddd_feed_scoped_to_members_workspace(two_tenants):
     b_ids = _ddd_ids(ub)
     assert any(i.startswith("run:" + B_RUN) for i in b_ids)
     assert not any("alpha" in i for i in b_ids)
+
+
+def _sub_ids(user, subsystem):
+    body = _client(user).get(BASE, {"subsystem": subsystem}).json()
+    return {e["id"] for e in body["events"]}
+
+
+def test_all_tenant_sources_scoped_to_members_workspace(db):
+    """walkthroughs, shareouts, agents, projects each only show the caller's
+    workspace's rows — the DDD source proves reviews/runs; this proves the rest."""
+    import datetime as dt
+
+    from django.utils import timezone
+
+    from apps.agents.models import Agent, AgentSync
+    from apps.projects.models import Project, ProjectContext
+    from apps.shareouts.models import Shareout
+
+    ua, ub = make_user("wa@dimagi.com"), make_user("wb@dimagi.com")
+    ws_a, ws_b = make_workspace("wsa"), make_workspace("wsb")
+    add_member(ws_a, ua)
+    add_member(ws_b, ub)
+
+    def seed(user, ws, tag):
+        make_walkthrough(user, kind="video", workspace=ws)  # standalone
+        proj = Project.objects.create(name=tag, slug=tag, workspace=ws)
+        Shareout.objects.create(
+            project=proj, workspace=ws,
+            period_start=timezone.now(), period_end=timezone.now(),
+            title=f"{tag}-shareout", content="b", source="canopy:shareout",
+        )
+        ProjectContext.objects.create(
+            project=proj, context_type="note", content=f"{tag}-ctx", source="x"
+        )
+        agent = Agent.objects.create(slug=f"{tag}-agent", name=tag, owner=user, workspace=ws)
+        AgentSync.objects.create(
+            agent=agent, period_start=timezone.now(), period_end=timezone.now(),
+            title=f"{tag}-sync", summary="s", doc_url="https://d/x", source="x",
+        )
+
+    seed(ua, ws_a, "aaa")
+    seed(ub, ws_b, "bbb")
+
+    for sub in ("walkthroughs", "shareouts", "agents", "projects"):
+        a_ids = _sub_ids(ua, sub)
+        b_ids = _sub_ids(ub, sub)
+        assert a_ids, f"{sub}: A should see its own rows"
+        assert b_ids, f"{sub}: B should see its own rows"
+        assert a_ids.isdisjoint(b_ids), f"{sub}: tenants must not share events"

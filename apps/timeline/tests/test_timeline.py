@@ -9,7 +9,14 @@ from django.utils import timezone
 
 from apps.agents.models import Agent, AgentSync
 from apps.projects.models import Project, ProjectContext
-from apps.runs.tests.factories import make_review, make_user, make_walkthrough
+from apps.runs.tests.factories import (
+    DEFAULT_TEST_WS,
+    add_member,
+    make_review,
+    make_user,
+    make_walkthrough,
+    make_workspace,
+)
 from apps.shareouts.models import Shareout
 from apps.shareouts.timeline import _period_slug
 
@@ -21,6 +28,17 @@ BASE = "/api/timeline/"
 @pytest.fixture
 def owner(db):
     return make_user()
+
+
+@pytest.fixture
+def ws(owner):
+    """The owner's tenant. Workspace-scoped sources (walkthroughs, shareouts,
+    agents, projects) only surface rows in a workspace the caller belongs to, so
+    tests place their objects here — mirrors production where the API assigns one.
+    Matches the workspace make_walkthrough() uses, so all sources share a tenant."""
+    w = make_workspace(DEFAULT_TEST_WS)
+    add_member(w, owner)
+    return w
 
 
 @pytest.fixture
@@ -46,14 +64,15 @@ def test_requires_auth():
     assert Client().get(BASE).status_code == 401
 
 
-def test_merges_across_subsystems(client, owner):
-    project = Project.objects.create(name="Reef", slug="reef")
+def test_merges_across_subsystems(client, owner, ws):
+    project = Project.objects.create(name="Reef", slug="reef", workspace=ws)
     ins = ProjectContext.objects.create(
         project=project, context_type="insight", content="[ship_gap] ship it", source="x"
     )
     _at(ProjectContext, ins.pk, _aware(2026, 6, 10))
     Shareout.objects.create(
         project=project,
+        workspace=ws,
         period_start=_aware(2026, 6, 11, 0),
         period_end=_aware(2026, 6, 11, 23),
         title="Week of June 11",
@@ -96,11 +115,12 @@ def test_unknown_subsystem_falls_back_to_all(client, owner):
     assert body["events"]  # not an empty/error result
 
 
-def test_before_cursor_paginates(client, owner):
-    project = Project.objects.create(name="Reef", slug="reef")
+def test_before_cursor_paginates(client, owner, ws):
+    project = Project.objects.create(name="Reef", slug="reef", workspace=ws)
     for i, day in enumerate((10, 11, 12)):
         Shareout.objects.create(
             project=project,
+            workspace=ws,
             period_start=_aware(2026, 6, day, 0),
             period_end=_aware(2026, 6, day, 23),
             title=f"so-{i}",
@@ -120,14 +140,15 @@ def test_before_cursor_paginates(client, owner):
     assert titles1.isdisjoint(titles2)
 
 
-def test_cursor_no_loss_on_tied_timestamps(client, owner):
+def test_cursor_no_loss_on_tied_timestamps(client, owner, ws):
     # Two shareouts stamped at the exact same instant — a strict `< at` cursor
     # would drop one when paging. The compound (at, id) cursor must surface both.
-    project = Project.objects.create(name="Reef", slug="reef")
+    project = Project.objects.create(name="Reef", slug="reef", workspace=ws)
     same = _aware(2026, 6, 11, 12)
     for i in range(2):
         Shareout.objects.create(
             project=project,
+            workspace=ws,
             period_start=same,
             period_end=same,
             title=f"tie-{i}",
@@ -179,8 +200,8 @@ def test_ddd_excludes_standalone_walkthrough_from_walkthroughs(client, owner):
 # --- agents ------------------------------------------------------------------
 
 
-def test_agent_sync_event(client, owner):
-    agent = Agent.objects.create(slug="echo", name="Echo", owner=owner)
+def test_agent_sync_event(client, owner, ws):
+    agent = Agent.objects.create(slug="echo", name="Echo", owner=owner, workspace=ws)
     AgentSync.objects.create(
         agent=agent,
         period_start=_aware(2026, 6, 10, 0),

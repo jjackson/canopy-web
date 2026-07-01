@@ -13,7 +13,9 @@ from django.db.models import Q
 from .models import Walkthrough
 
 
-def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
+def recent_events(
+    *, limit: int, before: dt.datetime | None, user, workspace_slugs=None
+) -> list:
     from apps.timeline.types import ActivityEvent, actor_name, cursor_page, truncate
 
     qs = (
@@ -22,6 +24,8 @@ def recent_events(*, limit: int, before: dt.datetime | None, user) -> list:
         .select_related("owner")
         .order_by("-created_at")
     )
+    if workspace_slugs is not None:
+        qs = qs.filter(workspace_id__in=workspace_slugs)
     return [
         ActivityEvent(
             subsystem="walkthroughs",
