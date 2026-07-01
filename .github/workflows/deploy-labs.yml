@@ -103,6 +103,13 @@ jobs:
           file: Dockerfile
           push: true
           provenance: false
+          # canopy-web serves under the /canopy path prefix on the shared ALB.
+          # These MUST be passed or the SPA builds with base "/" (assets 404 at
+          # /assets/… instead of /canopy/assets/…) and reads the wrong CSRF
+          # cookie (writes 403). Mirrors config/settings/connectlabs.py.
+          build-args: |
+            VITE_BASE_PATH=/canopy/
+            VITE_CSRF_COOKIE_NAME=csrftoken_canopy
           tags: |
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:latest
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:${{ github.sha }}
