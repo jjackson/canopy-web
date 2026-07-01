@@ -52,41 +52,56 @@ function LazySection({ children }: { children: React.ReactNode }) {
   )
 }
 
-// Legacy /w/<uuid> walkthrough links → the new /walkthrough/<uuid> viewer.
-function LegacyWalkthroughRedirect() {
-  const { id } = useParams()
-  return <Navigate to={`/walkthrough/${id}`} replace />
-}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// Bare /agents (+ deep links) → the active workspace's scoped agents surface.
-// Waits for the workspace list to resolve so `active` is known.
-function AgentsRedirect() {
+// Legacy flat tenant surface (e.g. /agents, /ddd/foo) → the active workspace's
+// scoped path. Waits for the workspace list so `active` is known.
+function TenantRedirect({ to }: { to: string }) {
   const { active, loading } = useWorkspace()
   const { '*': tail } = useParams()
   if (loading) return null
-  if (!active) return <Navigate to="/" replace />
+  if (!active) return null // no membership yet; nothing to route to
   const suffix = tail ? `/${tail}` : ''
-  return <Navigate to={`/w/${active}/agents${suffix}`} replace />
+  return <Navigate to={`/w/${active}/${to}${suffix}`} replace />
+}
+
+// Bare "/" → the active workspace's workbench.
+function RootRedirect() {
+  const { active, loading } = useWorkspace()
+  if (loading) return null
+  if (!active) return null
+  return <Navigate to={`/w/${active}`} replace />
+}
+
+// /w/:workspace index. Disambiguates a legacy /w/<uuid> walkthrough link
+// (redirect to the new viewer) from a real workspace slug (render the workbench).
+function WorkspaceIndex() {
+  const { workspace } = useParams()
+  if (workspace && UUID_RE.test(workspace)) {
+    return <Navigate to={`/walkthrough/${workspace}`} replace />
+  }
+  return <ProjectsPage />
 }
 
 export const router = createBrowserRouter([
   {
     element: <AppLayout />,
     children: [
-      { path: '/', element: <ProjectsPage /> },
-      { path: '/timeline', element: <TimelinePage /> },
+      // --- Personal / global (not tenant-scoped) ---
       { path: '/system', element: <SystemPage /> },
       { path: '/insights', element: <InsightsPage /> },
-      { path: '/shareouts', element: <ShareoutsPage /> },
-      { path: '/shareouts/:period', element: <ShareoutsPage /> },
-      { path: '/walkthroughs', element: <WalkthroughsPage /> },
-      // Public walkthrough viewer (reclaimed /w/ for workspaces).
-      { path: '/walkthrough/:id', element: <WalkthroughViewerPage /> },
-      { path: '/w/:id', element: <LegacyWalkthroughRedirect /> },
       { path: '/sessions', element: <SessionsPage /> },
-      // Agents are workspace-scoped: mounted under /w/:workspace. Legacy
-      // /agents(/…) redirects to the active workspace.
-      { path: '/agents/*', element: <AgentsRedirect /> },
+      { path: '/settings', element: <SettingsPage /> },
+      // --- Public viewers (root; self-enforce visibility) ---
+      { path: '/walkthrough/:id', element: <WalkthroughViewerPage /> },
+      { path: '/review/:id', element: <ReviewPage /> },
+
+      // --- Tenant-scoped surfaces under /w/:workspace ---
+      { path: '/w/:workspace', element: <WorkspaceIndex /> },
+      { path: '/w/:workspace/timeline', element: <TimelinePage /> },
+      { path: '/w/:workspace/shareouts', element: <ShareoutsPage /> },
+      { path: '/w/:workspace/shareouts/:period', element: <ShareoutsPage /> },
+      { path: '/w/:workspace/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:workspace/agents', element: <AgentsPage /> },
       {
         path: '/w/:workspace/agents/:slug',
@@ -101,13 +116,19 @@ export const router = createBrowserRouter([
           { path: 'skills', element: <LazySection><AgentSkillsSection /></LazySection> },
         ],
       },
-      { path: '/ddd', element: <DddPage /> },
-      { path: '/ddd/:narrative', element: <DddPage /> },
-      { path: '/ddd/:narrative/:runId', element: <DddPage /> },
-      { path: '/ddd-plans', element: <Navigate to="/ddd" replace /> },
-      { path: '/reviews', element: <Navigate to="/ddd" replace /> },
-      { path: '/review/:id', element: <ReviewPage /> },
-      { path: '/settings', element: <SettingsPage /> },
+      { path: '/w/:workspace/ddd', element: <DddPage /> },
+      { path: '/w/:workspace/ddd/:narrative', element: <DddPage /> },
+      { path: '/w/:workspace/ddd/:narrative/:runId', element: <DddPage /> },
+
+      // --- Legacy flat paths → active workspace (or new viewer) ---
+      { path: '/', element: <RootRedirect /> },
+      { path: '/timeline', element: <TenantRedirect to="timeline" /> },
+      { path: '/shareouts/*', element: <TenantRedirect to="shareouts" /> },
+      { path: '/walkthroughs', element: <TenantRedirect to="walkthroughs" /> },
+      { path: '/agents/*', element: <TenantRedirect to="agents" /> },
+      { path: '/ddd/*', element: <TenantRedirect to="ddd" /> },
+      { path: '/ddd-plans', element: <Navigate to="/" replace /> },
+      { path: '/reviews', element: <Navigate to="/" replace /> },
     ],
   },
   // Public, chrome-less route — mounted OUTSIDE AppLayout so anonymous

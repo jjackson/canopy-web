@@ -6,16 +6,17 @@ import { useAuth } from '@/auth/AuthProvider'
 import { useTheme } from '@/theme/ThemeProvider'
 import { WorkspaceProvider, useWorkspace } from '@/workspace/WorkspaceProvider'
 
+// `tenant` items live under /w/:workspace; the rest are personal/global (root).
 const NAV_ITEMS = [
-  { path: '/', label: 'Projects' },
-  { path: '/system', label: 'System' },
-  { path: '/timeline', label: 'Timeline' },
-  { path: '/insights', label: 'Insights' },
-  { path: '/shareouts', label: 'Shareouts' },
-  { path: '/walkthroughs', label: 'Walkthroughs' },
-  { path: '/sessions', label: 'Sessions' },
-  { path: '/agents', label: 'Agents' },
-  { path: '/ddd', label: 'DDD' },
+  { path: '', label: 'Projects', tenant: true },
+  { path: 'ddd', label: 'DDD', tenant: true },
+  { path: 'agents', label: 'Agents', tenant: true },
+  { path: 'walkthroughs', label: 'Walkthroughs', tenant: true },
+  { path: 'shareouts', label: 'Shareouts', tenant: true },
+  { path: 'timeline', label: 'Timeline', tenant: true },
+  { path: '/insights', label: 'Insights', tenant: false },
+  { path: '/sessions', label: 'Sessions', tenant: false },
+  { path: '/system', label: 'System', tenant: false },
 ]
 
 const BACKENDS = [
@@ -216,11 +217,14 @@ function AppShell() {
   const { active } = useWorkspace()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  // The Agents surface is workspace-scoped; point its nav item at the active
-  // tenant. Bare /agents still works (it redirects to the default workspace).
-  const navItems = NAV_ITEMS.map((item) =>
-    item.path === '/agents' && active ? { ...item, path: `/w/${active}/agents` } : item,
-  )
+  // Tenant nav items resolve to /w/:active/<path>; personal/global items keep
+  // their absolute path. Tenant items are hidden until the active workspace is
+  // known (avoids linking to a broken /w//… path on first paint).
+  const navItems = NAV_ITEMS.flatMap((item) => {
+    if (!item.tenant) return [{ path: item.path, label: item.label }]
+    if (!active) return []
+    return [{ path: `/w/${active}${item.path ? `/${item.path}` : ''}`, label: item.label }]
+  })
 
   // Collapse the mobile menu whenever the route changes (e.g. tapping a link).
   useEffect(() => {
@@ -228,9 +232,12 @@ function AppShell() {
   }, [location.pathname])
 
   function navLinkClass(path: string, block: boolean) {
+    // The workspace index (/w/<slug>) is a prefix of every tenant route, so it
+    // must match exactly (else "Projects" highlights on every tenant page).
+    const isIndex = path === '/' || /^\/w\/[^/]+$/.test(path)
     const isActive =
       location.pathname === path ||
-      (path !== '/' && location.pathname.startsWith(path))
+      (!isIndex && location.pathname.startsWith(path + '/'))
     return clsx(
       'text-sm font-medium rounded transition-colors',
       block ? 'block px-3 py-2' : 'px-3 py-1.5',

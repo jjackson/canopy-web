@@ -29,6 +29,39 @@ export const apiV2 = createClient<paths>({
   credentials: "same-origin",
 });
 
+// Workspace-scoped apps: when the browser is under a tenant route (/w/:ws/…),
+// rewrite their flat /api/<app>/… calls to the canonical tenant path
+// /api/w/:ws/<app>/…. The schema documents the flat paths (openapi-fetch is
+// typed off them); WorkspaceResolveMiddleware on the server gates membership
+// and strips the prefix back to the flat mount. Off a tenant route the flat
+// path is used and the server resolves the caller's default workspace.
+const WS_SCOPED_API_PREFIXES = [
+  "/api/projects",
+  "/api/walkthroughs",
+  "/api/reviews",
+  "/api/shareouts",
+  "/api/ddd",
+  "/api/timeline",
+];
+
+function activeWorkspaceFromUrl(): string | null {
+  const m = window.location.pathname.match(/^\/w\/([^/]+)(?:\/|$)/);
+  return m ? m[1] : null;
+}
+
+apiV2.use({
+  async onRequest({ request }) {
+    const ws = activeWorkspaceFromUrl();
+    if (!ws) return request;
+    const url = new URL(request.url);
+    if (WS_SCOPED_API_PREFIXES.some((p) => url.pathname.startsWith(p))) {
+      url.pathname = `/api/w/${ws}${url.pathname.slice("/api".length)}`;
+      return new Request(url, request);
+    }
+    return request;
+  },
+});
+
 // CSRF + 401 handling globally via openapi-fetch middleware.
 apiV2.use({
   async onRequest({ request }) {
