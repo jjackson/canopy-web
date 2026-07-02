@@ -128,7 +128,7 @@ def create_sync(request: HttpRequest, slug: str, payload: AgentSyncIn) -> Status
             openapi_extra={"x-mcp-expose": True})
 def list_turns(request: HttpRequest, slug: str, limit: int = 100) -> Page[AgentTurnOut]:
     limit = min(limit, 500)
-    agent = _get_agent_or_404(slug)
+    agent = _get_agent_or_404(request, slug)
     items = [AgentTurnOut.model_validate(t) for t in services.list_turns(agent, limit=limit)]
     return paginate(items, offset=0, limit=limit)
 
@@ -137,7 +137,7 @@ def list_turns(request: HttpRequest, slug: str, limit: int = 100) -> Page[AgentT
              summary="Package a turn (idempotent per cli_session_id)",
              openapi_extra={"x-mcp-expose": True})
 def create_turn(request: HttpRequest, slug: str, payload: AgentTurnIn) -> Status:
-    agent = _get_agent_or_404(slug)
+    agent = _get_agent_or_404(request, slug)
     turn = services.upsert_turn(agent, payload)
     return Status(201, AgentTurnOut.model_validate(turn))
 
