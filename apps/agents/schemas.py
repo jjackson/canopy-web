@@ -37,7 +37,9 @@ class AgentDetailOut(AgentOut):
     work_product_count: int = 0
     skill_count: int = 0
     task_count: int = 0
+    turn_count: int = 0
     latest_sync_at: dt.datetime | None = None
+    latest_turn_at: dt.datetime | None = None
 
 
 # ---- Sync (Google-Doc backed) ----
@@ -60,6 +62,36 @@ class AgentSyncOut(StrictModel):
     summary: str
     doc_url: str
     self_grades: dict[str, str] = Field(default_factory=dict)
+    source: str
+    created_at: dt.datetime
+
+
+# ---- Turns (a packaged unit of work + optional transcript link) ----
+class AgentTurnIn(StrictModel):
+    cli_session_id: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=300)
+    summary: str = ""
+    task_ext_ids: list[str] = Field(default_factory=list)
+    work_product_urls: list[str] = Field(default_factory=list)
+    session_slug: str = Field(default="", max_length=64)
+    share_token: str = Field(default="", max_length=64)
+    started_at: dt.datetime | None = None
+    ended_at: dt.datetime | None = None
+    source: str = Field(default="", max_length=100)
+
+
+class AgentTurnOut(StrictModel):
+    id: int
+    agent_slug: str
+    cli_session_id: str
+    title: str
+    summary: str
+    task_ext_ids: list[str] = Field(default_factory=list)
+    work_product_urls: list[str] = Field(default_factory=list)
+    session_slug: str
+    share_token: str
+    started_at: dt.datetime | None = None
+    ended_at: dt.datetime | None = None
     source: str
     created_at: dt.datetime
 
