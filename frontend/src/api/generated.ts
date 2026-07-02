@@ -931,6 +931,24 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/turns/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List the agent's turns */
+        readonly get: operations["apps_agents_api_list_turns"];
+        readonly put?: never;
+        /** Package a turn (idempotent per cli_session_id) */
+        readonly post: operations["apps_agents_api_create_turn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/agents/{slug}/work-products/": {
         readonly parameters: {
             readonly query?: never;
@@ -3183,8 +3201,15 @@ export interface components {
              * @default 0
              */
             readonly task_count: number;
+            /**
+             * Turn Count
+             * @default 0
+             */
+            readonly turn_count: number;
             /** Latest Sync At */
             readonly latest_sync_at?: string | null;
+            /** Latest Turn At */
+            readonly latest_turn_at?: string | null;
         };
         /** NeedsYouItem */
         readonly NeedsYouItem: {
@@ -3292,6 +3317,84 @@ export interface components {
                 readonly [key: string]: string;
             };
             /** Source */
+            readonly source: string;
+        };
+        /** AgentTurnOut */
+        readonly AgentTurnOut: {
+            /** Id */
+            readonly id: number;
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Cli Session Id */
+            readonly cli_session_id: string;
+            /** Title */
+            readonly title: string;
+            /** Summary */
+            readonly summary: string;
+            /** Task Ext Ids */
+            readonly task_ext_ids?: readonly string[];
+            /** Work Product Urls */
+            readonly work_product_urls?: readonly string[];
+            /** Session Slug */
+            readonly session_slug: string;
+            /** Share Token */
+            readonly share_token: string;
+            /** Started At */
+            readonly started_at?: string | null;
+            /** Ended At */
+            readonly ended_at?: string | null;
+            /** Source */
+            readonly source: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** Page[AgentTurnOut] */
+        readonly Page_AgentTurnOut_: {
+            /** Items */
+            readonly items: readonly components["schemas"]["AgentTurnOut"][];
+            /** Total */
+            readonly total: number;
+            /** Offset */
+            readonly offset: number;
+            /** Limit */
+            readonly limit: number;
+        };
+        /** AgentTurnIn */
+        readonly AgentTurnIn: {
+            /** Cli Session Id */
+            readonly cli_session_id: string;
+            /** Title */
+            readonly title: string;
+            /**
+             * Summary
+             * @default
+             */
+            readonly summary: string;
+            /** Task Ext Ids */
+            readonly task_ext_ids?: readonly string[];
+            /** Work Product Urls */
+            readonly work_product_urls?: readonly string[];
+            /**
+             * Session Slug
+             * @default
+             */
+            readonly session_slug: string;
+            /**
+             * Share Token
+             * @default
+             */
+            readonly share_token: string;
+            /** Started At */
+            readonly started_at?: string | null;
+            /** Ended At */
+            readonly ended_at?: string | null;
+            /**
+             * Source
+             * @default
+             */
             readonly source: string;
         };
         /** AgentWorkProductOut */
@@ -6045,6 +6148,56 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AgentSyncOut"];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_list_turns: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Page_AgentTurnOut_"];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_create_turn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AgentTurnIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentTurnOut"];
                 };
             };
         };
