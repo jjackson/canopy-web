@@ -35,7 +35,29 @@ export interface AgentDetailOut extends AgentOut {
   work_product_count: number
   skill_count: number
   task_count: number
+  turn_count: number
   latest_sync_at: string | null
+  latest_turn_at: string | null
+}
+
+// A packaged unit of work: what one turn did, the request(s) it advanced
+// (task_ext_ids), the deliverables it produced (work_product_urls), and —
+// optionally — a link to the reduced session transcript (share_token →
+// /share/<token>). The transcript is optional; a turn can carry none.
+export interface AgentTurnOut {
+  id: number
+  agent_slug: string
+  cli_session_id: string
+  title: string
+  summary: string
+  task_ext_ids: string[]
+  work_product_urls: string[]
+  session_slug: string
+  share_token: string
+  started_at: string | null
+  ended_at: string | null
+  source: string
+  created_at: string
 }
 
 export interface AgentSyncOut {
@@ -264,6 +286,16 @@ export async function listAgentSyncs(
   return getJson<Page<AgentSyncOut>>(
     `/api/agents/${encodeURIComponent(slug)}/syncs/${pageQuery(params)}`,
     'agent syncs',
+  )
+}
+
+export async function listAgentTurns(
+  slug: string,
+  params: ListAgentsParams = {},
+): Promise<Page<AgentTurnOut>> {
+  return getJson<Page<AgentTurnOut>>(
+    `/api/agents/${encodeURIComponent(slug)}/turns/${pageQuery(params)}`,
+    'agent turns',
   )
 }
 
