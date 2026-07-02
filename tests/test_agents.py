@@ -8,7 +8,7 @@ import pytest
 
 from apps.agent_runs.models import AgentRun, AgentRunGate, AgentRunStep
 from apps.agents import services
-from apps.agents.models import Agent, AgentSkill, AgentSync, AgentTask, AgentWorkProduct
+from apps.agents.models import Agent, AgentSkill, AgentSync, AgentTask, AgentTurn, AgentWorkProduct
 
 pytestmark = pytest.mark.django_db
 
@@ -44,6 +44,49 @@ def test_sync_is_idempotent_per_period_and_source():
     assert AgentSync.objects.filter(agent=agent).count() == 1
     assert AgentSync.objects.get(agent=agent).title == "Sync 1 (revised)"
     assert AgentSync.objects.get(agent=agent).self_grades["work"] == "C+"
+
+
+def _turn(**kw):
+    base = dict(cli_session_id="sess-1", title="Turn 1", summary="did stuff",
+                task_ext_ids=["t1"], work_product_urls=[], session_slug="", share_token="",
+                started_at=None, ended_at=None, source="turn")
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def test_turn_is_idempotent_per_cli_session_id():
+    agent = _agent()
+    services.upsert_turn(agent, _turn(title="Turn 1", task_ext_ids=["t1"]))
+    # re-package the same session (e.g. after the transcript uploads) → updates in place
+    services.upsert_turn(agent, _turn(title="Turn 1 (transcript added)",
+                                      task_ext_ids=["t1", "t2"],
+                                      session_slug="abc123", share_token="tok999"))
+    assert AgentTurn.objects.filter(agent=agent).count() == 1
+    turn = AgentTurn.objects.get(agent=agent)
+    assert turn.title == "Turn 1 (transcript added)"
+    assert turn.task_ext_ids == ["t1", "t2"]
+    assert turn.share_token == "tok999"
+    # a different session is a separate turn
+    services.upsert_turn(agent, _turn(cli_session_id="sess-2", title="Turn 2"))
+    assert AgentTurn.objects.filter(agent=agent).count() == 2
+
+
+def test_turn_transcript_is_optional():
+    agent = _agent()
+    turn = services.upsert_turn(agent, _turn(session_slug="", share_token=""))
+    assert turn.session_slug == "" and turn.share_token == ""
+    assert turn.task_ext_ids == ["t1"]  # the unit of work is still packaged
+
+
+def test_agent_detail_counts_turns():
+    agent = _agent()
+    assert services.agent_detail(agent)["turn_count"] == 0
+    assert services.agent_detail(agent)["latest_turn_at"] is None
+    services.upsert_turn(agent, _turn(cli_session_id="s1"))
+    services.upsert_turn(agent, _turn(cli_session_id="s2"))
+    detail = services.agent_detail(agent)
+    assert detail["turn_count"] == 2
+    assert detail["latest_turn_at"] is not None
 
 
 def test_work_products_upsert_by_url():

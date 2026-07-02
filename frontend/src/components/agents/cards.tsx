@@ -6,6 +6,7 @@
 import type {
   AgentSkillOut,
   AgentSyncOut,
+  AgentTurnOut,
   AgentWorkProductOut,
 } from '@/api/agents'
 
@@ -84,6 +85,67 @@ export function SyncCard({ sync }: { sync: AgentSyncOut }) {
         <div className="flex flex-wrap gap-1.5 mt-3">
           {grades.map(([dimension, grade]) => (
             <GradeBadge key={dimension} dimension={dimension} grade={grade} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// A short, safe label for a deliverable url (host + last path segment).
+function urlLabel(url: string): string {
+  try {
+    const u = new URL(url)
+    const last = u.pathname.split('/').filter(Boolean).pop()
+    return last ? `${u.hostname}/…/${last}` : u.hostname
+  } catch {
+    return url
+  }
+}
+
+export function TurnCard({ turn }: { turn: AgentTurnOut }) {
+  // The transcript is optional — only render the /share link when it was uploaded.
+  const shareHref = turn.share_token
+    ? `${import.meta.env.BASE_URL.replace(/\/$/, '')}/share/${turn.share_token}`
+    : ''
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] text-muted-foreground">{formatDate(turn.created_at)}</p>
+          <h3 className="text-[15px] font-semibold text-foreground mt-0.5 leading-snug">{turn.title}</h3>
+        </div>
+        {shareHref && <OpenDocChip url={shareHref} label="View transcript" />}
+      </div>
+      {turn.summary && (
+        <p className="text-[13px] text-muted-foreground leading-relaxed mt-2 whitespace-pre-wrap">{turn.summary}</p>
+      )}
+      {turn.task_ext_ids.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Advanced</span>
+          {turn.task_ext_ids.map((id) => (
+            <span
+              key={id}
+              className="text-[10px] font-semibold text-primary bg-muted border border-border px-1.5 py-0.5 rounded"
+            >
+              {id}
+            </span>
+          ))}
+        </div>
+      )}
+      {turn.work_product_urls.length > 0 && (
+        <div className="flex flex-col gap-1 mt-3">
+          {turn.work_product_urls.map((url) => (
+            <a
+              key={url}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors w-fit"
+            >
+              <span className="text-primary/70">↗</span>
+              {urlLabel(url)}
+            </a>
           ))}
         </div>
       )}

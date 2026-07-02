@@ -26,6 +26,8 @@ from .schemas import (
     AgentTaskOut,
     AgentTaskPatch,
     AgentTaskSyncIn,
+    AgentTurnIn,
+    AgentTurnOut,
     AgentWorkProductBatchIn,
     AgentWorkProductOut,
     CommandResultOut,
@@ -119,6 +121,25 @@ def create_sync(request: HttpRequest, slug: str, payload: AgentSyncIn) -> Status
     agent = _get_agent_or_404(request, slug)
     sync = services.upsert_sync(agent, payload)
     return Status(201, AgentSyncOut.model_validate(sync))
+
+
+# ---- turns (a packaged unit of work + optional transcript link) ----
+@router.get("/{slug}/turns/", response=Page[AgentTurnOut], summary="List the agent's turns",
+            openapi_extra={"x-mcp-expose": True})
+def list_turns(request: HttpRequest, slug: str, limit: int = 100) -> Page[AgentTurnOut]:
+    limit = min(limit, 500)
+    agent = _get_agent_or_404(slug)
+    items = [AgentTurnOut.model_validate(t) for t in services.list_turns(agent, limit=limit)]
+    return paginate(items, offset=0, limit=limit)
+
+
+@router.post("/{slug}/turns/", response={201: AgentTurnOut},
+             summary="Package a turn (idempotent per cli_session_id)",
+             openapi_extra={"x-mcp-expose": True})
+def create_turn(request: HttpRequest, slug: str, payload: AgentTurnIn) -> Status:
+    agent = _get_agent_or_404(slug)
+    turn = services.upsert_turn(agent, payload)
+    return Status(201, AgentTurnOut.model_validate(turn))
 
 
 # ---- work products ----
