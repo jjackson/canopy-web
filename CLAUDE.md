@@ -63,20 +63,30 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 
 ## Key URLs
 
-- `/` — Project workbench. Tile grid dashboard with a "Today's top 3" insight hero, freshness chip, inline insights triage, and self-prioritizing tile order by insight count.
-- `/timeline` — Team activity timeline (cross-app activity feed; link-out only)
+The app is **workspace-tenant-scoped** (PR #183). Every surface that owns tenant
+data lives under `/w/:workspace/`; personal/global surfaces and public viewers
+stay at root. A header workspace switcher appears when you belong to >1 workspace.
+Bare `/` redirects to the active workspace's workbench, and the legacy flat paths
+(`/timeline`, `/shareouts`, `/walkthroughs`, `/agents/*`, `/ddd/*`) redirect into
+the active workspace. `/ddd-plans` and `/reviews` now redirect to `/`.
+
+**Tenant-scoped (under `/w/:workspace/`):**
+- `/w/:workspace` — Project workbench. Tile grid dashboard with a "Today's top 3" insight hero, freshness chip, inline insights triage, and self-prioritizing tile order by insight count.
+- `/w/:workspace/timeline` — Team activity timeline (cross-app activity feed; link-out only)
+- `/w/:workspace/shareouts` (+ `/shareouts/:period`) — Dated, teammate-facing work briefings (what shipped, why, how to leverage) posted by `/canopy:shareout`; `:period` is a copy-linkable permalink to one briefing
+- `/w/:workspace/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
+- `/w/:workspace/ddd` (+ `/ddd/:narrative`, `/ddd/:narrative/:runId`) — Demo-driven-development (DDD) views: narrative → version → run → package (video + deck + narrative + links)
+- `/w/:workspace/agents` — First-class AI agents list (e.g. "Echo")
+- `/w/:workspace/agents/:slug` — Agent workspace: a full-bleed rail + scrolling main built on `canopy-ui`. Sub-routes (rail): **Needs you** (the default landing — a typed/ranked supervisor inbox), Overview, Tasks (the "who has the ball" board), Turns (packaged units of work + optional transcript), Syncs, Work products, Skills
+
+**Root / personal / global:**
 - `/system` — Capability catalog + Workflows view (how canopy's plugin capabilities compose; read live from the canopy plugin)
-- `/insights` — Cross-portfolio AI insights feed
-- `/shareouts` (+ `/shareouts/:period`) — Dated, teammate-facing work briefings (what shipped, why, how to leverage) posted by `/canopy:shareout`; `:period` is a copy-linkable permalink to one briefing
-- `/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
-- `/w/:id` — Single walkthrough viewer (HTML iframe or video player)
-- `/ddd` (+ `/ddd/:narrative`, `/ddd/:narrative/:runId`) — Demo-driven-development (DDD) views: narrative → version → run → package (video + deck + narrative + links). `/ddd-plans` and `/reviews` redirect here
-- `/review/:id` — Editable narrative review surface for DDD (approve / redraft a story before build); public (link-visibility) reviews are readable by anyone with the URL, but submitting a decision requires a Dimagi login
-- `/agents` — First-class AI agents list (e.g. "Echo")
-- `/agents/:slug` — Agent workspace: a full-bleed rail + scrolling main built on `canopy-ui`. Sub-routes (rail): **Needs you** (the default landing — a typed/ranked supervisor inbox), Overview, Tasks (the "who has the ball" board), Syncs, Work products, Skills
+- `/insights` — Cross-portfolio AI insights feed (user-scoped; deliberately not tenant-scoped)
 - `/sessions` — My shared Claude Code sessions (transcripts uploaded via `/canopy:share-session`)
-- `/share/:token` — Public, chrome-less read-only viewer for a shared session (no login; mounted outside the app shell)
 - `/settings` — AI backend status, switch backends, headless Claude CLI auth, theme toggle, and debug-session minting (consolidated under the user menu)
+- `/walkthrough/:id` — Single walkthrough viewer (HTML iframe or video player). Reclaimed from `/w/:id` when `/w/` became the tenant prefix; a legacy `/w/<uuid>/content` link 302-redirects here
+- `/review/:id` — Editable narrative review surface for DDD (approve / redraft a story before build); public (link-visibility) reviews are readable by anyone with the URL, but submitting a decision requires a Dimagi login
+- `/share/:token` — Public, chrome-less read-only viewer for a shared session (no login; mounted outside the app shell)
 - `/api/` — REST API
 - `/admin/` — Django admin
 - `/health/` — Health check
@@ -84,6 +94,8 @@ CI (`.github/workflows/ci.yml`) runs both on every PR and on push to main. Deplo
 ## API Endpoints
 
 All endpoints are served by Django Ninja (Pydantic v2 typed) under `/api/`. Errors use RFC 7807 `application/problem+json`. The machine-readable schema lives at `/api/openapi.json`; browse at `/api/docs/` (Scalar) or `/api/redoc/`.
+
+**Tenant routing:** the canonical tenant URL is `/api/w/{ws}/…`. `apps/api/tenancy.py::WorkspaceResolveMiddleware` gates membership (non-member → 404), pins `request.workspace_slug`, then strips the prefix and reroutes to the flat mount — so the OpenAPI schema stays single/clean (no double-mount, no colliding operation IDs). The flat `/api/…` routes below remain a **non-breaking compat shim**: `workspace_slug` resolves to the caller's default workspace, keeping the PAT/plugin fleet (e.g. Echo, the canopy plugin) working unchanged. Handlers read `getattr(request, "workspace_slug", None)` — truthy pins the workspace, `None` applies the handler's default.
 
 ### Auth + session (root)
 - `GET /api/me/` — Current authenticated user
@@ -157,7 +169,7 @@ uv run python manage.py create_token --email ace@dimagi-ai.com --label "canopy p
 - `GET /api/walkthroughs/<uuid>/` — Detail. `auth=None`: public (`visibility=link`) walkthroughs are readable by anyone with the URL; private ones 404 to anonymous (no existence leak). `is_owner` flag tells the UI which toolbar to render
 - `PATCH /api/walkthroughs/<uuid>/` — Owner-only update of title/description/project_slug/visibility
 - `DELETE /api/walkthroughs/<uuid>/` — Owner-only. Deletes Drive file and the row
-- `GET /w/<uuid>/content` — Streams file bytes. Session-auth OR `visibility=link` (tokenless — anyone with the URL; the UUID is the only secret). Range-aware (supports `<video>` scrubbing)
+- `GET /walkthrough/<uuid>/content` — Streams file bytes. Session-auth OR `visibility=link` (tokenless — anyone with the URL; the UUID is the only secret). Range-aware (supports `<video>` scrubbing). Reclaimed from `/w/<uuid>/content` when `/w/` became the tenant prefix; the legacy `/w/<uuid>/content` path 302-redirects here (`RedirectView`, query string preserved)
 
 Visibility is **tokenless**: `link` means "anyone with the link". The `share_token` column + model methods are retained but dormant (no rotate endpoint, never minted/returned) so the model is reversible.
 
@@ -196,11 +208,12 @@ The narrative is identified by `narrative_slug` (decoupled from `run_id`); a ser
 - `POST /api/shareouts/clear/` — Clear shareouts by source / project / date (AND-combined)
 
 ### Agents (`apps/agents`) — first-class AI-agent workspace
-An `Agent` (e.g. "Echo") is a first-class entity — distinct from a code Project — with its own Google-Doc syncs, work products, skill catalog, and an actionable task board. The **DB is the source of truth**; the board renders by "who has the ball" (the agent vs a human). A human's board action POSTs a *command*; the agent drains pending commands on its next turn and marks them applied (`result_note` + `applied_at`). All routes are session-authed and `x-mcp-expose`d.
+An `Agent` (e.g. "Echo") is a first-class entity — distinct from a code Project — with its own Google-Doc syncs, work products, skill catalog, packaged turns, and an actionable task board. The **DB is the source of truth**; the board renders by "who has the ball" (the agent vs a human). A human's board action POSTs a *command*; the agent drains pending commands on its next turn and marks them applied (`result_note` + `applied_at`). All routes are session-authed and `x-mcp-expose`d.
 - `GET /api/agents/` — List agents
 - `POST /api/agents/` — Create or update an agent (upsert by slug)
-- `GET /api/agents/{slug}/` — Agent detail (with counts)
+- `GET /api/agents/{slug}/` — Agent detail (with counts, incl. `turn_count` + `latest_turn_at`)
 - `GET /api/agents/{slug}/needs-you` — Typed/ranked supervisor inbox (`review` → `question` → `notify`) + a `waiting_count` badge — "what does the agent need from me right now?"
+- `GET|POST /api/agents/{slug}/turns/` — List / package an `AgentTurn`: the request(s) a turn advanced (`task_ext_ids`) → what it did (`title`/`summary`) → deliverables (`work_product_urls`) → optionally a `/share/<token>` transcript link (uploaded to the sessions app; the turn only holds its `slug`/`share_token`, so the apps stay decoupled). Idempotent per `(agent, cli_session_id)`. Drives the **Turns** rail section
 - `GET|POST /api/agents/{slug}/syncs/` — List / post a Google-Doc manager sync (idempotent per period+source)
 - `GET|POST /api/agents/{slug}/work-products/` — List / upsert work products (by url)
 - `GET|PUT /api/agents/{slug}/skills/` — List / replace (PUT) the skill catalog so it mirrors the repo
@@ -254,10 +267,10 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 ## Design Decisions
 
 - **API is Pydantic-first via Django Ninja**: every request/response is a Pydantic v2 model declared in `apps/<app>/schemas.py`. Routes live in `apps/<app>/api.py`, registered on the single `NinjaAPI` instance in `apps/api/api.py`. Errors are RFC 7807 `application/problem+json`. Frontend types are generated from the OpenAPI 3.1 schema by `openapi-typescript` into `frontend/src/api/generated.ts` and consumed via `openapi-fetch`. The `regen-openapi.yml` GitHub workflow auto-commits regenerated types on PRs touching `apps/**/api.py` or `apps/**/schemas.py`.
-- **Streaming endpoints stay on Django**: `GET /w/<uuid>/content` (the walkthrough viewer) is a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range support (for `<video>` scrubbing) doesn't fit the Ninja contract. It is the only `StreamingHttpResponse` left now that the co-authoring workspace SSE engine has been retired.
+- **Streaming endpoints stay on Django**: `GET /walkthrough/<uuid>/content` (the walkthrough viewer) is a bare Django view at `apps/walkthroughs/streaming.py` — HTTP Range support (for `<video>` scrubbing) doesn't fit the Ninja contract. It is the only `StreamingHttpResponse` left now that the co-authoring workspace SSE engine has been retired. (Reclaimed from `/w/<uuid>/content` by the tenancy migration; the legacy path 302-redirects.)
 - **Bare Django views**: `/api/csrf/`, `/api/debug/mint-session/`, `/auth/cli/authorize/`, and `/health/` (the last is also Ninja-mountable via `public_router`) — they manipulate sessions/cookies/redirects directly. Matched in `config/urls.py` BEFORE the Ninja `/api/` catch-all so they don't get shadowed.
 - **MCP is in-process FastMCP, not OpenAPI-derived**: `apps/mcp/` mounts a FastMCP 3.x Streamable-HTTP server at `/api/mcp/` whose tools are explicit Python functions calling the same service layer as the REST views (no HTTP self-loopback). Auth is per-user PAT inside the server (fail-closed), every call is audited, and writes are rate-limited.
-- **Visibility is tokenless Public/Private:** `visibility=link` means "anyone with the URL" (the UUID is the only secret) for walkthroughs + reviews; `private` is Dimagi-OAuth-gated and 404s to anonymous. Walkthrough content/detail and review *read* are public when `link`; review *submit* and all mutations require auth. The login middleware allowlists the `/w/` shell + walkthrough detail GET (alongside the review-link allowlist). The narrative-level toggle (`PATCH /api/ddd/narratives/{slug}/visibility/`) cascades to every artifact + review under a narrative; the dormant `share_token` column is retained for reversibility. See `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md`.
+- **Visibility is tokenless Public/Private:** `visibility=link` means "anyone with the URL" (the UUID is the only secret) for walkthroughs + reviews; `private` is Dimagi-OAuth-gated and 404s to anonymous. Walkthrough content/detail and review *read* are public when `link`; review *submit* and all mutations require auth. The login middleware (`apps/common/middleware.py`, default-deny with an allowlist) allowlists the `/walkthrough/` viewer shell + `/walkthrough/<uuid>/content` stream + walkthrough detail GET + the legacy `/w/<uuid>/content` redirect (alongside the `/review/` + `/share/` allowlists). Note `/w/` itself now means the **authed** workspace tenant shell and is NOT public. The narrative-level toggle (`PATCH /api/ddd/narratives/{slug}/visibility/`) cascades to every artifact + review under a narrative; the dormant `share_token` column is retained for reversibility. See `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md`.
 - **Shared frontend kit (`canopy-ui`):** the DDD and Agent workspaces share a two-pane (left rail + scrolling main) shell plus the broader design-system primitives, all extracted to `frontend/packages/canopy-ui` (imported as `canopy-ui` / `canopy-ui/ui` / `canopy-ui/lib`; published to public npm as `canopy-ui`, also mirrored as `@marshellis/canopy-ui`). Started life as `@canopy/workbench` (just the Workbench shell) and was expanded + renamed in 0.2.0→0.3.0. Surfaces consume it instead of re-implementing chrome, and use semantic design tokens (`bg-card` / `border-border` / `text-foreground` / `text-muted-foreground` / `text-primary`) — not raw `stone-*`/`orange-*` palette literals. See `docs/superpowers/specs/2026-06-17-shared-workbench-package-design.md`.
 - **Light + dark themes via one token set.** The app ships **both** themes off the same semantic tokens in `frontend/src/index.css`: `:root` = Warm Earth **light**, `.dark` = Warm Earth **dark** (the default). `index.html` applies `.dark` before first paint (default dark; an explicit `light` choice in `localStorage` removes it — no flash), and `src/theme/ThemeProvider.tsx` (`useTheme` / `<ThemeToggle/>`, mounted in the `AppLayout` header) toggles + persists the class on `<html>`. Because components only reference token names (never `dark:` variants), both themes "just work." The light palette deepens brand/status hues (~600) for contrast on white.
 - **Design tokens are the single source of truth (no raw palette literals).** The whole authenticated app styles off the semantic tokens (`@theme inline` maps `--color-*` → the per-theme vars). Do **not** introduce raw Tailwind palette literals (`stone-*`, `orange-*`, `zinc-*`, `slate-*`, `red-*`, `amber-*`, `emerald-*`, `sky-*`, `violet-*`); use the tokens:
@@ -268,7 +281,7 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 - APP UI: dense, readable, tables not cards
 - SSE streaming for AI responses (Scout pattern)
 - **Auth:** Google OAuth via django-allauth (allowed-domain restricted via `AUTH_ALLOWED_EMAIL_DOMAIN` — comma-separated list, default `dimagi.com`; `dimagi-associate.com` is also allowed). Personal Access Tokens (`apps/tokens/`) authenticate machine callers via `Authorization: Bearer <raw>` — `BearerTokenAuthMiddleware` resolves them upstream of `LoginRequiredMiddleware`. `/api/debug/mint-session/` lets an authenticated user mint a short-lived session cookie to hand to an AI assistant.
-- **Multi-tenancy (scaffolding landed):** the `apps/workspaces` app provides `Workspace` + members (owner/editor/viewer) + email invites; `agents` and `agent_runs` carry a `workspace` FK (a default workspace is assigned when unspecified, so the change was non-breaking / Echo-safe). The product surface is still effectively single-tenant; full per-tenant scoping of the product apps is tracked in `TODOS.md`.
+- **Multi-tenancy (Workspace is the tenant anchor):** `Workspace` (`apps/workspaces` — members owner/editor/viewer + email invites) anchors every surface that owns tenant data. `agents` + `agent_runs` carry a `workspace` FK, and the tenancy rollout (PR #183) added the same FK + backfill migration to the product roots `projects`, `walkthroughs`, `reviews`, and `shareouts`; their authenticated queries filter by `request.workspace_slug`. **Insights are deliberately excluded** (user-scoped, not tenant-scoped). Tenant surfaces live under `/w/:workspace/` (browser) and `/api/w/{ws}/` (API, via `WorkspaceResolveMiddleware`); a default workspace is assigned when unspecified and the flat `/api/…` routes stay as a compat shim, so the change was non-breaking / Echo-safe. Tokenless `visibility=link` public reads and review-submit-login are preserved through the scoping. See `docs/superpowers/specs/2026-06-30-workspace-multi-tenancy-design.md`.
 - PostgreSQL on the shared labs RDS (`canopy_web` DB on `labs-jj-postgres`)
 - Dual AI backend lets users run either against an API key or their own Claude Code subscription
 
@@ -291,6 +304,8 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 - `docs/superpowers/specs/2026-06-28-shared-agent-client-design.md` + `docs/superpowers/plans/2026-06-28-shared-agent-client.md` — Shared agent-client, the framework's first harvested piece
 - `docs/superpowers/specs/2026-06-29-unified-agent-run-lifecycle-design.md` — Unified agent⊕run lifecycle (Wave 1 keystone; the `apps/agent_runs` + `canopy_runs` library, shipped PR #154)
 - `docs/superpowers/specs/2026-06-29-wave2-3-harvest-execution.md` — Wave 2/3 execution spec (run-step verdicts + multi-tenant workspaces; shipped PRs #158–#162)
+- `docs/superpowers/specs/2026-06-30-workspace-multi-tenancy-design.md` — Workspace-as-tenant full multi-tenancy design (anchor-roots-inherit-children, `/w/` reclaim, path-prefix API; shipped PR #183)
+- `docs/superpowers/plans/2026-06-30-workspace-tenancy-increment-0-foundation.md` — Multi-tenancy foundation (Increment 0) implementation plan (`current_workspace()` resolver, `/api/w/{ws}` shim, `/w/`→`/walkthrough/` reclaim, frontend `WorkspaceProvider`; shipped PR #183)
 - `docs/designs/canopy-web-design.md` — Product design + glossary (open claw, skill, collection, eval suite, workspace session)
 - `docs/designs/ceo-plan-conversation-to-agent.md` — CEO review, scope decisions, deferred work
 - `docs/walkthroughs/project-workbench.yaml` — Project workbench walkthrough spec
