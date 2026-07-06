@@ -287,25 +287,22 @@ Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config
 
 ## Reference Docs
 
+Design **specs** (the "why" record) live in `docs/superpowers/specs/`. The executed **implementation plans** — point-in-time checklists that shipped as described — are archived under `docs/archive/plans/` (git-tracked, kept as historical record, not current-state); consult them only when you need the blow-by-blow of how something was built.
+
 - `docs/architecture/mcp-surface.md` — MCP server surface: module layout, dual-auth model, audit + rate-limit, tool inventory
-- `docs/superpowers/plans/2026-04-13-portfolio-insights.md` — Cross-portfolio insights feed plan (shipped; historical)
-- `docs/superpowers/plans/2026-05-26-api-modernization.md` — Django Ninja + Pydantic + OpenAPI migration plan (shipped; DRF retired, FastMCP layer)
 - `docs/superpowers/specs/2026-04-10-project-workbench-design.md` — Workbench design spec
 - `docs/superpowers/specs/2026-04-14-google-oauth-auth-gate-design.md` — OAuth gate design spec
 - `docs/superpowers/specs/2026-05-26-walkthrough-sharing-design.md` — Walkthrough sharing design spec
 - `docs/superpowers/specs/2026-06-02-ddd-run-views-design.md` — DDD run views (narrative → run → package) design spec
 - `docs/superpowers/specs/2026-06-03-ddd-narrative-run-versioning-design.md` — DDD narrative/version/run model design spec
 - `docs/superpowers/specs/2026-06-08-tokenless-narrative-visibility-design.md` — Tokenless Public/Private + narrative-level visibility design spec (shipped, PR #105)
-- `docs/superpowers/plans/2026-06-09-tokenless-narrative-visibility.md` — Tokenless visibility implementation plan (shipped, PR #105)
 - `docs/superpowers/specs/2026-06-17-shared-workbench-package-design.md` — shared Workbench shell design (shipped as `@canopy/workbench`, since expanded + renamed to `canopy-ui`; PRs #123/#124)
-- `docs/superpowers/plans/2026-06-17-shared-workbench-package.md` — Workbench extraction + migration plan (shipped, PRs #123/#124)
 - `docs/superpowers/specs/2026-06-19-team-activity-timeline-design.md` — `/timeline` team activity feed design (shipped, PR #138)
 - `docs/superpowers/specs/2026-06-24-canopy-framework-harvest-design.md` — Canopy-as-the-framework harvest strategy (umbrella for Waves 0–4: the framework/product boundary + what moves out of ACE)
-- `docs/superpowers/specs/2026-06-28-shared-agent-client-design.md` + `docs/superpowers/plans/2026-06-28-shared-agent-client.md` — Shared agent-client, the framework's first harvested piece
+- `docs/superpowers/specs/2026-06-28-shared-agent-client-design.md` — Shared agent-client, the framework's first harvested piece
 - `docs/superpowers/specs/2026-06-29-unified-agent-run-lifecycle-design.md` — Unified agent⊕run lifecycle (Wave 1 keystone; the `apps/agent_runs` + `canopy_runs` library, shipped PR #154)
 - `docs/superpowers/specs/2026-06-29-wave2-3-harvest-execution.md` — Wave 2/3 execution spec (run-step verdicts + multi-tenant workspaces; shipped PRs #158–#162)
 - `docs/superpowers/specs/2026-06-30-workspace-multi-tenancy-design.md` — Workspace-as-tenant full multi-tenancy design (anchor-roots-inherit-children, `/w/` reclaim, path-prefix API; shipped PR #183)
-- `docs/superpowers/plans/2026-06-30-workspace-tenancy-increment-0-foundation.md` — Multi-tenancy foundation (Increment 0) implementation plan (`current_workspace()` resolver, `/api/w/{ws}` shim, `/w/`→`/walkthrough/` reclaim, frontend `WorkspaceProvider`; shipped PR #183)
 - `docs/designs/canopy-web-design.md` — Product design + glossary (open claw, skill, collection, eval suite, workspace session)
 - `docs/designs/ceo-plan-conversation-to-agent.md` — CEO review, scope decisions, deferred work
 - `docs/walkthroughs/project-workbench.yaml` — Project workbench walkthrough spec
