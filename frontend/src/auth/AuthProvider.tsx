@@ -12,10 +12,19 @@ const AuthContext = createContext<AuthState>({ status: 'loading', user: null })
 // Routes reachable without a Dimagi session: public (visibility=link) walkthroughs
 // and reviews. These are tokenless — the UUID in the URL is the only secret, and
 // the API self-enforces (private resources 404 to anonymous callers).
+// Legacy /w/<uuid> walkthrough links pass too (the router redirects them to
+// /walkthrough/<uuid>), but /w/<workspace> tenant paths stay behind the gate.
+const LEGACY_WALKTHROUGH_RE =
+  /^\/w\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/|$)/i
 function isPublicLinkRoute(): boolean {
   const base = import.meta.env.BASE_URL.replace(/\/$/, '')
   const path = window.location.pathname.slice(base.length)
-  return path.startsWith('/review/') || path.startsWith('/w/') || path.startsWith('/share/')
+  return (
+    path.startsWith('/review/') ||
+    path.startsWith('/walkthrough/') ||
+    path.startsWith('/share/') ||
+    LEGACY_WALKTHROUGH_RE.test(path)
+  )
 }
 
 export function useAuth(): AuthState {
@@ -56,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return <LoginPrompt />
   }
 
-  // Authenticated, OR anonymous on a public link route (e.g. /w/<id> or /review/<id>).
+  // Authenticated, OR anonymous on a public link route (e.g. /walkthrough/<id> or /review/<id>).
   // Public resources are tokenless; the API self-enforces (private → 404), so these
   // pages must render without a Dimagi session.
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>
