@@ -16,6 +16,7 @@ export function WalkthroughViewerPage() {
   const [w, setW] = useState<WalkthroughDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -39,6 +40,20 @@ export function WalkthroughViewerPage() {
       setError(String(e?.message || e))
     } finally {
       setBusy(false)
+    }
+  }
+
+  // The public URL is this viewer page itself — visibility=link makes it
+  // readable by anyone with the link (no login).
+  const publicUrl = `${window.location.origin}${window.location.pathname}`
+
+  async function copyPublicUrl() {
+    try {
+      await navigator.clipboard.writeText(publicUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (e: any) {
+      setError(String(e?.message || e))
     }
   }
 
@@ -103,15 +118,36 @@ export function WalkthroughViewerPage() {
             {w.project_slug ? ` · ${w.project_slug}` : ''}
           </p>
         </div>
-        <span
-          className={`px-2 py-0.5 text-xs rounded border ${
-            w.visibility === 'link'
-              ? 'text-success/90 bg-success/10 border-success/25'
-              : 'text-foreground-secondary bg-muted/60 border-input'
-          }`}
-        >
-          {w.visibility === 'link' ? 'Public' : 'Private (dimagi)'}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          {w.visibility === 'link' && (
+            <>
+              <a
+                href={publicUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                title={publicUrl}
+              >
+                Open public link ↗
+              </a>
+              <button
+                onClick={copyPublicUrl}
+                className="px-2 py-0.5 text-xs rounded border border-border bg-card text-foreground-secondary hover:bg-muted hover:border-input transition-colors"
+              >
+                {copied ? 'Copied!' : 'Copy link'}
+              </button>
+            </>
+          )}
+          <span
+            className={`px-2 py-0.5 text-xs rounded border ${
+              w.visibility === 'link'
+                ? 'text-success/90 bg-success/10 border-success/25'
+                : 'text-foreground-secondary bg-muted/60 border-input'
+            }`}
+          >
+            {w.visibility === 'link' ? 'Public' : 'Private (dimagi)'}
+          </span>
+        </div>
       </header>
 
       {w.is_owner && (
