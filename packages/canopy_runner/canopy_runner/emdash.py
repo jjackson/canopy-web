@@ -8,11 +8,14 @@ automation run. Unsupported-surface rules:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import time
 from contextlib import contextmanager
 from typing import Iterator
+
+VETTED_TABLES = ["automations", "automation_runs", "tasks"]
 
 
 class SchemaDrift(Exception):
@@ -35,6 +38,22 @@ def _db(db_path: str) -> Iterator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+def table_fingerprint(db_path: str, tables: list[str]) -> str:
+    """sha256 over the normalized CREATE TABLE SQL of the named tables.
+
+    The migration id moves on every emdash release; the shape of the three
+    tables we touch almost never does. Fingerprint-match => safe to re-pin.
+    """
+    with _db(db_path) as conn:
+        rows = conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN (%s)"
+            % ",".join("?" * len(tables)),
+            list(tables),
+        ).fetchall()
+    parts = [f"{r['name']}::{' '.join((r['sql'] or '').split())}" for r in rows]
+    return hashlib.sha256("\n".join(sorted(parts)).encode()).hexdigest()
 
 
 def check_schema(db_path: str, expected_migration_id: int) -> None:

@@ -14,6 +14,7 @@ class Config:
     emdash_db: str
     automation_ids: dict[str, str]
     expected_migration_id: int
+    emdash_fingerprint: str = ""
     poll_seconds: int = 20
     heartbeat_seconds: int = 30
     state_path: str = ""

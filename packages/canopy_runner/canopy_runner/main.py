@@ -34,6 +34,7 @@ import argparse
 import json
 import logging
 import os
+import sqlite3
 import time
 from pathlib import Path
 
@@ -225,13 +226,79 @@ def run_once(cfg: Config, client: Client) -> str:
     return f"injected:{turn_id}"
 
 
-def main() -> None:
+def vet(cfg_path: Path) -> str:
+    """Re-vet the emdash schema pin after an emdash release moves the migration id.
+
+    emdash auto-updates, so a bare migration-id pin would degrade every runner
+    on every release. Instead: fingerprint the schema of the three tables the
+    adapter actually touches (``emdash.VETTED_TABLES``). If that fingerprint
+    still matches the last-vetted one, the migration id bump is just noise —
+    bump the pin automatically. If the fingerprint changed, the injection
+    surface may have changed too; refuse and leave the config untouched so a
+    human re-vets it (see README "After an emdash update").
+    """
+    raw = json.loads(Path(cfg_path).read_text())
+    db = raw["emdash_db"]
+    current_fp = emdash.table_fingerprint(db, emdash.VETTED_TABLES)
+    conn = sqlite3.connect(db)
+    try:
+        actual_id = conn.execute("SELECT MAX(id) FROM __drizzle_migrations").fetchone()[0]
+    finally:
+        conn.close()
+
+    stored_fp = raw.get("emdash_fingerprint", "")
+    if stored_fp and stored_fp != current_fp:
+        print(f"schema of {emdash.VETTED_TABLES} changed — refusing to re-pin; re-vet by hand")
+        return "refused"
+
+    old_id = raw["expected_migration_id"]
+    raw["emdash_fingerprint"] = current_fp
+    if actual_id == old_id:
+        Path(cfg_path).write_text(json.dumps(raw, indent=2))
+        return "unchanged"
+    raw["expected_migration_id"] = actual_id
+    Path(cfg_path).write_text(json.dumps(raw, indent=2))
+    return f"vetted:{old_id}->{actual_id}"
+
+
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="canopy runner (emdash adapter)")
-    parser.add_argument("--config", required=True)
+    # Top-level --config/--once keep the bare invocation (no subcommand) working —
+    # the launchd plist invokes `-m canopy_runner.main --config ...` with no
+    # subcommand, and that must keep behaving like `run`.
+    parser.add_argument("--config", help="path to runner.json")
     parser.add_argument("--once", action="store_true", help="single iteration (for cron/tests)")
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    run_parser = subparsers.add_parser("run", help="run the main loop (default)")
+    run_parser.add_argument("--config", required=True)
+    run_parser.add_argument("--once", action="store_true", help="single iteration (for cron/tests)")
+
+    vet_parser = subparsers.add_parser(
+        "vet", help="re-vet the emdash schema pin after an emdash update"
+    )
+    vet_parser.add_argument("--config", required=True)
+
+    return parser
+
+
+def main() -> None:
+    parser = _build_parser()
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+    command = args.command or "run"
+
+    if command == "vet":
+        if not args.config:
+            parser.error("vet requires --config")
+        print(vet(Path(args.config)))
+        return
+
+    # command == "run" (explicit "run" subcommand, or the bare/default invocation)
+    if not args.config:
+        parser.error("--config is required")
     cfg = Config.load(Path(args.config))
     client = Client(cfg.base_url, cfg.token)
     if args.once:
