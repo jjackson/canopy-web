@@ -3,21 +3,37 @@
 One iteration (run_once):
   1. schema guard — drift => heartbeat(degraded) and do nothing else
   2. heartbeat with the active turn ids (renews leases)
-  3. follow-up pass over active turns: promote freshly-created emdash tasks
-     to sidebar type='task'; drop finished/lost turns from local state
-  4. claim at most one new turn; inject the emdash automation run; record
-     state; post ledger events
+  3. follow-up pass over active turns: recover any turn whose emdash run
+     never made it in (see below), promote freshly-created emdash tasks
+     to sidebar type='task', drop finished/lost turns from local state
+  4. claim at most one new turn; save state (injected=False); inject the
+     emdash automation run; mark injected=True and save again; post ledger
+     events
 
 State file makes restarts safe: on boot we re-read it and resume watching
 already-injected turns instead of double-injecting.
+
+Crash safety around inject: ``emdash_run_id`` is deterministic — it IS the
+turn id (both are uuid strings; `automation_runs.id` is TEXT) — so the
+sequence is: save state first (injected=False), then inject_run (idempotent
+on run_id), then flip injected=True and save again. Every crash point is
+recoverable:
+  - crash before the first save: nothing was ever recorded; the turn's
+    server-side lease simply expires and it gets claimed again later.
+  - crash after the first save but before/during inject_run: the follow-up
+    pass sees injected=False (or a missing automation_runs row) and calls
+    inject_run again — safe, because inject_run is a no-op if the row
+    already exists.
+  - crash after inject_run but before the second save: same as above, the
+    follow-up pass reinjects (idempotent no-op) and just flips the flag.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import logging
+import os
 import time
-import uuid
 from pathlib import Path
 
 from . import emdash
@@ -29,16 +45,39 @@ logger = logging.getLogger("canopy_runner")
 
 def _load_state(cfg: Config) -> dict:
     p = Path(cfg.state_path)
-    if p.exists():
-        return json.loads(p.read_text())
-    return {"active": {}}
+    if not p.exists():
+        return {"active": {}}
+
+    corrupt = False
+    state: dict = {}
+    try:
+        state = json.loads(p.read_text())
+        if not isinstance(state, dict) or "active" not in state:
+            corrupt = True
+    except json.JSONDecodeError as exc:
+        logger.error("corrupt state file %s: %s", p, exc)
+        corrupt = True
+
+    if corrupt:
+        corrupt_path = Path(str(p) + ".corrupt")
+        try:
+            os.replace(p, corrupt_path)
+            logger.error("quarantined corrupt state file %s -> %s; starting fresh", p, corrupt_path)
+        except OSError as exc:
+            logger.error("failed to quarantine corrupt state file %s: %s", p, exc)
+        return {"active": {}}
+
+    return state
 
 
 def _save_state(cfg: Config, state: dict) -> None:
-    Path(cfg.state_path).write_text(json.dumps(state, indent=2))
+    p = Path(cfg.state_path)
+    tmp = Path(str(p) + ".tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    os.replace(tmp, p)  # atomic on POSIX — no torn/partial state file ever observed
 
 
-def run_once(cfg: Config, client: Client, now_fn=time.time) -> str:
+def run_once(cfg: Config, client: Client) -> str:
     state = _load_state(cfg)
     active_ids = list(state["active"].keys())
 
@@ -53,8 +92,34 @@ def run_once(cfg: Config, client: Client, now_fn=time.time) -> str:
     # 2. heartbeat (renews leases for active turns)
     client.heartbeat(cfg.runner_id, active_ids)
 
-    # 3. follow-up pass: promote new emdash tasks, forget stale entries
+    # 3. follow-up pass: recover unfinished injections, promote new emdash
+    # tasks, forget stale entries. (A future task adds success-path eviction
+    # of finished turns here via get_turn — this loop is structured so that
+    # check can slot in at the top, before the recovery check below.)
     for turn_id, info in list(state["active"].items()):
+        run_st = emdash.run_status(cfg.emdash_db, info["emdash_run_id"])
+
+        # Recovery: injected=False means we crashed between saving state and
+        # calling inject_run; run_st is None (with injected=True) means we
+        # crashed after inject_run but the row never actually landed (or the
+        # flag-flip save never happened) — either way, reinject (idempotent)
+        # and move on.
+        if not info.get("injected") or run_st is None:
+            automation_id = cfg.automation_ids.get(info["agent"])
+            if automation_id is None:
+                logger.error(
+                    "no emdash automation configured for agent '%s'; cannot reinject %s",
+                    info["agent"], turn_id,
+                )
+                continue
+            emdash.inject_run(
+                cfg.emdash_db, automation_id, info["emdash_run_id"],
+                task_name=f"canopy-turn-{info['agent']}",
+            )
+            info["injected"] = True
+            _save_state(cfg, state)
+            return f"reinjected:{turn_id}"
+
         task = emdash.find_task(cfg.emdash_db, info["emdash_run_id"])
         if task and not info.get("task_promoted"):
             emdash.promote_task(cfg.emdash_db, task["id"])
@@ -68,7 +133,6 @@ def run_once(cfg: Config, client: Client, now_fn=time.time) -> str:
             except ClientError as exc:
                 logger.warning("event post failed for %s: %s", turn_id, exc)
             return f"promoted:{task['id']}"
-        run_st = emdash.run_status(cfg.emdash_db, info["emdash_run_id"])
         if run_st in ("failed", "skipped"):
             try:
                 client.fail_turn(turn_id, f"emdash run {run_st}")
@@ -97,15 +161,21 @@ def run_once(cfg: Config, client: Client, now_fn=time.time) -> str:
             logger.warning("fail_turn failed: %s", exc)
         return f"failed:{turn_id}"
 
-    emdash_run_id = str(uuid.uuid4())
-    emdash.inject_run(
-        cfg.emdash_db, automation_id, emdash_run_id, task_name=f"canopy-turn-{agent}"
-    )
+    # emdash_run_id is deterministic (== turn_id), so a crash between saving
+    # state and calling inject_run leaves behind exactly enough information
+    # for the follow-up pass to finish the job — see module docstring.
+    emdash_run_id = turn_id
     state["active"][turn_id] = {
         "emdash_run_id": emdash_run_id,
         "agent": agent,
         "task_promoted": False,
+        "injected": False,
     }
+    _save_state(cfg, state)
+    emdash.inject_run(
+        cfg.emdash_db, automation_id, emdash_run_id, task_name=f"canopy-turn-{agent}"
+    )
+    state["active"][turn_id]["injected"] = True
     _save_state(cfg, state)
     try:
         client.post_events(turn_id, [{

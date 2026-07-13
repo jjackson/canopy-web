@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from canopy_runner import emdash
 from canopy_runner.config import Config
 from canopy_runner.main import run_once
 
@@ -124,8 +125,11 @@ def test_promotes_task_on_followup_pass(db, tmp_path):
     cfg = _cfg(db, tmp_path)
     client = FakeClient(turns=[{"id": "t-1", "agent_slug": "echo", "status": "claimed"}])
     run_once(cfg, client)  # inject
+    # emdash_run_id is deterministic (== turn_id) now, so no need to look it
+    # up from the saved state to find the automation_runs row it created.
+    run_id = "t-1"
     state = json.loads(Path(cfg.state_path).read_text())
-    run_id = state["active"]["t-1"]["emdash_run_id"]
+    assert state["active"]["t-1"]["emdash_run_id"] == run_id
     conn = sqlite3.connect(db)
     conn.execute(
         "INSERT INTO tasks (id, project_id, name, status, type, automation_run_id) "
@@ -136,3 +140,89 @@ def test_promotes_task_on_followup_pass(db, tmp_path):
     assert result == "promoted:task-1"
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT type FROM tasks WHERE id='task-1'").fetchone()[0] == "task"
+
+
+def test_corrupt_state_file_self_heals(db, tmp_path):
+    cfg = _cfg(db, tmp_path)
+    Path(cfg.state_path).write_text("{not valid json at all")
+    # give it a turn to claim so the recovered state actually gets persisted
+    # back to disk (an idle iteration with no work never calls _save_state).
+    client = FakeClient(turns=[{"id": "t-1", "agent_slug": "echo", "status": "claimed"}])
+    result = run_once(cfg, client)
+    assert result == "injected:t-1"  # loop continues sanely instead of crash-looping
+    corrupt_path = Path(cfg.state_path + ".corrupt")
+    assert corrupt_path.exists()
+    assert corrupt_path.read_text() == "{not valid json at all"
+    # a fresh, valid state file was written in its place, recovered from the
+    # empty {"active": {}} default plus this iteration's claim
+    state = json.loads(Path(cfg.state_path).read_text())
+    assert "t-1" in state["active"]
+
+
+def test_corrupt_state_file_missing_active_key_self_heals(db, tmp_path):
+    cfg = _cfg(db, tmp_path)
+    Path(cfg.state_path).write_text(json.dumps({"foo": "bar"}))
+    client = FakeClient()
+    result = run_once(cfg, client)
+    assert result == "idle"
+    assert Path(cfg.state_path + ".corrupt").exists()
+
+
+def test_crash_between_save_and_inject_recovers(db, tmp_path):
+    cfg = _cfg(db, tmp_path)
+    turn_id = "t-crash-1"
+    # hand-write a state file as if run_once crashed right after the first
+    # _save_state call (injected=False) but before inject_run committed —
+    # no automation_runs row exists yet for this turn.
+    Path(cfg.state_path).write_text(json.dumps({
+        "active": {
+            turn_id: {
+                "emdash_run_id": turn_id,
+                "agent": "echo",
+                "task_promoted": False,
+                "injected": False,
+            }
+        }
+    }))
+    client = FakeClient()
+    result = run_once(cfg, client)
+    assert result == f"reinjected:{turn_id}"
+    # the emdash row now exists (inject_run was called, idempotently)
+    assert emdash.run_status(db, turn_id) == "queued"
+    state = json.loads(Path(cfg.state_path).read_text())
+    assert state["active"][turn_id]["injected"] is True
+
+
+def test_crash_after_inject_before_flag_flip_recovers(db, tmp_path):
+    """Row exists (inject_run committed) but injected flag never got saved
+    True — the reinjection check treats a present row + injected=False the
+    same as a missing row: reinject (idempotent no-op) and flip the flag."""
+    cfg = _cfg(db, tmp_path)
+    turn_id = "t-crash-2"
+    emdash.inject_run(db, AUTOMATION_ID, turn_id, task_name="canopy-turn-echo")
+    Path(cfg.state_path).write_text(json.dumps({
+        "active": {
+            turn_id: {
+                "emdash_run_id": turn_id,
+                "agent": "echo",
+                "task_promoted": False,
+                "injected": False,
+            }
+        }
+    }))
+    client = FakeClient()
+    result = run_once(cfg, client)
+    assert result == f"reinjected:{turn_id}"
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT COUNT(*) FROM automation_runs").fetchone()[0] == 1  # still just one row
+    state = json.loads(Path(cfg.state_path).read_text())
+    assert state["active"][turn_id]["injected"] is True
+
+
+def test_state_write_is_atomic(db, tmp_path):
+    cfg = _cfg(db, tmp_path)
+    client = FakeClient(turns=[{"id": "t-1", "agent_slug": "echo", "status": "claimed"}])
+    run_once(cfg, client)
+    assert not Path(cfg.state_path + ".tmp").exists()
+    state = json.loads(Path(cfg.state_path).read_text())  # parses cleanly
+    assert "t-1" in state["active"]
