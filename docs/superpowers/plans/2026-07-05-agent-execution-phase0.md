@@ -19,7 +19,7 @@
 - Runner package: Python 3.12 stdlib only (no requests/httpx). It must never write to emdash's DB when the schema version check fails.
 - Turn lifecycle strings (exact): `queued`, `claimed`, `running`, `needs_human`, `done`, `failed`, `lost`. Runner kinds: `emdash`, `cloud`, `remote`. Runner statuses: `online`, `stale`, `disconnected`, `degraded`, `retired`.
 - Lease TTL default 15 minutes; heartbeat interval 30s; runner work-poll interval 20s; `online` = heartbeat within 90s.
-- At most one non-terminal Turn per agent (partial unique index).
+- At most one **executing** Turn (`claimed`/`running`/`needs_human`) per agent — partial unique index `one_executing_turn_per_agent`. `queued` turns stack freely behind the executing one; enqueue NEVER rejects for a busy lane (a Slack mention mid-run is distinct work).
 - Commit after every task (git, this repo unless a task says otherwise).
 
 ---
@@ -102,19 +102,26 @@ def test_turn_defaults_to_queued():
     assert t.routing == Turn.PREFER_LOCAL
 
 
-def test_one_non_terminal_turn_per_agent():
+def test_queued_turns_stack_freely():
     a = _agent()
     Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k1")
-    with pytest.raises(IntegrityError):
-        Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k2")
+    Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k2")  # no raise
+    assert Turn.objects.filter(agent=a, status=Turn.QUEUED).count() == 2
 
 
-def test_terminal_turn_frees_the_lane():
+def test_one_executing_turn_per_agent():
     a = _agent()
-    t = Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k1")
+    Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k1", status=Turn.CLAIMED)
+    with pytest.raises(IntegrityError):
+        Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k2", status=Turn.RUNNING)
+
+
+def test_terminal_turn_frees_the_execution_slot():
+    a = _agent()
+    t = Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k1", status=Turn.RUNNING)
     t.status = Turn.DONE
     t.save()
-    Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k2")  # no raise
+    Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k2", status=Turn.CLAIMED)  # no raise
 
 
 def test_idempotency_key_unique():
@@ -257,10 +264,11 @@ class Turn(models.Model):
             models.Index(fields=["agent", "status"]),
         ]
         constraints = [
+            # Serialize EXECUTION, not intake: queued turns stack freely.
             models.UniqueConstraint(
                 fields=["agent"],
-                condition=models.Q(status__in=["queued", "claimed", "running", "needs_human"]),
-                name="one_active_turn_per_agent",
+                condition=models.Q(status__in=["claimed", "running", "needs_human"]),
+                name="one_executing_turn_per_agent",
             )
         ]
 
@@ -353,14 +361,13 @@ git commit -m "feat(harness): Runner/Turn/TurnEvent models with one-active-turn 
 **Interfaces:**
 - Consumes: Task 2 models.
 - Produces (exact signatures; Task 4 API calls these):
-  - `enqueue_turn(*, agent, origin: str, idempotency_key: str, prompt: str = "", origin_ref: dict | None = None, routing: str = "prefer_local") -> tuple[Turn, bool]` — `(turn, created)`; replays existing turn on duplicate key; raises `LaneBusy` if the agent already has a non-terminal turn with a different key.
+  - `enqueue_turn(*, agent, origin: str, idempotency_key: str, prompt: str = "", origin_ref: dict | None = None, routing: str = "prefer_local") -> tuple[Turn, bool]` — `(turn, created)`; replays existing turn on duplicate key; a busy lane NEVER rejects — new keys queue behind the executing turn.
   - `heartbeat(runner: Runner, *, active_turn_ids: list[str], degraded: bool = False, note: str = "") -> Runner` — stamps `last_heartbeat_at`, sets status, renews leases for listed turns.
-  - `claim_next_turn(runner: Runner, *, lease_seconds: int = 900) -> Turn | None` — atomic; sweeps expired leases first; respects routing/kind and runner capabilities.
+  - `claim_next_turn(runner: Runner, *, lease_seconds: int = 900) -> Turn | None` — atomic; sweeps expired leases first; respects routing/kind and runner capabilities; skips agents that already have an executing turn and absorbs the unique-index race (concurrent claim loses cleanly).
   - `append_events(turn: Turn, events: list[dict]) -> int` — assigns `seq` after the current max; each dict has `kind` + `payload`; returns count.
   - `mark_running(turn: Turn, *, session_id: str = "") -> Turn`
   - `finish_turn(turn: Turn, *, status: str, result_note: str = "") -> Turn` — status must be `done` or `failed`.
   - `sweep_expired_leases() -> int` — non-terminal claimed/running turns past lease → `lost` (+ `status` event); returns count.
-  - `class LaneBusy(Exception)`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -400,11 +407,26 @@ def test_enqueue_is_idempotent():
     assert created1 is True and created2 is False and t1.pk == t2.pk
 
 
-def test_enqueue_second_key_while_lane_busy_raises():
+def test_enqueue_second_key_queues_behind():
     a = _agent()
     services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
-    with pytest.raises(services.LaneBusy):
-        services.enqueue_turn(agent=a, origin="board", idempotency_key="k2")
+    t2, created = services.enqueue_turn(agent=a, origin="slack", idempotency_key="k2")
+    assert created is True and t2.status == Turn.QUEUED
+    assert Turn.objects.filter(agent=a).count() == 2
+
+
+def test_claim_serializes_execution_per_agent():
+    a = _agent()
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    services.enqueue_turn(agent=a, origin="slack", idempotency_key="k2")
+    r = _runner()
+    first = services.claim_next_turn(r)
+    assert first is not None
+    # second queued turn must NOT be claimed while the first is executing
+    assert services.claim_next_turn(r) is None
+    services.finish_turn(first, status="done")
+    second = services.claim_next_turn(r)
+    assert second is not None and second.idempotency_key == "k2"
 
 
 def test_claim_next_turn_happy_path():
@@ -526,10 +548,6 @@ DEFAULT_LEASE_SECONDS = 900
 HEARTBEAT_ONLINE_WINDOW = dt.timedelta(seconds=90)
 
 
-class LaneBusy(Exception):
-    """The agent already has a non-terminal turn (different idempotency key)."""
-
-
 def enqueue_turn(
     *,
     agent,
@@ -539,6 +557,8 @@ def enqueue_turn(
     origin_ref: dict | None = None,
     routing: str = Turn.PREFER_LOCAL,
 ) -> tuple[Turn, bool]:
+    """Queued turns stack freely — the executing-turn index never blocks intake
+    (new turns are born `queued`, which the index does not cover)."""
     existing = Turn.objects.filter(idempotency_key=idempotency_key).first()
     if existing is not None:
         return existing, False
@@ -552,12 +572,12 @@ def enqueue_turn(
                 origin_ref=origin_ref or {},
                 routing=routing,
             )
-    except IntegrityError as exc:
-        # Either the lane constraint or a key race; disambiguate.
+    except IntegrityError:
+        # Only possible race: same idempotency key inserted concurrently.
         replay = Turn.objects.filter(idempotency_key=idempotency_key).first()
         if replay is not None:
             return replay, False
-        raise LaneBusy(f"agent '{agent.slug}' already has an active turn") from exc
+        raise
     append_events(turn, [{"kind": "status", "payload": {"status": Turn.QUEUED}}])
     return turn, True
 
@@ -604,6 +624,9 @@ def _kind_allows(runner: Runner, routing: str) -> bool:
     return True
 
 
+EXECUTING = [Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
+
+
 def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> Turn | None:
     if runner.status != Runner.ONLINE:
         return None
@@ -617,19 +640,30 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
         # prefer_local turns fall to cloud only via the Phase 2 router policy;
         # Phase 0 has no cloud runners, so keep the simple rule: cloud never
         # takes local_only.
-    candidates = Turn.objects.filter(
-        status=Turn.QUEUED, agent__slug__in=slugs
-    ).filter(routing_q).order_by("created_at")
+    busy_agents = Turn.objects.filter(status__in=EXECUTING).values("agent_id")
+    candidates = (
+        Turn.objects.filter(status=Turn.QUEUED, agent__slug__in=slugs)
+        .exclude(agent_id__in=busy_agents)
+        .filter(routing_q)
+        .order_by("created_at")
+    )
     now = timezone.now()
     for turn in candidates:
         if not _kind_allows(runner, turn.routing):
             continue
-        updated = Turn.objects.filter(pk=turn.pk, status=Turn.QUEUED).update(
-            status=Turn.CLAIMED,
-            claimed_by=runner,
-            claimed_at=now,
-            lease_expires_at=now + dt.timedelta(seconds=lease_seconds),
-        )
+        try:
+            # Own atomic block per attempt: an IntegrityError from the
+            # one_executing_turn_per_agent index (concurrent claim for the
+            # same agent) must not poison an outer transaction.
+            with transaction.atomic():
+                updated = Turn.objects.filter(pk=turn.pk, status=Turn.QUEUED).update(
+                    status=Turn.CLAIMED,
+                    claimed_by=runner,
+                    claimed_at=now,
+                    lease_expires_at=now + dt.timedelta(seconds=lease_seconds),
+                )
+        except IntegrityError:
+            continue  # another runner claimed for this agent between our check and update
         if updated:
             turn.refresh_from_db()
             append_events(turn, [{"kind": "status", "payload": {"status": Turn.CLAIMED, "runner": runner.name}}])
@@ -697,7 +731,7 @@ git commit -m "feat(harness): enqueue/heartbeat/claim/lease/event services with 
   - `POST /runners/` body `{name, kind, capabilities}` → 201 RunnerOut (id used by the runner config)
   - `POST /runners/{id}/heartbeat` body `{active_turn_ids: [str], degraded: bool, note: str}` → RunnerOut
   - `POST /runners/{id}/claim` → 200 TurnOut or 204 (no work)
-  - `POST /turns/` body `{agent_slug, origin, idempotency_key, prompt?, origin_ref?, routing?}` → 200/201 TurnOut (`created` flag), 409 problem+json when lane busy
+  - `POST /turns/` body `{agent_slug, origin, idempotency_key, prompt?, origin_ref?, routing?}` → 201 TurnOut (200 on idempotent replay); busy lanes queue, never reject
   - `GET /turns/?agent=<slug>&status=<s>` → paginated TurnOut list
   - `GET /turns/{id}` → TurnOut
   - `POST /turns/{id}/events` body `{events: [{kind, payload}]}` → `{count}`
@@ -781,7 +815,7 @@ def test_enqueue_replays_on_same_key(client, agent):
     assert first.json()["id"] == second.json()["id"]
 
 
-def test_enqueue_lane_busy_is_409(client, agent):
+def test_enqueue_stacks_behind_busy_lane(client, agent):
     client.post(
         "/api/harness/turns/",
         {"agent_slug": "echo", "origin": "manual", "idempotency_key": "k1"},
@@ -789,11 +823,11 @@ def test_enqueue_lane_busy_is_409(client, agent):
     )
     resp = client.post(
         "/api/harness/turns/",
-        {"agent_slug": "echo", "origin": "manual", "idempotency_key": "k2"},
+        {"agent_slug": "echo", "origin": "slack", "idempotency_key": "k2"},
         content_type="application/json",
     )
-    assert resp.status_code == 409
-    assert resp["Content-Type"] == "application/problem+json"
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "queued"
 
 
 def test_event_append_and_cursor_read(client, agent):
@@ -1050,17 +1084,14 @@ def enqueue_turn(request: HttpRequest, payload: TurnIn):
         raise HttpError(422, f"unknown origin '{payload.origin}'")
     if payload.routing not in dict(Turn.ROUTING_CHOICES):
         raise HttpError(422, f"unknown routing '{payload.routing}'")
-    try:
-        turn, created = services.enqueue_turn(
-            agent=agent,
-            origin=payload.origin,
-            idempotency_key=payload.idempotency_key,
-            prompt=payload.prompt,
-            origin_ref=payload.origin_ref,
-            routing=payload.routing,
-        )
-    except services.LaneBusy as exc:
-        raise ProblemError(409, "Agent lane busy", detail=str(exc)) from exc
+    turn, created = services.enqueue_turn(
+        agent=agent,
+        origin=payload.origin,
+        idempotency_key=payload.idempotency_key,
+        prompt=payload.prompt,
+        origin_ref=payload.origin_ref,
+        routing=payload.routing,
+    )
     return (201 if created else 200), turn
 
 
@@ -2016,6 +2047,178 @@ git commit -m "feat(runner): evict server-finished turns from local state"
 
 ---
 
+### Task 8b: `vet-emdash` — re-vet without the treadmill
+
+emdash auto-updates; a bare migration-id pin would degrade every runner on every release. `vet-emdash` fingerprints the schema of the three tables the adapter touches: if unchanged, bump the pin in `runner.json` automatically; if changed, refuse and stay degraded for human re-vetting.
+
+**Files:**
+- Modify: `packages/canopy_runner/canopy_runner/emdash.py` (add `table_fingerprint`), `packages/canopy_runner/canopy_runner/main.py` (add `vet` subcommand — switch argparse to subcommands `run` (default behavior) and `vet`), `packages/canopy_runner/README.md` (re-vet section)
+- Test: `packages/canopy_runner/tests/test_vet.py`
+
+**Interfaces:**
+- Consumes: Task 6 `check_schema`; Task 5 `Config`.
+- Produces:
+  - `emdash.table_fingerprint(db_path: str, tables: list[str]) -> str` — sha256 over the concatenated `sqlite_master.sql` of the named tables (sorted, whitespace-normalized via `" ".join(sql.split())`).
+  - `main.vet(cfg_path: Path) -> str` — returns `"vetted:<old>-><new>"` when the stored fingerprint matches current schema (updates `expected_migration_id` AND stores `emdash_fingerprint` in runner.json), `"unchanged"` when pin already current, `"refused"` when the fingerprint differs (prints the changed tables; does NOT touch the config).
+  - Config gains optional field `emdash_fingerprint: str = ""`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+# packages/canopy_runner/tests/test_vet.py
+import json
+import sqlite3
+from pathlib import Path
+
+from canopy_runner.emdash import table_fingerprint
+from canopy_runner.main import vet
+
+TABLES = ["automations", "automation_runs", "tasks"]
+
+
+def _make_db(path: Path, migration_id: int, extra_col: str = "") -> None:
+    conn = sqlite3.connect(path)
+    conn.executescript(f"""
+        CREATE TABLE __drizzle_migrations (id INTEGER PRIMARY KEY, hash TEXT, created_at INTEGER);
+        INSERT INTO __drizzle_migrations (id, hash, created_at) VALUES ({migration_id}, 'h', 0);
+        CREATE TABLE automations (id TEXT PRIMARY KEY, name TEXT NOT NULL{extra_col});
+        CREATE TABLE automation_runs (id TEXT PRIMARY KEY, automation_id TEXT NOT NULL, status TEXT NOT NULL, trigger_kind TEXT NOT NULL);
+        CREATE TABLE tasks (id TEXT PRIMARY KEY, type TEXT DEFAULT 'task' NOT NULL, automation_run_id TEXT);
+    """)
+    conn.commit(); conn.close()
+
+
+def _cfg_file(tmp_path: Path, db: Path, migration_id: int, fingerprint: str = "") -> Path:
+    cfg = tmp_path / "runner.json"
+    cfg.write_text(json.dumps({
+        "base_url": "http://x", "token": "t", "runner_id": "r-1",
+        "emdash_db": str(db), "automation_ids": {"echo": "a-1"},
+        "expected_migration_id": migration_id, "emdash_fingerprint": fingerprint,
+    }))
+    return cfg
+
+
+def test_fingerprint_stable_and_order_independent(tmp_path):
+    db = tmp_path / "e.db"; _make_db(db, 19)
+    f1 = table_fingerprint(str(db), TABLES)
+    f2 = table_fingerprint(str(db), list(reversed(TABLES)))
+    assert f1 == f2 and len(f1) == 64
+
+
+def test_vet_bumps_pin_when_schema_unchanged(tmp_path):
+    db = tmp_path / "e.db"; _make_db(db, 19)
+    fp = table_fingerprint(str(db), TABLES)
+    cfg = _cfg_file(tmp_path, db, migration_id=18, fingerprint=fp)  # emdash updated 18->19, schema same
+    result = vet(cfg)
+    assert result == "vetted:18->19"
+    assert json.loads(cfg.read_text())["expected_migration_id"] == 19
+
+
+def test_vet_refuses_when_schema_changed(tmp_path):
+    db = tmp_path / "e.db"; _make_db(db, 19, extra_col=", new_col TEXT")
+    old_db = tmp_path / "old.db"; _make_db(old_db, 18)
+    old_fp = table_fingerprint(str(old_db), TABLES)
+    cfg = _cfg_file(tmp_path, db, migration_id=18, fingerprint=old_fp)
+    result = vet(cfg)
+    assert result == "refused"
+    assert json.loads(cfg.read_text())["expected_migration_id"] == 18  # untouched
+
+
+def test_vet_unchanged_when_pin_current(tmp_path):
+    db = tmp_path / "e.db"; _make_db(db, 19)
+    fp = table_fingerprint(str(db), TABLES)
+    cfg = _cfg_file(tmp_path, db, migration_id=19, fingerprint=fp)
+    assert vet(cfg) == "unchanged"
+
+
+def test_vet_adopts_fingerprint_on_first_run(tmp_path):
+    # No stored fingerprint yet (fresh install): vet records it without bumping semantics
+    db = tmp_path / "e.db"; _make_db(db, 19)
+    cfg = _cfg_file(tmp_path, db, migration_id=19, fingerprint="")
+    assert vet(cfg) == "unchanged"
+    assert json.loads(cfg.read_text())["emdash_fingerprint"] != ""
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `cd packages/canopy_runner && uv run --with pytest pytest tests/test_vet.py -v`
+Expected: FAIL with ImportError.
+
+- [ ] **Step 3: Implement.** In `emdash.py` add:
+
+```python
+VETTED_TABLES = ["automations", "automation_runs", "tasks"]
+
+
+def table_fingerprint(db_path: str, tables: list[str]) -> str:
+    """sha256 over the normalized CREATE TABLE SQL of the named tables.
+
+    The migration id moves on every emdash release; the shape of the three
+    tables we touch almost never does. Fingerprint-match => safe to re-pin.
+    """
+    import hashlib
+
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN (%s)"
+            % ",".join("?" * len(tables)),
+            list(tables),
+        ).fetchall()
+    parts = [f"{r['name']}::{' '.join((r['sql'] or '').split())}" for r in rows]
+    return hashlib.sha256("\n".join(sorted(parts)).encode()).hexdigest()
+```
+
+In `main.py` add (and wire argparse subcommands `run` / `vet`, keeping `run` the default when no subcommand given so the launchd plist keeps working):
+
+```python
+def vet(cfg_path: Path) -> str:
+    raw = json.loads(Path(cfg_path).read_text())
+    db = raw["emdash_db"]
+    current_fp = emdash.table_fingerprint(db, emdash.VETTED_TABLES)
+    with sqlite3.connect(db) as conn:
+        actual_id = conn.execute("SELECT MAX(id) FROM __drizzle_migrations").fetchone()[0]
+    stored_fp = raw.get("emdash_fingerprint", "")
+    if stored_fp and stored_fp != current_fp:
+        print(f"schema of {emdash.VETTED_TABLES} changed — refusing to re-pin; re-vet by hand")
+        return "refused"
+    old_id = raw["expected_migration_id"]
+    raw["emdash_fingerprint"] = current_fp
+    if actual_id == old_id:
+        Path(cfg_path).write_text(json.dumps(raw, indent=2))
+        return "unchanged"
+    raw["expected_migration_id"] = actual_id
+    Path(cfg_path).write_text(json.dumps(raw, indent=2))
+    return f"vetted:{old_id}->{actual_id}"
+```
+
+(`import sqlite3` at top of `main.py`.)
+
+- [ ] **Step 4: Run all runner tests**
+
+Run: `cd packages/canopy_runner && uv run --with pytest pytest tests/ -v`
+Expected: all PASS
+
+- [ ] **Step 5: Document.** Append to `packages/canopy_runner/README.md` under setup:
+
+```markdown
+## After an emdash update
+
+The runner goes `degraded` when emdash's migration id moves past the pin.
+Run `python3 -m canopy_runner.main vet --config ~/.canopy/runner.json`:
+- schema of the touched tables unchanged → pin bumps automatically, runner resumes
+- schema changed → stays degraded; re-verify the injection surface against the
+  emdash source (see the spec §6.1) before editing the pin by hand
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/canopy_runner
+git commit -m "feat(runner): vet-emdash — fingerprint-gated automatic re-pin after emdash updates"
+```
+
+---
+
 ### Task 9: drain-turn skill (canopy plugin repo) + runner install docs
 
 **Files (different repo — `~/emdash-projects/canopy`):**
@@ -2204,6 +2407,7 @@ EOF
 
 ## Self-review notes (already applied)
 
-- **Spec coverage:** §5.1 Runner/Turn/TurnEvent → Tasks 2-4; §5.2 router (pull-claim, lease, local_only-waits) → Tasks 3-4; §5.3 API → Task 4 (approvals + degraded endpoint deferred to Phase 1 — `degraded` rides the heartbeat body instead of a separate route, simpler and sufficient); §6.1 emdash adapter → Tasks 6-8; drain-turn + lean runner docs → Task 9; §8 failure table → lease sweep (T3), schema guard (T6), crash-safe state (T7), eviction (T8); §10 boundary → Task 2 Step 4. Approval model, Slack, agent_runs mirroring, cloud runner: Phases 1-2, intentionally absent.
+- **Spec coverage:** §5.1 Runner/Turn/TurnEvent → Tasks 2-4; §5.2 router (pull-claim, lease, local_only-waits) → Tasks 3-4; §5.3 API → Task 4 (approvals + degraded endpoint deferred to Phase 1 — `degraded` rides the heartbeat body instead of a separate route, simpler and sufficient); §6.1 emdash adapter → Tasks 6-8 + re-vet (8b); drain-turn + lean runner docs → Task 9; §8 failure table → lease sweep (T3), schema guard (T6), crash-safe state (T7), eviction (T8), vet (8b); §10 boundary → Task 2 Step 4. Approval model, Slack, agent_runs mirroring, cloud runner: Phases 1-2, intentionally absent.
+- **Review-incorporated (2026-07-05, second-agent review):** execution-only serialization (queued turns stack; no LaneBusy/409 — Tasks 2-4 updated); `needs_human` lease renewal made explicit (already in heartbeat's status filter); `vet-emdash` (Task 8b) kills the re-vet treadmill; spec carries the policy-honesty note and the cloud-secrets decision (Phase 2 scope).
 - **Type consistency:** `claim` returns TurnOut with `agent_slug` (runner reads `turn["agent_slug"]` in Task 7) — matches Task 4 schema resolver. Event dicts are `{kind, payload}` everywhere. Finish statuses `done|failed` only; `lost` is server-side.
 - **Fixed in review:** `GET /turns/` originally sliced before filtering (would `TypeError` on the drain-turn skill's `?agent&status` query) — now filters first, slices last, with a dedicated test.

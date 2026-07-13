@@ -77,7 +77,7 @@ New Django app (the "live-session harness" the `session_sharing` rename freed th
 - `id` (uuid), `workspace` FK, `agent` FK, `origin` (`board` | `api` | `slack` | `cron` | `manual`), `origin_ref` (e.g. command ids, slack thread), `prompt` (what the session is seeded with — usually just `/canopy:drain-turn <agent>`), `routing` (`prefer_local` | `local_only` | `any`), `idempotency_key` (unique; every side-effecting create carries one `[OpenClaw]`),
 - lifecycle: `queued → claimed → running → needs_human → done | failed | lost`, with `claimed_by` FK → Runner, `claimed_at`, `lease_expires_at`, `started_at`, `finished_at`, `session_id` (the claude `--session-id`, set by the executor), `result_note`.
 - `needs_human` = an unresolved Approval or question exists (maps to the agent's existing needs-you semantics).
-- **Lease semantics:** claim sets a TTL (default 15 min, renewed by runner progress events). Expired lease → `lost` → router re-queues per `routing`. A laptop-restart mid-turn is therefore self-healing. Serialization rule: **at most one non-terminal Turn per agent** (OpenClaw's session lane, expressed as a partial unique index).
+- **Lease semantics:** claim sets a TTL (default 15 min, renewed by runner heartbeats — including for `needs_human` turns, so a slow approval does not expire the lease while the runner is alive; if the runner disappears mid-approval the turn goes `lost` and re-queues, which is the intended behavior. Phase 1 may pause the lease clock in `needs_human` instead). Expired lease → `lost` → router re-queues per `routing`. A laptop-restart mid-turn is therefore self-healing. Serialization rule: **at most one *executing* Turn (`claimed`/`running`/`needs_human`) per agent** — `queued` turns stack freely behind it (a Slack mention arriving mid-run must enqueue, not be rejected; distinct prompts are distinct work). Partial unique index on the executing statuses; OpenClaw's session lane at the execution boundary, not the intake boundary.
 - Relationship to existing models: `AgentTaskCommand` stays the *product-visible* command queue; a Turn is the *execution envelope*. The drain-turn skill reads pending commands and applies them exactly as today — Turns don't replace commands, they carry the session that processes them. A Turn also creates an `agent_runs` Run so the existing run read-model UI renders it.
 
 **TurnEvent** — append-only ledger. `[OpenHands event stream; agentapi replay-on-subscribe]`
@@ -116,6 +116,8 @@ A small Python package (`canopy_runs` sibling, installable): heartbeat loop, wor
 - Immediately after emdash creates the task, flip `tasks.type` `automation-run → 'task'` (byte-identical to emdash's own convert action) so turns appear in the project sidebar as they land; they always appear live under Automations regardless.
 - **Schema guard:** on startup and before every write, compare `__drizzle_migrations` max id against the vetted version; mismatch → report `degraded`, notify, stop writing. Degrades to "Run now by hand," never corrupts.
 - Turn completion: the session itself finishes via the drain-turn skill (applies commands, POSTs `/turns/{id}/finish`). The runner's transcript tailer provides the ledger and idle detection (output-stability window `[agentapi]`).
+- **Re-vet without treadmill:** emdash auto-updates, so a bare migration-id pin would degrade every laptop runner on every release. `canopy-runner vet-emdash` fingerprints the `sqlite_master` SQL of the three touched tables (`automations`, `automation_runs`, `tasks`): unchanged → bump the pin automatically; changed → stay `degraded` for human re-vetting.
+- **Policy honesty:** these sessions are mechanically interactive PTY claude, but an unattended launchd-triggered turn is still *automated* use of a subscription session — the very pattern the paused May 13 policy targets. We run it eyes-open because the policy is paused and the executor is swappable (that's the point of the runner abstraction), not because the launch mechanics settle the question.
 - **Upstream migration path:** emdash #1995 (local HTTP API for task creation — upvoted) or the #2321 CLI replaces the INSERT with a POST/exec; adapter interface unchanged. We optionally contribute the automations `precondition`/webhook trigger upstream.
 
 ### 6.2 Cloud adapter — clean user space on ECS (Phase 2)
@@ -123,6 +125,7 @@ A small Python package (`canopy_runs` sibling, installable): heartbeat loop, wor
 - A `canopy-cloud-runner` ECS service on the existing labs cluster: one container, **non-root dedicated user**, the same runner package, `ANTHROPIC_API_KEY` from Secrets Manager. Separate trust domain per OpenClaw's own guidance: hostile-user isolation comes from OS-user/host separation, not container-per-session cleverness.
 - Per turn: `git worktree add` (or fresh shallow clone) with deterministic branch `canopy/<agent>-<short-turn-id>` `[vibe-kanban]`; launch `claude -p --output-format stream-json --session-id <turn-session>` (or the Agent SDK — same billing surface; pick whichever streams cleaner at build time) with the MCP permission shim as `--permission-prompt-tool`; tail transcript → TurnEvents.
 - Git credentials: scoped deploy token; push restricted to the turn's branch (credential lives outside the agent's env where feasible). `[Anthropic cloud pattern, simplified]`
+- **Agent identity is a deliberate choice, not a silent gap:** full parity with a laptop turn needs the agent's own secrets (gog OAuth for email, GWS service-account keys, canopy-web PATs). Two sanctioned options, decided per agent at Phase 2 build time: (a) provision via the existing 1Password-backed flow (`canopy provision` from `config/secrets.yaml`) with a 1P service account on the ECS runner, or (b) declare the cloud runner **reduced-capability** through the §5.1 capabilities claim (e.g. no email send) so the router and the agent both know. Never ship a cloud runner whose capability set is implicit.
 - Readiness/health: container heartbeat is the same runner heartbeat; ECS task stop mid-turn = lease expiry = `lost` → re-route. `[OpenHands 503→paused analog]`
 - Visibility parity: cloud turns are watched in canopy-web's run view (ledger replay + live tail) — same rows the emdash leg writes.
 
@@ -162,7 +165,8 @@ Deltas, not harvested: ace-web is one `SlackInstallation` per team (single bot) 
 | Failure | Detection | Behavior |
 |---|---|---|
 | Laptop closes mid-turn | lease expiry (no renewal) | turn `lost` → re-queued per `routing`; Slack thread notes the handoff |
-| emdash updates schema | migration-id guard | runner `degraded`, no writes, notification; manual re-vet bumps the pin |
+| emdash updates schema | migration-id guard | runner `degraded`, no writes, notification; `vet-emdash` auto-bumps the pin when the touched tables' schema is unchanged, else human re-vets |
+| Approval sits for hours (`needs_human`) | n/a | runner heartbeats renew the lease in `needs_human`; only runner death expires it (turn `lost`, re-queued) |
 | Runner crash | missed heartbeats → `stale`/`disconnected` | router stops offering work; on restart runner rehydrates local state and reconciles in-flight turns |
 | Claude session hangs | no transcript progress within idle window | runner emits `error` event; lease expires naturally; turn `lost` |
 | Double execution | atomic claim + idempotency keys + one-non-terminal-turn-per-agent index | second claim loses the UPDATE race; duplicate enqueues collapse on the key |
@@ -189,7 +193,7 @@ Deltas, not harvested: ace-web is one `SlackInstallation` per team (single bot) 
 
 ## 12. Open questions
 
-1. Cloud runtime: `claude -p --output-format stream-json` vs Python Agent SDK — same billing, choose on streaming ergonomics during Phase 2 build (lean: SDK, it *is* the supported programmatic surface).
+1. ~~Cloud runtime: `claude -p` vs Python Agent SDK~~ — **resolved: Agent SDK.** It is the supported programmatic surface, same billing, and the one Anthropic's sanctioned path is built around.
 2. Does Phase 0 create `agent_runs` rows immediately, or wait for the Turn↔Run mapping to settle in Phase 1? (Lean: immediately, thin.)
 3. Slack workspace constraints at Dimagi for per-agent apps — manifest-API app creation may require workspace-admin approval per app; confirm whether N agent apps are acceptable or Phase 1 starts with @echo only. Needs a check before Phase 1.
 4. Whether to also PR the `precondition`/webhook trigger to emdash or ride #1995/#2321 — decide after watching those threads for a few weeks.
