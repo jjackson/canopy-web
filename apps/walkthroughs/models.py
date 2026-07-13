@@ -128,5 +128,7 @@ class Walkthrough(models.Model):
             self.visibility == self.VISIBILITY_LINK
             and self.share_token
             and token
-            and secrets.compare_digest(self.share_token, token)
+            and secrets.compare_digest(
+                self.share_token.encode("utf-8"), token.encode("utf-8")
+            )
         )

@@ -129,3 +129,8 @@ class TestTokenMatches:
         w = self._make(db, visibility="private")
         token = w.ensure_share_token()
         assert w.token_matches(token) is False
+
+    def test_rejects_non_ascii_token_without_raising(self, db):
+        w = self._make(db, visibility="link")
+        w.ensure_share_token()
+        assert w.token_matches("héllo ") is False
