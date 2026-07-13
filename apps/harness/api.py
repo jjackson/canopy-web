@@ -1,6 +1,8 @@
 """Django Ninja router for /api/harness — runner registry + turn lifecycle."""
 from __future__ import annotations
 
+import uuid
+
 from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
@@ -12,10 +14,10 @@ from apps.api.errors import ProblemError
 from . import services
 from .models import Runner, Turn
 from .schemas import (
-    CountOut,
     HeartbeatIn,
     RunnerIn,
     RunnerOut,
+    TurnEventCountOut,
     TurnEventsIn,
     TurnEventsOut,
     TurnFinishIn,
@@ -26,15 +28,29 @@ from .schemas import (
 
 router = Router(auth=session_auth, tags=["harness"])
 
+# Allowed values for TurnEvent.kind. Kept in sync with the event kinds the
+# runner/agent side actually emits; anything else 422s at the API boundary
+# rather than being silently persisted.
+ALLOWED_EVENT_KINDS = {
+    "status",
+    "assistant",
+    "tool_start",
+    "tool_end",
+    "question",
+    "approval",
+    "error",
+    "heartbeat",
+}
 
-def _runner_or_404(runner_id) -> Runner:
+
+def _runner_or_404(runner_id: uuid.UUID) -> Runner:
     runner = Runner.objects.filter(pk=runner_id).exclude(status=Runner.RETIRED).first()
     if runner is None:
         raise HttpError(404, "runner not found")
     return runner
 
 
-def _turn_or_404(turn_id) -> Turn:
+def _turn_or_404(turn_id: uuid.UUID) -> Turn:
     turn = Turn.objects.select_related("agent", "claimed_by").filter(pk=turn_id).first()
     if turn is None:
         raise HttpError(404, "turn not found")
@@ -55,7 +71,7 @@ def pair_runner(request: HttpRequest, payload: RunnerIn):
 
 
 @router.post("/runners/{runner_id}/heartbeat", response=RunnerOut)
-def runner_heartbeat(request: HttpRequest, runner_id: str, payload: HeartbeatIn):
+def runner_heartbeat(request: HttpRequest, runner_id: uuid.UUID, payload: HeartbeatIn):
     runner = _runner_or_404(runner_id)
     return services.heartbeat(
         runner,
@@ -66,7 +82,7 @@ def runner_heartbeat(request: HttpRequest, runner_id: str, payload: HeartbeatIn)
 
 
 @router.post("/runners/{runner_id}/claim", response={200: TurnOut, 204: None})
-def claim_turn(request: HttpRequest, runner_id: str):
+def claim_turn(request: HttpRequest, runner_id: uuid.UUID):
     runner = _runner_or_404(runner_id)
     turn = services.claim_next_turn(runner)
     if turn is None:
@@ -105,26 +121,29 @@ def list_turns(request: HttpRequest, agent: str | None = None, status: str | Non
 
 
 @router.get("/turns/{turn_id}", response=TurnOut)
-def get_turn(request: HttpRequest, turn_id: str):
+def get_turn(request: HttpRequest, turn_id: uuid.UUID):
     return _turn_or_404(turn_id)
 
 
-@router.post("/turns/{turn_id}/events", response=CountOut)
-def append_turn_events(request: HttpRequest, turn_id: str, payload: TurnEventsIn):
+@router.post("/turns/{turn_id}/events", response=TurnEventCountOut)
+def append_turn_events(request: HttpRequest, turn_id: uuid.UUID, payload: TurnEventsIn):
     turn = _turn_or_404(turn_id)
+    for event in payload.events:
+        if event.kind not in ALLOWED_EVENT_KINDS:
+            raise HttpError(422, f"unknown event kind '{event.kind}'")
     count = services.append_events(turn, [e.dict() for e in payload.events])
     return {"count": count}
 
 
 @router.get("/turns/{turn_id}/events", response=TurnEventsOut)
-def read_turn_events(request: HttpRequest, turn_id: str, after: int = 0):
+def read_turn_events(request: HttpRequest, turn_id: uuid.UUID, after: int = 0):
     turn = _turn_or_404(turn_id)
     events = turn.events.filter(seq__gt=after).order_by("seq")[:500]
     return {"events": list(events)}
 
 
 @router.post("/turns/{turn_id}/start", response=TurnOut)
-def start_turn(request: HttpRequest, turn_id: str, payload: TurnStartIn):
+def start_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnStartIn):
     turn = _turn_or_404(turn_id)
     if turn.status not in (Turn.CLAIMED, Turn.RUNNING):
         raise ProblemError(409, "Turn not startable", detail=f"status={turn.status}")
@@ -132,7 +151,7 @@ def start_turn(request: HttpRequest, turn_id: str, payload: TurnStartIn):
 
 
 @router.post("/turns/{turn_id}/finish", response=TurnOut)
-def finish_turn(request: HttpRequest, turn_id: str, payload: TurnFinishIn):
+def finish_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnFinishIn):
     turn = _turn_or_404(turn_id)
     if payload.status not in (Turn.DONE, Turn.FAILED):
         raise HttpError(422, "finish status must be done|failed")

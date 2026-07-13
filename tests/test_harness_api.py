@@ -159,3 +159,28 @@ def test_anonymous_is_401(agent):
     c = Client()
     resp = c.get("/api/harness/turns/")
     assert resp.status_code == 401
+
+
+def test_malformed_turn_id_is_422(client, agent):
+    resp = client.get("/api/harness/turns/not-a-uuid")
+    assert resp.status_code == 422, resp.content
+
+
+def test_malformed_runner_id_is_422(client, agent):
+    resp = client.post("/api/harness/runners/not-a-uuid/claim")
+    assert resp.status_code == 422, resp.content
+
+
+def test_unknown_event_kind_is_422(client, agent):
+    enq = client.post(
+        "/api/harness/turns/",
+        {"agent_slug": "echo", "origin": "manual", "idempotency_key": "k1"},
+        content_type="application/json",
+    ).json()
+    tid = enq["id"]
+    resp = client.post(
+        f"/api/harness/turns/{tid}/events",
+        {"events": [{"kind": "bogus_kind", "payload": {}}]},
+        content_type="application/json",
+    )
+    assert resp.status_code == 422, resp.content

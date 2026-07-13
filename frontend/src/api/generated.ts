@@ -3469,7 +3469,20 @@ export interface components {
         };
         /** CountOut */
         readonly CountOut: {
-            /** Count */
+            /**
+             * Created
+             * @default 0
+             */
+            readonly created: number;
+            /**
+             * Replaced
+             * @default 0
+             */
+            readonly replaced: number;
+            /**
+             * Count
+             * @default 0
+             */
             readonly count: number;
         };
         /** AgentWorkProductBatchIn */
@@ -4560,6 +4573,11 @@ export interface components {
              * @default prefer_local
              */
             readonly routing: string;
+        };
+        /** TurnEventCountOut */
+        readonly TurnEventCountOut: {
+            /** Count */
+            readonly count: number;
         };
         /** TurnEventIn */
         readonly TurnEventIn: {
@@ -7298,7 +7316,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["CountOut"];
+                    readonly "application/json": components["schemas"]["TurnEventCountOut"];
                 };
             };
         };

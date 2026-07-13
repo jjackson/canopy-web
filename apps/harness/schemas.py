@@ -84,7 +84,7 @@ class TurnEventsOut(Schema):
     events: list[TurnEventOut]
 
 
-class CountOut(Schema):
+class TurnEventCountOut(Schema):
     count: int
 
 
