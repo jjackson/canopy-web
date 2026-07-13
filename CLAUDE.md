@@ -237,7 +237,7 @@ The unified agent **run lifecycle** (run → step → artifact → verdict/QA �
 - `POST /api/agents/{slug}/runs/{run_id}/fork` — Fork a run at a step boundary
 
 ### Sessions (`apps/session_sharing`) — shared Claude Code transcripts
-Token-based session sharing (the `/canopy:share-session` flow); the app was renamed from `sessions` to `session_sharing` to free the `sessions` name for the live-session harness. Routers still mount at `/api/sessions` + `/api/share`. This is a **separate** token model from the tokenless walkthrough/review visibility above — shared sessions (and arcs) carry a rotatable `share_token`.
+Token-based session sharing (the `/canopy:share-session` flow); the app was renamed from `sessions` to `session_sharing` to free the `sessions` name for the live-session harness. Routers still mount at `/api/sessions` + `/api/share`. This is a **separate** token model from the visibility gating above (token-gated walkthroughs / tokenless reviews) — shared sessions (and arcs) carry their own rotatable `share_token`.
 - `POST /api/sessions/upload` — Upload a Claude `.jsonl` transcript (multipart)
 - `GET /api/sessions/` — List my shared sessions
 - `GET /api/sessions/{slug}` — Get one session (owner)
