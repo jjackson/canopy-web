@@ -1,0 +1,141 @@
+"""Claim/lease/idempotency semantics for the harness services."""
+from __future__ import annotations
+
+import datetime as dt
+
+import pytest
+from django.utils import timezone
+
+from apps.agents.models import Agent
+from apps.harness import services
+from apps.harness.models import Runner, Turn, TurnEvent
+
+pytestmark = pytest.mark.django_db
+
+
+def _agent(slug="echo"):
+    return Agent.objects.create(slug=slug, name=slug.title())
+
+
+def _runner(**kw):
+    defaults = dict(name="jj-mbp", kind=Runner.EMDASH, capabilities={"agents": ["echo"]})
+    defaults.update(kw)
+    r = Runner.objects.create(**defaults)
+    services.heartbeat(r, active_turn_ids=[])
+    return r
+
+
+def test_enqueue_is_idempotent():
+    a = _agent()
+    t1, created1 = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    t2, created2 = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    assert created1 is True and created2 is False and t1.pk == t2.pk
+
+
+def test_enqueue_second_key_queues_behind():
+    a = _agent()
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    t2, created = services.enqueue_turn(agent=a, origin="slack", idempotency_key="k2")
+    assert created is True and t2.status == Turn.QUEUED
+    assert Turn.objects.filter(agent=a).count() == 2
+
+
+def test_claim_serializes_execution_per_agent():
+    a = _agent()
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    services.enqueue_turn(agent=a, origin="slack", idempotency_key="k2")
+    r = _runner()
+    first = services.claim_next_turn(r)
+    assert first is not None
+    # second queued turn must NOT be claimed while the first is executing
+    assert services.claim_next_turn(r) is None
+    services.finish_turn(first, status="done")
+    second = services.claim_next_turn(r)
+    assert second is not None and second.idempotency_key == "k2"
+
+
+def test_claim_next_turn_happy_path():
+    a = _agent()
+    t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r = _runner()
+    claimed = services.claim_next_turn(r)
+    assert claimed.pk == t.pk
+    claimed.refresh_from_db()
+    assert claimed.status == Turn.CLAIMED
+    assert claimed.claimed_by_id == r.id
+    assert claimed.lease_expires_at > timezone.now()
+
+
+def test_claim_respects_capabilities():
+    a = _agent("eva")
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r = _runner()  # only capable of echo
+    assert services.claim_next_turn(r) is None
+
+
+def test_local_only_never_claimed_by_cloud():
+    a = _agent()
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k1", routing="local_only")
+    r = _runner(kind=Runner.CLOUD)
+    assert services.claim_next_turn(r) is None
+
+
+def test_claim_is_exclusive():
+    a = _agent()
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r1, r2 = _runner(), _runner(name="jj-mbp-2")
+    first = services.claim_next_turn(r1)
+    second = services.claim_next_turn(r2)
+    assert first is not None and second is None
+
+
+def test_expired_lease_goes_lost_and_is_reclaimable():
+    a = _agent()
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r = _runner()
+    t = services.claim_next_turn(r)
+    Turn.objects.filter(pk=t.pk).update(lease_expires_at=timezone.now() - dt.timedelta(minutes=1))
+    assert services.sweep_expired_leases() == 1
+    t.refresh_from_db()
+    assert t.status == Turn.LOST
+    # lost is terminal -> lane free -> a re-enqueue with a new key claims fine
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k2")
+    assert services.claim_next_turn(r) is not None
+
+
+def test_heartbeat_renews_lease_and_status():
+    a = _agent()
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r = _runner()
+    t = services.claim_next_turn(r)
+    old_expiry = t.lease_expires_at
+    services.heartbeat(r, active_turn_ids=[str(t.pk)])
+    t.refresh_from_db()
+    assert t.lease_expires_at > old_expiry
+    r.refresh_from_db()
+    assert r.status == Runner.ONLINE
+
+
+def test_degraded_runner_claims_nothing():
+    a = _agent()
+    services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r = _runner()
+    services.heartbeat(r, active_turn_ids=[], degraded=True, note="emdash schema drift")
+    assert services.claim_next_turn(r) is None
+
+
+def test_append_events_assigns_monotonic_seq():
+    a = _agent()
+    t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    n = services.append_events(t, [{"kind": "status", "payload": {"s": "claimed"}}])
+    n += services.append_events(t, [{"kind": "status", "payload": {"s": "running"}}])
+    assert n == 2
+    assert list(t.events.values_list("seq", flat=True)) == [1, 2]
+
+
+def test_finish_turn_sets_terminal_state():
+    a = _agent()
+    t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    services.finish_turn(t, status="done", result_note="2 commands applied")
+    t.refresh_from_db()
+    assert t.status == Turn.DONE and t.finished_at is not None

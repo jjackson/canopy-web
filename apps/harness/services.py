@@ -1,0 +1,176 @@
+"""Harness domain services — the only write path for Runner/Turn/TurnEvent.
+
+Claiming is a single conditional UPDATE (no row can be claimed twice); leases
+are renewed by runner heartbeats and swept lazily on claim. All functions are
+synchronous and transaction-safe.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import logging
+
+from django.db import IntegrityError, transaction
+from django.db.models import Max, Q
+from django.utils import timezone
+
+from .models import Runner, Turn, TurnEvent
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_LEASE_SECONDS = 900
+HEARTBEAT_ONLINE_WINDOW = dt.timedelta(seconds=90)
+
+
+def enqueue_turn(
+    *,
+    agent,
+    origin: str,
+    idempotency_key: str,
+    prompt: str = "",
+    origin_ref: dict | None = None,
+    routing: str = Turn.PREFER_LOCAL,
+) -> tuple[Turn, bool]:
+    """Queued turns stack freely — the executing-turn index never blocks intake
+    (new turns are born `queued`, which the index does not cover)."""
+    existing = Turn.objects.filter(idempotency_key=idempotency_key).first()
+    if existing is not None:
+        return existing, False
+    try:
+        with transaction.atomic():
+            turn = Turn.objects.create(
+                agent=agent,
+                origin=origin,
+                idempotency_key=idempotency_key,
+                prompt=prompt,
+                origin_ref=origin_ref or {},
+                routing=routing,
+            )
+    except IntegrityError:
+        # Only possible race: same idempotency key inserted concurrently.
+        replay = Turn.objects.filter(idempotency_key=idempotency_key).first()
+        if replay is not None:
+            return replay, False
+        raise
+    return turn, True
+
+
+def heartbeat(
+    runner: Runner, *, active_turn_ids: list[str], degraded: bool = False, note: str = ""
+) -> Runner:
+    now = timezone.now()
+    runner.last_heartbeat_at = now
+    runner.status = Runner.DEGRADED if degraded else Runner.ONLINE
+    runner.status_note = note
+    runner.save(update_fields=["last_heartbeat_at", "status", "status_note"])
+    if active_turn_ids:
+        Turn.objects.filter(
+            pk__in=active_turn_ids,
+            claimed_by=runner,
+            status__in=[Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN],
+        ).update(lease_expires_at=now + dt.timedelta(seconds=DEFAULT_LEASE_SECONDS))
+    return runner
+
+
+def sweep_expired_leases() -> int:
+    now = timezone.now()
+    expired = list(
+        Turn.objects.filter(
+            status__in=[Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN],
+            lease_expires_at__lt=now,
+        )
+    )
+    count = 0
+    for turn in expired:
+        updated = Turn.objects.filter(pk=turn.pk, lease_expires_at__lt=now).exclude(
+            status__in=Turn.TERMINAL
+        ).update(status=Turn.LOST, finished_at=now)
+        if updated:
+            append_events(turn, [{"kind": "status", "payload": {"status": Turn.LOST, "reason": "lease_expired"}}])
+            count += 1
+    return count
+
+
+def _kind_allows(runner: Runner, routing: str) -> bool:
+    if routing == Turn.LOCAL_ONLY:
+        return runner.kind in (Runner.EMDASH, Runner.REMOTE)
+    return True
+
+
+EXECUTING = [Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
+
+
+def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> Turn | None:
+    if runner.status != Runner.ONLINE:
+        return None
+    sweep_expired_leases()
+    slugs = runner.agent_slugs()
+    if not slugs:
+        return None
+    routing_q = Q(routing__in=[Turn.PREFER_LOCAL, Turn.LOCAL_ONLY, Turn.ANY])
+    if runner.kind == Runner.CLOUD:
+        routing_q = Q(routing=Turn.ANY) | Q(routing=Turn.PREFER_LOCAL)
+        # prefer_local turns fall to cloud only via the Phase 2 router policy;
+        # Phase 0 has no cloud runners, so keep the simple rule: cloud never
+        # takes local_only.
+    busy_agents = Turn.objects.filter(status__in=EXECUTING).values("agent_id")
+    candidates = (
+        Turn.objects.filter(status=Turn.QUEUED, agent__slug__in=slugs)
+        .exclude(agent_id__in=busy_agents)
+        .filter(routing_q)
+        .order_by("created_at")
+    )
+    now = timezone.now()
+    for turn in candidates:
+        if not _kind_allows(runner, turn.routing):
+            continue
+        try:
+            # Own atomic block per attempt: an IntegrityError from the
+            # one_executing_turn_per_agent index (concurrent claim for the
+            # same agent) must not poison an outer transaction.
+            with transaction.atomic():
+                updated = Turn.objects.filter(pk=turn.pk, status=Turn.QUEUED).update(
+                    status=Turn.CLAIMED,
+                    claimed_by=runner,
+                    claimed_at=now,
+                    lease_expires_at=now + dt.timedelta(seconds=lease_seconds),
+                )
+        except IntegrityError:
+            continue  # another runner claimed for this agent between our check and update
+        if updated:
+            turn.refresh_from_db()
+            append_events(turn, [{"kind": "status", "payload": {"status": Turn.CLAIMED, "runner": runner.name}}])
+            return turn
+    return None
+
+
+def append_events(turn: Turn, events: list[dict]) -> int:
+    with transaction.atomic():
+        current = (
+            TurnEvent.objects.filter(turn=turn).aggregate(m=Max("seq"))["m"] or 0
+        )
+        rows = [
+            TurnEvent(turn=turn, seq=current + i + 1, kind=e["kind"], payload=e.get("payload", {}))
+            for i, e in enumerate(events)
+        ]
+        TurnEvent.objects.bulk_create(rows)
+    return len(rows)
+
+
+def mark_running(turn: Turn, *, session_id: str = "") -> Turn:
+    turn.status = Turn.RUNNING
+    turn.started_at = turn.started_at or timezone.now()
+    if session_id:
+        turn.session_id = session_id
+    turn.save(update_fields=["status", "started_at", "session_id"])
+    append_events(turn, [{"kind": "status", "payload": {"status": Turn.RUNNING}}])
+    return turn
+
+
+def finish_turn(turn: Turn, *, status: str, result_note: str = "") -> Turn:
+    assert status in (Turn.DONE, Turn.FAILED), f"finish status must be done|failed, got {status}"
+    turn.status = status
+    turn.finished_at = timezone.now()
+    turn.result_note = result_note
+    turn.save(update_fields=["status", "finished_at", "result_note"])
+    append_events(turn, [{"kind": "status", "payload": {"status": status, "result_note": result_note}}])
+    return turn
