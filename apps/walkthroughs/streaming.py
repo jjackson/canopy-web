@@ -96,6 +96,7 @@ def walkthrough_content(request, wid):
             resp["Content-Range"] = f"bytes {s}-{e}/{t}"
             resp["Content-Length"] = str(len(data))
             resp["Accept-Ranges"] = "bytes"
+            resp["Cache-Control"] = "private"
             return resp
 
         data, s, e, t = storage.download(file_id=w.drive_file_id)
@@ -106,6 +107,7 @@ def walkthrough_content(request, wid):
         )
         resp["Content-Length"] = str(len(data))
         resp["Accept-Ranges"] = "bytes"
+        resp["Cache-Control"] = "private"
         return resp
     except DriveNotConfigured:
         return HttpResponse(status=500)

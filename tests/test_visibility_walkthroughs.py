@@ -3,9 +3,12 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, override_settings
 
+from apps.walkthroughs import storage
 from apps.walkthroughs.models import Walkthrough
+from tests.fixtures.fake_drive import FakeDriveClient
 
 
 @pytest.fixture
@@ -13,6 +16,15 @@ def owner(db):
     return get_user_model().objects.create_user(
         username="owner@dimagi.com", email="owner@dimagi.com",
     )
+
+
+@pytest.fixture
+def fake_drive(monkeypatch):
+    """Stub the Drive client so an upload test stays offline (mirrors the
+    fixture in tests/test_walkthroughs_drive.py)."""
+    inst = FakeDriveClient()
+    monkeypatch.setattr(storage, "get_drive_client", lambda: inst)
+    return inst
 
 
 def _make(owner, **kw):
@@ -155,6 +167,14 @@ def test_detail_api_404s_anonymous_with_wrong_token(owner):
 
 
 @override_settings(REQUIRE_AUTH=True)
+def test_detail_api_404s_private_even_with_token(owner):
+    w = _make(owner, visibility="private")
+    token = w.ensure_share_token()
+    resp = Client().get(f"/api/walkthroughs/{w.id}/?t={token}")
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
 def test_walkthrough_shell_served_to_anonymous(owner):
     w = _make(owner, visibility="link")
     resp = Client().get(f"/walkthrough/{w.id}")
@@ -242,6 +262,30 @@ def test_share_url_hidden_from_non_owner_and_anonymous(owner):
     assert resp.json()["share_url"] is None
 
 
+@override_settings(REQUIRE_AUTH=True, CANOPY_DRIVE_ROOT_FOLDER_ID="root-folder")
+def test_upload_with_link_visibility_mints_share_token(owner, fake_drive):
+    client = Client()
+    client.force_login(owner)
+    upload = SimpleUploadedFile(
+        "slideshow.html", b"<html>hi</html>", content_type="text/html",
+    )
+    resp = client.post(
+        "/api/walkthroughs/",
+        data={
+            "file": upload,
+            "title": "Demo",
+            "kind": "html",
+            "visibility": "link",
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["share_url"] is not None
+    assert "?t=" in body["share_url"]
+    w = Walkthrough.objects.get(pk=body["id"])
+    assert w.share_token
+
+
 @override_settings(REQUIRE_AUTH=True)
 def test_rotate_invalidates_old_token_and_returns_new_share_url(owner):
     w = _make(owner, visibility="link")
@@ -270,10 +314,13 @@ def test_anonymous_mutations_still_blocked(owner):
         data={"visibility": "private"},
         content_type="application/json",
     )
-    assert patch_resp.status_code >= 400 or patch_resp.status_code in (301, 302)
+    assert patch_resp.status_code == 401
     delete_resp = c.delete(f"/api/walkthroughs/{w.id}/")
-    assert delete_resp.status_code >= 400 or delete_resp.status_code in (301, 302)
-    # Anonymous POST to a non-rotate subpath must not pass the middleware either.
+    assert delete_resp.status_code == 401
+    # Anonymous POST to a non-rotate subpath must not pass the middleware either
+    # (no such route exists, but the middleware must reject before routing).
+    post_resp = c.post(f"/api/walkthroughs/{w.id}/")
+    assert post_resp.status_code == 401
     w.refresh_from_db()
     assert w.visibility == "link"
 
@@ -282,8 +329,9 @@ def test_anonymous_mutations_still_blocked(owner):
 def test_rotate_is_owner_only(owner):
     w = _make(owner, visibility="link")
     w.ensure_share_token()
-    # Anonymous → 404.
-    assert Client().post(f"/api/walkthroughs/{w.id}/rotate-token").status_code == 404
+    # Anonymous → 401 (middleware/session-auth rejection; rotate is no longer
+    # a public-with-manual-owner-check route).
+    assert Client().post(f"/api/walkthroughs/{w.id}/rotate-token").status_code == 401
     # Authed non-owner → 404 (hidden, matching the tokens-app pattern).
     other = get_user_model().objects.create_user(
         username="other3@dimagi.com", email="other3@dimagi.com",

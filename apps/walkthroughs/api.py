@@ -432,14 +432,18 @@ def patch_walkthrough(
 @router.post(
     "/{wid}/rotate-token",
     response=WalkthroughDetailOut,
-    auth=None,  # Check ownership manually to return 404 for non-owners (hide existence)
     summary="Rotate the share token (owner only)",
 )
 def rotate_walkthrough_token(request: HttpRequest, wid: UUID) -> WalkthroughDetailOut:
-    """Mint a fresh share token, killing every previously shared public link."""
+    """Mint a fresh share token, killing every previously shared public link.
+
+    Uses the router's default session auth (same as patch/delete below) — an
+    anonymous caller is rejected before reaching this body. An *authenticated*
+    non-owner still gets a manual 404 (not 403) to avoid leaking existence.
+    """
     _require_enabled()
     w = _get_or_404(wid)
-    if not (request.user.is_authenticated and w.owner_id == request.user.id):
+    if w.owner_id != request.user.id:
         raise Http404("walkthrough not found")  # hide existence from non-owners
     w.rotate_share_token()
     return WalkthroughDetailOut.model_validate(
