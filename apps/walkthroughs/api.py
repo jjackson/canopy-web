@@ -354,16 +354,13 @@ def list_walkthroughs(
 @router.get(
     "/{wid}/",
     response=WalkthroughDetailOut,
-    auth=None,  # Public (visibility=link) walkthroughs load without a session.
+    auth=None,  # Public walkthroughs load with ?t=<share_token>, no session.
     summary="Get walkthrough detail",
 )
-def get_walkthrough(request: HttpRequest, wid: UUID) -> WalkthroughDetailOut:
+def get_walkthrough(request: HttpRequest, wid: UUID, t: str = "") -> WalkthroughDetailOut:
     _require_enabled()
     w = _get_or_404(wid)
-    if not (
-        request.user.is_authenticated
-        or w.visibility == Walkthrough.VISIBILITY_LINK
-    ):
+    if not (request.user.is_authenticated or w.token_matches(t)):
         raise Http404("walkthrough not found")  # don't leak private existence
     is_owner = request.user.is_authenticated and w.owner_id == request.user.id
     return WalkthroughDetailOut.model_validate(_detail_payload(w, is_owner=is_owner))

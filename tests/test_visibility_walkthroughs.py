@@ -35,11 +35,36 @@ def _stub_download():
 
 
 @override_settings(REQUIRE_AUTH=True)
-def test_public_content_served_to_anonymous_without_token(owner):
+def test_public_content_404s_anonymous_without_token(owner):
     w = _make(owner, visibility="link")
+    w.ensure_share_token()
+    resp = Client().get(f"/walkthrough/{w.id}/content")
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_public_content_served_to_anonymous_with_token(owner):
+    w = _make(owner, visibility="link")
+    token = w.ensure_share_token()
     with _stub_download():
-        resp = Client().get(f"/walkthrough/{w.id}/content")
+        resp = Client().get(f"/walkthrough/{w.id}/content?t={token}")
     assert resp.status_code == 200
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_public_content_404s_anonymous_with_wrong_token(owner):
+    w = _make(owner, visibility="link")
+    w.ensure_share_token()
+    resp = Client().get(f"/walkthrough/{w.id}/content?t=nope")
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_private_content_404s_anonymous_even_with_token(owner):
+    w = _make(owner, visibility="private")
+    token = w.ensure_share_token()
+    resp = Client().get(f"/walkthrough/{w.id}/content?t={token}")
+    assert resp.status_code == 404
 
 
 @override_settings(REQUIRE_AUTH=True)
@@ -90,7 +115,8 @@ def test_detail_handler_404s_private_for_anonymous(owner):
 @override_settings(REQUIRE_AUTH=True)
 def test_public_detail_api_reachable_anonymous(owner):
     w = _make(owner, visibility="link")
-    resp = Client().get(f"/api/walkthroughs/{w.id}/")
+    token = w.ensure_share_token()
+    resp = Client().get(f"/api/walkthroughs/{w.id}/?t={token}")
     assert resp.status_code == 200
     assert resp.json()["id"] == str(w.id)
 
@@ -100,6 +126,31 @@ def test_private_detail_api_404s_anonymous(owner):
     w = _make(owner, visibility="private")
     resp = Client().get(f"/api/walkthroughs/{w.id}/")
     # Reaches the handler (allowlisted) and the handler hides it.
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_detail_api_404s_anonymous_without_token(owner):
+    w = _make(owner, visibility="link")
+    w.ensure_share_token()
+    resp = Client().get(f"/api/walkthroughs/{w.id}/")
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_detail_api_serves_anonymous_with_token(owner):
+    w = _make(owner, visibility="link")
+    token = w.ensure_share_token()
+    resp = Client().get(f"/api/walkthroughs/{w.id}/?t={token}")
+    assert resp.status_code == 200
+    assert resp.json()["is_owner"] is False
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_detail_api_404s_anonymous_with_wrong_token(owner):
+    w = _make(owner, visibility="link")
+    w.ensure_share_token()
+    resp = Client().get(f"/api/walkthroughs/{w.id}/?t=nope")
     assert resp.status_code == 404
 
 

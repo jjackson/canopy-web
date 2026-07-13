@@ -1,10 +1,11 @@
 """Workspace scoping of the /api/walkthroughs collection LIST + a proof that
-tokenless public (visibility=link) detail reads survive scoping.
+token-gated public (visibility=link) detail reads survive scoping.
 
 The authenticated LIST is workspace-scoped (a member sees their workspace's
 walkthroughs; an outsider does not). The single-object public detail GET resolves
 by UUID and self-enforces visibility — it must keep serving `visibility=link`
-walkthroughs to anonymous callers with NO workspace filter.
+walkthroughs to anonymous callers presenting the matching ?t=<share_token>, with
+NO workspace filter.
 """
 from __future__ import annotations
 
@@ -95,12 +96,13 @@ def test_domain_teammate_auto_joins_and_sees_walkthrough():
 @override_settings(REQUIRE_AUTH=True)
 def test_anonymous_can_still_get_link_visibility_detail_after_scoping():
     """The critical invariant: a `visibility=link` walkthrough remains readable
-    by ANYONE with the URL — the workspace filter must NOT touch the public
-    single-object read path."""
+    by ANYONE with the URL + matching ?t=<share_token> — the workspace filter
+    must NOT touch the public single-object read path."""
     jj = _user("jj@dimagi.com", is_superuser=True)
     ws = _workspace("dimagi", jj)
     w = _make(jj, ws, visibility="link")
+    token = w.ensure_share_token()
 
-    resp = Client().get(f"/api/walkthroughs/{w.id}/")
+    resp = Client().get(f"/api/walkthroughs/{w.id}/?t={token}")
     assert resp.status_code == 200
     assert resp.json()["id"] == str(w.id)
