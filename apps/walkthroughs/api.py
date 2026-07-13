@@ -8,6 +8,7 @@ from uuid import UUID
 from django.conf import settings
 from django.db import models
 from django.http import Http404, HttpRequest
+from django.urls import get_script_prefix
 from pydantic import ValidationError
 
 log = logging.getLogger(__name__)
@@ -82,7 +83,17 @@ def _parse_links_field(raw: str) -> list[dict]:
         raise ProblemError(422, "Invalid link entry", detail=str(exc))
 
 
-def _detail_payload(w: Walkthrough, *, is_owner: bool) -> dict:
+def _share_url(request: HttpRequest, w: Walkthrough) -> str | None:
+    """Absolute tokened public URL; None unless public + minted."""
+    if w.visibility != Walkthrough.VISIBILITY_LINK or not w.share_token:
+        return None
+    prefix = get_script_prefix().rstrip("/")  # "" locally, "/canopy" on labs
+    return request.build_absolute_uri(
+        f"{prefix}/walkthrough/{w.id}?t={w.share_token}"
+    )
+
+
+def _detail_payload(w: Walkthrough, *, is_owner: bool, request: HttpRequest) -> dict:
     return {
         "id": w.id,
         "title": w.title,
@@ -101,6 +112,7 @@ def _detail_payload(w: Walkthrough, *, is_owner: bool) -> dict:
         "role": w.role,
         "created_at": w.created_at,
         "updated_at": w.updated_at,
+        "share_url": _share_url(request, w) if is_owner else None,
     }
 
 
@@ -243,6 +255,9 @@ def upload_walkthrough(
         size_bytes=len(data),
     )
 
+    if w.visibility == Walkthrough.VISIBILITY_LINK:
+        w.ensure_share_token()
+
     try:
         stored = storage.store_upload(
             walkthrough_id=str(w.id),
@@ -299,7 +314,12 @@ def upload_walkthrough(
                     )
             old.delete()
 
-    return Status(201, WalkthroughDetailOut.model_validate(_detail_payload(w, is_owner=True)))
+    return Status(
+        201,
+        WalkthroughDetailOut.model_validate(
+            _detail_payload(w, is_owner=True, request=request)
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +383,9 @@ def get_walkthrough(request: HttpRequest, wid: UUID, t: str = "") -> Walkthrough
     if not (request.user.is_authenticated or w.token_matches(t)):
         raise Http404("walkthrough not found")  # don't leak private existence
     is_owner = request.user.is_authenticated and w.owner_id == request.user.id
-    return WalkthroughDetailOut.model_validate(_detail_payload(w, is_owner=is_owner))
+    return WalkthroughDetailOut.model_validate(
+        _detail_payload(w, is_owner=is_owner, request=request)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -391,9 +413,15 @@ def patch_walkthrough(
     for field, value in updates.items():
         setattr(w, field, value)
     w.save()
+
+    if w.visibility == Walkthrough.VISIBILITY_LINK:
+        w.ensure_share_token()  # mint on flip-to-public; keep token on flip-to-private
+
     w.refresh_from_db()
 
-    return WalkthroughDetailOut.model_validate(_detail_payload(w, is_owner=True))
+    return WalkthroughDetailOut.model_validate(
+        _detail_payload(w, is_owner=True, request=request)
+    )
 
 
 # ---------------------------------------------------------------------------

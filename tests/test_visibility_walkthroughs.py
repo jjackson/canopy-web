@@ -181,3 +181,62 @@ def test_legacy_w_content_path_redirects_to_walkthrough(owner):
     resp = Client().get(f"/w/{w.id}/content")
     assert resp.status_code in (301, 302)
     assert resp.headers["Location"] == f"/walkthrough/{w.id}/content"
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_patch_to_public_mints_token_and_returns_share_url(owner):
+    w = _make(owner, visibility="private")
+    assert w.share_token is None
+    client = Client()
+    client.force_login(owner)
+    resp = client.patch(
+        f"/api/walkthroughs/{w.id}/",
+        data={"visibility": "link"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    w.refresh_from_db()
+    assert w.share_token
+    assert body["share_url"] is not None
+    assert f"/walkthrough/{w.id}?t={w.share_token}" in body["share_url"]
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_patch_to_private_keeps_token_and_hides_share_url(owner):
+    w = _make(owner, visibility="link")
+    token = w.ensure_share_token()
+    client = Client()
+    client.force_login(owner)
+    resp = client.patch(
+        f"/api/walkthroughs/{w.id}/",
+        data={"visibility": "private"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    w.refresh_from_db()
+    assert w.share_token == token  # kept — rotation is explicit
+    assert resp.json()["share_url"] is None
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_share_url_hidden_from_non_owner_and_anonymous(owner):
+    w = _make(owner, visibility="link")
+    token = w.ensure_share_token()
+
+    # Anonymous with a valid token: readable, but share_url is None and the
+    # raw token is not a response field.
+    resp = Client().get(f"/api/walkthroughs/{w.id}/?t={token}")
+    assert resp.status_code == 200
+    assert resp.json()["share_url"] is None
+    assert "share_token" not in resp.json()
+
+    # Authed non-owner: same.
+    other = get_user_model().objects.create_user(
+        username="other2@dimagi.com", email="other2@dimagi.com",
+    )
+    client = Client()
+    client.force_login(other)
+    resp = client.get(f"/api/walkthroughs/{w.id}/")
+    assert resp.status_code == 200
+    assert resp.json()["share_url"] is None
