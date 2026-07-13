@@ -132,12 +132,16 @@ Decision: **no server-initiated SSH.** Any extra machine gets the same runner pa
 
 ## 7. Slack integration (Phase 1)
 
-One Slack app, tokens in settings; a thin `slack.py` module inside `apps/sessions` (extractable to `apps/channels` if a second channel ever appears).
+**Agents are first-class Slack identities: `@echo`, `@eva` — never `@canopy echo`.** Slack permits one bot identity per app, so each agent gets its own lightweight Slack app, all sharing canopy-web's endpoints. A thin `slack.py` module inside `apps/sessions` handles them all (extractable to `apps/channels` if a second channel ever appears).
+
+- **Per-agent app provisioning:** agent Slack apps are generated from one manifest template via Slack's App Manifest API (name, avatar, scopes, shared request URLs) — the agent factory mints `@<agent>` when an agent is created; no manual admin clicking. Per-app credentials (signing secret, bot token, `api_app_id`, `bot_user_id`) live in a `ChannelIdentity` row keyed to the agent, secrets encrypted at rest.
+- **Disambiguation:** events arrive at per-app URLs (`/api/sessions/slack/events/<agent-slug>`), so signature verification is unambiguous and the agent is known before any parsing; the payload's `api_app_id`/`bot_user_id` is cross-checked against the `ChannelIdentity` row.
+- **Addressing:** `@echo …` in any shared channel or a DM to @echo routes straight to Echo — a direct mention *is* the binding, top of the specificity ladder. Channel-default bindings (below) still cover "posts in `#echo-ops` without a mention." When several agent bots share a channel, each app receives channel messages independently; an agent ignores messages that neither mention it nor match one of its bindings, so exactly one Turn is produced.
 
 - **Thread-per-turn.** `slack_thread_ts` stored on the Turn at first notification; every status change, question, and approval posts into that thread. `[HumanLayer thread_ts pinning]`
 - **Sticky status message** edited in place (checklist: queued → claimed by <runner> → running → n commands applied → done), not 20 posts; doubles as audit trail. `[claude-code-action sticky comment]`
 - **Approvals/questions as Block Kit buttons** rendered from `Approval.options`; a single interactivity endpoint resolves payloads into `POST /approvals/{id}/respond`; approver allowlist by Slack user ID enforced server-side; resolved `slack_message_ts` recorded for audit. Terminal message carries "View turn" (canopy-web run URL) buttons. `[HumanLayer + Anthropic @Claude]`
-- **Inbound (Phase 1.5):** `@canopy <agent> …` mention or DM → `POST /turns/` with `origin=slack`, `origin_ref={channel, thread_ts}`; replies stream back into the thread (edit-in-place draft mode `[OpenClaw slack streaming]`). Routing = an ordered binding table (channel-ID-keyed — IDs validated at write time; name-based keys silently fail `[OpenClaw footgun]`) with a specificity ladder (thread > channel > team > default).
+- **Inbound (Phase 1.5):** `@<agent> …` mention or DM to the agent's bot → `POST /turns/` with `origin=slack`, `origin_ref={channel, thread_ts}`; replies stream back into the thread (edit-in-place draft mode `[OpenClaw slack streaming]`). Routing = an ordered binding table (channel-ID-keyed — IDs validated at write time; name-based keys silently fail `[OpenClaw footgun]`) with a specificity ladder (thread > channel > team > default).
 - **Needs-you mirror:** `needs_human` turns and stale-runner transitions DM Jonathan ("Echo is waiting on an approval — laptop asleep, holding turn" / buttons inline).
 
 ## 8. Failure handling
@@ -174,5 +178,5 @@ One Slack app, tokens in settings; a thin `slack.py` module inside `apps/session
 
 1. Cloud runtime: `claude -p --output-format stream-json` vs Python Agent SDK — same billing, choose on streaming ergonomics during Phase 2 build (lean: SDK, it *is* the supported programmatic surface).
 2. Does Phase 0 create `agent_runs` rows immediately, or wait for the Turn↔Run mapping to settle in Phase 1? (Lean: immediately, thin.)
-3. Slack workspace app review constraints at Dimagi (who owns the app, scopes approval) — needs a check before Phase 1.
+3. Slack workspace constraints at Dimagi for per-agent apps — manifest-API app creation may require workspace-admin approval per app; confirm whether N agent apps are acceptable or Phase 1 starts with @echo only. Needs a check before Phase 1.
 4. Whether to also PR the `precondition`/webhook trigger to emdash or ride #1995/#2321 — decide after watching those threads for a few weeks.
