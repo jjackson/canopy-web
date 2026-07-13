@@ -37,7 +37,13 @@ python3 -m canopy_runner.main vet --config ~/.canopy/runner.json
 - schema of the touched tables unchanged → the migration id bump was just
   noise; the pin (`expected_migration_id`) bumps automatically and the
   runner resumes on its next iteration
-- schema changed → refuses to touch the config and stays degraded; before
-  editing the pin by hand, re-verify the injection surface (the two writes —
-  `INSERT INTO automation_runs`, `UPDATE tasks.type` — plus the columns they
-  read) against the emdash source (see the spec §6.1)
+- schema changed → refuses to touch the config (naming the tables that
+  changed) and stays degraded; before editing the pin by hand, re-verify the
+  injection surface (the two writes — `INSERT INTO automation_runs`,
+  `UPDATE tasks.type` — plus the columns they read) against the emdash
+  source (see the spec §6.1)
+- no fingerprint baseline stored yet: `vet` adopts one only when the pin
+  already matches the actual migration id (i.e. a human vetted at this id).
+  If the pin has drifted and there is no baseline, it refuses — verify the
+  injection surface by hand, set `expected_migration_id` yourself, then
+  re-run `vet` to adopt the fingerprint

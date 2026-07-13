@@ -69,3 +69,50 @@ def test_vet_adopts_fingerprint_on_first_run(tmp_path):
     cfg = _cfg_file(tmp_path, db, migration_id=19, fingerprint="")
     assert vet(cfg) == "unchanged"
     assert json.loads(cfg.read_text())["emdash_fingerprint"] != ""
+
+
+def test_vet_refuses_when_no_baseline_and_pin_drifted(tmp_path, capsys):
+    # No fingerprint baseline + drifted pin: auto-vetting would be zero-verification.
+    db = tmp_path / "e.db"; _make_db(db, 19)
+    cfg = _cfg_file(tmp_path, db, migration_id=18, fingerprint="")
+    before = cfg.read_text()
+    assert vet(cfg) == "refused"
+    assert cfg.read_text() == before  # config untouched
+    out = capsys.readouterr().out
+    assert "no fingerprint baseline" in out
+    assert "re-vet by hand" in out
+
+
+def test_vet_config_write_is_atomic(tmp_path):
+    db = tmp_path / "e.db"; _make_db(db, 19)
+    fp = table_fingerprint(str(db), TABLES)
+    cfg = _cfg_file(tmp_path, db, migration_id=18, fingerprint=fp)
+    assert vet(cfg) == "vetted:18->19"
+    assert list(tmp_path.glob("*.tmp")) == []  # no tmp residue
+    parsed = json.loads(cfg.read_text())  # valid JSON, not truncated
+    assert parsed["expected_migration_id"] == 19
+
+
+def test_refusal_names_changed_tables(tmp_path, capsys):
+    db = tmp_path / "e.db"; _make_db(db, 19)
+    cfg = _cfg_file(tmp_path, db, migration_id=19, fingerprint="")
+    assert vet(cfg) == "unchanged"  # adopt baseline (incl. per-table fingerprints)
+    conn = sqlite3.connect(db)
+    conn.execute("ALTER TABLE automations ADD COLUMN new_col TEXT")
+    conn.commit(); conn.close()
+    capsys.readouterr()  # discard any earlier output
+    assert vet(cfg) == "refused"
+    out = capsys.readouterr().out
+    assert "automations" in out
+    assert "tasks" not in out  # only the changed table is named
+
+
+def test_backward_move_vets_with_warning(tmp_path, capsys):
+    # Restored emdash DB: actual id behind the pin, schema fingerprint still matches.
+    db = tmp_path / "e.db"; _make_db(db, 19)
+    fp = table_fingerprint(str(db), TABLES)
+    cfg = _cfg_file(tmp_path, db, migration_id=20, fingerprint=fp)
+    assert vet(cfg) == "vetted:20->19"
+    assert json.loads(cfg.read_text())["expected_migration_id"] == 19
+    out = capsys.readouterr().out
+    assert "backward" in out

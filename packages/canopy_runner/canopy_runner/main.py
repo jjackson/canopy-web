@@ -226,38 +226,89 @@ def run_once(cfg: Config, client: Client) -> str:
     return f"injected:{turn_id}"
 
 
+def _write_config_atomic(cfg_path: Path, raw: dict) -> None:
+    """Same tmp + os.replace pattern as _save_state — a crash mid-write must
+    never truncate the only config file the runner has."""
+    tmp = Path(str(cfg_path) + ".tmp")
+    tmp.write_text(json.dumps(raw, indent=2))
+    os.replace(tmp, cfg_path)
+
+
 def vet(cfg_path: Path) -> str:
     """Re-vet the emdash schema pin after an emdash release moves the migration id.
 
     emdash auto-updates, so a bare migration-id pin would degrade every runner
     on every release. Instead: fingerprint the schema of the three tables the
-    adapter actually touches (``emdash.VETTED_TABLES``). If that fingerprint
-    still matches the last-vetted one, the migration id bump is just noise —
-    bump the pin automatically. If the fingerprint changed, the injection
-    surface may have changed too; refuse and leave the config untouched so a
-    human re-vets it (see README "After an emdash update").
+    adapter actually touches (``emdash.VETTED_TABLES``). Decision table:
+
+    - no stored fingerprint AND pin == actual id → adopt the fingerprint
+      (bootstrap: a human vetted at this id), return "unchanged".
+    - no stored fingerprint AND pin != actual id → "refused". With no baseline
+      there is nothing to verify the schema against, so auto-vetting would be
+      zero-verification; a human must re-vet the injection surface, update
+      ``expected_migration_id`` by hand, then re-run vet to adopt the
+      fingerprint. Config untouched.
+    - stored fingerprint differs → "refused" (the changed tables are named).
+      Config untouched.
+    - stored fingerprint matches → bump the pin ("vetted:<old>-><new>"), or
+      "unchanged" if the pin is already current. A backward id move (restored
+      DB) still vets but prints a warning.
     """
     raw = json.loads(Path(cfg_path).read_text())
     db = raw["emdash_db"]
     current_fp = emdash.table_fingerprint(db, emdash.VETTED_TABLES)
+    current_tables = emdash.per_table_fingerprints(db, emdash.VETTED_TABLES)
     conn = sqlite3.connect(db)
     try:
         actual_id = conn.execute("SELECT MAX(id) FROM __drizzle_migrations").fetchone()[0]
     finally:
         conn.close()
 
+    old_id = raw["expected_migration_id"]
     stored_fp = raw.get("emdash_fingerprint", "")
-    if stored_fp and stored_fp != current_fp:
-        print(f"schema of {emdash.VETTED_TABLES} changed — refusing to re-pin; re-vet by hand")
+
+    if not stored_fp:
+        if actual_id != old_id:
+            print(
+                f"no fingerprint baseline and pin {old_id} != actual migration id {actual_id}"
+                " — refusing to re-pin; re-vet by hand: verify the injection surface against"
+                " the emdash source, update expected_migration_id, then re-run vet to adopt"
+                " the fingerprint"
+            )
+            return "refused"
+        # Bootstrap: the human vetted at this id — adopt the fingerprint.
+        raw["emdash_fingerprint"] = current_fp
+        raw["emdash_table_fingerprints"] = current_tables
+        _write_config_atomic(cfg_path, raw)
+        return "unchanged"
+
+    if stored_fp != current_fp:
+        stored_tables = raw.get("emdash_table_fingerprints", {})
+        if stored_tables:
+            changed = sorted(
+                name
+                for name in set(stored_tables) | set(current_tables)
+                if stored_tables.get(name) != current_tables.get(name)
+            )
+        else:
+            # Legacy baseline (combined hash only) — can't decompose a sha256,
+            # so name the whole vetted set.
+            changed = list(emdash.VETTED_TABLES)
+        print(f"schema of {changed} changed — refusing to re-pin; re-vet by hand")
         return "refused"
 
-    old_id = raw["expected_migration_id"]
     raw["emdash_fingerprint"] = current_fp
+    raw["emdash_table_fingerprints"] = current_tables
     if actual_id == old_id:
-        Path(cfg_path).write_text(json.dumps(raw, indent=2))
+        _write_config_atomic(cfg_path, raw)
         return "unchanged"
+    if actual_id < old_id:
+        print(
+            f"warning: migration id moved backward {old_id}->{actual_id}"
+            " (restored emdash DB?) — schema fingerprint matches, re-pinning anyway"
+        )
     raw["expected_migration_id"] = actual_id
-    Path(cfg_path).write_text(json.dumps(raw, indent=2))
+    _write_config_atomic(cfg_path, raw)
     return f"vetted:{old_id}->{actual_id}"
 
 

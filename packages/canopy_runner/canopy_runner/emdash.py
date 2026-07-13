@@ -40,20 +40,36 @@ def _db(db_path: str) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def table_fingerprint(db_path: str, tables: list[str]) -> str:
-    """sha256 over the normalized CREATE TABLE SQL of the named tables.
-
-    The migration id moves on every emdash release; the shape of the three
-    tables we touch almost never does. Fingerprint-match => safe to re-pin.
-    """
+def _table_sqls(db_path: str, tables: list[str]) -> dict[str, str]:
+    """Normalized CREATE TABLE SQL per named table (missing tables absent)."""
     with _db(db_path) as conn:
         rows = conn.execute(
             "SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN (%s)"
             % ",".join("?" * len(tables)),
             list(tables),
         ).fetchall()
-    parts = [f"{r['name']}::{' '.join((r['sql'] or '').split())}" for r in rows]
+    return {r["name"]: " ".join((r["sql"] or "").split()) for r in rows}
+
+
+def table_fingerprint(db_path: str, tables: list[str]) -> str:
+    """sha256 over the normalized CREATE TABLE SQL of the named tables.
+
+    The migration id moves on every emdash release; the shape of the three
+    tables we touch almost never does. Fingerprint-match => safe to re-pin.
+    """
+    sqls = _table_sqls(db_path, tables)
+    parts = [f"{name}::{sql}" for name, sql in sqls.items()]
     return hashlib.sha256("\n".join(sorted(parts)).encode()).hexdigest()
+
+
+def per_table_fingerprints(db_path: str, tables: list[str]) -> dict[str, str]:
+    """sha256 per table over its normalized CREATE TABLE SQL.
+
+    Stored alongside the combined fingerprint so a refusal can name exactly
+    which tables changed instead of just "something drifted".
+    """
+    sqls = _table_sqls(db_path, tables)
+    return {name: hashlib.sha256(sql.encode()).hexdigest() for name, sql in sqls.items()}
 
 
 def check_schema(db_path: str, expected_migration_id: int) -> None:
