@@ -144,6 +144,19 @@ Decision: **no server-initiated SSH.** Any extra machine gets the same runner pa
 - **Inbound (Phase 1.5):** `@<agent> …` mention or DM to the agent's bot → `POST /turns/` with `origin=slack`, `origin_ref={channel, thread_ts}`; replies stream back into the thread (edit-in-place draft mode `[OpenClaw slack streaming]`). Routing = an ordered binding table (channel-ID-keyed — IDs validated at write time; name-based keys silently fail `[OpenClaw footgun]`) with a specificity ladder (thread > channel > team > default).
 - **Needs-you mirror:** `needs_human` turns and stale-runner transitions DM Jonathan ("Echo is waiting on an approval — laptop asleep, holding turn" / buttons inline).
 
+### 7.1 Harvest from ace-web (`apps/slack`, ~3.9k lines, production on labs since 2026-05)
+
+ace-web shipped a full Slack integration for ACE pre-fleet (slash commands, run-thread mirroring, account linking, App Home). Phase 1 is substantially a port, not a build. Take:
+
+- **`verify.py` + `slack_client.py`** — request signature verification and the error-normalizing client wrapper (`channel_not_found` arrives as HTTP 200 `ok=false` → typed `SlackChannelGone`; threads marked `broken_at` instead of crash-looping).
+- **`SlackUserLink` + nonce OAuth linking with command replay** (`views_auth.py`, `pending.py`) — first Slack interaction DMs a login link; on OAuth success the original command replays. This is exactly the identity spine our responder allowlists and turn attribution need.
+- **`SlackRunThread` → Turn thread-mirror fields**: store `(channel_id, ts)` together always (a `chat.update` with a foreign-channel ts returns the misleading `message_not_found`), per-item message-ts map (`phase_messages` JSON → our sticky/checklist messages), `parent_state_hash` to skip no-op edits, `broken_at`/`stopped_at` lifecycle.
+- **`/ace track` semantics** — mirroring a run *driven elsewhere* (their laptop-run case) is precisely our laptop-turn mirror; their 30s sweep + 2s debounce dispatcher logic ports, with our TurnEvent rows replacing their channel-layer progress signal (canopy-web has no Django Channels dependency — poll/LISTEN-NOTIFY instead).
+- **Block Kit builders + App Home** (`blocks.py`, `home_view.py`) as starting structure; App Home per-user dashboard is a later phase but proven.
+- **The whole learnings doc** (`docs/learnings/slack-integration.md`): start the worker from the ASGI lifespan (never `AppConfig.ready()` — it runs under pytest/migrate); slash-command vs `block_actions` `response_type` semantics; per-method-per-channel rate limits; `cache.add` (SETNX) not `cache.set` for multi-task tick locks.
+
+Deltas, not harvested: ace-web is one `SlackInstallation` per team (single bot) — our per-agent `ChannelIdentity` generalizes it (keep the encrypted-token pattern); ace-web never subscribed to message events (slash-only) — inbound `@<agent>` mentions/DMs are new; their `/ace` verb router can inform an optional per-agent slash command later, but mentions are the primary surface.
+
 ## 8. Failure handling
 
 | Failure | Detection | Behavior |
