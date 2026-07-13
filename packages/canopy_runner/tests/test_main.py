@@ -60,6 +60,7 @@ class FakeClient:
         self.events = []
         self.heartbeats = []
         self.failed = []
+        self.turn_lookup = {}
 
     def heartbeat(self, runner_id, active_turn_ids, degraded=False, note=""):
         self.heartbeats.append((runner_id, list(active_turn_ids), degraded, note))
@@ -73,6 +74,9 @@ class FakeClient:
 
     def fail_turn(self, turn_id, note):
         self.failed.append((turn_id, note))
+
+    def get_turn(self, turn_id):
+        return self.turn_lookup.get(turn_id, {"id": turn_id, "status": "running"})
 
 
 def _cfg(db, tmp_path):
@@ -306,3 +310,14 @@ def test_state_write_is_atomic(db, tmp_path):
     assert not Path(cfg.state_path + ".tmp").exists()
     state = json.loads(Path(cfg.state_path).read_text())  # parses cleanly
     assert "t-1" in state["active"]
+
+
+def test_evicts_turn_finished_serverside(db, tmp_path):
+    cfg = _cfg(db, tmp_path)
+    client = FakeClient(turns=[{"id": "t-1", "agent_slug": "echo", "status": "claimed"}])
+    client.turn_lookup = {"t-1": {"id": "t-1", "status": "done"}}
+    run_once(cfg, client)  # inject
+    result = run_once(cfg, client)  # follow-up sees server-side done
+    assert result == "evicted:t-1"
+    state = json.loads(Path(cfg.state_path).read_text())
+    assert state["active"] == {}

@@ -57,3 +57,7 @@ class Client:
 
     def fail_turn(self, turn_id: str, note: str) -> None:
         self._call("POST", f"/turns/{turn_id}/finish", {"status": "failed", "result_note": note})
+
+    def get_turn(self, turn_id: str) -> dict:
+        _, payload = self._call("GET", f"/turns/{turn_id}")
+        return payload or {}

@@ -109,11 +109,19 @@ def run_once(cfg: Config, client: Client) -> str:
     # 2. heartbeat (renews leases for active turns)
     client.heartbeat(cfg.runner_id, active_ids)
 
-    # 3. follow-up pass: recover unfinished injections, promote new emdash
-    # tasks, forget stale entries. (A future task adds success-path eviction
-    # of finished turns here via get_turn — this loop is structured so that
-    # check can slot in at the top, before the recovery check below.)
+    # 3. follow-up pass: evict server-finished turns, recover unfinished
+    # injections, promote new emdash tasks, forget stale entries.
     for turn_id, info in list(state["active"].items()):
+        try:
+            remote = client.get_turn(turn_id)
+        except ClientError as exc:
+            logger.warning("get_turn failed for %s: %s", turn_id, exc)
+            remote = {"status": "running"}
+        if remote.get("status") in ("done", "failed", "lost"):
+            del state["active"][turn_id]
+            _save_state(cfg, state)
+            return f"evicted:{turn_id}"
+
         run_st = emdash.run_status(cfg.emdash_db, info["emdash_run_id"])
 
         # Recovery: injected=False means we crashed between saving state and
