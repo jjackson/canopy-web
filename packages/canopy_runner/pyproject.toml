@@ -1,0 +1,13 @@
+[project]
+name = "canopy-runner"
+version = "0.1.0"
+description = "Canopy laptop/cloud runner: claims turns from canopy-web and executes them (emdash adapter first)."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+canopy-runner = "canopy_runner.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

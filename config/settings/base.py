@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     "apps.workspaces",
     "apps.timeline",
     "apps.system",
+    "apps.harness",
 ]
 
 MIDDLEWARE = [

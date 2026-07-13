@@ -1,0 +1,64 @@
+"""Model-level invariants for the agent-execution harness."""
+from __future__ import annotations
+
+import pytest
+from django.db import IntegrityError
+
+from apps.agents.models import Agent
+from apps.harness.models import Runner, Turn, TurnEvent
+
+pytestmark = pytest.mark.django_db
+
+
+def _agent(slug="echo"):
+    return Agent.objects.create(slug=slug, name=slug.title())
+
+
+def _runner(**kw):
+    defaults = dict(name="jj-mbp", kind=Runner.EMDASH, capabilities={"agents": ["echo"]})
+    defaults.update(kw)
+    return Runner.objects.create(**defaults)
+
+
+def test_turn_defaults_to_queued():
+    t = Turn.objects.create(agent=_agent(), origin=Turn.ORIGIN_BOARD, idempotency_key="k1")
+    assert t.status == Turn.QUEUED
+    assert t.routing == Turn.PREFER_LOCAL
+
+
+def test_queued_turns_stack_freely():
+    a = _agent()
+    Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k1")
+    Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k2")  # no raise
+    assert Turn.objects.filter(agent=a, status=Turn.QUEUED).count() == 2
+
+
+def test_one_executing_turn_per_agent():
+    a = _agent()
+    Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k1", status=Turn.CLAIMED)
+    with pytest.raises(IntegrityError):
+        Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k2", status=Turn.RUNNING)
+
+
+def test_terminal_turn_frees_the_execution_slot():
+    a = _agent()
+    t = Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k1", status=Turn.RUNNING)
+    t.status = Turn.DONE
+    t.save()
+    Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k2", status=Turn.CLAIMED)  # no raise
+
+
+def test_idempotency_key_unique():
+    a = _agent()
+    t = Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k1")
+    t.status = Turn.DONE
+    t.save()
+    with pytest.raises(IntegrityError):
+        Turn.objects.create(agent=a, origin=Turn.ORIGIN_BOARD, idempotency_key="k1")
+
+
+def test_turn_event_seq_unique_per_turn():
+    t = Turn.objects.create(agent=_agent(), origin=Turn.ORIGIN_BOARD, idempotency_key="k1")
+    TurnEvent.objects.create(turn=t, seq=1, kind="status", payload={"s": "claimed"})
+    with pytest.raises(IntegrityError):
+        TurnEvent.objects.create(turn=t, seq=1, kind="status", payload={})

@@ -149,6 +149,7 @@ from apps.agent_runs.api import router as agent_runs_router  # noqa: E402
 from apps.workspaces.api import router as workspaces_router  # noqa: E402
 from apps.timeline.api import router as timeline_router  # noqa: E402
 from apps.system.api import router as system_router  # noqa: E402
+from apps.harness.api import router as harness_router  # noqa: E402
 
 api.add_router("/projects", projects_router)
 api.add_router("/issues", issues_router)
@@ -171,3 +172,4 @@ api.add_router("/workspaces", workspaces_router)
 api.add_router("/timeline", timeline_router)
 api.add_router("/system", system_router)
 api.add_router("/share", session_share_router)
+api.add_router("/harness", harness_router)
