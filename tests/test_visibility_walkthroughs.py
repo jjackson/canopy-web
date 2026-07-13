@@ -261,6 +261,24 @@ def test_rotate_invalidates_old_token_and_returns_new_share_url(owner):
 
 
 @override_settings(REQUIRE_AUTH=True)
+def test_anonymous_mutations_still_blocked(owner):
+    w = _make(owner, visibility="link")
+    w.ensure_share_token()
+    c = Client()
+    patch_resp = c.patch(
+        f"/api/walkthroughs/{w.id}/",
+        data={"visibility": "private"},
+        content_type="application/json",
+    )
+    assert patch_resp.status_code >= 400 or patch_resp.status_code in (301, 302)
+    delete_resp = c.delete(f"/api/walkthroughs/{w.id}/")
+    assert delete_resp.status_code >= 400 or delete_resp.status_code in (301, 302)
+    # Anonymous POST to a non-rotate subpath must not pass the middleware either.
+    w.refresh_from_db()
+    assert w.visibility == "link"
+
+
+@override_settings(REQUIRE_AUTH=True)
 def test_rotate_is_owner_only(owner):
     w = _make(owner, visibility="link")
     w.ensure_share_token()

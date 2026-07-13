@@ -70,9 +70,12 @@ def _is_walkthrough_link(request) -> bool:
         return True
     if _LEGACY_W_CONTENT.match(path):
         return True
-    # Allow GET detail and POST rotate-token for owner-only checks inside the handler
     if path.startswith("/api/walkthroughs/") and path != "/api/walkthroughs/":
-        return request.method in ("GET", "POST")
+        if request.method == "GET":
+            return True
+        # Anonymous POST reaches only the rotate route, whose handler
+        # self-enforces owner-only (404s anonymous/non-owner callers).
+        return request.method == "POST" and path.rstrip("/").endswith("/rotate-token")
     return False
 
 
