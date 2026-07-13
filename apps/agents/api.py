@@ -26,6 +26,8 @@ from .schemas import (
     AgentTaskOut,
     AgentTaskPatch,
     AgentTaskSyncIn,
+    AgentTurnIn,
+    AgentTurnOut,
     AgentWorkProductBatchIn,
     AgentWorkProductOut,
     CommandResultOut,
@@ -71,10 +73,20 @@ def list_agents(request: HttpRequest, limit: int = 100) -> Page[AgentOut]:
              openapi_extra={"x-mcp-expose": True})
 def upsert_agent(request: HttpRequest, payload: AgentIn) -> Status:
     agent = services.upsert_agent(payload)
-    # Scope to the request's workspace (from the /w/{ws} prefix or the compat
-    # shim's default); fall back to the org default so an unchanged register()
-    # (e.g. Echo's) keeps working.
-    if agent.workspace_id is None:
+    explicit = (payload.workspace or "").strip()
+    if explicit and agent.workspace_id != explicit:
+        # Explicit home: may MOVE an already-homed agent. Membership-gated; a
+        # missing workspace and a non-member get the same 404 (no existence leak).
+        wsvc.auto_join_workspaces(request.user)
+        ws = wsvc.Workspace.objects.filter(slug=explicit).first()
+        if ws is None or not wsvc.is_member(request.user, explicit):
+            raise HttpError(404, f"workspace '{explicit}' not found")
+        agent.workspace = ws
+        agent.save(update_fields=["workspace"])
+    elif agent.workspace_id is None:
+        # Scope to the request's workspace (from the /w/{ws} prefix or the compat
+        # shim's default); fall back to the org default so an unchanged register()
+        # (e.g. Echo's) keeps working.
         pinned = getattr(request, "workspace_slug", None)
         ws = (
             wsvc.Workspace.objects.filter(slug=pinned).first() if pinned else None
@@ -119,6 +131,25 @@ def create_sync(request: HttpRequest, slug: str, payload: AgentSyncIn) -> Status
     agent = _get_agent_or_404(request, slug)
     sync = services.upsert_sync(agent, payload)
     return Status(201, AgentSyncOut.model_validate(sync))
+
+
+# ---- turns (a packaged unit of work + optional transcript link) ----
+@router.get("/{slug}/turns/", response=Page[AgentTurnOut], summary="List the agent's turns",
+            openapi_extra={"x-mcp-expose": True})
+def list_turns(request: HttpRequest, slug: str, limit: int = 100) -> Page[AgentTurnOut]:
+    limit = min(limit, 500)
+    agent = _get_agent_or_404(request, slug)
+    items = [AgentTurnOut.model_validate(t) for t in services.list_turns(agent, limit=limit)]
+    return paginate(items, offset=0, limit=limit)
+
+
+@router.post("/{slug}/turns/", response={201: AgentTurnOut},
+             summary="Package a turn (idempotent per cli_session_id)",
+             openapi_extra={"x-mcp-expose": True})
+def create_turn(request: HttpRequest, slug: str, payload: AgentTurnIn) -> Status:
+    agent = _get_agent_or_404(request, slug)
+    turn = services.upsert_turn(agent, payload)
+    return Status(201, AgentTurnOut.model_validate(turn))
 
 
 # ---- work products ----

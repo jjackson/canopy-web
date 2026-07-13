@@ -23,6 +23,7 @@ export function AgentLeftNav({ agent }: { agent: AgentDetailOut }) {
     { to: 'needs-you', label: 'Needs you', count: waiting },
     { to: 'overview', label: 'Overview' },
     { to: 'tasks', label: 'Tasks', count: agent.task_count },
+    { to: 'turns', label: 'Turns', count: agent.turn_count },
     { to: 'syncs', label: 'Syncs', count: agent.sync_count },
     { to: 'work-products', label: 'Work products', count: agent.work_product_count },
     { to: 'skills', label: 'Skills', count: agent.skill_count },

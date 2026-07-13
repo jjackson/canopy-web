@@ -27,6 +27,7 @@ from ninja import Router, Status
 
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, ProblemError
+from apps.common.csrf import csrf_rejected
 from apps.common.ddd import narrative_slug_from_run_id
 from apps.workspaces import services as wsvc
 
@@ -326,7 +327,7 @@ def get_review(request: HttpRequest, rid: UUID) -> ReviewRequestOut:
 @router.post(
     "/{rid}/submit/",
     response=ReviewRequestOut,
-    auth=None,  # handler enforces _can_write (auth required); 403 not 401 for readable-but-anonymous
+    auth=None,  # handler enforces _can_write (auth required) + CSRF; 403 not 401 for readable-but-anonymous
     summary="Submit decisions + narration edits (human → server)",
 )
 def submit_review(request: HttpRequest, rid: UUID, payload: ReviewSubmitIn) -> ReviewRequestOut:
@@ -345,6 +346,12 @@ def submit_review(request: HttpRequest, rid: UUID, payload: ReviewSubmitIn) -> R
         raise ProblemError(404, "Review request not found", type_=TYPE_NOT_FOUND)
     if not _can_write(request, review):
         raise ProblemError(403, "Authentication required to submit a review", type_=TYPE_FORBIDDEN)
+
+    # auth=None means Ninja never runs a CSRF check for session-cookie writers;
+    # re-run Django's. PAT callers skip it (BearerTokenAuthMiddleware sets
+    # _dont_enforce_csrf_checks).
+    if csrf_rejected(request):
+        raise ProblemError(403, "CSRF verification failed", type_=TYPE_FORBIDDEN)
 
     if review.status == ReviewRequest.STATUS_RESOLVED:
         raise ProblemError(

@@ -48,7 +48,7 @@ class Migration(migrations.Migration):
                 ('session_id', models.CharField(blank=True, default='', max_length=64)),
                 ('result_note', models.TextField(blank=True, default='')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('agent', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='turns', to='agents.agent')),
+                ('agent', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='harness_turns', to='agents.agent')),
                 ('claimed_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='turns', to='harness.runner')),
             ],
             options={

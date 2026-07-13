@@ -7,7 +7,15 @@ import datetime as dt
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Agent, AgentSkill, AgentSync, AgentTask, AgentTaskCommand, AgentWorkProduct
+from .models import (
+    Agent,
+    AgentSkill,
+    AgentSync,
+    AgentTask,
+    AgentTaskCommand,
+    AgentTurn,
+    AgentWorkProduct,
+)
 
 _VALID_TASK_STATUS = {AgentTask.SUGGESTED, AgentTask.IN_PROGRESS, AgentTask.DONE, AgentTask.DECLINED}
 
@@ -58,7 +66,9 @@ def agent_detail(agent: Agent) -> dict:
         "work_product_count": agent.work_products.count(),
         "skill_count": agent.skills.count(),
         "task_count": agent.tasks.count(),
+        "turn_count": agent.turns.count(),
         "latest_sync_at": latest.period_end if latest else None,
+        "latest_turn_at": latest_turn.created_at if (latest_turn := agent.turns.first()) else None,
     }
 
 
@@ -87,6 +97,32 @@ def upsert_sync(agent: Agent, data) -> AgentSync:
 
 def list_syncs(agent: Agent, limit: int = 100) -> list[AgentSync]:
     return list(agent.syncs.select_related("agent")[:limit])
+
+
+# ---- turns (a packaged unit of work + optional transcript link) ----
+def upsert_turn(agent: Agent, data) -> AgentTurn:
+    """Idempotent per (agent, cli_session_id): one turn per Claude session, so
+    re-packaging the same session (e.g. once the transcript uploads) updates it."""
+    turn, _ = AgentTurn.objects.update_or_create(
+        agent=agent,
+        cli_session_id=data.cli_session_id,
+        defaults={
+            "title": data.title,
+            "summary": data.summary,
+            "task_ext_ids": list(data.task_ext_ids),
+            "work_product_urls": list(data.work_product_urls),
+            "session_slug": data.session_slug,
+            "share_token": data.share_token,
+            "started_at": _aware(data.started_at),
+            "ended_at": _aware(data.ended_at),
+            "source": data.source,
+        },
+    )
+    return turn
+
+
+def list_turns(agent: Agent, limit: int = 100) -> list[AgentTurn]:
+    return list(agent.turns.select_related("agent")[:limit])
 
 
 # ---- work products ----

@@ -73,7 +73,9 @@ class Turn(models.Model):
     ROUTING_CHOICES = [(PREFER_LOCAL, "Prefer local"), (LOCAL_ONLY, "Local only"), (ANY, "Any")]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    agent = models.ForeignKey("agents.Agent", on_delete=models.CASCADE, related_name="turns")
+    # related_name is harness_turns (not "turns"): apps.agents.AgentTurn — the
+    # packaged turn *report* — already claims agent.turns.
+    agent = models.ForeignKey("agents.Agent", on_delete=models.CASCADE, related_name="harness_turns")
     origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES)
     origin_ref = models.JSONField(default=dict, blank=True)
     prompt = models.TextField(blank=True, default="")

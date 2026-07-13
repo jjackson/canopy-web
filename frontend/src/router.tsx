@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useWorkspace } from './workspace/WorkspaceProvider'
 import { AppLayout } from './components/AppLayout/AppLayout'
 import { ProjectsPage } from './pages/ProjectsPage'
@@ -27,6 +27,9 @@ const AgentOverviewSection = lazy(() =>
 )
 const AgentTasksSection = lazy(() =>
   import('./pages/agents/AgentTasksSection').then((m) => ({ default: m.AgentTasksSection })),
+)
+const AgentTurnsSection = lazy(() =>
+  import('./pages/agents/AgentTurnsSection').then((m) => ({ default: m.AgentTurnsSection })),
 )
 const AgentSyncsSection = lazy(() =>
   import('./pages/agents/AgentSyncsSection').then((m) => ({ default: m.AgentSyncsSection })),
@@ -77,8 +80,10 @@ function RootRedirect() {
 // (redirect to the new viewer) from a real workspace slug (render the workbench).
 function WorkspaceIndex() {
   const { workspace } = useParams()
+  const { search, hash } = useLocation()
   if (workspace && UUID_RE.test(workspace)) {
-    return <Navigate to={`/walkthrough/${workspace}`} replace />
+    // Preserve ?t=<share_token> and #t=<seconds> across the redirect.
+    return <Navigate to={`/walkthrough/${workspace}${search}${hash}`} replace />
   }
   return <ProjectsPage />
 }
@@ -111,6 +116,7 @@ export const router = createBrowserRouter([
           { path: 'needs-you', element: <LazySection><NeedsYouSection /></LazySection> },
           { path: 'overview', element: <LazySection><AgentOverviewSection /></LazySection> },
           { path: 'tasks', element: <LazySection><AgentTasksSection /></LazySection> },
+          { path: 'turns', element: <LazySection><AgentTurnsSection /></LazySection> },
           { path: 'syncs', element: <LazySection><AgentSyncsSection /></LazySection> },
           { path: 'work-products', element: <LazySection><AgentWorkProductsSection /></LazySection> },
           { path: 'skills', element: <LazySection><AgentSkillsSection /></LazySection> },

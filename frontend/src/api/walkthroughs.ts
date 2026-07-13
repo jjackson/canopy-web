@@ -39,9 +39,15 @@ export async function listWalkthroughs(
   return data as unknown as WalkthroughListItem[];
 }
 
-export async function getWalkthrough(id: string): Promise<WalkthroughDetail> {
+export async function getWalkthrough(
+  id: string,
+  token?: string | null,
+): Promise<WalkthroughDetail> {
   const { data, error } = await apiV2.GET("/api/walkthroughs/{wid}/", {
-    params: { path: { wid: id } },
+    params: {
+      path: { wid: id },
+      ...(token ? { query: { t: token } } : {}),
+    },
   });
   if (error) throw new Error("Failed to load walkthrough");
   // openapi-fetch's immutable response type deep-freezes the `links` array
@@ -92,8 +98,20 @@ export async function uploadWalkthrough(
   return data as unknown as WalkthroughDetail;
 }
 
-export function walkthroughContentUrl(id: string): string {
+export function walkthroughContentUrl(id: string, token?: string | null): string {
   // Base-aware so the `<video>`/`<iframe>` src resolves under the deployed
   // sub-path (e.g. `/canopy/walkthrough/<id>/content`), not the origin root.
-  return withBase(`/walkthrough/${id}/content`);
+  // Anonymous public access carries the share token as ?t=.
+  const suffix = token ? `?t=${encodeURIComponent(token)}` : "";
+  return withBase(`/walkthrough/${id}/content${suffix}`);
+}
+
+export async function rotateWalkthroughToken(
+  id: string,
+): Promise<WalkthroughDetail> {
+  const { data, error } = await apiV2.POST("/api/walkthroughs/{wid}/rotate-token", {
+    params: { path: { wid: id } },
+  });
+  if (error) throw new Error("Failed to rotate share link");
+  return data as unknown as WalkthroughDetail;
 }
