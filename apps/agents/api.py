@@ -73,10 +73,20 @@ def list_agents(request: HttpRequest, limit: int = 100) -> Page[AgentOut]:
              openapi_extra={"x-mcp-expose": True})
 def upsert_agent(request: HttpRequest, payload: AgentIn) -> Status:
     agent = services.upsert_agent(payload)
-    # Scope to the request's workspace (from the /w/{ws} prefix or the compat
-    # shim's default); fall back to the org default so an unchanged register()
-    # (e.g. Echo's) keeps working.
-    if agent.workspace_id is None:
+    explicit = (payload.workspace or "").strip()
+    if explicit and agent.workspace_id != explicit:
+        # Explicit home: may MOVE an already-homed agent. Membership-gated; a
+        # missing workspace and a non-member get the same 404 (no existence leak).
+        wsvc.auto_join_workspaces(request.user)
+        ws = wsvc.Workspace.objects.filter(slug=explicit).first()
+        if ws is None or not wsvc.is_member(request.user, explicit):
+            raise HttpError(404, f"workspace '{explicit}' not found")
+        agent.workspace = ws
+        agent.save(update_fields=["workspace"])
+    elif agent.workspace_id is None:
+        # Scope to the request's workspace (from the /w/{ws} prefix or the compat
+        # shim's default); fall back to the org default so an unchanged register()
+        # (e.g. Echo's) keeps working.
         pinned = getattr(request, "workspace_slug", None)
         ws = (
             wsvc.Workspace.objects.filter(slug=pinned).first() if pinned else None

@@ -68,3 +68,49 @@ def test_outsider_gets_404_and_empty_list():
     assert _client(outsider).get("/api/agents/echo/").status_code == 404
     items = _client(outsider).get("/api/agents/").json()["items"]
     assert all(a["slug"] != "echo" for a in items)
+
+
+# ---- explicit homing (payload.workspace) — the "move echo to connect" path ----
+
+def _make_ws(slug, owner, auto_join=()):
+    from apps.workspaces.models import Workspace
+    return Workspace.objects.create(
+        slug=slug, display_name=slug.title(), created_by=owner,
+        auto_join_domains=list(auto_join),
+    )
+
+
+def test_register_with_workspace_moves_an_already_homed_agent():
+    from apps.workspaces import services as wsvc
+
+    jj = _user("jj@dimagi.com", is_superuser=True)
+    c = _client(jj)
+    _register_echo(c)  # homed in the default workspace
+    connect = _make_ws("connect", jj)
+    wsvc.ensure_member(connect, jj)
+    r = _post(c, "/api/agents/", {"slug": "echo", "name": "Echo", "workspace": "connect"})
+    assert r.status_code == 201
+    assert Agent.objects.get(slug="echo").workspace_id == "connect"
+    # scoped reads follow the agent: new tenant 200, old tenant 404
+    assert c.get("/api/w/connect/agents/echo/").status_code == 200
+    assert c.get(f"/api/w/{DEFAULT_WORKSPACE_SLUG}/agents/echo/").status_code == 404
+
+
+def test_register_with_unknown_workspace_404s_and_does_not_move():
+    jj = _user("jj@dimagi.com", is_superuser=True)
+    c = _client(jj)
+    _register_echo(c)
+    r = _post(c, "/api/agents/", {"slug": "echo", "name": "Echo", "workspace": "nope"})
+    assert r.status_code == 404
+    assert Agent.objects.get(slug="echo").workspace_id == DEFAULT_WORKSPACE_SLUG
+
+
+def test_register_with_nonmember_workspace_404s_and_does_not_move():
+    jj = _user("jj@dimagi.com", is_superuser=True)
+    other = _user("owner@other.com")
+    _make_ws("private", other)  # exists, but jj is not a member (no auto-join)
+    c = _client(jj)
+    _register_echo(c)
+    r = _post(c, "/api/agents/", {"slug": "echo", "name": "Echo", "workspace": "private"})
+    assert r.status_code == 404
+    assert Agent.objects.get(slug="echo").workspace_id == DEFAULT_WORKSPACE_SLUG
