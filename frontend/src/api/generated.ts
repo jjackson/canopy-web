@@ -483,6 +483,10 @@ export interface paths {
         /**
          * Rotate the share token (owner only)
          * @description Mint a fresh share token, killing every previously shared public link.
+         *
+         *     Uses the router's default session auth (same as patch/delete below) — an
+         *     anonymous caller is rejected before reaching this body. An *authenticated*
+         *     non-owner still gets a manual 404 (not 403) to avoid leaking existence.
          */
         readonly post: operations["apps_walkthroughs_api_rotate_walkthrough_token"];
         readonly delete?: never;
