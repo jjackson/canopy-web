@@ -46,7 +46,7 @@ Canopy's agents (Echo and the growing fleet) execute only when Jonathan's laptop
 ```
                        ┌────────────────────────────────────────────┐
   Slack ── events ────▶│  canopy-web (Django, Postgres)             │
-  Web UI ─────────────▶│  apps/sessions (NEW, framework tier)       │
+  Web UI ─────────────▶│  apps/harness (NEW, framework tier)        │
   Board commands ─────▶│   Turn ─ TurnEvent ─ Approval ─ Runner     │
   Cron (later) ───────▶│   Router (claim/lease, policy)             │
                        └───────────────▲────────────────────────────┘
@@ -61,7 +61,12 @@ Canopy's agents (Echo and the growing fleet) execute only when Jonathan's laptop
 
 One runner binary/package, three deployments. The control plane cannot tell them apart except by declared kind and capabilities.
 
-## 5. Control plane (`apps/sessions`, framework tier)
+## 5. Control plane (`apps/harness`, framework tier)
+
+> **Naming note (2026-07-05):** implementation uses `apps/harness` mounted at
+> `/api/harness/` — `django.contrib.sessions` owns the `sessions` app label and
+> `/api/sessions` is already the session_sharing mount. "Live-session harness"
+> intent unchanged.
 
 New Django app (the "live-session harness" the `session_sharing` rename freed this name for). Pydantic-first Ninja routers like every other app. Nothing imports product code.
 
@@ -83,7 +88,7 @@ New Django app (the "live-session harness" the `session_sharing` rename freed th
 **TurnEvent** — append-only ledger. `[OpenHands event stream; agentapi replay-on-subscribe]`
 - `turn` FK, `seq` (monotonic per turn), `ts`, `kind` (`status` | `assistant` | `tool_start` | `tool_end` | `question` | `approval` | `error` | `heartbeat`), `payload` JSON (secrets masked at write time `[OpenHands]`).
 - Producer: the runner tails the session's JSONL transcript and POSTs batches (content from transcript, never screen `[omnara]`).
-- Consumer: `GET /api/sessions/turns/{id}/events?after=<seq>` — replay from cursor, then poll/SSE. Client reconnect is free because the cursor is the contract. SSE upgrade (Postgres LISTEN/NOTIFY) is an optimization, not the MVP contract.
+- Consumer: `GET /api/harness/turns/{id}/events?after=<seq>` — replay from cursor, then poll/SSE. Client reconnect is free because the cursor is the contract. SSE upgrade (Postgres LISTEN/NOTIFY) is an optimization, not the MVP contract.
 
 **Approval** — human-in-the-loop, first-class row. `[HumanLayer hld]`
 - `turn` FK, `tool_use_id` (correlates to the transcript's tool_call event so UIs render it inline), `tool_name`, `frozen_input` JSON (**the server dispatches this stored plan on approve; later edits to the request are ignored** `[OpenClaw TOCTOU defense]`), `status` (`pending` | `approved` | `denied` | `expired`), `options` JSON (`ResponseOption{name, title, prompt_fill}` — deny reasons as buttons, not just approve/deny `[HumanLayer]`), `responded_by`, `comment`, `slack_message_ts`.
@@ -97,10 +102,10 @@ Pure function, evaluated on: turn enqueue, heartbeat transitions, lease expiry.
 1. Eligible runners = `online` ∧ capability covers the agent ∧ not `degraded`.
 2. Order by kind priority from the agent's policy (default `emdash > remote > cloud`).
 3. `local_only` turns wait (state `queued`, surfaced in UI/Slack as "waiting for laptop") rather than falling back.
-4. Assignment is **pull-based**: the router marks the turn offered to a runner kind; runners long-poll `GET /api/sessions/runners/{id}/work` and claim atomically (`UPDATE … WHERE status='queued' RETURNING`, idempotency key honored). No server→runner push needed; survives NAT/ECS/SSH identically. `[omnara long-poll with read cursor]`
+4. Assignment is **pull-based**: the router marks the turn offered to a runner kind; runners long-poll `GET /api/harness/runners/{id}/work` and claim atomically (`UPDATE … WHERE status='queued' RETURNING`, idempotency key honored). No server→runner push needed; survives NAT/ECS/SSH identically. `[omnara long-poll with read cursor]`
    - *Considered and rejected for v1:* omnara's webhook-behind-Cloudflare-tunnel push (lower latency but adds a tunnel dependency and an inbound surface on the laptop; our 15–30s poll on top of emdash's 60s tick is already inside the latency budget).
 
-### 5.3 API surface (new router mounted at `/api/sessions/`, all PAT/session-authed)
+### 5.3 API surface (new router mounted at `/api/harness/`, all PAT/session-authed)
 
 - `POST /runners/` (pair), `POST /runners/{id}/heartbeat`, `GET /runners/{id}/work` (long-poll + claim), `POST /runners/{id}/degraded`
 - `POST /turns/` (enqueue; idempotency key required), `GET /turns/`, `GET /turns/{id}`, `POST /turns/{id}/events` (runner batch-append), `GET /turns/{id}/events?after=`, `POST /turns/{id}/finish`
@@ -135,10 +140,10 @@ Decision: **no server-initiated SSH.** Any extra machine gets the same runner pa
 
 ## 7. Slack integration (Phase 1)
 
-**Agents are first-class Slack identities: `@echo`, `@eva` — never `@canopy echo`.** Slack permits one bot identity per app, so each agent gets its own lightweight Slack app, all sharing canopy-web's endpoints. A thin `slack.py` module inside `apps/sessions` handles them all (extractable to `apps/channels` if a second channel ever appears).
+**Agents are first-class Slack identities: `@echo`, `@eva` — never `@canopy echo`.** Slack permits one bot identity per app, so each agent gets its own lightweight Slack app, all sharing canopy-web's endpoints. A thin `slack.py` module inside `apps/harness` handles them all (extractable to `apps/channels` if a second channel ever appears).
 
 - **Per-agent app provisioning:** agent Slack apps are generated from one manifest template via Slack's App Manifest API (name, avatar, scopes, shared request URLs) — the agent factory mints `@<agent>` when an agent is created; no manual admin clicking. Per-app credentials (signing secret, bot token, `api_app_id`, `bot_user_id`) live in a `ChannelIdentity` row keyed to the agent, secrets encrypted at rest.
-- **Disambiguation:** events arrive at per-app URLs (`/api/sessions/slack/events/<agent-slug>`), so signature verification is unambiguous and the agent is known before any parsing; the payload's `api_app_id`/`bot_user_id` is cross-checked against the `ChannelIdentity` row.
+- **Disambiguation:** events arrive at per-app URLs (`/api/harness/slack/events/<agent-slug>`), so signature verification is unambiguous and the agent is known before any parsing; the payload's `api_app_id`/`bot_user_id` is cross-checked against the `ChannelIdentity` row.
 - **Addressing:** `@echo …` in any shared channel or a DM to @echo routes straight to Echo — a direct mention *is* the binding, top of the specificity ladder. Channel-default bindings (below) still cover "posts in `#echo-ops` without a mention." When several agent bots share a channel, each app receives channel messages independently; an agent ignores messages that neither mention it nor match one of its bindings, so exactly one Turn is produced.
 
 - **Thread-per-turn.** `slack_thread_ts` stored on the Turn at first notification; every status change, question, and approval posts into that thread. `[HumanLayer thread_ts pinning]`
@@ -182,11 +187,11 @@ Deltas, not harvested: ace-web is one `SlackInstallation` per team (single bot) 
 
 ## 10. Framework/product boundary
 
-`apps/sessions` is framework-tier: it knows `agents`, `agent_runs`, `workspaces`, `tokens` — never product apps. The drain-turn *skill* (canopy plugin) is where product semantics live. `tests/test_architecture_boundary.py` gets the new app added to the framework tier table.
+`apps/harness` is framework-tier: it knows `agents`, `agent_runs`, `workspaces`, `tokens` — never product apps. The drain-turn *skill* (canopy plugin) is where product semantics live. `tests/test_architecture_boundary.py` gets the new app added to the framework tier table.
 
 ## 11. Phasing
 
-- **Phase 0 — laptop loop (this repo + canopy plugin + runner package):** `apps/sessions` models/API (Runner, Turn, TurnEvent minimal), runner package with emdash adapter (poller, injection, schema guard, type-flip, heartbeat, lease), `drain-turn` skill, lean runner project dir. Exit criterion: post a board command with laptop open → visible emdash session executes and applies it in ≤2 min; close laptop → turn waits, states visible in canopy-web.
+- **Phase 0 — laptop loop (this repo + canopy plugin + runner package):** `apps/harness` models/API (Runner, Turn, TurnEvent minimal), runner package with emdash adapter (poller, injection, schema guard, type-flip, heartbeat, lease), `drain-turn` skill, lean runner project dir. Exit criterion: post a board command with laptop open → visible emdash session executes and applies it in ≤2 min; close laptop → turn waits, states visible in canopy-web.
 - **Phase 1 — Slack out + approvals:** thread-per-turn, sticky status, Approval model + MCP permission shim (web resolve, then Slack buttons), needs-you DMs.
 - **Phase 2 — cloud fallback:** ECS runner, router fallback policies, scoped git creds, run-view live tail polish.
 - **Phase 3 — reach:** inbound Slack turns, remote-machine runners, terminal relay channel `[omnara]`, teleport-style cloud→laptop handoff, emdash upstream API swap.
