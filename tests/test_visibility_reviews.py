@@ -62,3 +62,36 @@ def test_review_submit_allowed_for_authenticated(owner):
         content_type="application/json",
     )
     assert resp.status_code == 200
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_review_submit_rejects_session_caller_without_csrf(owner):
+    """auth=None routes get no CSRF check from Ninja — the handler re-runs it."""
+    r = _review(owner, visibility="link")
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(owner)
+    resp = client.post(
+        f"/api/reviews/{r.id}/submit/",
+        data={"response_json": {}},
+        content_type="application/json",
+    )
+    assert resp.status_code == 403
+    r.refresh_from_db()
+    assert r.status != ReviewRequest.STATUS_RESOLVED
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_review_submit_allows_session_caller_with_csrf(owner):
+    r = _review(owner, visibility="link")
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(owner)
+    # Bootstrap the CSRF cookie the way the SPA does (/api/csrf/).
+    client.get("/api/csrf/")
+    token = client.cookies["csrftoken"].value
+    resp = client.post(
+        f"/api/reviews/{r.id}/submit/",
+        data={"response_json": {}},
+        content_type="application/json",
+        headers={"X-CSRFToken": token},
+    )
+    assert resp.status_code == 200

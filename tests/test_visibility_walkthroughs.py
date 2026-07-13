@@ -1,4 +1,4 @@
-"""Tokenless visibility behaviour for the walkthrough content stream + detail."""
+"""Token-gated visibility behaviour for the walkthrough content stream + detail."""
 from unittest.mock import patch
 
 import pytest

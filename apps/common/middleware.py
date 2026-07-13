@@ -59,8 +59,8 @@ _LEGACY_W_CONTENT = re.compile(
 def _is_walkthrough_link(request) -> bool:
     # The public walkthrough viewer SPA shell (/walkthrough/<uuid>) and the
     # content stream (/walkthrough/<uuid>/content), plus the per-walkthrough
-    # detail GET, self-enforce tokenless public access, so let anonymous callers
-    # through the middleware. /w/ now means "workspace" (the authed tenant shell)
+    # detail GET, self-enforce token-gated public access (?t=<share_token>),
+    # so let anonymous callers through the middleware. /w/ now means "workspace" (the authed tenant shell)
     # and is NOT allowlisted — except the legacy /w/<uuid>/content path, which
     # must reach its back-compat redirect. The bare collection
     # (/api/walkthroughs/) is NOT included — list/upload still require auth.
