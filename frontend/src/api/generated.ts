@@ -3154,6 +3154,11 @@ export interface components {
              * @default
              */
             readonly avatar_url: string;
+            /**
+             * Workspace
+             * @default
+             */
+            readonly workspace: string;
         };
         /** AgentDetailOut */
         readonly AgentDetailOut: {

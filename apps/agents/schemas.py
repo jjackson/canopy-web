@@ -18,6 +18,10 @@ class AgentIn(StrictModel):
     persona: str = ""
     email: str = Field(default="", max_length=254)
     avatar_url: str = Field(default="", max_length=500)
+    # Optional explicit home: a workspace slug. Setting it on an already-homed
+    # agent MOVES it (caller must be a member of the target). Empty → legacy
+    # behavior (default workspace for unhomed agents).
+    workspace: str = Field(default="", max_length=64)
 
 
 class AgentOut(StrictModel):
