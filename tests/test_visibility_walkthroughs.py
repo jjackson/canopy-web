@@ -240,3 +240,36 @@ def test_share_url_hidden_from_non_owner_and_anonymous(owner):
     resp = client.get(f"/api/walkthroughs/{w.id}/")
     assert resp.status_code == 200
     assert resp.json()["share_url"] is None
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_rotate_invalidates_old_token_and_returns_new_share_url(owner):
+    w = _make(owner, visibility="link")
+    old = w.ensure_share_token()
+    client = Client()
+    client.force_login(owner)
+    resp = client.post(f"/api/walkthroughs/{w.id}/rotate-token")
+    assert resp.status_code == 200
+    w.refresh_from_db()
+    assert w.share_token != old
+    assert f"?t={w.share_token}" in resp.json()["share_url"]
+    # Old token is dead on both surfaces.
+    assert Client().get(f"/api/walkthroughs/{w.id}/?t={old}").status_code == 404
+    assert Client().get(f"/walkthrough/{w.id}/content?t={old}").status_code == 404
+    # New token works.
+    assert Client().get(f"/api/walkthroughs/{w.id}/?t={w.share_token}").status_code == 200
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_rotate_is_owner_only(owner):
+    w = _make(owner, visibility="link")
+    w.ensure_share_token()
+    # Anonymous → 404.
+    assert Client().post(f"/api/walkthroughs/{w.id}/rotate-token").status_code == 404
+    # Authed non-owner → 404 (hidden, matching the tokens-app pattern).
+    other = get_user_model().objects.create_user(
+        username="other3@dimagi.com", email="other3@dimagi.com",
+    )
+    client = Client()
+    client.force_login(other)
+    assert client.post(f"/api/walkthroughs/{w.id}/rotate-token").status_code == 404

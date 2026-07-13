@@ -59,21 +59,21 @@ _LEGACY_W_CONTENT = re.compile(
 def _is_walkthrough_link(request) -> bool:
     # The public walkthrough viewer SPA shell (/walkthrough/<uuid>) and the
     # content stream (/walkthrough/<uuid>/content), plus the per-walkthrough
-    # detail GET, self-enforce tokenless public access, so let anonymous callers
-    # through the middleware. /w/ now means "workspace" (the authed tenant shell)
-    # and is NOT allowlisted — except the legacy /w/<uuid>/content path, which
-    # must reach its back-compat redirect. The bare collection
+    # detail GET and the rotate-token POST, self-enforce access (detail via
+    # tokenless public, rotate via owner-only 404 check), so let anonymous
+    # callers through the middleware. /w/ now means "workspace" (the authed
+    # tenant shell) and is NOT allowlisted — except the legacy /w/<uuid>/content
+    # path, which must reach its back-compat redirect. The bare collection
     # (/api/walkthroughs/) is NOT included — list/upload still require auth.
     path = request.path
     if path.startswith("/walkthrough/"):
         return True
     if _LEGACY_W_CONTENT.match(path):
         return True
-    return (
-        request.method == "GET"
-        and path.startswith("/api/walkthroughs/")
-        and path != "/api/walkthroughs/"
-    )
+    # Allow GET detail and POST rotate-token for owner-only checks inside the handler
+    if path.startswith("/api/walkthroughs/") and path != "/api/walkthroughs/":
+        return request.method in ("GET", "POST")
+    return False
 
 
 class LoginRequiredMiddleware:
