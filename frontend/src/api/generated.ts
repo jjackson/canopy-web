@@ -1376,6 +1376,144 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/harness/runners/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Pair Runner */
+        readonly post: operations["apps_harness_api_pair_runner"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/runners/{runner_id}/heartbeat": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Runner Heartbeat */
+        readonly post: operations["apps_harness_api_runner_heartbeat"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/runners/{runner_id}/claim": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Claim Turn */
+        readonly post: operations["apps_harness_api_claim_turn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/turns/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Turns */
+        readonly get: operations["apps_harness_api_list_turns"];
+        readonly put?: never;
+        /** Enqueue Turn */
+        readonly post: operations["apps_harness_api_enqueue_turn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/turns/{turn_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Turn */
+        readonly get: operations["apps_harness_api_get_turn"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/turns/{turn_id}/events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Read Turn Events */
+        readonly get: operations["apps_harness_api_read_turn_events"];
+        readonly put?: never;
+        /** Append Turn Events */
+        readonly post: operations["apps_harness_api_append_turn_events"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/turns/{turn_id}/start": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Start Turn */
+        readonly post: operations["apps_harness_api_start_turn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/turns/{turn_id}/finish": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Finish Turn */
+        readonly post: operations["apps_harness_api_finish_turn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3331,20 +3469,7 @@ export interface components {
         };
         /** CountOut */
         readonly CountOut: {
-            /**
-             * Created
-             * @default 0
-             */
-            readonly created: number;
-            /**
-             * Replaced
-             * @default 0
-             */
-            readonly replaced: number;
-            /**
-             * Count
-             * @default 0
-             */
+            /** Count */
             readonly count: number;
         };
         /** AgentWorkProductBatchIn */
@@ -4314,6 +4439,183 @@ export interface components {
              * @default []
              */
             readonly sections: readonly components["schemas"]["SharedSectionOut"][];
+        };
+        /** RunnerOut */
+        readonly RunnerOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            /** Kind */
+            readonly kind: string;
+            /** Status */
+            readonly status: string;
+            /** Status Note */
+            readonly status_note: string;
+            /** Last Heartbeat At */
+            readonly last_heartbeat_at: string | null;
+            /** Capabilities */
+            readonly capabilities: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** RunnerIn */
+        readonly RunnerIn: {
+            /** Name */
+            readonly name: string;
+            /** Kind */
+            readonly kind: string;
+            /**
+             * Capabilities
+             * @default {}
+             */
+            readonly capabilities: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** HeartbeatIn */
+        readonly HeartbeatIn: {
+            /**
+             * Active Turn Ids
+             * @default []
+             */
+            readonly active_turn_ids: readonly string[];
+            /**
+             * Degraded
+             * @default false
+             */
+            readonly degraded: boolean;
+            /**
+             * Note
+             * @default
+             */
+            readonly note: string;
+        };
+        /** TurnOut */
+        readonly TurnOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Origin */
+            readonly origin: string;
+            /** Status */
+            readonly status: string;
+            /** Routing */
+            readonly routing: string;
+            /** Prompt */
+            readonly prompt: string;
+            /** Origin Ref */
+            readonly origin_ref: {
+                readonly [key: string]: unknown;
+            };
+            /** Claimed By Name */
+            readonly claimed_by_name: string | null;
+            /** Session Id */
+            readonly session_id: string;
+            /** Result Note */
+            readonly result_note: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Claimed At */
+            readonly claimed_at: string | null;
+            /** Started At */
+            readonly started_at: string | null;
+            /** Finished At */
+            readonly finished_at: string | null;
+            /** Lease Expires At */
+            readonly lease_expires_at: string | null;
+        };
+        /** TurnIn */
+        readonly TurnIn: {
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Origin */
+            readonly origin: string;
+            /** Idempotency Key */
+            readonly idempotency_key: string;
+            /**
+             * Prompt
+             * @default
+             */
+            readonly prompt: string;
+            /**
+             * Origin Ref
+             * @default {}
+             */
+            readonly origin_ref: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Routing
+             * @default prefer_local
+             */
+            readonly routing: string;
+        };
+        /** TurnEventIn */
+        readonly TurnEventIn: {
+            /** Kind */
+            readonly kind: string;
+            /**
+             * Payload
+             * @default {}
+             */
+            readonly payload: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** TurnEventsIn */
+        readonly TurnEventsIn: {
+            /** Events */
+            readonly events: readonly components["schemas"]["TurnEventIn"][];
+        };
+        /** TurnEventOut */
+        readonly TurnEventOut: {
+            /** Seq */
+            readonly seq: number;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            readonly ts: string;
+            /** Kind */
+            readonly kind: string;
+            /** Payload */
+            readonly payload: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** TurnEventsOut */
+        readonly TurnEventsOut: {
+            /** Events */
+            readonly events: readonly components["schemas"]["TurnEventOut"][];
+        };
+        /** TurnStartIn */
+        readonly TurnStartIn: {
+            /**
+             * Session Id
+             * @default
+             */
+            readonly session_id: string;
+        };
+        /** TurnFinishIn */
+        readonly TurnFinishIn: {
+            /** Status */
+            readonly status: string;
+            /**
+             * Result Note
+             * @default
+             */
+            readonly result_note: string;
         };
     };
     responses: never;
@@ -6790,6 +7092,265 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["SharedViewOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_pair_runner: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RunnerIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RunnerOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_runner_heartbeat: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["HeartbeatIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RunnerOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_claim_turn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly apps_harness_api_list_turns: {
+        readonly parameters: {
+            readonly query?: {
+                readonly agent?: string | null;
+                readonly status?: string | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["TurnOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_enqueue_turn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TurnIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_get_turn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly turn_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_read_turn_events: {
+        readonly parameters: {
+            readonly query?: {
+                readonly after?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly turn_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnEventsOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_append_turn_events: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly turn_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TurnEventsIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CountOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_start_turn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly turn_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TurnStartIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_finish_turn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly turn_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TurnFinishIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnOut"];
                 };
             };
         };
