@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import time
 import uuid
 from pathlib import Path
 
@@ -7,7 +8,7 @@ import pytest
 
 from canopy_runner import emdash
 from canopy_runner.config import Config
-from canopy_runner.main import run_once
+from canopy_runner.main import GRACE_SECONDS, run_once
 
 AUTOMATION_ID = "auto-1"
 
@@ -321,3 +322,51 @@ def test_evicts_turn_finished_serverside(db, tmp_path):
     assert result == "evicted:t-1"
     state = json.loads(Path(cfg.state_path).read_text())
     assert state["active"] == {}
+
+
+def test_completed_run_within_grace_is_left_alone(db, tmp_path):
+    """emdash run reached 'done' but the server turn is still claimed/running
+    (skill never POSTed /finish yet) — within the grace window this must be
+    left alone, not failed+evicted."""
+    cfg = _cfg(db, tmp_path)
+    client = FakeClient(turns=[{"id": "t-1", "agent_slug": "echo", "status": "claimed"}])
+    client.turn_lookup = {"t-1": {"id": "t-1", "status": "running"}}
+    run_once(cfg, client)  # inject
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE automation_runs SET status='done' WHERE id='t-1'")
+    conn.commit(); conn.close()
+
+    run_once(cfg, client)  # first observation of 'done' — records completed_seen_at
+    state = json.loads(Path(cfg.state_path).read_text())
+    assert "completed_seen_at" in state["active"]["t-1"]
+
+    result = run_once(cfg, client)  # still well within GRACE_SECONDS
+    assert result != f"failed:t-1"
+    assert not client.failed
+    state = json.loads(Path(cfg.state_path).read_text())
+    assert "t-1" in state["active"]
+
+
+def test_completed_run_with_unfinished_turn_fails_after_grace(db, tmp_path, monkeypatch):
+    """If the grace window expires with the turn still unclosed server-side,
+    the entry must be failed+evicted so it stops wedging the agent's lane."""
+    cfg = _cfg(db, tmp_path)
+    client = FakeClient(turns=[{"id": "t-1", "agent_slug": "echo", "status": "claimed"}])
+    client.turn_lookup = {"t-1": {"id": "t-1", "status": "running"}}
+    run_once(cfg, client)  # inject
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE automation_runs SET status='done' WHERE id='t-1'")
+    conn.commit(); conn.close()
+
+    run_once(cfg, client)  # first observation — records completed_seen_at
+    state = json.loads(Path(cfg.state_path).read_text())
+    completed_seen_at = state["active"]["t-1"]["completed_seen_at"]
+
+    # Jump time forward past the grace window between the two run_once calls.
+    monkeypatch.setattr(time, "time", lambda: completed_seen_at + GRACE_SECONDS + 1)
+    result = run_once(cfg, client)
+    assert result == "failed:t-1"
+    assert client.failed and client.failed[-1][0] == "t-1"
+    assert "grace expired" in client.failed[-1][1]
+    state = json.loads(Path(cfg.state_path).read_text())
+    assert "t-1" not in state["active"]  # evicted — lease can now expire

@@ -45,22 +45,17 @@ queued automation run directly into emdash's local sqlite DB.
    migration pin — see "After an emdash update" below for how that's kept
    current across emdash releases.
 
-4. **Sanity-check** the config:
+4. **Sanity-check / smoke test** the config:
    ```bash
    python3 -m canopy_runner.main --config ~/.canopy/runner.json --once
    ```
+   → should report `idle` (no claimed turns yet).
 
 5. **Install the launchd job** to run the watch loop continuously:
    ```bash
    cp launchd/com.canopy.runner.plist ~/Library/LaunchAgents/
    launchctl load ~/Library/LaunchAgents/com.canopy.runner.plist
    ```
-
-6. **Smoke test**:
-   ```bash
-   python3 -m canopy_runner.main --config ~/.canopy/runner.json --once
-   ```
-   → should report `idle` (no claimed turns yet).
 
 ## Commands
 
@@ -69,6 +64,10 @@ queued automation run directly into emdash's local sqlite DB.
 - `vet` — re-vet the emdash schema pin after an emdash update (see below).
 
 ## E2E check (Phase 0 exit criterion)
+
+```bash
+TOKEN=$(cat ~/.claude/canopy/workbench-token)
+```
 
 1. Enqueue a turn:
    ```bash
@@ -82,8 +81,10 @@ queued automation run directly into emdash's local sqlite DB.
    ```bash
    curl {base}/api/harness/turns/{id} -H "Authorization: Bearer $TOKEN"
    ```
-   → `done`, with events `queued → claimed → injected → emdash_task →
-   running → work_summary → done`.
+   → `done`. Events begin at `claimed` (enqueue itself writes no event); the
+   work-summary is a `status`-kind event with payload
+   `{"status": "work_summary", ...}`. Full flow: `claimed → injected →
+   emdash_task → running → work_summary (status payload) → done`.
 4. Close the laptop, enqueue another turn → it stays `queued`; reopen the
    laptop → it executes.
 

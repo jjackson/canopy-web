@@ -44,6 +44,11 @@ from .config import Config
 
 logger = logging.getLogger("canopy_runner")
 
+# How long we tolerate an emdash run reaching its terminal 'done' state while
+# the server-side turn is still claimed/running before we consider the turn
+# wedged (skill error / crash that never called /finish) and fail+evict it.
+GRACE_SECONDS = 900
+
 
 def _load_state(cfg: Config) -> dict:
     p = Path(cfg.state_path)
@@ -175,6 +180,24 @@ def run_once(cfg: Config, client: Client) -> str:
             _save_state(cfg, state)
             return f"failed:{turn_id}"
 
+        # Finish-less-session wedge: the emdash run reached its terminal
+        # 'done' state (checked above: remote wasn't already done/failed/lost)
+        # but the claude session never POSTed /finish (skill error, crash) —
+        # the server turn is still claimed/running. Left alone, the entry
+        # would sit in state["active"] forever, heartbeats would renew its
+        # lease forever, and this agent's lane would be blocked permanently.
+        # Give it GRACE_SECONDS to close on its own, then fail+evict.
+        if run_st == "done":
+            completed_seen_at = info.get("completed_seen_at")
+            if completed_seen_at is None:
+                info["completed_seen_at"] = time.time()
+                _save_state(cfg, state)
+            elif time.time() - completed_seen_at > GRACE_SECONDS:
+                return _fail_and_evict(
+                    cfg, client, state, turn_id,
+                    "emdash run finished but turn never closed (grace expired)",
+                )
+
     # 4. claim new work (one turn per iteration keeps the loop simple)
     try:
         turn = client.claim(cfg.runner_id)
@@ -253,6 +276,9 @@ def vet(cfg_path: Path) -> str:
     - stored fingerprint matches → bump the pin ("vetted:<old>-><new>"), or
       "unchanged" if the pin is already current. A backward id move (restored
       DB) still vets but prints a warning.
+    - no ``__drizzle_migrations`` table at all (bad ``emdash_db`` path, or the
+      DB predates Drizzle) → "refused" with a clear message instead of a raw
+      traceback. Config untouched.
     """
     raw = json.loads(Path(cfg_path).read_text())
     db = raw["emdash_db"]
@@ -260,7 +286,16 @@ def vet(cfg_path: Path) -> str:
     current_tables = emdash.per_table_fingerprints(db, emdash.VETTED_TABLES)
     conn = sqlite3.connect(db)
     try:
-        actual_id = conn.execute("SELECT MAX(id) FROM __drizzle_migrations").fetchone()[0]
+        try:
+            actual_id = conn.execute("SELECT MAX(id) FROM __drizzle_migrations").fetchone()[0]
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc):
+                print(
+                    f"no __drizzle_migrations table in {db} — is emdash_db pointed at the"
+                    " right file? refusing to vet"
+                )
+                return "refused"
+            raise
     finally:
         conn.close()
 

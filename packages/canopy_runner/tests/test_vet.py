@@ -107,6 +107,27 @@ def test_refusal_names_changed_tables(tmp_path, capsys):
     assert "tasks" not in out  # only the changed table is named
 
 
+def test_vet_refuses_cleanly_when_migrations_table_missing(tmp_path, capsys):
+    """A bad emdash_db path (or a DB predating Drizzle) must return a clear
+    'refused' instead of a raw sqlite3.OperationalError traceback."""
+    db = tmp_path / "e.db"
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        """
+        CREATE TABLE automations (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+        CREATE TABLE automation_runs (id TEXT PRIMARY KEY, automation_id TEXT NOT NULL, status TEXT NOT NULL, trigger_kind TEXT NOT NULL);
+        CREATE TABLE tasks (id TEXT PRIMARY KEY, type TEXT DEFAULT 'task' NOT NULL, automation_run_id TEXT);
+        """
+    )
+    conn.commit(); conn.close()
+    cfg = _cfg_file(tmp_path, db, migration_id=19, fingerprint="")
+    before = cfg.read_text()
+    assert vet(cfg) == "refused"
+    assert cfg.read_text() == before  # config untouched
+    out = capsys.readouterr().out
+    assert "no __drizzle_migrations table" in out
+
+
 def test_backward_move_vets_with_warning(tmp_path, capsys):
     # Restored emdash DB: actual id behind the pin, schema fingerprint still matches.
     db = tmp_path / "e.db"; _make_db(db, 19)
