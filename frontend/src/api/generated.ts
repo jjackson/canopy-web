@@ -471,6 +471,26 @@ export interface paths {
         readonly patch: operations["apps_walkthroughs_api_patch_walkthrough"];
         readonly trace?: never;
     };
+    readonly "/api/walkthroughs/{wid}/rotate-token": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Rotate the share token (owner only)
+         * @description Mint a fresh share token, killing every previously shared public link.
+         */
+        readonly post: operations["apps_walkthroughs_api_rotate_walkthrough_token"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/tokens/": {
         readonly parameters: {
             readonly query?: never;
@@ -2055,7 +2075,7 @@ export interface components {
         };
         /**
          * WalkthroughDetailOut
-         * @description Detail view adds content_type and is_owner.
+         * @description Detail view adds content_type, is_owner, and the owner-only share_url.
          */
         readonly WalkthroughDetailOut: {
             /**
@@ -2116,6 +2136,8 @@ export interface components {
              * @default []
              */
             readonly links: readonly components["schemas"]["WalkthroughLink"][];
+            /** Share Url */
+            readonly share_url?: string | null;
         };
         /**
          * WalkthroughLink
@@ -5230,7 +5252,9 @@ export interface operations {
     };
     readonly apps_walkthroughs_api_get_walkthrough: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly t?: string;
+            };
             readonly header?: never;
             readonly path: {
                 readonly wid: string;
@@ -5284,6 +5308,28 @@ export interface operations {
                 readonly "application/json": components["schemas"]["WalkthroughPatchIn"];
             };
         };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WalkthroughDetailOut"];
+                };
+            };
+        };
+    };
+    readonly apps_walkthroughs_api_rotate_walkthrough_token: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly wid: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
         readonly responses: {
             /** @description OK */
             readonly 200: {
