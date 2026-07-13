@@ -101,3 +101,64 @@ def test_find_and_promote_task(db):
     assert task == {"id": "task-1", "name": "fruity", "status": "in_progress", "type": "automation-run"}
     promote_task(db, "task-1")
     assert find_task(db, rid)["type"] == "task"
+
+
+def test_inject_run_is_idempotent_on_same_run_id(db):
+    rid = str(uuid.uuid4())
+    inject_run(db, AUTOMATION_ID, rid, task_name="first")
+    # Simulate a runner retry after an ambiguous crash: same run_id, called again.
+    inject_run(db, AUTOMATION_ID, rid, task_name="second")
+
+    conn = sqlite3.connect(db)
+    rows = conn.execute(
+        "SELECT generated_task_name FROM automation_runs WHERE id=?", (rid,)
+    ).fetchall()
+    conn.close()
+
+    assert len(rows) == 1
+    assert rows[0][0] == "first"
+
+
+def test_check_schema_raises_schemadrift_when_table_missing(tmp_path: Path):
+    path = tmp_path / "no-migrations.db"
+    conn = sqlite3.connect(path)
+    conn.close()
+
+    with pytest.raises(SchemaDrift):
+        check_schema(str(path), 19)
+
+
+def test_connections_are_closed(db, monkeypatch):
+    """Every sqlite3.connect() made by the module must be closed, on both the
+    read (run_status) and write (inject_run) paths."""
+    real_connect = sqlite3.connect
+    created: list["TrackingConnection"] = []
+    closed: list["TrackingConnection"] = []
+
+    class TrackingConnection:
+        def __init__(self, real_conn):
+            object.__setattr__(self, "_real", real_conn)
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+        def __setattr__(self, name, value):
+            setattr(self._real, name, value)
+
+        def close(self):
+            closed.append(self)
+            self._real.close()
+
+    def fake_connect(*args, **kwargs):
+        wrapped = TrackingConnection(real_connect(*args, **kwargs))
+        created.append(wrapped)
+        return wrapped
+
+    monkeypatch.setattr(sqlite3, "connect", fake_connect)
+
+    rid = str(uuid.uuid4())
+    inject_run(db, AUTOMATION_ID, rid, task_name="x")
+    run_status(db, rid)
+
+    assert len(created) >= 2
+    assert len(closed) == len(created)
