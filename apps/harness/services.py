@@ -145,6 +145,11 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
 
 def append_events(turn: Turn, events: list[dict]) -> int:
     with transaction.atomic():
+        # Lock the turn row first so concurrent appenders to the same turn
+        # serialize on the Max("seq") read instead of racing each other into
+        # the turnevent_seq_unique_per_turn index (sqlite ignores
+        # select_for_update; Postgres serializes — that's the point).
+        Turn.objects.select_for_update().get(pk=turn.pk)
         current = (
             TurnEvent.objects.filter(turn=turn).aggregate(m=Max("seq"))["m"] or 0
         )
@@ -157,20 +162,37 @@ def append_events(turn: Turn, events: list[dict]) -> int:
 
 
 def mark_running(turn: Turn, *, session_id: str = "") -> Turn:
-    turn.status = Turn.RUNNING
-    turn.started_at = turn.started_at or timezone.now()
+    """Transition CLAIMED|RUNNING -> RUNNING. A no-op (no event, no field
+    writes) if the turn was swept to a terminal state (e.g. lost) underneath
+    the caller — guards against a zombie runner resurrecting a dead turn."""
+    now = timezone.now()
+    fields: dict = {"status": Turn.RUNNING}
+    if not turn.started_at:
+        fields["started_at"] = now
     if session_id:
-        turn.session_id = session_id
-    turn.save(update_fields=["status", "started_at", "session_id"])
+        fields["session_id"] = session_id
+    updated = Turn.objects.filter(
+        pk=turn.pk, status__in=[Turn.CLAIMED, Turn.RUNNING]
+    ).update(**fields)
+    turn.refresh_from_db()
+    if not updated:
+        return turn
     append_events(turn, [{"kind": "status", "payload": {"status": Turn.RUNNING}}])
     return turn
 
 
 def finish_turn(turn: Turn, *, status: str, result_note: str = "") -> Turn:
-    assert status in (Turn.DONE, Turn.FAILED), f"finish status must be done|failed, got {status}"
-    turn.status = status
-    turn.finished_at = timezone.now()
-    turn.result_note = result_note
-    turn.save(update_fields=["status", "finished_at", "result_note"])
+    """Transition CLAIMED|RUNNING|NEEDS_HUMAN -> DONE|FAILED. A no-op (no
+    event, no field writes) if the turn is already terminal — idempotent, and
+    guards against resurrecting a turn already swept to lost."""
+    if status not in (Turn.DONE, Turn.FAILED):
+        raise ValueError(f"finish status must be done|failed, got {status!r}")
+    now = timezone.now()
+    updated = Turn.objects.filter(
+        pk=turn.pk, status__in=[Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
+    ).update(status=status, finished_at=now, result_note=result_note)
+    turn.refresh_from_db()
+    if not updated:
+        return turn
     append_events(turn, [{"kind": "status", "payload": {"status": status, "result_note": result_note}}])
     return turn

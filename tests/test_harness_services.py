@@ -136,6 +136,71 @@ def test_append_events_assigns_monotonic_seq():
 def test_finish_turn_sets_terminal_state():
     a = _agent()
     t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
-    services.finish_turn(t, status="done", result_note="2 commands applied")
+    r = _runner()
+    claimed = services.claim_next_turn(r)
+    services.finish_turn(claimed, status="done", result_note="2 commands applied")
     t.refresh_from_db()
     assert t.status == Turn.DONE and t.finished_at is not None
+
+
+def test_finish_turn_does_not_resurrect_lost_turn():
+    a = _agent()
+    t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r = _runner()
+    claimed = services.claim_next_turn(r)
+    # simulate a lease sweep declaring the turn lost while the runner is
+    # still (unknowingly) working on it
+    Turn.objects.filter(pk=claimed.pk).update(lease_expires_at=timezone.now() - dt.timedelta(minutes=1))
+    services.sweep_expired_leases()
+    claimed.refresh_from_db()
+    assert claimed.status == Turn.LOST
+    events_before = claimed.events.count()
+
+    result = services.finish_turn(claimed, status="done", result_note="zombie write")
+    result.refresh_from_db()
+    assert result.status == Turn.LOST  # not resurrected to done
+    assert result.result_note != "zombie write"
+    assert result.events.count() == events_before  # no extra event appended
+
+
+def test_mark_running_does_not_resurrect_lost_turn():
+    a = _agent()
+    t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r = _runner()
+    claimed = services.claim_next_turn(r)
+    Turn.objects.filter(pk=claimed.pk).update(lease_expires_at=timezone.now() - dt.timedelta(minutes=1))
+    services.sweep_expired_leases()
+    claimed.refresh_from_db()
+    assert claimed.status == Turn.LOST
+    events_before = claimed.events.count()
+
+    result = services.mark_running(claimed, session_id="zombie-session")
+    result.refresh_from_db()
+    assert result.status == Turn.LOST  # not resurrected to running
+    assert result.session_id != "zombie-session"
+    assert result.events.count() == events_before  # no extra event appended
+
+
+def test_finish_turn_rejects_bad_status():
+    a = _agent()
+    t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    with pytest.raises(ValueError):
+        services.finish_turn(t, status="queued")
+
+
+def test_finish_turn_idempotent_on_terminal():
+    a = _agent()
+    t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r = _runner()
+    claimed = services.claim_next_turn(r)
+    services.finish_turn(claimed, status="done", result_note="first")
+    t.refresh_from_db()
+    events_after_first = t.events.count()
+
+    # a second finish on an already-terminal turn is a no-op: status/note
+    # stay as they were and no additional event is appended
+    result = services.finish_turn(t, status="failed", result_note="second")
+    result.refresh_from_db()
+    assert result.status == Turn.DONE
+    assert result.result_note == "first"
+    assert result.events.count() == events_after_first
