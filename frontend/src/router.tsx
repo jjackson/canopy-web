@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useWorkspace } from './workspace/WorkspaceProvider'
 import { AppLayout } from './components/AppLayout/AppLayout'
 import { ProjectsPage } from './pages/ProjectsPage'
@@ -80,8 +80,10 @@ function RootRedirect() {
 // (redirect to the new viewer) from a real workspace slug (render the workbench).
 function WorkspaceIndex() {
   const { workspace } = useParams()
+  const { search, hash } = useLocation()
   if (workspace && UUID_RE.test(workspace)) {
-    return <Navigate to={`/walkthrough/${workspace}`} replace />
+    // Preserve ?t=<share_token> and #t=<seconds> across the redirect.
+    return <Navigate to={`/walkthrough/${workspace}${search}${hash}`} replace />
   }
   return <ProjectsPage />
 }

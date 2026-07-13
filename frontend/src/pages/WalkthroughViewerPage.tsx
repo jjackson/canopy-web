@@ -4,6 +4,7 @@ import {
   deleteWalkthrough,
   getWalkthrough,
   patchWalkthrough,
+  rotateWalkthroughToken,
   walkthroughContentUrl,
   type WalkthroughDetail,
 } from '../api/walkthroughs'
@@ -17,17 +18,18 @@ export function WalkthroughViewerPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const shareToken = new URLSearchParams(window.location.search).get('t')
 
   useEffect(() => {
     if (!id) return
     let cancelled = false
-    getWalkthrough(id)
+    getWalkthrough(id, shareToken)
       .then((d) => !cancelled && setW(d))
       .catch((e) => !cancelled && setError(String(e.message || e)))
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, shareToken])
 
   async function toggleVisibility() {
     if (!w) return
@@ -43,17 +45,32 @@ export function WalkthroughViewerPage() {
     }
   }
 
-  // The public URL is this viewer page itself — visibility=link makes it
-  // readable by anyone with the link (no login).
-  const publicUrl = `${window.location.origin}${window.location.pathname}`
+  // The owner-only tokened public URL. Anonymous/non-owner viewers get null —
+  // anonymous visitors already hold the link they arrived with.
+  const shareUrl = w?.share_url ?? null
 
-  async function copyPublicUrl() {
+  async function copyShareUrl() {
+    if (!shareUrl) return
     try {
-      await navigator.clipboard.writeText(publicUrl)
+      await navigator.clipboard.writeText(shareUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (e: any) {
       setError(String(e?.message || e))
+    }
+  }
+
+  async function rotateLink() {
+    if (!w) return
+    if (!confirm('Rotate the public link? Anyone using the current link will lose access.')) return
+    setBusy(true)
+    try {
+      const updated = await rotateWalkthroughToken(w.id)
+      setW(updated)
+    } catch (e: any) {
+      setError(String(e?.message || e))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -83,7 +100,7 @@ export function WalkthroughViewerPage() {
   // iframe so it opens on that scene; the deck's own JS reads its hash. Videos
   // ignore it. Non-scene hashes normalize to '' and pass through unchanged.
   const contentSrc = withSceneHash(
-    walkthroughContentUrl(w.id),
+    walkthroughContentUrl(w.id, shareToken),
     window.location.hash,
   )
 
@@ -119,19 +136,19 @@ export function WalkthroughViewerPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {w.visibility === 'link' && (
+          {shareUrl && (
             <>
               <a
-                href={publicUrl}
+                href={shareUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-muted-foreground hover:text-primary transition-colors"
-                title={publicUrl}
+                title={shareUrl}
               >
                 Open public link ↗
               </a>
               <button
-                onClick={copyPublicUrl}
+                onClick={copyShareUrl}
                 className="px-2 py-0.5 text-xs rounded border border-border bg-card text-foreground-secondary hover:bg-muted hover:border-input transition-colors"
               >
                 {copied ? 'Copied!' : 'Copy link'}
@@ -159,6 +176,15 @@ export function WalkthroughViewerPage() {
           >
             {w.visibility === 'link' ? 'Make private' : 'Make public'}
           </button>
+          {w.visibility === 'link' && (
+            <button
+              className="px-3 py-1 rounded-lg border border-border bg-card text-foreground-secondary hover:bg-muted hover:border-input transition-colors disabled:opacity-50"
+              onClick={rotateLink}
+              disabled={busy}
+            >
+              Rotate link
+            </button>
+          )}
           <button
             className="px-3 py-1 rounded-lg border border-destructive/30 text-destructive/90 bg-destructive/5 hover:bg-destructive/10 transition-colors disabled:opacity-50 ml-auto"
             onClick={destroy}

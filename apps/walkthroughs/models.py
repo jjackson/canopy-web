@@ -116,3 +116,19 @@ class Walkthrough(models.Model):
         self.share_token = secrets.token_urlsafe(24)
         self.save(update_fields=["share_token", "updated_at"])
         return self.share_token
+
+    def token_matches(self, token: str | None) -> bool:
+        """Constant-time check that ``token`` grants anonymous public access.
+
+        True only when the walkthrough is public (visibility=link), a token
+        has been minted, and the presented token matches. Empty/absent on
+        either side never matches.
+        """
+        return bool(
+            self.visibility == self.VISIBILITY_LINK
+            and self.share_token
+            and token
+            and secrets.compare_digest(
+                self.share_token.encode("utf-8"), token.encode("utf-8")
+            )
+        )

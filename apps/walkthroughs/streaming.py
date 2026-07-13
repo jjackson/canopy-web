@@ -47,10 +47,9 @@ def _get_or_404(wid):
 def walkthrough_content(request, wid):
     """GET /w/<id>/content — stream the file bytes from Drive.
 
-    Auth (tokenless): any authenticated session user OR a walkthrough with
-    visibility=link (the UUID in the URL is the only access secret). A
-    private walkthrough returns 404 to unauthenticated callers so its
-    existence isn't leaked.
+    Auth: any authenticated session user OR a public (visibility=link)
+    walkthrough presented with its ?t=<share_token>. Anything else 404s
+    so existence isn't leaked.
 
     Django's SecurityMiddleware sets ``X-Frame-Options: DENY`` globally,
     which breaks our own viewer page (``/w/<id>``) when it tries to embed
@@ -64,11 +63,12 @@ def walkthrough_content(request, wid):
     if w is None:
         raise Http404("walkthrough not found")
 
-    # Tokenless public access: visibility=link means anyone with the URL.
-    # The UUID is the only secret. Private stays session-gated.
+    # Token-gated public access (spec 2026-07-13): anonymous read requires
+    # visibility=link AND a matching ?t=<share_token>. Bare-UUID anonymous
+    # access 404s exactly like private, so existence never leaks.
     if not (
         request.user.is_authenticated
-        or w.visibility == Walkthrough.VISIBILITY_LINK
+        or w.token_matches(request.GET.get("t"))
     ):
         raise Http404("walkthrough not found")
 
@@ -96,6 +96,7 @@ def walkthrough_content(request, wid):
             resp["Content-Range"] = f"bytes {s}-{e}/{t}"
             resp["Content-Length"] = str(len(data))
             resp["Accept-Ranges"] = "bytes"
+            resp["Cache-Control"] = "private"
             return resp
 
         data, s, e, t = storage.download(file_id=w.drive_file_id)
@@ -106,6 +107,7 @@ def walkthrough_content(request, wid):
         )
         resp["Content-Length"] = str(len(data))
         resp["Accept-Ranges"] = "bytes"
+        resp["Cache-Control"] = "private"
         return resp
     except DriveNotConfigured:
         return HttpResponse(status=500)

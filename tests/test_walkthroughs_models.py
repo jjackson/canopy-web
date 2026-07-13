@@ -86,3 +86,84 @@ def test_rotate_share_token_changes_value(db, owner):
     w.rotate_share_token()
     assert w.share_token is not None
     assert w.share_token != old
+
+
+class TestTokenMatches:
+    def _make(self, db, **kw):
+        from django.contrib.auth import get_user_model
+
+        owner = get_user_model().objects.create_user(
+            username="tok-owner@dimagi.com", email="tok-owner@dimagi.com",
+        )
+        defaults = dict(
+            title="Demo", kind="video", owner=owner,
+            drive_file_id="f", drive_folder_id="d",
+            content_type="video/mp4", size_bytes=1,
+        )
+        defaults.update(kw)
+        return Walkthrough.objects.create(**defaults)
+
+    def test_matches_on_public_with_correct_token(self, db):
+        w = self._make(db, visibility="link")
+        token = w.ensure_share_token()
+        assert w.token_matches(token) is True
+
+    def test_rejects_wrong_token(self, db):
+        w = self._make(db, visibility="link")
+        w.ensure_share_token()
+        assert w.token_matches("wrong") is False
+
+    def test_rejects_empty_and_none_token(self, db):
+        w = self._make(db, visibility="link")
+        w.ensure_share_token()
+        assert w.token_matches("") is False
+        assert w.token_matches(None) is False
+
+    def test_rejects_when_no_token_minted(self, db):
+        # Empty stored token must never match, even an empty presented token.
+        w = self._make(db, visibility="link")
+        assert w.share_token is None
+        assert w.token_matches("") is False
+
+    def test_rejects_on_private_even_with_correct_token(self, db):
+        w = self._make(db, visibility="private")
+        token = w.ensure_share_token()
+        assert w.token_matches(token) is False
+
+    def test_rejects_non_ascii_token_without_raising(self, db):
+        w = self._make(db, visibility="link")
+        w.ensure_share_token()
+        assert w.token_matches("héllo ") is False
+
+
+def test_backfill_migration_mints_tokens_for_public_rows(db):
+    import importlib.util
+    from pathlib import Path
+
+    from django.apps import apps as django_apps
+    from django.contrib.auth import get_user_model
+
+    owner = get_user_model().objects.create_user(
+        username="mig-owner@dimagi.com", email="mig-owner@dimagi.com",
+    )
+    common = dict(
+        title="Demo", kind="video", owner=owner,
+        drive_file_id="f", drive_folder_id="d",
+        content_type="video/mp4", size_bytes=1,
+    )
+    public = Walkthrough.objects.create(visibility="link", **common)
+    private = Walkthrough.objects.create(visibility="private", **common)
+    assert public.share_token is None
+
+    spec = importlib.util.spec_from_file_location(
+        "mint_share_tokens",
+        Path("apps/walkthroughs/migrations/0008_mint_share_tokens.py"),
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.mint_tokens(django_apps, None)
+
+    public.refresh_from_db()
+    private.refresh_from_db()
+    assert public.share_token
+    assert private.share_token is None
