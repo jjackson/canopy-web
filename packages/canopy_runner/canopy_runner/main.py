@@ -17,9 +17,10 @@ Crash safety around inject: ``emdash_run_id`` is deterministic — it IS the
 turn id (both are uuid strings; `automation_runs.id` is TEXT) — so the
 sequence is: save state first (injected=False), then inject_run (idempotent
 on run_id), then flip injected=True and save again. Every crash point is
-recoverable:
-  - crash before the first save: nothing was ever recorded; the turn's
-    server-side lease simply expires and it gets claimed again later.
+accounted for:
+  - crash before the first save: nothing was ever recorded locally; the
+    turn's server-side lease expires and the turn goes LOST (terminal) —
+    it is NOT re-claimed automatically and needs a manual/API re-enqueue.
   - crash after the first save but before/during inject_run: the follow-up
     pass sees injected=False (or a missing automation_runs row) and calls
     inject_run again — safe, because inject_run is a no-op if the row
@@ -52,7 +53,7 @@ def _load_state(cfg: Config) -> dict:
     state: dict = {}
     try:
         state = json.loads(p.read_text())
-        if not isinstance(state, dict) or "active" not in state:
+        if not isinstance(state, dict) or not isinstance(state.get("active"), dict):
             corrupt = True
     except json.JSONDecodeError as exc:
         logger.error("corrupt state file %s: %s", p, exc)
@@ -75,6 +76,22 @@ def _save_state(cfg: Config, state: dict) -> None:
     tmp = Path(str(p) + ".tmp")
     tmp.write_text(json.dumps(state, indent=2))
     os.replace(tmp, p)  # atomic on POSIX — no torn/partial state file ever observed
+
+
+def _fail_and_evict(cfg: Config, client: Client, state: dict, turn_id: str, note: str) -> str:
+    """Fail a turn server-side (best-effort) and drop its state entry.
+
+    Evicting the entry is the load-bearing part: as long as a turn id sits in
+    state["active"], every heartbeat renews its lease, so the server can never
+    sweep it — a permanently-broken entry would wedge the agent's lane forever.
+    """
+    try:
+        client.fail_turn(turn_id, note)
+    except ClientError as exc:
+        logger.warning("fail_turn failed for %s: %s", turn_id, exc)
+    state["active"].pop(turn_id, None)
+    _save_state(cfg, state)
+    return f"failed:{turn_id}"
 
 
 def run_once(cfg: Config, client: Client) -> str:
@@ -103,19 +120,26 @@ def run_once(cfg: Config, client: Client) -> str:
         # calling inject_run; run_st is None (with injected=True) means we
         # crashed after inject_run but the row never actually landed (or the
         # flag-flip save never happened) — either way, reinject (idempotent)
-        # and move on.
-        if not info.get("injected") or run_st is None:
+        # and move on. EXCEPT when the task was already promoted: a missing
+        # run row then means emdash pruned a finished run, and reinjecting
+        # would double-execute the turn — treat it as nothing-to-do.
+        if (not info.get("injected") or run_st is None) and not info.get("task_promoted"):
             automation_id = cfg.automation_ids.get(info["agent"])
             if automation_id is None:
-                logger.error(
-                    "no emdash automation configured for agent '%s'; cannot reinject %s",
-                    info["agent"], turn_id,
+                return _fail_and_evict(
+                    cfg, client, state, turn_id,
+                    f"no emdash automation configured for agent '{info['agent']}'",
                 )
-                continue
-            emdash.inject_run(
-                cfg.emdash_db, automation_id, info["emdash_run_id"],
-                task_name=f"canopy-turn-{info['agent']}",
-            )
+            try:
+                emdash.inject_run(
+                    cfg.emdash_db, automation_id, info["emdash_run_id"],
+                    task_name=f"canopy-turn-{info['agent']}",
+                )
+            except ValueError as exc:
+                # automation missing / deleted / disabled — permanent for this
+                # turn; fail-and-evict so the heartbeat stops renewing its lease.
+                logger.error("reinject failed for %s: %s", turn_id, exc)
+                return _fail_and_evict(cfg, client, state, turn_id, str(exc))
             info["injected"] = True
             _save_state(cfg, state)
             return f"reinjected:{turn_id}"
@@ -172,9 +196,15 @@ def run_once(cfg: Config, client: Client) -> str:
         "injected": False,
     }
     _save_state(cfg, state)
-    emdash.inject_run(
-        cfg.emdash_db, automation_id, emdash_run_id, task_name=f"canopy-turn-{agent}"
-    )
+    try:
+        emdash.inject_run(
+            cfg.emdash_db, automation_id, emdash_run_id, task_name=f"canopy-turn-{agent}"
+        )
+    except ValueError as exc:
+        # automation missing / deleted / disabled — permanent for this turn;
+        # fail-and-evict so the just-saved entry can't keep renewing the lease.
+        logger.error("inject failed for %s: %s", turn_id, exc)
+        return _fail_and_evict(cfg, client, state, turn_id, str(exc))
     state["active"][turn_id]["injected"] = True
     _save_state(cfg, state)
     try:

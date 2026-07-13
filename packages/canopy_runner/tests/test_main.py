@@ -103,10 +103,15 @@ def test_claim_injects_run_and_reports_events(db, tmp_path):
 
 
 def test_unknown_agent_fails_turn(db, tmp_path):
+    cfg = _cfg(db, tmp_path)
     client = FakeClient(turns=[{"id": "t-2", "agent_slug": "eva", "status": "claimed"}])
-    result = run_once(_cfg(db, tmp_path), client)
+    result = run_once(cfg, client)
     assert result == "failed:t-2"
     assert client.failed and client.failed[0][0] == "t-2"
+    # no lease-renewing state entry may be left behind for the failed turn
+    if Path(cfg.state_path).exists():
+        state = json.loads(Path(cfg.state_path).read_text())
+        assert "t-2" not in state["active"]
 
 
 def test_schema_drift_goes_degraded_and_never_writes(db, tmp_path):
@@ -217,6 +222,81 @@ def test_crash_after_inject_before_flag_flip_recovers(db, tmp_path):
     assert conn.execute("SELECT COUNT(*) FROM automation_runs").fetchone()[0] == 1  # still just one row
     state = json.loads(Path(cfg.state_path).read_text())
     assert state["active"][turn_id]["injected"] is True
+
+
+def test_disabled_automation_fails_turn_and_evicts(db, tmp_path):
+    """A permanently-broken entry (automation disabled) must be failed and
+    evicted — NOT retried forever while the heartbeat renews its lease."""
+    cfg = _cfg(db, tmp_path)
+    turn_id = "t-wedge-1"
+    # claim-time state exists (as if we crashed pre-inject), then the
+    # automation gets disabled out from under us
+    Path(cfg.state_path).write_text(json.dumps({
+        "active": {
+            turn_id: {
+                "emdash_run_id": turn_id,
+                "agent": "echo",
+                "task_promoted": False,
+                "injected": False,
+            }
+        }
+    }))
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE automations SET enabled=0 WHERE id=?", (AUTOMATION_ID,))
+    conn.commit(); conn.close()
+    client = FakeClient()
+    result = run_once(cfg, client)
+    assert result == f"failed:{turn_id}"
+    assert client.failed and client.failed[0][0] == turn_id
+    assert "disabled" in client.failed[0][1]
+    state = json.loads(Path(cfg.state_path).read_text())
+    assert turn_id not in state["active"]  # evicted — lease can now expire
+    # next iteration is clean, not wedged
+    assert run_once(cfg, client) == "idle"
+
+
+def test_disabled_automation_at_claim_time_fails_and_evicts(db, tmp_path):
+    cfg = _cfg(db, tmp_path)
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE automations SET enabled=0 WHERE id=?", (AUTOMATION_ID,))
+    conn.commit(); conn.close()
+    client = FakeClient(turns=[{"id": "t-wedge-2", "agent_slug": "echo", "status": "claimed"}])
+    result = run_once(cfg, client)
+    assert result == "failed:t-wedge-2"
+    assert client.failed and client.failed[0][0] == "t-wedge-2"
+    state = json.loads(Path(cfg.state_path).read_text())
+    assert "t-wedge-2" not in state["active"]
+
+
+def test_reinjection_skipped_when_task_promoted(db, tmp_path):
+    """emdash pruning a finished run's row must not re-execute the turn."""
+    cfg = _cfg(db, tmp_path)
+    turn_id = "t-done-1"
+    # injected + promoted, but the automation_runs row is gone (pruned)
+    Path(cfg.state_path).write_text(json.dumps({
+        "active": {
+            turn_id: {
+                "emdash_run_id": turn_id,
+                "agent": "echo",
+                "task_promoted": True,
+                "injected": True,
+            }
+        }
+    }))
+    client = FakeClient()
+    result = run_once(cfg, client)
+    assert result == "idle"  # nothing-to-do, NOT reinjected
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT COUNT(*) FROM automation_runs").fetchone()[0] == 0
+
+
+def test_non_dict_active_quarantines(db, tmp_path):
+    cfg = _cfg(db, tmp_path)
+    Path(cfg.state_path).write_text(json.dumps({"active": None}))
+    client = FakeClient()
+    result = run_once(cfg, client)
+    assert result == "idle"
+    assert Path(cfg.state_path + ".corrupt").exists()
 
 
 def test_state_write_is_atomic(db, tmp_path):
