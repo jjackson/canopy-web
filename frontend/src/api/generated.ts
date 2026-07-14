@@ -1469,6 +1469,49 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/harness/runners/{runner_id}/resolve-session": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Resolve Session
+         * @description Given (agent, thread_key), tell THIS runner whether it can reuse an existing
+         *     emdash session (it owns the live hint) or must spawn fresh + rehydrate context.
+         *     Runner-scoped because reuse depends on the caller's macOS host.
+         */
+        readonly post: operations["apps_harness_api_resolve_session"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/runners/{runner_id}/record-session": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Record Session
+         * @description Upsert the durable link and point its live-session hint at THIS runner/host,
+         *     after a session was created or reused for the thread. Returns the fresh resolution.
+         */
+        readonly post: operations["apps_harness_api_record_session"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/harness/turns/": {
         readonly parameters: {
             readonly query?: never;
@@ -4608,6 +4651,8 @@ export interface components {
             readonly capabilities: {
                 readonly [key: string]: unknown;
             };
+            /** Host */
+            readonly host: string;
         };
         /** RunnerIn */
         readonly RunnerIn: {
@@ -4622,6 +4667,11 @@ export interface components {
             readonly capabilities: {
                 readonly [key: string]: unknown;
             };
+            /**
+             * Host
+             * @default
+             */
+            readonly host: string;
         };
         /** HeartbeatIn */
         readonly HeartbeatIn: {
@@ -4640,6 +4690,11 @@ export interface components {
              * @default
              */
             readonly note: string;
+            /**
+             * Host
+             * @default
+             */
+            readonly host: string;
         };
         /** TurnOut */
         readonly TurnOut: {
@@ -4681,6 +4736,49 @@ export interface components {
             readonly finished_at: string | null;
             /** Lease Expires At */
             readonly lease_expires_at: string | null;
+        };
+        /** ResolveSessionOut */
+        readonly ResolveSessionOut: {
+            /** Reuse */
+            readonly reuse: boolean;
+            /** New Thread */
+            readonly new_thread: boolean;
+            /** Emdash Task Id */
+            readonly emdash_task_id: string;
+            /** Agent Task Ext Id */
+            readonly agent_task_ext_id: string;
+            /** Summary */
+            readonly summary: string;
+            /** Link Id */
+            readonly link_id: string | null;
+        };
+        /** ResolveSessionIn */
+        readonly ResolveSessionIn: {
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Thread Key */
+            readonly thread_key: string;
+        };
+        /** RecordSessionIn */
+        readonly RecordSessionIn: {
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Thread Key */
+            readonly thread_key: string;
+            /**
+             * Emdash Task Id
+             * @default
+             */
+            readonly emdash_task_id: string;
+            /**
+             * Session Id
+             * @default
+             */
+            readonly session_id: string;
+            /** Agent Task Ext Id */
+            readonly agent_task_ext_id?: string | null;
+            /** Summary */
+            readonly summary?: string | null;
         };
         /** TurnIn */
         readonly TurnIn: {
@@ -7398,6 +7496,58 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly apps_harness_api_resolve_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResolveSessionIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ResolveSessionOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_record_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RecordSessionIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ResolveSessionOut"];
+                };
             };
         };
     };

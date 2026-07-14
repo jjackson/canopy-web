@@ -40,11 +40,33 @@ class Client:
             return status, None
         return status, json.loads(raw)
 
-    def heartbeat(self, runner_id: str, active_turn_ids: list[str], degraded: bool = False, note: str = "") -> dict:
+    def heartbeat(self, runner_id: str, active_turn_ids: list[str], degraded: bool = False,
+                  note: str = "", host: str = "") -> dict:
         _, payload = self._call(
             "POST",
             f"/runners/{runner_id}/heartbeat",
-            {"active_turn_ids": active_turn_ids, "degraded": degraded, "note": note},
+            {"active_turn_ids": active_turn_ids, "degraded": degraded, "note": note, "host": host},
+        )
+        return payload or {}
+
+    def resolve_session(self, runner_id: str, agent_slug: str, thread_key: str) -> dict:
+        """Ask the control plane whether THIS runner can reuse an existing emdash
+        session for (agent, thread) or must spawn fresh + rehydrate. See SessionLink."""
+        _, payload = self._call(
+            "POST", f"/runners/{runner_id}/resolve-session",
+            {"agent_slug": agent_slug, "thread_key": thread_key},
+        )
+        return payload or {}
+
+    def record_session(self, runner_id: str, agent_slug: str, thread_key: str, *,
+                       emdash_task_id: str = "", session_id: str = "",
+                       agent_task_ext_id: str | None = None, summary: str | None = None) -> dict:
+        """Record/point the durable thread link at THIS runner's live session."""
+        _, payload = self._call(
+            "POST", f"/runners/{runner_id}/record-session",
+            {"agent_slug": agent_slug, "thread_key": thread_key,
+             "emdash_task_id": emdash_task_id, "session_id": session_id,
+             "agent_task_ext_id": agent_task_ext_id, "summary": summary},
         )
         return payload or {}
 
@@ -54,6 +76,23 @@ class Client:
 
     def post_events(self, turn_id: str, events: list[dict]) -> None:
         self._call("POST", f"/turns/{turn_id}/events", {"events": events})
+
+    def enqueue_turn(self, agent_slug: str, origin: str, idempotency_key: str, *,
+                     prompt: str = "", origin_ref: dict | None = None,
+                     routing: str = "prefer_local") -> dict:
+        """Enqueue a turn (idempotent on idempotency_key — safe to re-enqueue the same
+        email). Used by the deterministic inbox/slack triggers."""
+        _, payload = self._call("POST", "/turns/", {
+            "agent_slug": agent_slug, "origin": origin, "idempotency_key": idempotency_key,
+            "prompt": prompt, "origin_ref": origin_ref or {}, "routing": routing,
+        })
+        return payload or {}
+
+    def start(self, turn_id: str, session_id: str = "") -> None:
+        self._call("POST", f"/turns/{turn_id}/start", {"session_id": session_id})
+
+    def finish(self, turn_id: str, note: str = "") -> None:
+        self._call("POST", f"/turns/{turn_id}/finish", {"status": "done", "result_note": note})
 
     def fail_turn(self, turn_id: str, note: str) -> None:
         self._call("POST", f"/turns/{turn_id}/finish", {"status": "failed", "result_note": note})

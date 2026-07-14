@@ -184,3 +184,47 @@ def test_unknown_event_kind_is_422(client, agent):
         content_type="application/json",
     )
     assert resp.status_code == 422, resp.content
+
+
+def test_pair_with_host_and_resolve_record_cycle(client, agent):
+    # agent fixture is "echo"; pair a runner capable of echo with a macOS host
+    resp = client.post(
+        "/api/harness/runners/",
+        {"name": "jj-mbp", "kind": "emdash", "capabilities": {"agents": ["echo"]}, "host": "jjA@mbp"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 201 and resp.json()["host"] == "jjA@mbp"
+    rid = resp.json()["id"]
+
+    # unknown thread -> new_thread, no reuse
+    r = client.post(f"/api/harness/runners/{rid}/resolve-session",
+                    {"agent_slug": "echo", "thread_key": "thr-1"}, content_type="application/json")
+    assert r.status_code == 200 and r.json()["new_thread"] is True and r.json()["reuse"] is False
+
+    # record a live session for the thread on this runner
+    rec = client.post(f"/api/harness/runners/{rid}/record-session",
+                      {"agent_slug": "echo", "thread_key": "thr-1", "emdash_task_id": "etask-1",
+                       "session_id": "sess-1", "agent_task_ext_id": "T-9", "summary": "ctx"},
+                      content_type="application/json")
+    assert rec.status_code == 200 and rec.json()["reuse"] is True
+    assert rec.json()["emdash_task_id"] == "etask-1"
+
+    # same runner resolves -> reuse
+    again = client.post(f"/api/harness/runners/{rid}/resolve-session",
+                        {"agent_slug": "echo", "thread_key": "thr-1"}, content_type="application/json")
+    assert again.json()["reuse"] is True and again.json()["agent_task_ext_id"] == "T-9"
+
+
+def test_other_account_runner_cannot_reuse_but_gets_context(client, agent):
+    a = client.post("/api/harness/runners/",
+                    {"name": "rA", "kind": "emdash", "capabilities": {"agents": ["echo"]}, "host": "jjA@mbp"},
+                    content_type="application/json").json()["id"]
+    b = client.post("/api/harness/runners/",
+                    {"name": "rB", "kind": "emdash", "capabilities": {"agents": ["echo"]}, "host": "jjB@mbp"},
+                    content_type="application/json").json()["id"]
+    client.post(f"/api/harness/runners/{a}/record-session",
+                {"agent_slug": "echo", "thread_key": "thr-1", "emdash_task_id": "etask-A",
+                 "summary": "prior"}, content_type="application/json")
+    r = client.post(f"/api/harness/runners/{b}/resolve-session",
+                    {"agent_slug": "echo", "thread_key": "thr-1"}, content_type="application/json").json()
+    assert r["reuse"] is False and r["new_thread"] is False and r["summary"] == "prior"

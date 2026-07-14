@@ -100,7 +100,65 @@ def _fail_and_evict(cfg: Config, client: Client, state: dict, turn_id: str, note
     return f"failed:{turn_id}"
 
 
+def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time) -> None:
+    """Deterministic email trigger: at most every inbox_poll_seconds, poll each
+    configured mailbox and enqueue email-origin turns. Best-effort — a failing inbox
+    (auth expired) logs and is skipped, never crashes the loop."""
+    if not getattr(cfg, "mailboxes", None):
+        return
+    stamp = Path(cfg.state_path).with_name("inbox-last.txt") if cfg.state_path else Path("inbox-last.txt")
+    try:
+        last = float(stamp.read_text())
+    except (OSError, ValueError):
+        last = 0.0
+    if now_fn() - last < cfg.inbox_poll_seconds:
+        return
+    from . import inbox as inbox_mod
+    for agent, box in cfg.mailboxes.items():
+        try:
+            ids = inbox_mod.check_inbox(client, agent, mailbox=box["account"], gog_client=box["client"])
+            if ids:
+                logger.info("inbox[%s]: enqueued %d thread turn(s)", agent, len(ids))
+        except Exception as exc:  # noqa: BLE001 — one bad inbox never kills the loop
+            logger.warning("inbox check for %s failed: %s", agent, exc)
+    try:
+        stamp.write_text(str(now_fn()))
+    except OSError:
+        pass
+
+
+def _run_once_cdp(cfg: Config, client: Client) -> str:
+    """CDP executor: heartbeat (with macOS host, for reuse ownership) → claim one
+    turn → route it to an emdash session (reuse or create). Turns finish synchronously
+    (the runner owns the routing lifecycle; work continues in the visible session), so
+    there is no injection state to track or schema to guard."""
+    from . import execute
+    from .cdp_control import host_id
+
+    client.heartbeat(cfg.runner_id, [], host=host_id())
+    _maybe_check_inboxes(cfg, client)
+    try:
+        turn = client.claim(cfg.runner_id)
+    except ClientError as exc:
+        logger.warning("claim failed: %s", exc)
+        return "idle"
+    if turn is None:
+        return "idle"
+    try:
+        return execute.execute_turn(cfg, client, cfg.runner_id, turn)
+    except Exception as exc:  # noqa: BLE001 — one turn must never kill the loop
+        logger.exception("execute_turn crashed for %s", turn.get("id"))
+        try:
+            client.fail_turn(turn["id"], f"runner execute crashed: {exc}")
+        except ClientError:
+            pass
+        return f"failed:{turn.get('id')}"
+
+
 def run_once(cfg: Config, client: Client) -> str:
+    if cfg.executor == "cdp":
+        return _run_once_cdp(cfg, client)
+
     state = _load_state(cfg)
     active_ids = list(state["active"].keys())
 

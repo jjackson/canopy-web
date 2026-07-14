@@ -11,6 +11,7 @@ class RunnerIn(Schema):
     name: str
     kind: str  # emdash|cloud|remote
     capabilities: dict = {}
+    host: str = ""  # macOS user@hostname — load-bearing for session reuse across accounts
 
 
 class RunnerOut(Schema):
@@ -21,12 +22,37 @@ class RunnerOut(Schema):
     status_note: str
     last_heartbeat_at: dt.datetime | None
     capabilities: dict
+    host: str
 
 
 class HeartbeatIn(Schema):
     active_turn_ids: list[str] = []
     degraded: bool = False
     note: str = ""
+    host: str = ""  # refresh the owning macOS host (in case a runner row is reused)
+
+
+class ResolveSessionIn(Schema):
+    agent_slug: str
+    thread_key: str
+
+
+class ResolveSessionOut(Schema):
+    reuse: bool
+    new_thread: bool
+    emdash_task_id: str
+    agent_task_ext_id: str
+    summary: str
+    link_id: str | None
+
+
+class RecordSessionIn(Schema):
+    agent_slug: str
+    thread_key: str
+    emdash_task_id: str = ""
+    session_id: str = ""
+    agent_task_ext_id: str | None = None
+    summary: str | None = None
 
 
 class TurnIn(Schema):

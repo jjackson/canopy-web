@@ -15,6 +15,9 @@ from . import services
 from .models import Runner, Turn
 from .schemas import (
     HeartbeatIn,
+    RecordSessionIn,
+    ResolveSessionIn,
+    ResolveSessionOut,
     RunnerIn,
     RunnerOut,
     TurnEventCountOut,
@@ -65,6 +68,7 @@ def pair_runner(request: HttpRequest, payload: RunnerIn):
         name=payload.name,
         kind=payload.kind,
         capabilities=payload.capabilities,
+        host=payload.host,
         paired_by=request.user,
     )
     return 201, runner
@@ -73,6 +77,9 @@ def pair_runner(request: HttpRequest, payload: RunnerIn):
 @router.post("/runners/{runner_id}/heartbeat", response=RunnerOut)
 def runner_heartbeat(request: HttpRequest, runner_id: uuid.UUID, payload: HeartbeatIn):
     runner = _runner_or_404(runner_id)
+    if payload.host and payload.host != runner.host:
+        runner.host = payload.host
+        runner.save(update_fields=["host"])
     return services.heartbeat(
         runner,
         active_turn_ids=payload.active_turn_ids,
@@ -88,6 +95,34 @@ def claim_turn(request: HttpRequest, runner_id: uuid.UUID):
     if turn is None:
         return 204, None
     return 200, turn
+
+
+@router.post("/runners/{runner_id}/resolve-session", response=ResolveSessionOut)
+def resolve_session(request: HttpRequest, runner_id: uuid.UUID, payload: ResolveSessionIn):
+    """Given (agent, thread_key), tell THIS runner whether it can reuse an existing
+    emdash session (it owns the live hint) or must spawn fresh + rehydrate context.
+    Runner-scoped because reuse depends on the caller's macOS host."""
+    runner = _runner_or_404(runner_id)
+    agent = Agent.objects.filter(slug=payload.agent_slug).first()
+    if agent is None:
+        raise HttpError(404, f"agent '{payload.agent_slug}' not found")
+    return services.resolve_session(agent, payload.thread_key, runner)
+
+
+@router.post("/runners/{runner_id}/record-session", response=ResolveSessionOut)
+def record_session(request: HttpRequest, runner_id: uuid.UUID, payload: RecordSessionIn):
+    """Upsert the durable link and point its live-session hint at THIS runner/host,
+    after a session was created or reused for the thread. Returns the fresh resolution."""
+    runner = _runner_or_404(runner_id)
+    agent = Agent.objects.filter(slug=payload.agent_slug).first()
+    if agent is None:
+        raise HttpError(404, f"agent '{payload.agent_slug}' not found")
+    services.record_session(
+        agent, payload.thread_key, runner=runner,
+        emdash_task_id=payload.emdash_task_id, session_id=payload.session_id,
+        agent_task_ext_id=payload.agent_task_ext_id, summary=payload.summary,
+    )
+    return services.resolve_session(agent, payload.thread_key, runner)
 
 
 @router.post("/turns/", response={200: TurnOut, 201: TurnOut})

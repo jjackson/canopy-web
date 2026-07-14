@@ -1,0 +1,10 @@
+{
+  "name": "canopy-runner-emdash-control",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node sidecar: drives emdash over CDP for the canopy runner (create + reuse sessions). Run `npm install` here once.",
+  "dependencies": {
+    "playwright-core": "^1.40.0"
+  }
+}
