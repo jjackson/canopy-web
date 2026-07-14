@@ -60,13 +60,13 @@ def test_reuse_sends_into_existing_session(monkeypatch):
     assert client.started == ["t-1"] and client.finished and "existing session" in client.finished[0][1]
 
 
-def test_reuse_falls_back_to_create_when_task_gone(monkeypatch):
+def test_reuse_falls_back_to_create_only_when_task_not_found(monkeypatch):
     def gone(task, text, port=9222):
-        raise cdp_control.CDPError("no existing task")
+        raise cdp_control.CDPError('TASK_NOT_FOUND: no task "archived-one"')
     created = {}
     monkeypatch.setattr(cdp_control, "open_and_send", gone)
     monkeypatch.setattr(cdp_control, "create_task",
-                        lambda project, prompt, port=9222: created.update(project=project, prompt=prompt) or {"task": "new-task-x"})
+                        lambda project, prompt, task_name="", port=9222: created.update(project=project, prompt=prompt) or {"task": "new-task-x"})
     client = FakeClient({"reuse": True, "emdash_task_id": "archived-one", "summary": "prior ctx"})
     result = execute.execute_turn(_cfg(), client, "r-1", _turn(origin_ref={"thread_id": "thr-1"}))
     assert result.startswith("created:t-1:new-task-x")
@@ -74,10 +74,25 @@ def test_reuse_falls_back_to_create_when_task_gone(monkeypatch):
     assert "prior ctx" in created["prompt"]      # rehydrated on fallback
 
 
+def test_transient_reuse_send_failure_never_duplicates(monkeypatch):
+    """The bug that spawned two Hal sessions: a send glitch on an EXISTING task must
+    fail the turn, NOT create a duplicate + re-point the link."""
+    def glitch(task, text, port=9222):
+        raise cdp_control.CDPError("locator.click: Timeout 30000ms exceeded")  # not TASK_NOT_FOUND
+    monkeypatch.setattr(cdp_control, "open_and_send", glitch)
+    monkeypatch.setattr(cdp_control, "create_task",
+                        lambda *a, **k: pytest.fail("must NOT create a duplicate on a transient send failure"))
+    client = FakeClient({"reuse": True, "emdash_task_id": "live-session", "summary": "ctx"})
+    result = execute.execute_turn(_cfg(), client, "r-1", _turn(origin_ref={"thread_id": "thr-1"}))
+    assert result == "failed:t-1"
+    assert client.failed and "not spawning a duplicate" in client.failed[0][1]
+    assert client.recorded == []   # link NOT re-pointed — the original session stays canonical
+
+
 def test_create_new_thread_rehydrates_from_summary(monkeypatch):
     created = {}
     monkeypatch.setattr(cdp_control, "create_task",
-                        lambda project, prompt, port=9222: created.update(prompt=prompt) or {"task": "fresh"})
+                        lambda project, prompt, task_name="", port=9222: created.update(prompt=prompt) or {"task": "fresh"})
     # other-account plan: reuse False but summary present
     client = FakeClient({"reuse": False, "new_thread": False, "emdash_task_id": "etask-A",
                          "summary": "what account A did"})
@@ -88,7 +103,7 @@ def test_create_new_thread_rehydrates_from_summary(monkeypatch):
 
 
 def test_create_failure_fails_the_turn(monkeypatch):
-    def boom(project, prompt, port=9222):
+    def boom(project, prompt, task_name="", port=9222):
         raise cdp_control.CDPError("emdash not on debug port")
     monkeypatch.setattr(cdp_control, "create_task", boom)
     client = FakeClient({"reuse": False, "new_thread": True, "summary": ""})
@@ -102,3 +117,12 @@ def test_thread_key_defaults_to_agent_main_when_no_ref(monkeypatch):
     client = FakeClient({"reuse": False, "new_thread": True, "summary": ""})
     execute.execute_turn(_cfg(), client, "r-1", _turn(origin_ref={}))
     assert client.calls[0] == ("resolve", "hal", "hal:main")
+
+
+def test_task_name_is_readable_subject_plus_stamp():
+    import datetime as dt
+    now = dt.datetime(2026, 7, 14, 15, 32)
+    t = _turn(origin="email", origin_ref={"subject": "Re: Bednet demo!!"})
+    assert execute._task_name("hal", t, now=now) == "hal-re-bednet-demo-0714-1532"
+    # no subject -> agent + stamp
+    assert execute._task_name("hal", _turn(origin="manual", origin_ref={}), now=now) == "hal-manual-0714-1532"

@@ -114,11 +114,16 @@ def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time) -> None:
     if now_fn() - last < cfg.inbox_poll_seconds:
         return
     from . import inbox as inbox_mod
+    cap = getattr(cfg, "inbox_max_threads", 8)
     for agent, box in cfg.mailboxes.items():
         try:
-            ids = inbox_mod.check_inbox(client, agent, mailbox=box["account"], gog_client=box["client"])
+            ids = inbox_mod.check_inbox(
+                client, agent, mailbox=box["account"], gog_client=box["client"],
+                query=box.get("query", inbox_mod.DEFAULT_QUERY), max_threads=cap,
+            )
             if ids:
-                logger.info("inbox[%s]: enqueued %d thread turn(s)", agent, len(ids))
+                logger.info("inbox[%s]: enqueued %d thread turn(s) (cap %d) — each becomes a session",
+                            agent, len(ids), cap)
         except Exception as exc:  # noqa: BLE001 — one bad inbox never kills the loop
             logger.warning("inbox check for %s failed: %s", agent, exc)
     try:
@@ -424,6 +429,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     vet_parser.add_argument("--config", required=True)
 
+    af = subparsers.add_parser(
+        "apply-filters", help="push the framework inbox filters to agent mailboxes"
+    )
+    af.add_argument("--config", required=True)
+    af.add_argument("--agent", help="only this agent (default: every configured mailbox)")
+    af.add_argument("--dry-run", action="store_true")
+
     return parser
 
 
@@ -433,6 +445,18 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     command = args.command or "run"
+
+    if command == "apply-filters":
+        from . import inbox_filters
+        cfg = Config.load(Path(args.config))
+        targets = ({args.agent: cfg.mailboxes[args.agent]} if args.agent
+                   else cfg.mailboxes)
+        if not targets:
+            parser.error("no mailboxes configured (or --agent not in mailboxes)")
+        for agent, box in targets.items():
+            res = inbox_filters.apply_filters(box["account"], box["client"], dry_run=args.dry_run)
+            print(f"{agent} ({box['account']}): applied={res['applied']} skipped={res['skipped']}")
+        return
 
     if command == "vet":
         if not args.config:

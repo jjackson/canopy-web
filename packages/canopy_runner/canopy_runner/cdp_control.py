@@ -56,10 +56,14 @@ def list_tasks(*, port: int = 9222) -> dict:
     return _run("list", {"port": port})
 
 
-def create_task(project: str, prompt: str, *, port: int = 9222) -> dict:
+def create_task(project: str, prompt: str, *, task_name: str = "", port: int = 9222) -> dict:
     """Create a NEW emdash task under `project` with `prompt` as the initial message.
-    Returns {..., "task": "<new task name>"} so the caller can record it for reuse."""
-    return _run("create", {"port": port, "project": project, "prompt": prompt})
+    Pass `task_name` for a deterministic, reusable name (recommended — the auto-name
+    diff is unreliable under sidebar virtualization). Returns {..., "task": name}."""
+    args = {"port": port, "project": project, "prompt": prompt}
+    if task_name:
+        args["taskName"] = task_name
+    return _run("create", args)
 
 
 def open_and_send(task: str, text: str, *, port: int = 9222) -> dict:
