@@ -59,8 +59,15 @@ def check_inbox(client, agent: str, *, mailbox: str, gog_client: str,
         client.enqueue_turn(
             agent, "email", f"email-{agent}-{tid}-{count}",
             origin_ref={"thread_id": tid, "from": frm, "subject": subj},
-            prompt=(f"New activity on an email thread — from {frm}, subject: {subj!r}. "
-                    f"Read the full thread in your inbox and handle it under your normal guardrails."),
+            prompt=(
+                f"A new email arrived on this thread (from {frm}, subject: {subj!r}).\n"
+                f"Read the full thread (Gmail thread id {tid}) in mailbox {mailbox} and handle it "
+                f"under your normal guardrails.\n"
+                f"When you have FINISHED handling it, mark the thread read so the poller won't "
+                f"surface it again — e.g. `gog gmail mark-read --account {mailbox} --client "
+                f"{gog_client} <messageIds from `gog gmail thread get {tid}`>`. If it needs no "
+                f"action, mark it read anyway. (A new reply later will correctly re-trigger.)"
+            ),
         )
         enqueued.append(tid)
     return enqueued

@@ -429,6 +429,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     vet_parser.add_argument("--config", required=True)
 
+    af = subparsers.add_parser(
+        "apply-filters", help="push the framework inbox filters to agent mailboxes"
+    )
+    af.add_argument("--config", required=True)
+    af.add_argument("--agent", help="only this agent (default: every configured mailbox)")
+    af.add_argument("--dry-run", action="store_true")
+
     return parser
 
 
@@ -438,6 +445,18 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     command = args.command or "run"
+
+    if command == "apply-filters":
+        from . import inbox_filters
+        cfg = Config.load(Path(args.config))
+        targets = ({args.agent: cfg.mailboxes[args.agent]} if args.agent
+                   else cfg.mailboxes)
+        if not targets:
+            parser.error("no mailboxes configured (or --agent not in mailboxes)")
+        for agent, box in targets.items():
+            res = inbox_filters.apply_filters(box["account"], box["client"], dry_run=args.dry_run)
+            print(f"{agent} ({box['account']}): applied={res['applied']} skipped={res['skipped']}")
+        return
 
     if command == "vet":
         if not args.config:
