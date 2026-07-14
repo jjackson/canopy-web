@@ -78,10 +78,21 @@ try {
     }, task);
     if (!opened) fail(`no existing task "${task}" in this emdash (it may belong to another macOS account)`);
     await page.waitForTimeout(1200);
-    // Send into the VISIBLE terminal input — the active task's, even when several
-    // xterm instances are mounted in the DOM.
-    const input = page.locator('textarea[aria-label="Terminal input"]:visible').first();
-    await input.click();
+    // Focus the ACTIVE terminal's input, then type. xterm's real input is an
+    // off-screen `.xterm-helper-textarea`, so a Playwright .click() fails its
+    // viewport check — we focus it via JS (viewport-agnostic) instead, picking the
+    // visible xterm (the active task's pane) when several are mounted.
+    const focused = await page.evaluate(() => {
+      const terms = [...document.querySelectorAll('.xterm')]
+        .filter(t => t.offsetParent !== null && t.getBoundingClientRect().width > 0);
+      const term = terms[0];
+      const ta = (term && term.querySelector('.xterm-helper-textarea'))
+        || document.querySelector('textarea[aria-label="Terminal input"]');
+      if (!ta) return false;
+      ta.focus();
+      return true;
+    });
+    if (!focused) fail(`could not focus the terminal input for task "${task}"`);
     await page.keyboard.type(text);
     await page.keyboard.press('Enter');
     out({ ok: true, action: 'sent', task });
