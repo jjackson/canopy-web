@@ -54,6 +54,20 @@ def test_claim_serializes_execution_per_agent():
     assert second is not None and second.idempotency_key == "k2"
 
 
+def test_claim_excludes_paused_agents():
+    """Per-agent pause: a paused agent's queued turn is not claimed, but stays QUEUED
+    (resumable), and other agents are unaffected."""
+    a = _agent()
+    t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")
+    r = _runner()
+    # echo paused → nothing to claim, and the turn is untouched
+    assert services.claim_next_turn(r, exclude_slugs=["echo"]) is None
+    t.refresh_from_db()
+    assert t.status == Turn.QUEUED
+    # excluding an unrelated agent doesn't block echo
+    assert services.claim_next_turn(r, exclude_slugs=["hal"]).pk == t.pk
+
+
 def test_claim_next_turn_happy_path():
     a = _agent()
     t, _ = services.enqueue_turn(agent=a, origin="board", idempotency_key="k1")

@@ -99,11 +99,16 @@ def _kind_allows(runner: Runner, routing: str) -> bool:
 EXECUTING = [Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
 
 
-def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> Turn | None:
+def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECONDS,
+                    exclude_slugs: list[str] | None = None) -> Turn | None:
     if runner.status != Runner.ONLINE:
         return None
     sweep_expired_leases()
     slugs = runner.agent_slugs()
+    if exclude_slugs:
+        # Per-agent pause: the runner locally paused these agents; never claim their
+        # queued turns (they stay QUEUED, resumed the moment the pause is lifted).
+        slugs = [s for s in slugs if s not in set(exclude_slugs)]
     if not slugs:
         return None
     routing_q = Q(routing__in=[Turn.PREFER_LOCAL, Turn.LOCAL_ONLY, Turn.ANY])

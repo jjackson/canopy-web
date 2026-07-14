@@ -70,8 +70,13 @@ class Client:
         )
         return payload or {}
 
-    def claim(self, runner_id: str) -> dict | None:
-        status, payload = self._call("POST", f"/runners/{runner_id}/claim")
+    def claim(self, runner_id: str, paused_agents: list[str] | None = None) -> dict | None:
+        # paused_agents (per-agent pause) → server skips those agents' queued turns.
+        path = f"/runners/{runner_id}/claim"
+        if paused_agents:
+            from urllib.parse import urlencode
+            path += "?" + urlencode({"paused": ",".join(sorted(paused_agents))})
+        status, payload = self._call("POST", path)
         return payload if status == 200 else None
 
     def post_events(self, turn_id: str, events: list[dict]) -> None:

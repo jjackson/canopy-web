@@ -1461,7 +1461,13 @@ export interface paths {
         };
         readonly get?: never;
         readonly put?: never;
-        /** Claim Turn */
+        /**
+         * Claim Turn
+         * @description Claim the next eligible turn. `paused` is an optional comma-separated list of
+         *     agent slugs the caller has locally paused (per-agent pause) — the server skips
+         *     their queued turns so nothing is claimed-then-released. Omitted by older runners
+         *     (backward-compatible: no exclusions).
+         */
         readonly post: operations["apps_harness_api_claim_turn"];
         readonly delete?: never;
         readonly options?: never;
@@ -7472,7 +7478,9 @@ export interface operations {
     };
     readonly apps_harness_api_claim_turn: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly paused?: string;
+            };
             readonly header?: never;
             readonly path: {
                 readonly runner_id: string;
