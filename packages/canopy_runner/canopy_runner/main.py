@@ -469,8 +469,33 @@ def main() -> None:
     logger.info("  COST note: idle cycles + inbox polls are ~free (HTTP only); a 'CREATE' "
                 "line = one NEW claude session (tokens), 'REUSE' = none. grep the log for CREATE.")
 
+    # Pause sentinel: the menu-bar app (or `touch ~/.canopy/PAUSED`) drops this file
+    # to halt ALL token-spending work instantly without killing the process or fighting
+    # launchd's KeepAlive. Paused = we still heartbeat (so the control plane sees the
+    # runner alive-but-idle, not dead) but claim nothing, poll no inbox, spawn nothing.
+    pause_file = Path(args.config).with_name("PAUSED")
+    logger.info("  pause: drop %s to halt work (menu-bar app toggles this); remove to resume",
+                pause_file)
+
     idle_streak = 0
+    paused = False
     while True:
+        if pause_file.exists():
+            if not paused:
+                logger.warning("PAUSED — sentinel %s present; skipping all work (no claim, no "
+                               "inbox, no tokens). Resume via the menu-bar app or remove the file.",
+                               pause_file)
+                paused = True
+            try:
+                client.heartbeat(cfg.runner_id, [], note="paused", host=host)
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(cfg.poll_seconds)
+            continue
+        if paused:
+            logger.info("RESUMED — pause sentinel cleared; back to normal polling")
+            paused = False
+            idle_streak = 0
         try:
             result = run_once(cfg, client)
         except Exception:  # noqa: BLE001 — the loop must survive anything
