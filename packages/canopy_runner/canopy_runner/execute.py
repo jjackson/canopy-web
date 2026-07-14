@@ -45,6 +45,8 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
             client.post_events(turn_id, [{"kind": "status",
                 "payload": {"status": "reuse_failed", "task": task, "detail": str(exc)}}])
         else:
+            logger.info("REUSE  turn=%s agent=%s thread=%s -> existing session '%s' (no new claude session)",
+                        turn_id, agent, thread_key, task)
             client.post_events(turn_id, [{"kind": "status",
                 "payload": {"status": "reused_session", "task": task, "thread_key": thread_key}}])
             client.record_session(runner_id, agent, thread_key, emdash_task_id=task)
@@ -57,13 +59,21 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
     if summary:
         prompt = (f"[Continuing prior work on this thread — context from earlier sessions "
                   f"(a fresh session, possibly a different machine):]\n{summary}\n\n{work_prompt}")
+    if plan.get("reuse"):
+        # We got here from a reuse that fell back — worth flagging: a persistently
+        # failing reuse means a NEW session per turn (cost). Investigate the task.
+        logger.warning("REUSE FELL BACK to CREATE for thread=%s (agent=%s) — the linked "
+                       "emdash session was unreachable; check for a stuck/gone task", thread_key, agent)
     try:
         res = cdp_control.create_task(agent, prompt, port=cfg.cdp_port)
     except cdp_control.CDPError as exc:
+        logger.error("CREATE failed turn=%s agent=%s: %s", turn_id, agent, exc)
         client.fail_turn(turn_id, f"emdash create failed: {exc}")
         return f"failed:{turn_id}"
 
     task = res.get("task") or ""
+    logger.info("CREATE turn=%s agent=%s thread=%s -> new session '%s' rehydrated=%s "
+                "(NEW claude session = tokens)", turn_id, agent, thread_key, task, bool(summary))
     client.post_events(turn_id, [{"kind": "status",
         "payload": {"status": "created_session", "task": task, "thread_key": thread_key,
                     "rehydrated": bool(summary)}}])

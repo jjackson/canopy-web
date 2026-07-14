@@ -448,11 +448,41 @@ def main() -> None:
     if args.once:
         print(run_once(cfg, client))
         return
+
+    # Startup banner — the log opens with exactly what this runner is configured to
+    # do, so `~/.canopy/runner.log` is self-explaining.
+    try:
+        from .cdp_control import host_id
+        host = host_id()
+    except Exception:  # noqa: BLE001
+        host = "?"
+    logger.info("canopy-runner starting | runner=%s host=%s executor=%s cdp_port=%s",
+                cfg.runner_id, host, cfg.executor, cfg.cdp_port)
+    logger.info("  poll: claim every %ss | inbox every %ss | mailboxes=%s",
+                cfg.poll_seconds, cfg.inbox_poll_seconds,
+                ",".join(sorted(getattr(cfg, "mailboxes", {}))) or "(none)")
+    logger.info("  COST note: idle cycles + inbox polls are ~free (HTTP only); a 'CREATE' "
+                "line = one NEW claude session (tokens), 'REUSE' = none. grep the log for CREATE.")
+
+    idle_streak = 0
     while True:
         try:
-            run_once(cfg, client)
+            result = run_once(cfg, client)
         except Exception:  # noqa: BLE001 — the loop must survive anything
             logger.exception("run_once crashed; continuing")
+            result = "crashed"
+        # One scannable line per cycle. Idle is quiet (a heartbeat every ~15 min so the
+        # log shows the runner is alive without flooding); everything else logs at INFO.
+        if result == "idle":
+            idle_streak += 1
+            if idle_streak % max(1, (900 // max(cfg.poll_seconds, 1))) == 0:
+                logger.info("cycle: idle (x%d) — runner alive, nothing to do", idle_streak)
+        else:
+            if idle_streak:
+                logger.info("cycle: %s (after %d idle)", result, idle_streak)
+            else:
+                logger.info("cycle: %s", result)
+            idle_streak = 0
         time.sleep(cfg.poll_seconds)
 
 
