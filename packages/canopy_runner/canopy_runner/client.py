@@ -77,6 +77,12 @@ class Client:
     def post_events(self, turn_id: str, events: list[dict]) -> None:
         self._call("POST", f"/turns/{turn_id}/events", {"events": events})
 
+    def start(self, turn_id: str, session_id: str = "") -> None:
+        self._call("POST", f"/turns/{turn_id}/start", {"session_id": session_id})
+
+    def finish(self, turn_id: str, note: str = "") -> None:
+        self._call("POST", f"/turns/{turn_id}/finish", {"status": "done", "result_note": note})
+
     def fail_turn(self, turn_id: str, note: str) -> None:
         self._call("POST", f"/turns/{turn_id}/finish", {"status": "failed", "result_note": note})
 

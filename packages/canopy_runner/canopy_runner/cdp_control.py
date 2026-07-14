@@ -57,7 +57,8 @@ def list_tasks(*, port: int = 9222) -> dict:
 
 
 def create_task(project: str, prompt: str, *, port: int = 9222) -> dict:
-    """Create a NEW emdash task under `project` with `prompt` as the initial message."""
+    """Create a NEW emdash task under `project` with `prompt` as the initial message.
+    Returns {..., "task": "<new task name>"} so the caller can record it for reuse."""
     return _run("create", {"port": port, "project": project, "prompt": prompt})
 
 

@@ -39,6 +39,10 @@ try {
 
   } else if (command === 'create') {
     const { project, prompt } = args;
+    const taskNames = () => page.evaluate(() =>
+      [...document.querySelectorAll('button')].map(b => b.getAttribute('aria-label') || '')
+        .filter(t => t.startsWith('Open task ')).map(t => t.slice('Open task '.length)));
+    const before = await taskNames();
     const opened = await page.evaluate((p) => {
       const b = [...document.querySelectorAll('button')].find(x => x.getAttribute('aria-label') === `New task for ${p}`);
       if (!b) return false; b.click(); return true;
@@ -56,8 +60,12 @@ try {
       if (!btn) return false; btn.click(); return true;
     });
     if (!created) fail('could not find the Create button in the New Task dialog');
-    await page.waitForTimeout(2500);
-    out({ ok: true, action: 'created' });
+    await page.waitForTimeout(3000);
+    // Identify the new task by diffing the task list (name is auto-generated).
+    const after = await taskNames();
+    const beforeSet = new Set(before);
+    const fresh = after.filter(n => !beforeSet.has(n));
+    out({ ok: true, action: 'created', task: fresh[0] || '', all_new: fresh });
 
   } else if (command === 'open-send') {
     // REUSE: open an EXISTING task and send text into its live terminal. Fails if the

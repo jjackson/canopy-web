@@ -1,0 +1,76 @@
+"""CDP execution — the sanctioned path (supersedes DB injection + app patching).
+
+The runner owns the harness Turn *routing* lifecycle (start → done) and drives
+emdash over CDP to either REUSE an existing session (continuity) or CREATE a fresh
+one (rehydrating context from the durable SessionLink). The WORK then happens in
+the visible, intervenable emdash session.
+
+Session reuse is verify-before-reuse: the control plane only proposes reuse when
+THIS runner's macOS host owns the live session; if the emdash task turns out to be
+gone (archived, or belongs to the other account), we fall back to create+rehydrate.
+"""
+from __future__ import annotations
+
+import logging
+
+from . import cdp_control
+
+logger = logging.getLogger("canopy_runner.execute")
+
+
+def _thread_key(turn: dict) -> str:
+    ref = turn.get("origin_ref") or {}
+    return ref.get("thread_key") or ref.get("thread_id") or f"{turn['agent_slug']}:main"
+
+
+def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
+    """Route one claimed turn to an emdash session (reuse or create). Returns a short
+    action string: reused:<id> | created:<id>:<task> | failed:<id>."""
+    turn_id = turn["id"]
+    agent = turn["agent_slug"]
+    ref = turn.get("origin_ref") or {}
+    thread_key = _thread_key(turn)
+    work_prompt = turn.get("prompt") or f"/canopy:drain-turn {agent}"
+
+    plan = client.resolve_session(runner_id, agent, thread_key)
+    client.start(turn_id)
+
+    # --- reuse the existing session, if the control plane says this runner owns it ---
+    if plan.get("reuse") and plan.get("emdash_task_id"):
+        task = plan["emdash_task_id"]
+        try:
+            cdp_control.open_and_send(task, work_prompt, port=cfg.cdp_port)
+        except cdp_control.CDPError as exc:
+            logger.warning("reuse of task %s failed (%s) — creating fresh", task, exc)
+            client.post_events(turn_id, [{"kind": "status",
+                "payload": {"status": "reuse_failed", "task": task, "detail": str(exc)}}])
+        else:
+            client.post_events(turn_id, [{"kind": "status",
+                "payload": {"status": "reused_session", "task": task, "thread_key": thread_key}}])
+            client.record_session(runner_id, agent, thread_key, emdash_task_id=task)
+            client.finish(turn_id, note=f"delivered to existing session '{task}'")
+            return f"reused:{turn_id}"
+
+    # --- create a fresh session, rehydrating durable context when we have it ---
+    prompt = work_prompt
+    summary = plan.get("summary") or ""
+    if summary:
+        prompt = (f"[Continuing prior work on this thread — context from earlier sessions "
+                  f"(a fresh session, possibly a different machine):]\n{summary}\n\n{work_prompt}")
+    try:
+        res = cdp_control.create_task(agent, prompt, port=cfg.cdp_port)
+    except cdp_control.CDPError as exc:
+        client.fail_turn(turn_id, f"emdash create failed: {exc}")
+        return f"failed:{turn_id}"
+
+    task = res.get("task") or ""
+    client.post_events(turn_id, [{"kind": "status",
+        "payload": {"status": "created_session", "task": task, "thread_key": thread_key,
+                    "rehydrated": bool(summary)}}])
+    client.record_session(
+        runner_id, agent, thread_key, emdash_task_id=task,
+        agent_task_ext_id=ref.get("agent_task_ext_id"),
+        summary=summary or None,
+    )
+    client.finish(turn_id, note=f"created session '{task}'" + (" (rehydrated)" if summary else ""))
+    return f"created:{turn_id}:{task}"

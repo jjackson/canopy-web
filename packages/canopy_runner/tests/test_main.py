@@ -81,10 +81,11 @@ class FakeClient:
 
 
 def _cfg(db, tmp_path):
+    # These tests exercise the legacy DB-injection executor explicitly.
     return Config(
         base_url="http://x", token="t", runner_id="r-1", emdash_db=db,
         automation_ids={"echo": AUTOMATION_ID}, expected_migration_id=19,
-        state_path=str(tmp_path / "state.json"),
+        state_path=str(tmp_path / "state.json"), executor="inject",
     )
 
 

@@ -18,6 +18,11 @@ class Config:
     poll_seconds: int = 20
     heartbeat_seconds: int = 30
     state_path: str = ""
+    # Executor: "cdp" drives emdash's real UI over CDP (create/reuse sessions —
+    # the sanctioned path); "inject" is the legacy DB-injection path. cdp needs
+    # emdash launched with --remote-debugging-port=<cdp_port> (see "Emdash CDP").
+    executor: str = "cdp"
+    cdp_port: int = 9222
 
     @classmethod
     def load(cls, path: Path) -> "Config":

@@ -66,12 +66,12 @@ class Turn(models.Model):
     TERMINAL = {DONE, FAILED, LOST}
     NON_TERMINAL = {QUEUED, CLAIMED, RUNNING, NEEDS_HUMAN}
 
-    ORIGIN_BOARD, ORIGIN_API, ORIGIN_SLACK, ORIGIN_CRON, ORIGIN_MANUAL = (
-        "board", "api", "slack", "cron", "manual",
+    ORIGIN_BOARD, ORIGIN_API, ORIGIN_SLACK, ORIGIN_CRON, ORIGIN_MANUAL, ORIGIN_EMAIL = (
+        "board", "api", "slack", "cron", "manual", "email",
     )
     ORIGIN_CHOICES = [
         (ORIGIN_BOARD, "Board"), (ORIGIN_API, "API"), (ORIGIN_SLACK, "Slack"),
-        (ORIGIN_CRON, "Cron"), (ORIGIN_MANUAL, "Manual"),
+        (ORIGIN_CRON, "Cron"), (ORIGIN_MANUAL, "Manual"), (ORIGIN_EMAIL, "Email"),
     ]
 
     PREFER_LOCAL, LOCAL_ONLY, ANY = "prefer_local", "local_only", "any"
