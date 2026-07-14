@@ -20,6 +20,11 @@
   <dict>
     <key>PYTHONPATH</key>
     <string>/Users/jjackson/emdash-projects/canopy-web/packages/canopy_runner</string>
+    <!-- launchd's default PATH omits Homebrew, so the runner can't find `gog`
+         (inbox polling) or `node` (CDP sidecar) without this. -->
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
 </dict>
 </plist>
