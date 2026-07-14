@@ -13,7 +13,11 @@ from __future__ import annotations
 import json
 import subprocess
 
-DEFAULT_QUERY = "in:inbox newer_than:7d"
+# UNREAD only — the "new email" signal. Critically NOT "all recent threads":
+# every matched thread becomes a turn → a claude session, so an over-broad query
+# is a cost bomb. Idempotency (thread+messageCount) means an unread thread fires
+# exactly once until its state changes.
+DEFAULT_QUERY = "in:inbox is:unread newer_than:14d"
 
 
 class InboxError(Exception):
