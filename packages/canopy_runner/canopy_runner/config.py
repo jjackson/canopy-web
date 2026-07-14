@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -23,6 +23,10 @@ class Config:
     # emdash launched with --remote-debugging-port=<cdp_port> (see "Emdash CDP").
     executor: str = "cdp"
     cdp_port: int = 9222
+    inbox_poll_seconds: int = 300
+    # {agent_slug: {"account": "<mailbox>", "client": "<gog client>"}} — the
+    # deterministic email trigger polls these and enqueues email-origin turns.
+    mailboxes: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path) -> "Config":

@@ -77,6 +77,17 @@ class Client:
     def post_events(self, turn_id: str, events: list[dict]) -> None:
         self._call("POST", f"/turns/{turn_id}/events", {"events": events})
 
+    def enqueue_turn(self, agent_slug: str, origin: str, idempotency_key: str, *,
+                     prompt: str = "", origin_ref: dict | None = None,
+                     routing: str = "prefer_local") -> dict:
+        """Enqueue a turn (idempotent on idempotency_key — safe to re-enqueue the same
+        email). Used by the deterministic inbox/slack triggers."""
+        _, payload = self._call("POST", "/turns/", {
+            "agent_slug": agent_slug, "origin": origin, "idempotency_key": idempotency_key,
+            "prompt": prompt, "origin_ref": origin_ref or {}, "routing": routing,
+        })
+        return payload or {}
+
     def start(self, turn_id: str, session_id: str = "") -> None:
         self._call("POST", f"/turns/{turn_id}/start", {"session_id": session_id})
 
