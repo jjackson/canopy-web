@@ -30,13 +30,17 @@ def _slug(text: str, n: int = 28) -> str:
 
 
 def _task_name(agent: str, turn: dict, now=None) -> str:
-    """A HUMAN-READABLE emdash task name: agent + email subject (or origin) + a
-    MMDD-HHMM stamp, e.g. 'hal-re-bednet-demo-0714-1532'. Recorded in the SessionLink,
-    so reuse opens this exact name — it needn't be a stable hash, just legible."""
+    """A HUMAN-READABLE, per-thread-UNIQUE emdash task name: agent + subject slug +
+    a short thread discriminator + MMDD-HHMM, e.g. 'hal-security-alert-6355-0714-1514'.
+    The discriminator (last chars of the thread key) is what stops two DIFFERENT threads
+    with the same subject in the same minute from colliding onto one name. Recorded in the
+    SessionLink, so reuse opens this exact name — legible, not a bare hash."""
     stamp = (now or dt.datetime.now()).strftime("%m%d-%H%M")
     ref = turn.get("origin_ref") or {}
     label = _slug(ref.get("subject") or "") or _slug(turn.get("origin") or "")
-    return f"{agent}-{label}-{stamp}" if label else f"{agent}-{stamp}"
+    disc = re.sub(r"[^a-z0-9]", "", _thread_key(turn).lower())[-4:]
+    bits = [agent] + ([label] if label else []) + [b for b in (disc, stamp) if b]
+    return "-".join(bits)
 
 
 def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
@@ -46,7 +50,9 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
     agent = turn["agent_slug"]
     ref = turn.get("origin_ref") or {}
     thread_key = _thread_key(turn)
-    work_prompt = turn.get("prompt") or f"/canopy:drain-turn {agent}"
+    # The prompt is a clean command — the agent's own /<slug>:turn does all the work.
+    # Default (board turns with no prompt): a full turn. drain-turn is retired.
+    work_prompt = turn.get("prompt") or f"/{agent}:turn"
 
     plan = client.resolve_session(runner_id, agent, thread_key)
     client.start(turn_id)

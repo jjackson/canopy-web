@@ -123,6 +123,20 @@ def test_task_name_is_readable_subject_plus_stamp():
     import datetime as dt
     now = dt.datetime(2026, 7, 14, 15, 32)
     t = _turn(origin="email", origin_ref={"subject": "Re: Bednet demo!!"})
-    assert execute._task_name("hal", t, now=now) == "hal-re-bednet-demo-0714-1532"
+    assert execute._task_name("hal", t, now=now) == "hal-re-bednet-demo-main-0714-1532"
     # no subject -> agent + stamp
-    assert execute._task_name("hal", _turn(origin="manual", origin_ref={}), now=now) == "hal-manual-0714-1532"
+    assert execute._task_name("hal", _turn(origin="manual", origin_ref={}), now=now) == "hal-manual-main-0714-1532"
+
+
+def test_task_name_distinguishes_threads_with_same_subject():
+    """The observed bug: two DIFFERENT threads with the same subject in the same minute
+    got the same name. The thread discriminator must keep them distinct."""
+    import datetime as dt
+    now = dt.datetime(2026, 7, 14, 15, 14)
+    t1 = _turn(origin="email", origin_ref={"subject": "Security alert", "thread_id": "19f4c06eeb986355"})
+    t2 = _turn(origin="email", origin_ref={"subject": "Security alert", "thread_id": "19f425675a9855a4"})
+    n1 = execute._task_name("hal", t1, now=now)
+    n2 = execute._task_name("hal", t2, now=now)
+    assert n1 == "hal-security-alert-6355-0714-1514"
+    assert n2 == "hal-security-alert-55a4-0714-1514"
+    assert n1 != n2
