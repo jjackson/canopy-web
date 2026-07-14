@@ -46,7 +46,9 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
     agent = turn["agent_slug"]
     ref = turn.get("origin_ref") or {}
     thread_key = _thread_key(turn)
-    work_prompt = turn.get("prompt") or f"/canopy:drain-turn {agent}"
+    # The prompt is a clean command — the agent's own /<slug>:turn does all the work.
+    # Default (board turns with no prompt): a full turn. drain-turn is retired.
+    work_prompt = turn.get("prompt") or f"/{agent}:turn"
 
     plan = client.resolve_session(runner_id, agent, thread_key)
     client.start(turn_id)
