@@ -33,6 +33,11 @@ class Runner(models.Model):
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=DISCONNECTED)
     status_note = models.CharField(max_length=255, blank=True, default="")
     last_heartbeat_at = models.DateTimeField(null=True, blank=True)
+    # macOS user @ hostname that owns this runner. Load-bearing for session reuse:
+    # emdash sessions are per-macOS-account (separate emdash4.db, worktrees, transcripts),
+    # so a live session is reusable ONLY by the runner whose host matches the one that
+    # created it. Jonathan runs the fleet under two accounts (token-limit failover).
+    host = models.CharField(max_length=200, blank=True, default="")
     paired_by = models.ForeignKey(
         "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
@@ -129,3 +134,65 @@ class TurnEvent(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"evt:{self.turn_id}:{self.seq}:{self.kind}"
+
+
+class SessionLink(models.Model):
+    """Durable link between an external work thread (an email thread_id, or a topic
+    key) and the agent session that handles it — the cross-account source of truth.
+
+    Two halves, deliberately:
+
+    - **Durable** (this row, on the server → reachable from ANY macOS account):
+      `agent` + `thread_key` (unique together), the board task the thread maps to
+      (`agent_task_ext_id`, for context), and a rolling `summary` used to rehydrate a
+      fresh session when the live one can't be reused.
+    - **Ephemeral live-session hint** (`live_*`): which emdash task / claude session
+      currently embodies this thread, and which runner/macOS-host owns it. emdash is
+      per-macOS-account, so this is reusable ONLY when the CURRENTLY-active runner owns
+      it AND the session still exists (the runner verifies existence). Otherwise: spawn
+      fresh under the current account and rehydrate from the durable half, then re-point.
+
+    See docs + [[env-two-macos-users]]: Jonathan fails over between two macOS accounts,
+    so the link can never be a local emdash id alone.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    agent = models.ForeignKey(
+        "agents.Agent", on_delete=models.CASCADE, related_name="session_links"
+    )
+    thread_key = models.CharField(max_length=255, help_text="Gmail thread_id or a topic key")
+    agent_task_ext_id = models.CharField(max_length=255, blank=True, default="")
+    summary = models.TextField(blank=True, default="", help_text="Rolling context for rehydration")
+
+    # Ephemeral live-session hint — verify-before-reuse (see class docstring).
+    live_runner = models.ForeignKey(
+        Runner, on_delete=models.SET_NULL, null=True, blank=True, related_name="session_links"
+    )
+    live_host = models.CharField(max_length=200, blank=True, default="")
+    live_emdash_task_id = models.CharField(max_length=64, blank=True, default="")
+    live_session_id = models.CharField(max_length=64, blank=True, default="")
+    live_seen_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [models.Index(fields=["agent", "thread_key"])]
+        constraints = [
+            models.UniqueConstraint(fields=["agent", "thread_key"], name="sessionlink_unique_per_agent_thread")
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"link:{self.agent.slug}:{self.thread_key[:16]}"
+
+    def reusable_by(self, runner: "Runner") -> bool:
+        """True if `runner` owns the live session hint (same runner + same macOS host)
+        and a concrete emdash task is recorded. The runner STILL must verify the task
+        actually exists in its emdash before driving it — this is the server-side gate."""
+        return bool(
+            self.live_emdash_task_id
+            and self.live_runner_id == runner.id
+            and self.live_host
+            and self.live_host == runner.host
+        )

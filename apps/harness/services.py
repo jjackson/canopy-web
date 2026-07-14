@@ -13,7 +13,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
 from django.utils import timezone
 
-from .models import Runner, Turn, TurnEvent
+from .models import Runner, SessionLink, Turn, TurnEvent
 
 logger = logging.getLogger(__name__)
 
@@ -196,3 +196,67 @@ def finish_turn(turn: Turn, *, status: str, result_note: str = "") -> Turn:
         return turn
     append_events(turn, [{"kind": "status", "payload": {"status": status, "result_note": result_note}}])
     return turn
+
+
+# --------------------------------------------------------------------------------------
+# SessionLink — durable thread↔session mapping (cross-account); see models.SessionLink
+# --------------------------------------------------------------------------------------
+
+def resolve_session(agent, thread_key: str, runner: Runner) -> dict:
+    """Given (agent, thread_key) and the CURRENTLY-active runner, decide how to execute.
+
+    Returns a plan dict:
+      - reuse (bool): the live session hint is owned by THIS runner/host — the runner
+        should verify the emdash task still exists and drive it (send prompt into it).
+      - emdash_task_id: the task to reuse (only meaningful when reuse=True).
+      - agent_task_ext_id / summary: durable context for rehydration when reuse=False
+        (fresh session under this account) or for a brand-new thread.
+      - link_id: the SessionLink id (None if no link exists yet — brand-new thread).
+
+    Never assumes the live session is reachable: reuse is only proposed when the hint's
+    runner + macOS host match the caller (the two-account failover invariant)."""
+    link = SessionLink.objects.filter(agent=agent, thread_key=thread_key).first()
+    if link is None:
+        return {"reuse": False, "emdash_task_id": "", "agent_task_ext_id": "",
+                "summary": "", "link_id": None, "new_thread": True}
+    return {
+        "reuse": link.reusable_by(runner),
+        "emdash_task_id": link.live_emdash_task_id,
+        "agent_task_ext_id": link.agent_task_ext_id,
+        "summary": link.summary,
+        "link_id": str(link.id),
+        "new_thread": False,
+    }
+
+
+def record_session(
+    agent,
+    thread_key: str,
+    *,
+    runner: Runner,
+    emdash_task_id: str = "",
+    session_id: str = "",
+    agent_task_ext_id: str | None = None,
+    summary: str | None = None,
+) -> SessionLink:
+    """Upsert the durable link and re-point its live-session hint at THIS runner/host.
+
+    Called after a session is created or reused so the next inbound event on the thread
+    resolves to the right session (or, from the other account, knows to rehydrate). Only
+    overwrites agent_task_ext_id/summary when a value is passed — otherwise preserves the
+    durable context accumulated so far."""
+    with transaction.atomic():
+        link, _ = SessionLink.objects.select_for_update().get_or_create(
+            agent=agent, thread_key=thread_key
+        )
+        link.live_runner = runner
+        link.live_host = runner.host
+        link.live_emdash_task_id = emdash_task_id
+        link.live_session_id = session_id
+        link.live_seen_at = timezone.now()
+        if agent_task_ext_id is not None:
+            link.agent_task_ext_id = agent_task_ext_id
+        if summary is not None:
+            link.summary = summary
+        link.save()
+    return link
