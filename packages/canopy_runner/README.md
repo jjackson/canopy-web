@@ -36,14 +36,30 @@ queued automation run directly into emdash's local sqlite DB.
      "token": "@~/.claude/canopy/workbench-token",
      "runner_id": "<uuid from step 2>",
      "emdash_db": "/Users/jjackson/Library/Application Support/Emdash/emdash4.db",
-     "automation_ids": {"echo": "<automation id from step 1>"},
-     "expected_migration_id": 19
+     "automation_ids": {"echo": "<automation id — inject executor only>"},
+     "expected_migration_id": 19,
+     "executor": "cdp",
+     "cdp_port": 9222,
+     "mailboxes": {"hal": {"account": "hal@dimagi-ai.com", "client": "canopy"}},
+     "inbox_poll_seconds": 300
    }
    ```
    `token` may be a literal value or `@/path/to/token/file` (read + stripped
-   at load time). `expected_migration_id` is the vetted emdash Drizzle
-   migration pin — see "After an emdash update" below for how that's kept
-   current across emdash releases.
+   at load time).
+
+   **Executor.** `"cdp"` (default) drives emdash's real UI over the DevTools
+   protocol — create/reuse sessions, appearing live in the sidebar; launch emdash
+   via the **"Emdash CDP"** Spotlight app so `--remote-debugging-port=9222` is set,
+   and run `cd canopy_runner/cdp && npm install` once. `"inject"` is the legacy
+   DB-injection path (`automation_ids` + `expected_migration_id` apply only there;
+   see "After an emdash update").
+
+   **Email trigger.** `mailboxes` maps each agent to its gog `{account, client}`;
+   the runner polls them every `inbox_poll_seconds` and enqueues an email-origin
+   turn per new thread — the runner then reuses that thread's existing emdash
+   session (continuity) or spawns a fresh one, rehydrating context. Cross-account:
+   the durable link lives in canopy-web, so switching macOS accounts continues the
+   thread (fresh local session, rehydrated) rather than losing it.
 
 4. **Sanity-check / smoke test** the config:
    ```bash
