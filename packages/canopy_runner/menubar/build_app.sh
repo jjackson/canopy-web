@@ -16,10 +16,11 @@ APP="${CANOPY_RUNNER_APP:-$HOME/Applications/Canopy Runner.app}"
 
 [ -d "$PKG_DIR/canopy_runner" ] || { echo "ERROR: runner package not at $PKG_DIR" >&2; exit 1; }
 
-echo "==> venv + rumps ($VENV)"
+echo "==> venv + pyobjc (Cocoa + WebKit) ($VENV)"
 [ -d "$VENV" ] || python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip >/dev/null
-"$VENV/bin/pip" install -q rumps >/dev/null
+# The panel is an NSPopover hosting a WKWebView, so we need Cocoa + WebKit bindings.
+"$VENV/bin/pip" install -q pyobjc-framework-Cocoa pyobjc-framework-WebKit >/dev/null
 
 echo "==> app bundle ($APP)"
 rm -rf "$APP"

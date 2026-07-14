@@ -100,10 +100,24 @@ def _fail_and_evict(cfg: Config, client: Client, state: dict, turn_id: str, note
     return f"failed:{turn_id}"
 
 
-def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time) -> None:
+def _paused_agents(cfg: Config) -> set[str]:
+    """Per-agent pause: agent slugs with a `PAUSED.<slug>` sentinel next to the state
+    file (dropped by the menu-bar app). Distinct from the global `PAUSED` file, which
+    halts everything. A paused agent's inbox is skipped and its queued turns are not
+    claimed (the server excludes them), so its work simply waits until resumed."""
+    d = Path(cfg.state_path).parent if cfg.state_path else Path.home() / ".canopy"
+    try:
+        return {p.name[len("PAUSED."):] for p in d.glob("PAUSED.*")}
+    except OSError:
+        return set()
+
+
+def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time,
+                         paused: set[str] | None = None) -> None:
     """Deterministic email trigger: at most every inbox_poll_seconds, poll each
     configured mailbox and enqueue email-origin turns. Best-effort — a failing inbox
-    (auth expired) logs and is skipped, never crashes the loop."""
+    (auth expired) logs and is skipped, never crashes the loop. Paused agents are
+    skipped so no new email turns are enqueued for them."""
     if not getattr(cfg, "mailboxes", None):
         return
     stamp = Path(cfg.state_path).with_name("inbox-last.txt") if cfg.state_path else Path("inbox-last.txt")
@@ -116,6 +130,8 @@ def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time) -> None:
     from . import inbox as inbox_mod
     cap = getattr(cfg, "inbox_max_threads", 8)
     for agent, box in cfg.mailboxes.items():
+        if paused and agent in paused:
+            continue
         try:
             ids = inbox_mod.check_inbox(
                 client, agent, mailbox=box["account"], gog_client=box["client"],
@@ -141,9 +157,10 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
     from .cdp_control import host_id
 
     client.heartbeat(cfg.runner_id, [], host=host_id())
-    _maybe_check_inboxes(cfg, client)
+    paused = _paused_agents(cfg)
+    _maybe_check_inboxes(cfg, client, paused=paused)
     try:
-        turn = client.claim(cfg.runner_id)
+        turn = client.claim(cfg.runner_id, paused_agents=sorted(paused))
     except ClientError as exc:
         logger.warning("claim failed: %s", exc)
         return "idle"

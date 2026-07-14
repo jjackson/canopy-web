@@ -89,9 +89,14 @@ def runner_heartbeat(request: HttpRequest, runner_id: uuid.UUID, payload: Heartb
 
 
 @router.post("/runners/{runner_id}/claim", response={200: TurnOut, 204: None})
-def claim_turn(request: HttpRequest, runner_id: uuid.UUID):
+def claim_turn(request: HttpRequest, runner_id: uuid.UUID, paused: str = ""):
+    """Claim the next eligible turn. `paused` is an optional comma-separated list of
+    agent slugs the caller has locally paused (per-agent pause) — the server skips
+    their queued turns so nothing is claimed-then-released. Omitted by older runners
+    (backward-compatible: no exclusions)."""
     runner = _runner_or_404(runner_id)
-    turn = services.claim_next_turn(runner)
+    exclude = [s for s in (p.strip() for p in paused.split(",")) if s]
+    turn = services.claim_next_turn(runner, exclude_slugs=exclude or None)
     if turn is None:
         return 204, None
     return 200, turn
