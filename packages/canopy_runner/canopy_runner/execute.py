@@ -11,8 +11,9 @@ gone (archived, or belongs to the other account), we fall back to create+rehydra
 """
 from __future__ import annotations
 
-import hashlib
+import datetime as dt
 import logging
+import re
 
 from . import cdp_control
 
@@ -24,10 +25,18 @@ def _thread_key(turn: dict) -> str:
     return ref.get("thread_key") or ref.get("thread_id") or f"{turn['agent_slug']}:main"
 
 
-def _task_name(agent: str, thread_key: str) -> str:
-    """Deterministic, readable emdash task name for a thread — a pure function of
-    (agent, thread), so it's stable and collision-free across threads."""
-    return f"{agent}-{hashlib.sha1(thread_key.encode()).hexdigest()[:8]}"
+def _slug(text: str, n: int = 28) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")[:n].strip("-")
+
+
+def _task_name(agent: str, turn: dict, now=None) -> str:
+    """A HUMAN-READABLE emdash task name: agent + email subject (or origin) + a
+    MMDD-HHMM stamp, e.g. 'hal-re-bednet-demo-0714-1532'. Recorded in the SessionLink,
+    so reuse opens this exact name — it needn't be a stable hash, just legible."""
+    stamp = (now or dt.datetime.now()).strftime("%m%d-%H%M")
+    ref = turn.get("origin_ref") or {}
+    label = _slug(ref.get("subject") or "") or _slug(turn.get("origin") or "")
+    return f"{agent}-{label}-{stamp}" if label else f"{agent}-{stamp}"
 
 
 def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
@@ -84,7 +93,7 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
         logger.warning("REUSE FELL BACK to CREATE for thread=%s (agent=%s) — the linked "
                        "emdash session was unreachable; check for a stuck/gone task", thread_key, agent)
     try:
-        res = cdp_control.create_task(agent, prompt, task_name=_task_name(agent, thread_key), port=cfg.cdp_port)
+        res = cdp_control.create_task(agent, prompt, task_name=_task_name(agent, turn), port=cfg.cdp_port)
     except cdp_control.CDPError as exc:
         logger.error("CREATE failed turn=%s agent=%s: %s", turn_id, agent, exc)
         client.fail_turn(turn_id, f"emdash create failed: {exc}")

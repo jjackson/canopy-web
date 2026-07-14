@@ -117,3 +117,12 @@ def test_thread_key_defaults_to_agent_main_when_no_ref(monkeypatch):
     client = FakeClient({"reuse": False, "new_thread": True, "summary": ""})
     execute.execute_turn(_cfg(), client, "r-1", _turn(origin_ref={}))
     assert client.calls[0] == ("resolve", "hal", "hal:main")
+
+
+def test_task_name_is_readable_subject_plus_stamp():
+    import datetime as dt
+    now = dt.datetime(2026, 7, 14, 15, 32)
+    t = _turn(origin="email", origin_ref={"subject": "Re: Bednet demo!!"})
+    assert execute._task_name("hal", t, now=now) == "hal-re-bednet-demo-0714-1532"
+    # no subject -> agent + stamp
+    assert execute._task_name("hal", _turn(origin="manual", origin_ref={}), now=now) == "hal-manual-0714-1532"

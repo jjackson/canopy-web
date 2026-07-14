@@ -114,11 +114,16 @@ def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time) -> None:
     if now_fn() - last < cfg.inbox_poll_seconds:
         return
     from . import inbox as inbox_mod
+    cap = getattr(cfg, "inbox_max_threads", 8)
     for agent, box in cfg.mailboxes.items():
         try:
-            ids = inbox_mod.check_inbox(client, agent, mailbox=box["account"], gog_client=box["client"])
+            ids = inbox_mod.check_inbox(
+                client, agent, mailbox=box["account"], gog_client=box["client"],
+                query=box.get("query", inbox_mod.DEFAULT_QUERY), max_threads=cap,
+            )
             if ids:
-                logger.info("inbox[%s]: enqueued %d thread turn(s)", agent, len(ids))
+                logger.info("inbox[%s]: enqueued %d thread turn(s) (cap %d) — each becomes a session",
+                            agent, len(ids), cap)
         except Exception as exc:  # noqa: BLE001 — one bad inbox never kills the loop
             logger.warning("inbox check for %s failed: %s", agent, exc)
     try:

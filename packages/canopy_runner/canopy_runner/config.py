@@ -24,9 +24,14 @@ class Config:
     executor: str = "cdp"
     cdp_port: int = 9222
     inbox_poll_seconds: int = 300
-    # {agent_slug: {"account": "<mailbox>", "client": "<gog client>"}} — the
-    # deterministic email trigger polls these and enqueues email-origin turns.
+    # {agent_slug: {"account": "<mailbox>", "client": "<gog client>", "query": "<opt>"}}
+    # — the deterministic email trigger polls these and enqueues email-origin turns.
+    # Per-mailbox "query" overrides the default Gmail search (e.g. restrict to certain
+    # senders/labels) so junk never becomes a turn (= a session = tokens).
     mailboxes: dict = field(default_factory=dict)
+    # Hard safety cap: at most this many threads become turns per mailbox per poll,
+    # so a flooded/misconfigured inbox can't spawn dozens of sessions at once.
+    inbox_max_threads: int = 8
 
     @classmethod
     def load(cls, path: Path) -> "Config":
