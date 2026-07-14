@@ -40,11 +40,33 @@ class Client:
             return status, None
         return status, json.loads(raw)
 
-    def heartbeat(self, runner_id: str, active_turn_ids: list[str], degraded: bool = False, note: str = "") -> dict:
+    def heartbeat(self, runner_id: str, active_turn_ids: list[str], degraded: bool = False,
+                  note: str = "", host: str = "") -> dict:
         _, payload = self._call(
             "POST",
             f"/runners/{runner_id}/heartbeat",
-            {"active_turn_ids": active_turn_ids, "degraded": degraded, "note": note},
+            {"active_turn_ids": active_turn_ids, "degraded": degraded, "note": note, "host": host},
+        )
+        return payload or {}
+
+    def resolve_session(self, runner_id: str, agent_slug: str, thread_key: str) -> dict:
+        """Ask the control plane whether THIS runner can reuse an existing emdash
+        session for (agent, thread) or must spawn fresh + rehydrate. See SessionLink."""
+        _, payload = self._call(
+            "POST", f"/runners/{runner_id}/resolve-session",
+            {"agent_slug": agent_slug, "thread_key": thread_key},
+        )
+        return payload or {}
+
+    def record_session(self, runner_id: str, agent_slug: str, thread_key: str, *,
+                       emdash_task_id: str = "", session_id: str = "",
+                       agent_task_ext_id: str | None = None, summary: str | None = None) -> dict:
+        """Record/point the durable thread link at THIS runner's live session."""
+        _, payload = self._call(
+            "POST", f"/runners/{runner_id}/record-session",
+            {"agent_slug": agent_slug, "thread_key": thread_key,
+             "emdash_task_id": emdash_task_id, "session_id": session_id,
+             "agent_task_ext_id": agent_task_ext_id, "summary": summary},
         )
         return payload or {}
 
