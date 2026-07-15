@@ -87,3 +87,38 @@ def test_disabled_schedule_does_not_nag(agent, schedule):
     schedule.save()
 
     assert asvc.needs_you(agent)["waiting_count"] == 0
+
+
+def test_run_now_nags_and_finishing_it_clears_the_nag(agent, schedule):
+    """`_occurrences()` selects a schedule's turns by origin_ref__schedule_id
+    with NO origin filter — deliberately, so a manual "Run now" (origin=manual)
+    participates in the nag exactly like a fired (origin=cron) slot. Pins that:
+    a future refactor narrowing _occurrences() to origin=cron would leave every
+    other nag test green while silently breaking completion of a Run now."""
+    turn = hsvc.run_schedule_now(schedule)
+    assert turn.origin == Turn.ORIGIN_MANUAL
+
+    out = asvc.needs_you(agent)
+    items = [i for i in out["items"] if i["ref_kind"] == "schedule"]
+    assert len(items) == 1
+    assert out["waiting_count"] == 1
+
+    hsvc.finish_turn(_executing(turn), status=Turn.DONE)
+
+    out = asvc.needs_you(agent)
+    assert [i for i in out["items"] if i["ref_kind"] == "schedule"] == []
+    assert out["waiting_count"] == 0
+
+
+def test_unknown_channel_is_ignored_not_fatal(agent, schedule):
+    """CHANNELS.get(channel_id) — not CHANNELS[channel_id] — so a half-rolled-out
+    or renamed channel id in AgentSchedule.notify can never 500 the supervisor's
+    inbox. It should simply yield no nag for that channel."""
+    schedule.notify = ["carrier_pigeon"]
+    schedule.save()
+    hsvc.fire_schedule(schedule, SLOT)
+
+    out = asvc.needs_you(agent)
+
+    assert [i for i in out["items"] if i["ref_kind"] == "schedule"] == []
+    assert out["waiting_count"] == 0

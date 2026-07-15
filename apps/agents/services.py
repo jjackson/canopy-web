@@ -7,6 +7,8 @@ import datetime as dt
 from django.db import transaction
 from django.utils import timezone
 
+from apps.harness.notify import schedule_nag_items
+
 from .models import (
     Agent,
     AgentSkill,
@@ -416,12 +418,8 @@ def needs_you(agent: Agent, notify_limit: int = 5) -> dict:
     review.extend(run_review)
     question.extend(run_question)
 
-    # Scheduled occurrences you haven't finished. Imported inside the function:
-    # apps.harness.models imports apps.agents.models, so a module-level import
-    # would cycle (same reason AgentTask.run uses a string FK ref). Both apps are
-    # framework tier, so the boundary test is satisfied.
-    from apps.harness.notify import schedule_nag_items
-
+    # Scheduled occurrences you haven't finished. Both apps are framework tier,
+    # so this cross-import is allowed by the boundary test.
     review.extend(schedule_nag_items(agent))
 
     items: list[dict] = review + question

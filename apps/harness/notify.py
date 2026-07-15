@@ -12,16 +12,18 @@ from collections.abc import Callable
 
 def _inbox(agent, schedule, turn) -> dict:
     """The default channel: a typed needs_you item. Passive but omnipresent —
-    it rides the 'N waiting on you' badge the supervisor surfaces already show."""
-    subtitle = "Scheduled — not finished" if turn else "Scheduled"
+    it rides the 'N waiting on you' badge the supervisor surfaces already show.
+
+    `turn` is always non-None here: the only caller, schedule_nag_items,
+    `continue`s when turn is None."""
     return {
         "type": "review",
         "ref_kind": "schedule",
         "ref_id": schedule.id,
         "title": schedule.name,
-        "subtitle": subtitle,
+        "subtitle": "Scheduled — not finished",
         "url": "",
-        "created_at": turn.created_at if turn else schedule.updated_at,
+        "created_at": turn.created_at,
     }
 
 
