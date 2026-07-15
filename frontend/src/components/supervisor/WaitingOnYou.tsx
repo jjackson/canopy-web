@@ -8,7 +8,7 @@ import type { FleetNeedsYouOut, NeedsYouItem, NeedsYouType } from '@/api/agents'
 const RANK: NeedsYouType[] = ['review', 'question', 'notify']
 
 const BAND: Record<NeedsYouType, { label: string; dot: string }> = {
-  review: { label: 'Review', dot: 'bg-info' },
+  review: { label: 'Review', dot: 'bg-muted-foreground' },
   question: { label: 'Question', dot: 'bg-warning' },
   notify: { label: 'Notify', dot: 'bg-primary/50' },
 }

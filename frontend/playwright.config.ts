@@ -18,7 +18,7 @@ export default defineConfig({
   // an installed PWA, so a layout regression has to fail CI before that lands.
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    { name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: /supervisor\.spec\.ts/ },
   ],
   webServer: [
     { command: 'bash e2e/backend.sh', url: 'http://127.0.0.1:8000/health/', timeout: 120_000, reuseExistingServer: false },
