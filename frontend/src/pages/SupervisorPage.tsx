@@ -5,6 +5,8 @@ import { RunnerStatus } from '@/components/supervisor/RunnerStatus'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
 import { WaitingOnYou } from '@/components/supervisor/WaitingOnYou'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
+import { PushToggle } from '@/pwa/PushToggle'
+import { setBadge } from '@/pwa/usePush'
 import { Skeleton } from 'canopy-ui'
 
 function BandError({ message }: { message: string }): JSX.Element {
@@ -47,6 +49,11 @@ export default function SupervisorPage(): JSX.Element {
     }
   }, [])
 
+  // The app-icon count. Android honours this; elsewhere it no-ops.
+  useEffect(() => {
+    if (fleet) setBadge(fleet.total_waiting)
+  }, [fleet])
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 p-4" data-testid="supervisor-page">
       <header>
@@ -55,6 +62,7 @@ export default function SupervisorPage(): JSX.Element {
       </header>
 
       <InstallPrompt />
+      <PushToggle />
 
       <section>
         <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
