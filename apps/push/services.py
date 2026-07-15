@@ -29,8 +29,10 @@ def _dirty_set() -> set[int]:
     concurrent requests shared one set — and whichever committed first drained
     BOTH, recomputing the other thread's agent on a connection that could not
     yet see its uncommitted rows. That agent's push was silently dropped. Per
-    connection is still exactly one transaction's worth, so the coalescing this
-    exists for is unaffected.
+    connection is at most one transaction's worth plus any residue from a
+    rolled-back transaction, which _flush recomputes harmlessly because
+    refresh_agent_waiting re-reads the truth from the DB and pushes only on
+    an increase.
     """
     if not hasattr(connection, "_push_dirty"):
         connection._push_dirty = set()
@@ -127,7 +129,7 @@ def mark_dirty(agent_id: int) -> None:
     one to run drains the set and does the work, and the rest find it empty and
     no-op — so a bulk sync of N rows is still ONE recompute per agent.
 
-    Do NOT re-add a `if not _dirty` guard around the registration. Django
+    Do NOT re-add a `if not _dirty_set()` guard around the registration. Django
     discards on_commit callbacks when a transaction rolls back, but this set is
     not transactional and keeps its entries — so the guard would see a non-empty
     set forever after the first rollback, never register again, and silently

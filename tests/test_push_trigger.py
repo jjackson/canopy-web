@@ -24,12 +24,13 @@ from apps.workspaces.models import Workspace, WorkspaceMembership
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-# apps.push.services._dirty_set() lives on the DB connection (per-connection,
-# per-transaction — see its docstring), so it is already isolated across
-# threads/requests and does not leak between tests through any process-global
-# state. This fixture is just belt-and-braces: it clears this connection's set
-# before and after every test so a test that errors mid-transaction (leaving
-# stray ids behind) can never bleed into the next one in this file.
+# apps.push.services._dirty_set() lives on the DB connection; pytest runs
+# single-threaded, so every test shares one thread -> one DatabaseWrapper ->
+# one _push_dirty, and leaked ids do bleed between tests. This fixture clears
+# the set before and after every test, which is essential now that the guard
+# that would have turned a leaked id into a permanent wedge is gone — a leaked
+# id is now harmless, but the fixture prevents the noise of carrying stale ids
+# forward when they shouldn't be there at all.
 @pytest.fixture(autouse=True)
 def _reset_dirty_set():
     from apps.push import services
