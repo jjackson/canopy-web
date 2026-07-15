@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.db import models
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Router
@@ -119,6 +120,23 @@ def pair_runner(request: HttpRequest, payload: RunnerIn):
         workspace_id=ws_slug,
     )
     return 201, runner
+
+
+@router.get("/runners/", response=list[RunnerOut], summary="List my runners")
+def list_runners(request: HttpRequest):
+    """The supervisor's runner status. Tenant-filtered and scoped to the pairing
+    user, matching _runner_or_404's gate — a runner you cannot act on must not be
+    listed. Retired runners are excluded at lookup, as everywhere else."""
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
+    qs = (
+        Runner.objects.exclude(status=Runner.RETIRED)
+        .filter(Q(workspace_id__in=slugs) | Q(workspace_id__isnull=True))
+        .filter(Q(paired_by=request.user) | Q(paired_by__isnull=True))
+        .order_by(models.F("last_heartbeat_at").desc(nulls_last=True))
+    )
+    return list(qs[:50])
 
 
 @router.post("/runners/{runner_id}/heartbeat", response=RunnerOut)

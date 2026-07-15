@@ -228,3 +228,20 @@ def test_other_account_runner_cannot_reuse_but_gets_context(client, agent):
     r = client.post(f"/api/harness/runners/{b}/resolve-session",
                     {"agent_slug": "echo", "thread_key": "thr-1"}, content_type="application/json").json()
     assert r["reuse"] is False and r["new_thread"] is False and r["summary"] == "prior"
+
+
+def test_list_runners_returns_my_runners_newest_heartbeat_first(client, agent):
+    rid = _pair(client)
+    _hb(client, rid)
+    resp = client.get("/api/harness/runners/")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [r["id"] for r in body] == [rid]
+    assert body[0]["status"] == "online"
+    assert body[0]["host"] == ""
+
+
+def test_list_runners_excludes_retired(client, agent):
+    rid = _pair(client)
+    Runner.objects.filter(pk=rid).update(status=Runner.RETIRED)
+    assert client.get("/api/harness/runners/").json() == []
