@@ -16,7 +16,7 @@ never re-runs a finished turn. A local seen-set skips reviews already fully inge
 Ada's clusters look like:
     {"id": "eva-first-turn", "title": "…", "severity": "high", "fix_kind": "mechanical",
      "suggested_fix": "…",
-     "dispatch": [{"target_agent": "eva", "origin": "email", "prompt": "/eva:turn --thread <id>",
+     "dispatch": [{"target_agent": "eva", "origin": "email", "prompt": "/turn --thread <id>",
                    "origin_ref": {"thread_id": "<id>", "subject": "…"}}]}
 """
 from __future__ import annotations
@@ -74,7 +74,7 @@ def check_reviews(client, *, seen: frozenset[str] = frozenset(), max_reviews: in
                     agent,
                     spec.get("origin") or "api",
                     f"review-{rid}-{cid}-{i}",
-                    prompt=spec.get("prompt") or f"/{agent}:turn",
+                    prompt=spec.get("prompt") or "/turn",
                     origin_ref=spec.get("origin_ref") or {},
                 )
                 enqueued.append((rid, cid, agent))
