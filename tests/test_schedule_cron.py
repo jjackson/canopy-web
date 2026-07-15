@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -83,3 +84,51 @@ def test_due_slot_dst_holds_local_9am():
 def test_next_slots_previews_three():
     out = next_slots(FRIDAYS_9AM, NY, now=_utc(2026, 7, 15, 12), count=3)
     assert out == [_utc(2026, 7, 17, 13), _utc(2026, 7, 24, 13), _utc(2026, 7, 31, 13)]
+
+
+def test_next_slots_dst_holds_local_9am_across_the_shift():
+    """The preview must cross the DST boundary the way firing does.
+
+    `next_slots` does its OWN zone conversion — it does not share a code path with
+    `due_slot` — so `test_due_slot_dst_holds_local_9am` above pins nothing here, and
+    every other `next_slots` case sits entirely inside EDT.
+
+    The US shifts back to EST on Sunday 2026-11-01, so a window opened the Monday
+    before spans it: 9am ET is 13:00Z under EDT (UTC-4) and 14:00Z under EST
+    (UTC-5). The same cron expression must therefore yield two *different* UTC
+    instants either side of the shift. Evaluating in UTC would emit a constant
+    09:00Z; anchoring the whole window to the start offset would emit a constant
+    13:00Z. Both are wrong, and both are invisible to a single-offset window.
+
+    A bug here mislabels rather than misfires — but the preview is the only thing
+    that makes a hand-typed cron trustworthy, so a wrong "Next" is a wrong schedule.
+    """
+    # 2026-10-26 is the Monday before the shift; the window covers Fridays either side.
+    out = next_slots(FRIDAYS_9AM, NY, now=_utc(2026, 10, 26, 12), count=3)
+
+    assert out == [
+        _utc(2026, 10, 30, 13),  # Fri 09:00 EDT (UTC-4) — before the shift
+        _utc(2026, 11, 6, 14),   # Fri 09:00 EST (UTC-5) — after it
+        _utc(2026, 11, 13, 14),  # Fri 09:00 EST
+    ]
+    # The point of the window: the UTC instant moves precisely because the local
+    # wall clock does not.
+    assert out[1] - out[0] == dt.timedelta(days=7, hours=1)
+    assert out[2] - out[1] == dt.timedelta(days=7)
+
+
+def test_next_slots_are_always_9am_local_whatever_the_offset():
+    """Restates the contract in the units the user actually set it in.
+
+    The assertion above is in UTC and so encodes the offsets by hand; this one
+    reads the wall clock back through the zone, and would fail on any zone-handling
+    regression without anyone having to recompute an offset table.
+    """
+    zone = ZoneInfo(NY)
+    out = next_slots(FRIDAYS_9AM, NY, now=_utc(2026, 10, 26, 12), count=6)
+
+    local = [slot.astimezone(zone) for slot in out]
+    assert {(t.hour, t.minute) for t in local} == {(9, 0)}
+    assert {t.strftime("%A") for t in local} == {"Friday"}
+    # the window genuinely straddles the shift, else this proves nothing
+    assert {t.tzname() for t in local} == {"EDT", "EST"}

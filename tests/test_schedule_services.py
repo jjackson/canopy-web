@@ -176,6 +176,37 @@ def test_latest_occurrence_turn_returns_the_newest_whatever_its_status(schedule)
     assert services.latest_occurrence_turn(schedule).pk == newer.pk
 
 
+def test_latest_occurrence_turn_returns_a_terminal_newest_not_an_open_older(schedule):
+    """The newest occurrence wins even when it is the *terminal* one.
+
+    The sibling test above leaves the newest QUEUED, so a hypothetical
+    `status__in=NON_TERMINAL` filter would still return it and pass — it pins
+    recency but not the "whatever its status" half of the contract. Here the DONE
+    turn IS the newest and an *older* turn is still open, so such a filter would
+    skip past the answer and hand back the stale open one.
+
+    That's the nag's whole correctness condition: `needs_you` asks "what is the
+    latest occurrence, and is it unfinished?" If a status filter could reach back
+    to an older open turn, completing this week's report would leave last week's
+    abandoned one nagging forever.
+    """
+    older, _ = services.fire_schedule(schedule, SLOT_A)
+    newer, _ = services.fire_schedule(schedule, SLOT_B)  # supersedes `older` → MISSED
+    Turn.objects.filter(pk=newer.pk).update(status=Turn.RUNNING)
+    newer.refresh_from_db()
+    services.finish_turn(newer, status=Turn.DONE)
+    # Re-open the older turn directly: firing always supersedes, so this ordering
+    # (terminal newest, open older) has no natural path — but `latest_occurrence_turn`
+    # is a pure read, and this is the state a status filter would mis-answer.
+    Turn.objects.filter(pk=older.pk).update(status=Turn.QUEUED)
+
+    latest = services.latest_occurrence_turn(schedule)
+
+    assert latest is not None, "a status filter would drop the terminal newest entirely"
+    assert latest.pk == newer.pk, "returned the stale open older turn, not the newest"
+    assert latest.status == Turn.DONE
+
+
 def test_latest_occurrence_turn_sees_a_manual_run(schedule):
     """"Run now" writes origin=manual; an origin=cron-only lookup would never
     see it, so the nag it launched could never be cleared by completing it."""
