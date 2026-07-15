@@ -61,6 +61,7 @@ PLIST = Path(os.environ.get(
     "~/emdash-projects/canopy-web/packages/canopy_runner/launchd/com.canopy.runner.plist",
 )).expanduser()
 PAUSE_FILE = CONFIG.with_name("PAUSED")
+HEARTBEAT = CONFIG.with_name("heartbeat")  # runner touches this every cycle (liveness)
 LABEL = "com.canopy.runner"
 
 GLYPH = {"running": "🟢", "paused": "🟡", "stopped": "🔴", "stale": "🟠"}
@@ -221,17 +222,31 @@ def _log_stats() -> dict:
     return out
 
 
+def _heartbeat_age() -> int | None:
+    """Seconds since the runner last cycled (touched the heartbeat file), or None if it
+    has never written one. This — not the log — is the liveness signal: the runner touches
+    it every cycle even when idle/paused, whereas idle log lines are ~15 min apart."""
+    try:
+        return int(dt.datetime.now().timestamp() - HEARTBEAT.stat().st_mtime)
+    except OSError:
+        return None
+
+
 def _runner_state() -> dict:
     paused, loaded, st = PAUSE_FILE.exists(), _daemon_loaded(), _log_stats()
+    hb = _heartbeat_age()
+    # Fresh = cycled recently. Prefer the heartbeat (updated every cycle); fall back to the
+    # log's mtime only for a runner too old to write a heartbeat file.
+    fresh = (hb < 75) if hb is not None else st["fresh"]
     if not loaded:
         state = "stopped"
     elif paused:
         state = "paused"
-    elif not st["fresh"]:
+    elif not fresh:
         state = "stale"
     else:
         state = "running"
-    return {"state": state, "paused": paused, **st}
+    return {"state": state, "paused": paused, "hb_age": hb, **st}
 
 
 # ── agent data (canopy-web API) ─────────────────────────────────────────────────
@@ -415,11 +430,19 @@ def render(state: dict, agents: list[dict], base: str) -> str:
     s = state["state"]
     pill_word = {"running": "Running", "paused": "Paused",
                  "stopped": "Stopped", "stale": "Stale"}[s]
-    age = f'{state["age_s"]}s ago' if state.get("age_s") is not None else "no log"
-    pause_label = "Resume" if state["paused"] else "Pause"
-    pause_act = "resume" if state["paused"] else "pause"
-    daemon_label, daemon_act = (("Stop daemon", "stop") if s != "stopped"
-                                else ("Start daemon", "start"))
+    hb = state.get("hb_age")
+    checked = f"{hb}s ago" if hb is not None else "—"
+    # Primary action is always the meaningful next step for the current state:
+    #   stopped -> Start daemon (there's nothing to pause), else Pause/Resume the runner.
+    # Pausing while stopped did nothing visible, which read as "the button is broken".
+    if s == "stopped":
+        primary_html = "<button class=\"btn primary\" onclick=\"act('start')\">Start daemon</button>"
+        daemon_html = ""
+    else:
+        plabel = "Resume" if state["paused"] else "Pause"
+        pact = "resume" if state["paused"] else "pause"
+        primary_html = f"<button class=\"btn primary\" onclick=\"act('{pact}')\">{plabel} runner</button>"
+        daemon_html = "<button class=\"btn\" onclick=\"act('stop')\">Stop daemon</button>"
     idx = {a.get("slug"): i for i, a in enumerate(agents)}
 
     # "Waiting on you" — the actionable inbox across the fleet (pending reviews + gated
@@ -443,7 +466,6 @@ def render(state: dict, agents: list[dict], base: str) -> str:
     cards = "".join(_card(a, base, i, _agent_paused(a.get("slug", "")))
                     for i, a in enumerate(agents)) or \
         '<div class="empty">No agents found (check the runner token / connection).</div>'
-    last_line = html.escape(state.get("last") or "")
 
     return f"""<!doctype html><html><head><meta charset="utf-8">
 <style>
@@ -535,14 +557,13 @@ def render(state: dict, agents: list[dict], base: str) -> str:
 </style></head><body>
   <div class="hdr">
     <div class="titlerow">
-      <span class="brand">🪴 Canopy Runner</span>
+      <span class="brand">Canopy Runner</span>
       <span class="pill {s}">{pill_word}</span>
     </div>
-    <div class="sub">Today: <b>{state.get('created', 0)}</b> created · <b>{state.get('reused', 0)}</b> reused · log {age}</div>
-    {f'<div class="last">{last_line}</div>' if last_line else ''}
+    <div class="sub">Today: <b>{state.get('created', 0)}</b> created · <b>{state.get('reused', 0)}</b> reused · checked {checked}</div>
     <div class="actions">
-      <button class="btn primary" onclick="act('{pause_act}')">{pause_label} runner</button>
-      <button class="btn" onclick="act('{daemon_act}')">{daemon_label}</button>
+      {primary_html}
+      {daemon_html}
       <button class="btn" onclick="act('openLog')">Log</button>
       <button class="btn" onclick="act('refresh')">Refresh</button>
     </div>
