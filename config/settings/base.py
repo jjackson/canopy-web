@@ -3,18 +3,11 @@ Base Django settings for canopy-web.
 
 Common settings shared across all environments.
 """
-import mimetypes
 import os
 import sys
 from pathlib import Path
 
 import environ
-
-# Python's mimetypes map has no .webmanifest entry, so WhiteNoise would serve the
-# PWA manifest as application/octet-stream. Chrome tolerates that today, but it's
-# wrong per spec and Lighthouse flags it — and the manifest is the thing that
-# makes /supervisor installable.
-mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -157,6 +150,13 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# WhiteNoise serves the built frontend, and its MediaTypes map is its own — it
+# never consults Python's mimetypes, and it has no .webmanifest entry. Without
+# this the PWA manifest goes out as application/octet-stream. Chrome tolerates
+# that; the spec and Lighthouse don't, and the manifest is the thing that makes
+# /supervisor installable.
+WHITENOISE_MIMETYPES = {".webmanifest": "application/manifest+json"}
 
 # Frontend SPA build output (served by catch-all view; WhiteNoise handles assets)
 FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
