@@ -43,6 +43,7 @@
 - Modify `tests/test_harness_api.py`, create `tests/test_agents_fleet_needs_you.py`.
 
 **Phase 1 — frontend**
+- Create `frontend/src/api/harness.ts` — the harness client (`listRunners`). Separate from `agents.ts`: a Runner is framework tier, the agent surface is product tier.
 - Create `frontend/src/pages/SupervisorPage.tsx` — the route (fetch + layout only).
 - Create `frontend/src/components/supervisor/RunnerStatus.tsx` — runner pills.
 - Create `frontend/src/components/supervisor/AgentKpiCard.tsx` — one agent's KPIs.
@@ -102,12 +103,18 @@ const WS_SCOPED_API_PREFIXES = [
 
 Replace the entire contents of `frontend/src/api/agents.ts`. Types now alias the generated schemas; the local fetch helpers and the `scopedAgentsPath` rewrite are deleted (the middleware from Step 2 does that job now).
 
+**Every type name below was verified to exist in `generated.ts` before this plan was written.** The public signatures are copied from the current `agents.ts` and **must not change** — callers depend on them, and "no caller changes" is this task's contract.
+
+Two subtleties that will bite you if you skip them:
+
+1. **`syncs`, `turns`, and `work-products` return `Page<T>`, not arrays.** `skills` and `tasks` return plain arrays. That asymmetry is real (the server paginates the first three); preserve it exactly.
+2. **`generated.ts` is generated with `--immutable`**, so its shapes are `readonly items: readonly T[]`. The local `Page<T>` is mutable and callers rely on that (`setState(page.items)`). Assigning readonly → mutable does not typecheck, so paged responses go through `toPage()`, which copies. Do not "fix" this with an `as` cast — the copy is what makes it type-safe.
+
 ```ts
 // Agent Workspace API client — a thin, typed wrapper over the generated
-// OpenAPI client. Types are aliases of the generated schemas: this file
-// declares no response shapes of its own, so it cannot drift from the server.
-// Workspace scoping is handled by apiV2's middleware (see WS_SCOPED_API_PREFIXES
-// in ./client.v2), not here.
+// OpenAPI client. Response entity types alias the generated schemas, so this
+// file cannot drift from the server. Workspace scoping is handled by apiV2's
+// middleware (see WS_SCOPED_API_PREFIXES in ./client.v2), not here.
 import { apiV2 } from './client.v2'
 import type { components } from './generated'
 
@@ -120,6 +127,7 @@ export type AgentSyncOut = Schemas['AgentSyncOut']
 export type AgentWorkProductOut = Schemas['AgentWorkProductOut']
 export type AgentSkillOut = Schemas['AgentSkillOut']
 export type AgentTaskOut = Schemas['AgentTaskOut']
+export type AgentTaskLink = Schemas['AgentTaskLink']
 export type AgentCommandOut = Schemas['AgentTaskCommandOut']
 export type NeedsYouOut = Schemas['NeedsYouOut']
 export type NeedsYouItem = Schemas['NeedsYouItem']
@@ -128,8 +136,11 @@ export type PostCommandResult = Schemas['CommandResultOut']
 export type NeedsYouType = NeedsYouItem['type']
 export type AgentTaskStatus = AgentTaskOut['status']
 export type AgentCommandKind = Schemas['AgentTaskCommandIn']['kind']
-export type AgentTaskLink = NonNullable<AgentTaskOut['links']>[number]
 
+// Stays hand-declared, deliberately: openapi-typescript emits a CONCRETE alias
+// per payload (Page_AgentOut_, Page_AgentSyncOut_, …), never a generic, so
+// there is nothing to alias a generic to. Mutable because callers assign
+// page.items straight into useState.
 export interface Page<T> {
   items: T[]
   total: number
@@ -139,11 +150,12 @@ export interface Page<T> {
 
 export interface ListAgentsParams {
   limit?: number
+  offset?: number
 }
 
-// openapi-fetch returns { data, error }. Every call in this file is a read or a
-// command post whose failure is a bug, not a user-facing state — so unwrap and
-// throw. A 401 never reaches here: apiV2's middleware redirects to login first.
+// openapi-fetch returns { data, error }. Every call here is a read or a command
+// post whose failure is a bug, not a user-facing state — so unwrap and throw. A
+// 401 never reaches here: apiV2's middleware redirects to login first.
 function unwrap<T>(res: { data?: T; error?: unknown }, what: string): T {
   if (res.error !== undefined || res.data === undefined) {
     throw new Error(`${what} failed: ${JSON.stringify(res.error ?? 'no data')}`)
@@ -151,11 +163,20 @@ function unwrap<T>(res: { data?: T; error?: unknown }, what: string): T {
   return res.data
 }
 
+// Generated shapes are readonly (--immutable); Page<T> is mutable. Copy across
+// the boundary rather than casting, so the compiler keeps checking us.
+function toPage<T>(p: {
+  readonly items: readonly T[]
+  readonly total: number
+  readonly offset: number
+  readonly limit: number
+}): Page<T> {
+  return { items: [...p.items], total: p.total, offset: p.offset, limit: p.limit }
+}
+
 export async function listAgents(params: ListAgentsParams = {}): Promise<Page<AgentOut>> {
-  const res = await apiV2.GET('/api/agents/', {
-    params: { query: { limit: params.limit ?? 100 } },
-  })
-  return unwrap(res, 'listAgents') as Page<AgentOut>
+  const res = await apiV2.GET('/api/agents/', { params: { query: { limit: params.limit } } })
+  return toPage(unwrap(res, 'listAgents'))
 }
 
 export async function getAgent(slug: string): Promise<AgentDetailOut> {
@@ -168,54 +189,64 @@ export async function getNeedsYou(slug: string): Promise<NeedsYouOut> {
   return unwrap(res, 'getNeedsYou')
 }
 
-export async function listAgentSyncs(slug: string, opts: { limit?: number } = {}): Promise<AgentSyncOut[]> {
+export async function listAgentSyncs(
+  slug: string,
+  params: ListAgentsParams = {},
+): Promise<Page<AgentSyncOut>> {
   const res = await apiV2.GET('/api/agents/{slug}/syncs/', {
-    params: { path: { slug }, query: { limit: opts.limit ?? 200 } },
+    params: { path: { slug }, query: { limit: params.limit, offset: params.offset } },
   })
-  return unwrap(res, 'listAgentSyncs')
+  return toPage(unwrap(res, 'listAgentSyncs'))
 }
 
-export async function listAgentTurns(slug: string, opts: { limit?: number } = {}): Promise<AgentTurnOut[]> {
+export async function listAgentTurns(
+  slug: string,
+  params: ListAgentsParams = {},
+): Promise<Page<AgentTurnOut>> {
   const res = await apiV2.GET('/api/agents/{slug}/turns/', {
-    params: { path: { slug }, query: { limit: opts.limit ?? 200 } },
+    params: { path: { slug }, query: { limit: params.limit, offset: params.offset } },
   })
-  return unwrap(res, 'listAgentTurns')
+  return toPage(unwrap(res, 'listAgentTurns'))
 }
 
-export async function listAgentWorkProducts(slug: string, opts: { limit?: number } = {}): Promise<AgentWorkProductOut[]> {
+export async function listAgentWorkProducts(
+  slug: string,
+  params: ListAgentsParams = {},
+): Promise<Page<AgentWorkProductOut>> {
   const res = await apiV2.GET('/api/agents/{slug}/work-products/', {
-    params: { path: { slug }, query: { limit: opts.limit ?? 200 } },
+    params: { path: { slug }, query: { limit: params.limit, offset: params.offset } },
   })
-  return unwrap(res, 'listAgentWorkProducts')
+  return toPage(unwrap(res, 'listAgentWorkProducts'))
 }
 
 export async function listAgentSkills(slug: string): Promise<AgentSkillOut[]> {
   const res = await apiV2.GET('/api/agents/{slug}/skills/', { params: { path: { slug } } })
-  return unwrap(res, 'listAgentSkills')
+  return [...unwrap(res, 'listAgentSkills')]
 }
 
+// Plain array, not paginated.
 export async function listAgentTasks(slug: string): Promise<AgentTaskOut[]> {
   const res = await apiV2.GET('/api/agents/{slug}/tasks/', { params: { path: { slug } } })
-  return unwrap(res, 'listAgentTasks')
+  return [...unwrap(res, 'listAgentTasks')]
 }
 
 export async function postTaskCommand(
   slug: string,
   taskId: number,
-  body: { kind: AgentCommandKind; note?: string; assignee?: string },
+  body: Schemas['AgentTaskCommandIn'],
 ): Promise<PostCommandResult> {
   const res = await apiV2.POST('/api/agents/{slug}/tasks/{task_id}/commands', {
     params: { path: { slug, task_id: taskId } },
-    body: body as Schemas['AgentTaskCommandIn'],
+    body,
   })
   return unwrap(res, 'postTaskCommand')
 }
 
 export async function listAgentCommands(slug: string, status?: string): Promise<AgentCommandOut[]> {
   const res = await apiV2.GET('/api/agents/{slug}/commands', {
-    params: { path: { slug }, query: status ? { status } : {} },
+    params: { path: { slug }, query: { status } },
   })
-  return unwrap(res, 'listAgentCommands')
+  return [...unwrap(res, 'listAgentCommands')]
 }
 
 export async function listPendingCommands(slug: string): Promise<AgentCommandOut[]> {
@@ -223,15 +254,19 @@ export async function listPendingCommands(slug: string): Promise<AgentCommandOut
 }
 ```
 
-- [ ] **Step 4: Reconcile against the real generated names**
+- [ ] **Step 4: Let the compiler resolve each endpoint's query params**
 
-The aliases above are written from the server schema class names, but `openapi-typescript` derives its keys from what Ninja emits — a name may differ (e.g. a `Page[AgentOut]` generic may surface as `PagedAgentOut`). Do not guess. Print the actual keys:
+The `query` objects above are written from the current client's behaviour. The generated types are the authority on what each endpoint actually accepts — e.g. `GET /api/agents/` takes `limit` only (`apps/agents/api.py:59`), so passing `offset` there will not typecheck.
+
+Where TS rejects a query param, **delete it** rather than casting around it. A param the client sent that the server never accepted is exactly the drift this migration exists to surface — note each one you find in the commit message.
+
+Compare each signature against the current file before you replace it:
 
 ```bash
-cd frontend && grep -oE '^        (Agent|NeedsYou|Command|Paged)[A-Za-z]*:' src/api/generated.ts | tr -d ' :' | sort -u
+cd frontend && git show HEAD:src/api/agents.ts | grep -nE "^export (async function|interface|type)"
 ```
 
-Fix any alias in Step 3 that doesn't match a printed name. If `Page<T>` has a generated equivalent, alias it instead of hand-declaring it; if not, keep the local interface.
+Every name and return type in your new file must match that list. If one doesn't, you've broken a caller.
 
 - [ ] **Step 5: Typecheck — this is the real test**
 
@@ -1035,23 +1070,38 @@ Declared before the /{slug}/ routes so 'needs-you' isn't read as a slug."
 - Test: `cd frontend && npm run build`
 
 **Interfaces:**
-- Consumes: `listAgents()` → `Page<AgentOut>` and `AgentOut` from `@/api/agents` (Task 1); `apiV2` for runners; `Skeleton`, `WorkbenchSubHeader` from `canopy-ui`.
-- Produces: `<RunnerStatus runners={RunnerOut[]} />`, `<AgentKpiCard agent={AgentOut} waiting={number} />`, and the route `/supervisor`. Task 7 adds `<WaitingOnYou />` to `SupervisorPage`.
+- Consumes: `listAgents()` → `Page<AgentOut>` and `AgentOut` from `@/api/agents` (Task 1); `apiV2` from `@/api/client.v2`; `Skeleton` from `canopy-ui`.
+- Produces: `frontend/src/api/harness.ts` exporting `listRunners(): Promise<RunnerOut[]>` and `RunnerOut` — Task 7 imports both from there, not from `@/api/agents`. Also `<RunnerStatus runners={RunnerOut[]} />`, `<AgentKpiCard agent={AgentOut} waiting={number} />`, and the route `/supervisor`. Task 7 adds `<WaitingOnYou />` to `SupervisorPage`.
 
-- [ ] **Step 1: Add a typed runners client**
+- [ ] **Step 1: Add a typed harness client**
 
-Append to `frontend/src/api/agents.ts` (it is the agent-surface client and runners are part of that surface for this screen):
+`RunnerOut` is a harness type, not an agent one — it goes in its own file rather than into `agents.ts`. Create `frontend/src/api/harness.ts`:
 
 ```ts
-export type RunnerOut = Schemas['RunnerOut']
+// Harness API client — the runner registry and turn lifecycle. Separate from
+// ./agents because a Runner is not an agent: the harness is framework tier and
+// the agent surface is product tier (see ARCHITECTURE.md).
+import { apiV2 } from './client.v2'
+import type { components } from './generated'
+
+export type RunnerOut = components['schemas']['RunnerOut']
+
+function unwrap<T>(res: { data?: T; error?: unknown }, what: string): T {
+  if (res.error !== undefined || res.data === undefined) {
+    throw new Error(`${what} failed: ${JSON.stringify(res.error ?? 'no data')}`)
+  }
+  return res.data
+}
 
 export async function listRunners(): Promise<RunnerOut[]> {
   const res = await apiV2.GET('/api/harness/runners/')
-  return unwrap(res, 'listRunners')
+  return [...unwrap(res, 'listRunners')]
 }
 ```
 
-**Note:** `/api/harness` is deliberately **not** in `WS_SCOPED_API_PREFIXES` — the harness has no `/api/w/{ws}/harness/…` tenant mount, and adding the prefix would rewrite to a 404. The endpoint scopes server-side off `request.user` instead (Task 4).
+The duplicated `unwrap` is deliberate and is the smaller of two evils: the alternative is `agents.ts` importing from `harness.ts` or a shared module existing solely for a 5-line helper. If a third client appears, extract it then — not now.
+
+**Note:** `/api/harness` is deliberately **not** added to `WS_SCOPED_API_PREFIXES` — the harness has no `/api/w/{ws}/harness/…` tenant mount, so the rewrite would produce a 404. It scopes server-side off `request.user` instead (Task 4).
 
 - [ ] **Step 2: Build `RunnerStatus`**
 
@@ -1059,7 +1109,7 @@ Create `frontend/src/components/supervisor/RunnerStatus.tsx`:
 
 ```tsx
 import type { JSX } from 'react'
-import type { RunnerOut } from '@/api/agents'
+import type { RunnerOut } from '@/api/harness'
 
 // Mirrors menubar.py's four derived states (_runner_state, menubar.py:224) so
 // the two surfaces read identically — until Phase 5, when the panel loads this
@@ -1157,7 +1207,8 @@ Create `frontend/src/pages/SupervisorPage.tsx`:
 
 ```tsx
 import { useEffect, useState, type JSX } from 'react'
-import { listAgents, listRunners, type AgentOut, type RunnerOut } from '@/api/agents'
+import { listAgents, type AgentOut } from '@/api/agents'
+import { listRunners, type RunnerOut } from '@/api/harness'
 import { RunnerStatus } from '@/components/supervisor/RunnerStatus'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
 import { Skeleton } from 'canopy-ui'
@@ -1267,7 +1318,7 @@ Open `http://localhost:3000/supervisor`. Expect the header, a runner band, and a
 - [ ] **Step 8: Commit**
 
 ```bash
-git add frontend/src/pages/SupervisorPage.tsx frontend/src/components/supervisor/ frontend/src/router.tsx frontend/src/api/agents.ts
+git add frontend/src/pages/SupervisorPage.tsx frontend/src/components/supervisor/ frontend/src/router.tsx frontend/src/api/harness.ts
 git commit -m "feat(frontend): the /supervisor route — runners + agent KPIs
 
 The one supervisor surface. Three consumers will load this same route: the
@@ -1412,7 +1463,8 @@ Fix any mismatch in Step 2.
 In `frontend/src/pages/SupervisorPage.tsx`, extend the imports:
 
 ```tsx
-import { listAgents, listRunners, getFleetNeedsYou, type AgentOut, type RunnerOut, type FleetNeedsYouOut } from '@/api/agents'
+import { listAgents, getFleetNeedsYou, type AgentOut, type FleetNeedsYouOut } from '@/api/agents'
+import { listRunners, type RunnerOut } from '@/api/harness'
 import { WaitingOnYou } from '@/components/supervisor/WaitingOnYou'
 ```
 
@@ -1616,7 +1668,8 @@ CI before that, not after."
 - [ ] A non-member PAT gets **404** (never 403) from every `/api/harness` endpoint.
 - [ ] A PAT whose user is not `runner.paired_by` cannot heartbeat, claim, or read that runner.
 - [ ] Agents with `workspace=None` still work end to end (the migration-safety path).
-- [ ] `frontend/src/api/agents.ts` declares **no** response interfaces of its own — all types alias `components['schemas']`.
+- [ ] `frontend/src/api/agents.ts` declares **no response entity shapes** of its own — every one aliases `components['schemas']`. `Page<T>` and `ListAgentsParams` remain hand-declared and that is correct: openapi-typescript emits concrete `Page_AgentOut_`-style aliases rather than a generic, and `ListAgentsParams` is a request shape.
+- [ ] Every exported name and return type in `agents.ts` is unchanged from before the migration (`git show HEAD:src/api/agents.ts | grep -E "^export"`), so no caller needed editing.
 - [ ] `/supervisor` renders at 412px with no page-level horizontal scroll.
 - [ ] Agent-card waiting counts match each agent's own rail badge.
 
