@@ -4,6 +4,7 @@ import { listRunners, type RunnerOut } from '@/api/harness'
 import { RunnerStatus } from '@/components/supervisor/RunnerStatus'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
 import { WaitingOnYou } from '@/components/supervisor/WaitingOnYou'
+import { InstallPrompt } from '@/pwa/InstallPrompt'
 import { Skeleton } from 'canopy-ui'
 
 function BandError({ message }: { message: string }): JSX.Element {
@@ -52,6 +53,8 @@ export default function SupervisorPage(): JSX.Element {
         <h1 className="text-lg font-semibold text-foreground">Supervisor</h1>
         <p className="mt-0.5 text-[12px] text-muted-foreground">Your fleet, and what it needs from you.</p>
       </header>
+
+      <InstallPrompt />
 
       <section>
         <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
