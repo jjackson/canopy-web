@@ -193,6 +193,8 @@ Settings:
 
 Reviews are tokenless. `visibility=link` reviews are readable by anyone with the URL — the auth middleware lets anonymous holders through the `/review/:id` shell + the per-review read API (which self-enforce). **Submitting** a decision always requires a Dimagi login (public-readable never grants anonymous write).
 
+**Run-child gates belong to no narrative.** `RUN_CHILD_GATES` (`apps/common/ddd.py` — `product_findings` today) hang off the *run*, not the narrative timeline: `create_review` stores `narrative_slug=None` + `version=0`, the serializers never re-derive a slug from the run_id for them, and `/review/:id` renders them **standalone** (no DDD rail). In `apps/runs/aggregate.py` they may **attach** to a narrative that already exists but never **create** one — because the gate can't discriminate: a DDD findings review and Ada's fleet audit both use `product_findings`, but only the former is a child of a real run. Without that rule, parsing a slug out of any run_id conjured a phantom narrative into the DDD rail (active, empty, unnavigable). Note `_NON_NARRATIVE_GATES` (aggregate) is a *superset* — `external_release` isn't a narrative *version* but does belong to a narrative, so it may create one.
+
 ### DDD runs (`apps/runs`, mounted at `/api/ddd`)
 - `GET /api/ddd/narratives/` — List DDD narratives
 - `GET /api/ddd/narratives/{slug}/` — Get a narrative + its runs (grouped by version)

@@ -251,3 +251,47 @@ def test_product_findings_review_is_not_a_narrative_version():
     run = aggregate.build_run(rid)
     # Title/current_version come from the real narrative, not the findings cluster text.
     assert run["narrative"]["title"] == "Amani opens the weekly nutrition review."
+
+
+# ---------------------------------------------------------------------------
+# Run-child reviews attach to a narrative; they never conjure one
+# ---------------------------------------------------------------------------
+
+
+def test_run_child_review_alone_creates_no_narrative():
+    """A product_findings review whose run_id has no DDD run behind it must not
+    invent a narrative. Ada's fleet audit posts one of these with a run_id that
+    is not a DDD run id at all ("ada-fleet-audit-2026-07-14"); parsing that slug
+    out of the run_id conjured a phantom narrative into the DDD rail, active but
+    empty ("No versions yet") and impossible to navigate."""
+    u = make_user()
+    make_review(
+        u,
+        run_id="ada-fleet-audit-2026-07-14",
+        gate="product_findings",
+        request_json={
+            "run_id": "ada-fleet-audit-2026-07-14",
+            "gate": "product_findings",
+            "clusters": [{"id": "hal-inbox", "title": "discard 81 junk emails"}],
+        },
+    )
+
+    assert aggregate.list_narratives() == []
+
+
+def test_run_child_review_attaches_to_an_existing_narrative():
+    """The counterpart: a DDD findings review IS a child of a real DDD run, so it
+    must keep attaching to that run's narrative. Only *creating* is forbidden."""
+    u = make_user()
+    rid = "microplans-2026-06-02-001"
+    make_walkthrough(u, kind="video", run_id=rid, narrative_slug="microplans")
+    make_review(
+        u,
+        run_id=rid,
+        gate="product_findings",
+        request_json={"run_id": rid, "gate": "product_findings", "clusters": []},
+    )
+
+    narratives = {n["slug"]: n for n in aggregate.list_narratives()}
+    assert set(narratives) == {"microplans"}
+    assert narratives["microplans"]["run_count"] == 1

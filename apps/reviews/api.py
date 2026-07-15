@@ -28,7 +28,11 @@ from ninja import Router, Status
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, ProblemError
 from apps.common.csrf import csrf_rejected
-from apps.common.ddd import narrative_slug_from_run_id
+from apps.common.ddd import (
+    RUN_CHILD_GATES,
+    is_run_child_gate,
+    narrative_slug_from_run_id,
+)
 from apps.workspaces import services as wsvc
 
 from .models import ReviewRequest
@@ -44,15 +48,22 @@ log = logging.getLogger(__name__)
 
 router = Router(auth=session_auth, tags=["reviews"])
 
-# Gates whose reviews hang off the RUN, not the narrative timeline. These never get a
-# narrative_slug or a monotonic narrative version (see create_review) — so they don't
-# pollute the version numbering or show up as narrative-version rows in the DDD shell.
-RUN_CHILD_GATES = ("product_findings",)
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _narrative_slug_of(review: ReviewRequest) -> str | None:
+    """The narrative this review belongs to, or None for a run-child gate.
+
+    The stored column wins. Deriving from the run_id is a fallback for legacy
+    narrative-gate rows written before the column existed — and it is NEVER applied
+    to a run-child gate, whose NULL is a deliberate assertion by create_review that
+    the review belongs to no narrative. Re-deriving there overrode that decision and
+    conjured a phantom narrative into the DDD rail."""
+    if is_run_child_gate(review.gate):
+        return None
+    return (review.narrative_slug or "").strip() or narrative_slug_from_run_id(review.run_id)
 
 
 def _get_or_404(rid: UUID) -> ReviewRequest:
@@ -91,8 +102,7 @@ def _detail_payload(review: ReviewRequest, *, is_owner: bool) -> dict:
         "gate": review.gate,
         "status": review.status,
         "visibility": review.visibility,
-        "narrative_slug": (getattr(review, "narrative_slug", None) or "").strip()
-        or narrative_slug_from_run_id(review.run_id),
+        "narrative_slug": _narrative_slug_of(review),
         "request_json": review.request_json,
         "response_json": review.response_json,
         "is_owner": is_owner,
@@ -136,7 +146,7 @@ def _list_item_payload(request: HttpRequest, review: ReviewRequest) -> dict:
         "gate": review.gate,
         "status": review.status,
         "visibility": review.visibility,
-        "narrative_slug": narrative_slug_from_run_id(review.run_id),
+        "narrative_slug": _narrative_slug_of(review),
         "title": _list_title(rj),
         "scene_count": item_count,
         "created_at": review.created_at,
@@ -195,7 +205,7 @@ def list_reviews(
         items = [
             it
             for it in items
-            if needle in it["narrative_slug"].lower()
+            if needle in (it["narrative_slug"] or "").lower()
             or needle in it["run_id"].lower()
             or needle in it["gate"].lower()
             or needle in (it["title"] or "").lower()
@@ -206,7 +216,9 @@ def list_reviews(
         "last_activity": (lambda it: it["last_activity_at"], False),
         "-created": (lambda it: it["created_at"], True),
         "created": (lambda it: it["created_at"], False),
-        "narrative_slug": (lambda it: it["narrative_slug"].lower(), False),
+        # Run-child reviews have no slug; sort them together at the end rather than
+        # crashing the whole list on a None.
+        "narrative_slug": (lambda it: ((it["narrative_slug"] or "~").lower()), False),
     }
     key_fn, reverse = sort_keys.get(order, sort_keys["-last_activity"])
     items.sort(key=key_fn, reverse=reverse)

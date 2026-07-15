@@ -511,3 +511,78 @@ def test_product_findings_does_not_bump_narrative_version(auth_client):
     )
     v2 = ReviewRequest.objects.get(id=second.json()["id"]).version
     assert (v1, v2) == (1, 2)
+
+
+# ---------------------------------------------------------------------------
+# Run-child gates carry no narrative_slug
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_run_child_review_reports_no_narrative_slug(auth_client, owner):
+    """create_review deliberately stores narrative_slug=NULL for a run-child gate,
+    but both serializers re-derived one from the run_id — handing the frontend a
+    slug the model had explicitly refused. That derived slug is what lit up a
+    phantom narrative in the DDD rail."""
+    review = _make_review(
+        owner,
+        run_id="ada-fleet-audit-2026-07-14",
+        gate="product_findings",
+        narrative_slug=None,
+        request_json={"run_id": "ada-fleet-audit-2026-07-14", "gate": "product_findings"},
+    )
+
+    detail = auth_client.get(f"{BASE}/{review.id}/").json()
+    assert detail["narrative_slug"] is None
+
+    listed = auth_client.get(f"{BASE}/").json()
+    row = next(r for r in listed if r["id"] == str(review.id))
+    assert row["narrative_slug"] is None
+
+
+@pytest.mark.django_db
+def test_narrative_gate_still_reports_its_slug(auth_client, owner):
+    """The counterpart: a narrative-gate review keeps its slug. Legacy rows stored
+    before the column existed have it derived from the run_id, as before."""
+    stored = _make_review(
+        owner,
+        run_id="microplans-2026-06-02-001",
+        gate="concept_change",
+        narrative_slug="microplans",
+    )
+    legacy = _make_review(
+        owner,
+        run_id="microplans-2026-06-02-002",
+        gate="concept_change",
+        narrative_slug=None,
+    )
+
+    assert auth_client.get(f"{BASE}/{stored.id}/").json()["narrative_slug"] == "microplans"
+    assert auth_client.get(f"{BASE}/{legacy.id}/").json()["narrative_slug"] == "microplans"
+
+
+@pytest.mark.django_db
+def test_list_filter_and_sort_survive_a_null_narrative_slug(auth_client, owner):
+    """?q= and ?order=narrative_slug both called .lower() on the slug bare, so a
+    NULL one 500s the whole list rather than just excluding that row."""
+    _make_review(
+        owner,
+        run_id="ada-fleet-audit-2026-07-14",
+        gate="product_findings",
+        narrative_slug=None,
+    )
+    _make_review(
+        owner,
+        run_id="microplans-2026-06-02-001",
+        gate="concept_change",
+        narrative_slug="microplans",
+    )
+
+    assert auth_client.get(f"{BASE}/?order=narrative_slug").status_code == 200
+
+    hits = auth_client.get(f"{BASE}/?q=microplans").json()
+    assert [r["narrative_slug"] for r in hits] == ["microplans"]
+
+    # A run-child review has no slug to match on, but is still findable by run_id.
+    hits = auth_client.get(f"{BASE}/?q=fleet-audit").json()
+    assert [r["run_id"] for r in hits] == ["ada-fleet-audit-2026-07-14"]

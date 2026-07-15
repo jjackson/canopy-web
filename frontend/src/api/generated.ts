@@ -2697,7 +2697,7 @@ export interface components {
              */
             readonly visibility: "private" | "link";
             /** Narrative Slug */
-            readonly narrative_slug: string;
+            readonly narrative_slug?: string | null;
             /** Title */
             readonly title?: string | null;
             /**
@@ -2762,7 +2762,7 @@ export interface components {
             /** Run Id */
             readonly run_id: string;
             /** Narrative Slug */
-            readonly narrative_slug: string;
+            readonly narrative_slug?: string | null;
             /** Gate */
             readonly gate: string;
             /**

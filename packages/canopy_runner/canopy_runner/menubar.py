@@ -20,7 +20,6 @@ from __future__ import annotations
 import datetime as dt
 import html
 import json
-import math
 import os
 import re
 import subprocess
@@ -53,6 +52,8 @@ from AppKit import (
 from Foundation import NSObject, NSTimer
 from WebKit import WKWebView, WKWebViewConfiguration, WKUserContentController
 
+from canopy_runner.tree import ICON_INSET, ink_bounds, tree_segments
+
 # ── config discovery (shared source of truth with the daemon) ───────────────────
 CONFIG = Path(os.environ.get("CANOPY_RUNNER_CONFIG", "~/.canopy/runner.json")).expanduser()
 LOG = Path(os.environ.get("CANOPY_RUNNER_LOG", str(CONFIG.with_name("runner.log")))).expanduser()
@@ -74,38 +75,6 @@ STATUS_RGB = {
 }
 
 
-# The tree as line segments: (start, end, stroke width). Drawn in arbitrary units —
-# _tree_image measures the result and scales it to fill the icon, so these numbers
-# only set the SHAPE. Tune angles/lengths freely; the fit is recomputed.
-TRUNK_TOP = (9.0, 6.2)
-LIMBS = ((36, 5.4), (72, 5.0), (108, 5.0), (144, 5.4))  # (degrees, length) — 4 limbs
-FORKS = (-26, 26)  # each limb splits once, at +/- this many degrees
-ICON_INSET = 0.03  # breathing room as a fraction of the icon, so it scales with px
-
-
-def _tree_segments() -> list[tuple[tuple[float, float], tuple[float, float], float]]:
-    """The bare-branch tree: heavy trunk, four limbs, each forking once. Widths taper
-    2.2 -> 1.5 -> 1.0 — that ladder is what keeps the limbs legible at 18px (finer,
-    more numerous branching mushes into a blob at menu-bar size)."""
-    segs = [((9.0, 1.3), TRUNK_TOP, 2.2)]
-    for angle, length in LIMBS:
-        tip = (TRUNK_TOP[0] + math.cos(math.radians(angle)) * length,
-               TRUNK_TOP[1] + math.sin(math.radians(angle)) * length)
-        segs.append((TRUNK_TOP, tip, 1.5))
-        for fork in FORKS:
-            fa = math.radians(angle + fork)
-            segs.append((tip, (tip[0] + math.cos(fa) * 2.6, tip[1] + math.sin(fa) * 2.6), 1.0))
-    return segs
-
-
-def _ink_bounds(segs) -> tuple[float, float, float, float]:
-    """Bounding box of the stroked segments — round caps mean each end bulges out by
-    half the line width, so the geometric bounds alone would undercount."""
-    xs = [p[0] + s * w / 2 for a, b, w in segs for p in (a, b) for s in (-1, 1)]
-    ys = [p[1] + s * w / 2 for a, b, w in segs for p in (a, b) for s in (-1, 1)]
-    return min(xs), min(ys), max(xs), max(ys)
-
-
 def _tree_image(state: str, px: int = 18):
     """A spreading bare-branch tree, scaled to fill `px` and tinted by runner status.
 
@@ -113,8 +82,8 @@ def _tree_image(state: str, px: int = 18):
     the tree is centered and fills the icon box no matter how the shape is tuned.
     Drawn as a vector so it stays crisp on retina."""
     r, g, b = STATUS_RGB.get(state, STATUS_RGB["stopped"])
-    segs = _tree_segments()
-    x0, y0, x1, y1 = _ink_bounds(segs)
+    segs = tree_segments()
+    x0, y0, x1, y1 = ink_bounds(segs)
     span = max(x1 - x0, y1 - y0)  # fit the larger axis; uniform scale keeps proportions
     scale = px * (1 - 2 * ICON_INSET) / span
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
