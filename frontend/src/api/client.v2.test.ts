@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { rewriteForWorkspace } from './client.v2'
 
 // Regression test for the workspace-rewrite middleware eating request bodies.
@@ -43,7 +43,7 @@ describe('rewriteForWorkspace', () => {
     expect(rewritten.body).toBeNull()
   })
 
-  it('leaves an unmatched URL under the same origin (identity check via manual prefix use)', async () => {
+  it('rewrites a nested matched path without an off-by-one in the prefix slice', async () => {
     // rewriteForWorkspace itself doesn't prefix-match (that's done by the
     // caller in onRequest); this test just documents the pure rewrite math
     // for a nested path, guarding against an off-by-one in the slice().
@@ -66,19 +66,25 @@ describe('rewriteForWorkspace', () => {
   // would NOT fail if this function regressed back to that exact line — only
   // Playwright (real Chromium) reproduces the browser-only "Failed to fetch"
   // network-layer failure. This white-box check closes that gap for CI: it
-  // pins down *how* the body must be obtained (read eagerly via a buffering
-  // method) rather than only *what* the end state looks like, so reverting to
-  // handing the constructor a live stream fails here even though it wouldn't
-  // fail on body-content alone.
+  // asserts on `original.bodyUsed`, which flips false -> true the moment the
+  // body is read via ANY buffering method (arrayBuffer/text/json/blob) — so
+  // it discriminates against the bug (which leaves it false, handing the
+  // constructor a live, unread stream) without pinning which specific method
+  // the implementation uses to do the reading. Caveat: a `.clone()`-based fix
+  // wouldn't touch `original.bodyUsed` at all (the clone's body is read
+  // instead), so this assertion — like the ones above — would not catch a
+  // regression to that pattern either. It only guards the "hand the
+  // constructor a live stream" failure mode this test exists for.
   it('reads the source body eagerly instead of handing the constructor a live stream', async () => {
     const original = new Request('http://localhost/api/agents/echo/tasks/1/commands', {
       method: 'POST',
       body: JSON.stringify({ ok: true }),
     })
-    const arrayBufferSpy = vi.spyOn(original, 'arrayBuffer')
+
+    expect(original.bodyUsed).toBe(false)
 
     await rewriteForWorkspace(original, 'acme')
 
-    expect(arrayBufferSpy).toHaveBeenCalled()
+    expect(original.bodyUsed).toBe(true)
   })
 })
