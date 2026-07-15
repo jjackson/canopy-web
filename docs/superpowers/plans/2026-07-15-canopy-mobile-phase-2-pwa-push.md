@@ -801,6 +801,38 @@ def test_two_agents_in_one_transaction_push_once_each(agent, workspace, user, su
     assert send.call_count == 2
 
 
+def test_an_open_run_gate_pushes(agent, sub):
+    """Gates reach the agent through TWO hops — gate.step.run.agent_id. An earlier
+    draft of this plan used gate.run (which does not exist) behind a getattr
+    guard: mark_dirty would never fire, NO gate would ever push, and every
+    task-only test above would still pass. This is the test that catches that.
+
+    A gate with no decision recorded is open (services._run_inbox_items reads
+    gate.is_open), and an open gate is a 'review' item — so waiting_count rises.
+    """
+    from apps.agent_runs.models import AgentRun, AgentRunGate, AgentRunStep
+
+    run = AgentRun.objects.create(agent=agent)
+    step = AgentRunStep.objects.create(run=run, key="build")
+    with patch("apps.push.services._send_one") as send:
+        AgentRunGate.objects.create(step=step)  # no decision == awaiting a human
+    assert send.call_count == 1
+    assert AgentWaitingSnapshot.objects.get(agent=agent).waiting_count == 1
+
+
+def test_deciding_a_gate_does_not_push(agent, sub):
+    """Closing a gate lowers the count. Silence, same as clearing a task."""
+    from apps.agent_runs.models import AgentRun, AgentRunGate, AgentRunStep
+
+    run = AgentRun.objects.create(agent=agent)
+    step = AgentRunStep.objects.create(run=run, key="build")
+    gate = AgentRunGate.objects.create(step=step)
+    with patch("apps.push.services._send_one") as send:
+        gate.decision = "approved"
+        gate.save()
+    assert send.call_count == 0
+
+
 def test_a_user_with_no_subscription_gets_nothing(agent):
     with patch("apps.push.services._send_one") as send:
         _task(agent, "t1")
@@ -1023,24 +1055,50 @@ from .services import mark_dirty
 
 @receiver([post_save, post_delete], sender=AgentTask)
 def _task_changed(sender, instance: AgentTask, **kwargs) -> None:
-    mark_dirty(instance.agent_id)
+    mark_dirty(instance.agent_id)  # the FK shadow attribute — no query
 
 
 @receiver([post_save, post_delete], sender=AgentRunGate)
 def _gate_changed(sender, instance: AgentRunGate, **kwargs) -> None:
-    agent_id = getattr(getattr(instance, "run", None), "agent_id", None)
-    if agent_id:
-        mark_dirty(agent_id)
+    # TWO hops. A gate hangs off a STEP, not a run:
+    #   AgentRunGate.step -> AgentRunStep.run -> AgentRun.agent
+    # There is no `gate.run`. (Verified against apps/agent_runs/models.py:165.)
+    try:
+        mark_dirty(instance.step.run.agent_id)
+    except ObjectDoesNotExist:
+        # Cascade delete: the step/run is already gone. The count can only be
+        # dropping, and we never push on a drop — nothing to do.
+        logger.debug("push: gate %s has no reachable run; skipping", instance.pk)
 
 
 @receiver([post_save, post_delete], sender=AgentRunStep)
 def _step_changed(sender, instance: AgentRunStep, **kwargs) -> None:
-    agent_id = getattr(getattr(instance, "run", None), "agent_id", None)
-    if agent_id:
-        mark_dirty(agent_id)
+    try:
+        mark_dirty(instance.run.agent_id)
+    except ObjectDoesNotExist:
+        logger.debug("push: step %s has no reachable run; skipping", instance.pk)
 ```
 
-Before running: read `apps/agent_runs/models.py` and confirm `AgentRunGate` and `AgentRunStep` actually reach an agent via `.run.agent_id`. If the relation is named differently, use the real one — do not leave the `getattr` guard hiding a wrong attribute name.
+Add to that file's imports:
+
+```python
+import logging
+
+from django.core.exceptions import ObjectDoesNotExist
+
+logger = logging.getLogger(__name__)
+```
+
+**The narrow `except` is deliberate — hold it there.** An earlier draft of this plan used `getattr(getattr(instance, "run", None), "agent_id", None)`, which is wrong *and* silent: `AgentRunGate` has no `.run`, so it would resolve to `None`, `mark_dirty` would never fire, **no gate would ever push**, and every test would still pass. Catching only `ObjectDoesNotExist` means a wrong attribute name raises `AttributeError` loudly instead of disappearing. Do not widen it to `except Exception`.
+
+**Verify the relations rather than trusting this text** — this plan has already been wrong about a field once:
+
+```bash
+grep -n "class AgentRunGate" -A 6 apps/agent_runs/models.py | grep "models.ForeignKey"
+grep -n "class AgentRunStep" -A 6 apps/agent_runs/models.py | grep "models.ForeignKey"
+```
+
+Expected: the gate's FK points at `AgentRunStep`; the step's at `AgentRun`. If either differs, use what is actually there and say so in your report.
 
 - [ ] **Step 6: Migration**
 
@@ -1056,7 +1114,7 @@ Expected: `0002_agentwaitingsnapshot.py`, one `CreateModel`.
 uv run pytest tests/test_push_trigger.py -v
 ```
 
-Expected: PASS (8 tests). If `test_a_bulk_sync_pushes_once_per_agent_not_once_per_row` fails with `call_count == 10`, the dirty-set isn't coalescing — `mark_dirty` is registering `on_commit` per call instead of once.
+Expected: PASS (10 tests). If `test_a_bulk_sync_pushes_once_per_agent_not_once_per_row` fails with `call_count == 10`, the dirty-set isn't coalescing — `mark_dirty` is registering `on_commit` per call instead of once.
 
 - [ ] **Step 8: The whole suite — this app now has signals on hot models**
 
