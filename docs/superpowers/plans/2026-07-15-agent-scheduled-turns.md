@@ -893,6 +893,12 @@ class ScheduleOut(Schema):
     grace_minutes: int
     notify: list[str]
     last_slot: dt.datetime | None = None
+    # The anchor the runner MUST pass as due_slot(after=...). Server-computed as
+    # `last_slot or created_at` so the runner cannot get the fallback wrong.
+    # Without it a fresh schedule (last_slot=None) fires once for the slot BEFORE
+    # it existed — a schedule created Wednesday would immediately owe last
+    # Friday's report. See the runner-side section.
+    fire_after: dt.datetime
     next_runs: list[dt.datetime] = []
     last_status: str = ""
     created_at: dt.datetime
@@ -943,6 +949,8 @@ Create `tests/test_schedule_api.py`:
 ```python
 """API tests for /api/agents/{slug}/schedules — human CRUD + run-now."""
 from __future__ import annotations
+
+import datetime as dt
 
 import pytest
 from django.contrib.auth.models import User
@@ -1024,6 +1032,33 @@ def test_run_now_enqueues_a_manual_turn(client, agent):
 
 def test_unknown_agent_404s(client):
     assert client.get("/api/agents/nope/schedules/").status_code == 404
+
+
+def test_fire_after_defaults_to_created_at_not_null(client, agent):
+    """A fresh schedule must never fire for a slot that predates it.
+
+    last_slot is NULL until the first fire, and due_slot(after=None) looks
+    backward with no lower bound — so a schedule created Wednesday would
+    immediately owe LAST Friday's report. fire_after is the server-computed
+    anchor that closes that hole; the runner passes it straight to due_slot.
+    """
+    body = _create(client).json()
+    schedule = AgentSchedule.objects.get(pk=body["id"])
+
+    assert body["last_slot"] is None
+    assert body["fire_after"] == schedule.created_at.isoformat().replace("+00:00", "Z")
+
+
+def test_fire_after_tracks_last_slot_once_fired(client, agent):
+    from apps.harness import services
+
+    schedule = AgentSchedule.objects.get(pk=_create(client).json()["id"])
+    slot = dt.datetime(2026, 7, 17, 13, tzinfo=dt.UTC)
+    services.fire_schedule(schedule, slot)
+
+    body = client.get("/api/agents/echo/schedules/").json()["items"][0]
+
+    assert body["fire_after"] == slot.isoformat().replace("+00:00", "Z")
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1077,6 +1112,9 @@ def _serialize(schedule: AgentSchedule) -> ScheduleOut:
         grace_minutes=schedule.grace_minutes,
         notify=schedule.notify,
         last_slot=schedule.last_slot,
+        # last_slot is NULL until the first fire. Falling back to created_at is
+        # what stops a fresh schedule from firing for a slot that predates it.
+        fire_after=schedule.last_slot or schedule.created_at,
         next_runs=next_slots(schedule.cron, schedule.timezone, now=timezone.now(), count=3),
         last_status=latest.status if latest else "",
         created_at=schedule.created_at,
@@ -2460,7 +2498,12 @@ Not in this plan, by design: per-schedule escalation policy, catch-up/backfill, 
 This plan ships the **server + UI**, which is independently useful: schedules are creatable, editable, and **Run now** works end to end. The `canopy-runner` sync/evaluate/fire loop lives in a different repo (`packages/canopy_runner`) and gets its own plan against the API frozen here:
 
 1. On each poll, `GET /api/harness/schedules/?runner_id=…`, cache locally.
-2. For each schedule, `due_slot(cron, tz, after=last_slot, now=now())`.
+2. For each schedule, `due_slot(cron, tz, after=fire_after, now=now())` — pass
+   the server's **`fire_after`**, never `last_slot`. `last_slot` is NULL until
+   the first fire, and `due_slot(after=None)` looks backward with no lower
+   bound, so a schedule created Wednesday would immediately fire for the
+   previous Friday. The server computes `fire_after = last_slot or created_at`
+   precisely so the runner cannot get this wrong.
 3. If a slot is due, `POST /api/harness/schedules/{id}/fire?runner_id=…`.
 
 Until that lands, schedules fire only via **Run now** — which is exactly the "try it then iterate" starting point, and it exercises every server path except the cron evaluation (which Task 3 covers directly).
