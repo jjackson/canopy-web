@@ -164,9 +164,13 @@ def test_orphaned_runner_fails_closed(attacker_client, attacker_ws, victim_sched
     assert resp.status_code == 404
 
 
-def test_sync_limit_zero_422s(victim_ws, victim_schedule, victim_runner):
-    """?limit=0 must 422 at the boundary, not 500 inside the response model
-    (Page.limit is Field(ge=1)).
+def test_sync_limit_zero_does_not_500(victim_ws, victim_schedule, victim_runner):
+    """?limit=0 does NOT 422 — the route clamps via max(1, min(limit, 500))
+    before it ever reaches Page (whose `limit` is Field(ge=1, le=500)), so an
+    out-of-range limit is silently floored to a valid one instead of crashing
+    inside the response model. This pins that clamp: 200, with the clamped
+    limit reflected in the page and exactly one item returned (the one
+    schedule the fixtures set up).
     """
     user = User.objects.get(username="jj")
     client = Client()
@@ -174,7 +178,11 @@ def test_sync_limit_zero_422s(victim_ws, victim_schedule, victim_runner):
 
     resp = client.get(f"/api/harness/schedules/?runner_id={victim_runner}&limit=0")
 
-    assert resp.status_code != 500, resp.content
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["limit"] == 1  # max(1, min(0, 500)) == 1
+    assert len(body["items"]) == 1
+    assert body["total"] == 1
 
 
 def test_same_tenant_runner_syncs_and_fires(victim_ws, victim_schedule):

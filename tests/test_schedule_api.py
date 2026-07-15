@@ -52,6 +52,25 @@ def test_create_and_list(client, agent):
     assert listing.json()["total"] == 1
 
 
+def test_list_limit_zero_does_not_500(client, agent):
+    """?limit=0 does NOT 422 — list_schedules clamps via
+    max(1, min(limit, 500)) before the value ever reaches Page (whose `limit`
+    is Field(ge=1, le=500)), so an out-of-range limit is floored to a valid
+    one instead of crashing inside the response model. Pins the clamp: 200,
+    with the clamped limit reflected in the page and exactly one item
+    returned (the one schedule created below).
+    """
+    _create(client)
+
+    resp = client.get("/api/agents/echo/schedules/?limit=0")
+
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["limit"] == 1  # max(1, min(0, 500)) == 1
+    assert len(body["items"]) == 1
+    assert body["total"] == 1
+
+
 def test_bad_cron_is_422_problem_json(client, agent):
     resp = _create(client, cron="every friday please")
     assert resp.status_code == 422
