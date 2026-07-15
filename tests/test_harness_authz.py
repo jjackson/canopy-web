@@ -98,6 +98,7 @@ def test_stranger_cannot_heartbeat_someone_elses_runner(owner_client, stranger_c
         content_type="application/json",
     )
     assert resp.status_code == 404
+    assert Runner.objects.get(pk=rid).last_heartbeat_at is None  # untouched
 
 
 def test_stranger_cannot_claim_as_someone_elses_runner(owner_client, stranger_client, agent):
@@ -107,7 +108,45 @@ def test_stranger_cannot_claim_as_someone_elses_runner(owner_client, stranger_cl
         content_type="application/json",
     ).json()["id"]
     _enqueue(owner_client)
+    # Heartbeat the runner online FIRST — otherwise claim_next_turn bails on line 1
+    # (status != ONLINE) before ever reaching the tenant/ownership check below, and
+    # the 404 this test asserts would prove nothing about the claim path itself.
+    owner_client.post(
+        f"/api/harness/runners/{rid}/heartbeat",
+        {"active_turn_ids": [], "degraded": False, "note": ""},
+        content_type="application/json",
+    )
     assert stranger_client.post(f"/api/harness/runners/{rid}/claim").status_code == 404
+
+
+def test_stranger_cannot_claim_victim_turn_via_own_untenanted_runner(
+    owner_client, stranger_client, agent
+):
+    """The actual exploit (Critical): capabilities is caller-supplied and never
+    validated at pairing. A stranger pairs their OWN runner (so _runner_or_404
+    admits them forever — they own it), declares capabilities={"agents": ["echo"]}
+    even though 'echo' belongs to the owner's workspace, heartbeats it online (the
+    only precondition claim_next_turn enforces), then claims. This must return 204
+    (no work for them) and must NOT mutate the victim's turn — non-mutation is the
+    point: a claim that both leaks the prompt/origin_ref AND flips the turn to
+    CLAIMED is a repeatable denial of service against the victim's real runner."""
+    turn_id = _enqueue(owner_client).json()["id"]
+    rid = stranger_client.post(
+        "/api/harness/runners/",
+        {"name": "attacker-mbp", "kind": "emdash", "capabilities": {"agents": ["echo"]}},
+        content_type="application/json",
+    ).json()["id"]
+    hb = stranger_client.post(
+        f"/api/harness/runners/{rid}/heartbeat",
+        {"active_turn_ids": [], "degraded": False, "note": ""},
+        content_type="application/json",
+    )
+    assert hb.status_code == 200  # sanity: this is the stranger's own runner
+    resp = stranger_client.post(f"/api/harness/runners/{rid}/claim")
+    assert resp.status_code == 204  # no work for them — capabilities is not the gate
+    victim_turn = Turn.objects.get(pk=turn_id)
+    assert victim_turn.status == Turn.QUEUED
+    assert victim_turn.claimed_by is None
 
 
 def test_list_turns_only_shows_my_tenants_turns(owner_client, stranger_client, agent):

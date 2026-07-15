@@ -75,6 +75,9 @@ def _runner_or_404(request: HttpRequest, runner_id: uuid.UUID) -> Runner:
     if runner is None:
         raise HttpError(404, "runner not found")
     wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    if ws and runner.workspace_id != ws:
+        raise HttpError(404, "runner not found")  # wrong tenant
     if runner.workspace_id and not wsvc.is_member(request.user, runner.workspace_id):
         raise HttpError(404, "runner not found")
     if runner.paired_by_id and runner.paired_by_id != request.user.id:
