@@ -56,13 +56,17 @@ agent — while the nag survives on the schedule.
 ## Model
 
 One new table, `AgentSchedule`, in `apps/harness` (framework tier — it references
-`agents.Agent` and `workspaces.Workspace`, never product apps).
+`agents.Agent`, never product apps).
+
+**No `workspace` FK.** A schedule is agent-owned, so it derives its tenant via
+`agent.workspace`, exactly as `Turn` does. Commit 43f61ae states the rule: *"A
+Turn derives its tenant via agent.workspace (no FK of its own)."* `Runner` needs
+its own FK only because it is not agent-owned.
 
 | Field | Type | Purpose |
 |---|---|---|
 | `id` | UUID pk | |
-| `agent` | FK `agents.Agent` | owner |
-| `workspace` | FK `workspaces.Workspace` | tenant |
+| `agent` | FK `agents.Agent` | owner — **and the tenant, derived** |
 | `name` | char(200) | "Weekly manager report" |
 | `prompt` | text | what the turn is seeded with, e.g. `/echo:manager-report` |
 | `cron` | char(120) | 5-field cron expression |
@@ -110,14 +114,47 @@ The runner already polls `claim` continuously; it gains a schedule cache.
 
 The scheduler is a *producer of turns*, not a second execution engine.
 
-### Why two runners racing is safe
+### Tenant scoping is mandatory on both runner-facing routes
 
-Jonathan fails over between two macOS accounts (he switches accounts on token exhaustion), so both
-runners may evaluate the same schedule and fire the same slot. Both produce an
-identical `idempotency_key`, and `enqueue_turn()` already treats that exact
-collision as a replay and returns the existing turn (it handles both the
-pre-check and the `IntegrityError` race). The invariant does the coordinating —
-no leader election, no locking.
+`GET /api/harness/schedules/` and `POST /…/fire` **must** apply the runner's
+tenant predicate — the same Q-based filter `claim_next_turn` and `list_turns`
+use — and must **not** scope by `runner.agent_slugs()`.
+
+This is not a hypothetical. Commit b4f5ead (`fix(harness): scope claim_next_turn
+to the runner's tenant (Critical)`) records that `capabilities` is caller-supplied
+at pairing and never validated: any authenticated user could pair a runner
+declaring `capabilities={"agents": ["<victim-slug>"]}`, heartbeat it online, and
+claim another tenant's turns. `capabilities` is a **routing hint**; the workspace
+is the **security boundary**; the two intersect, never substitute.
+
+A schedule-sync route scoped by capabilities would reopen exactly that hole, and
+would leak `prompt` — the same field class b4f5ead called out. So:
+
+- A **tenanted** runner syncs/fires only schedules whose `agent.workspace` matches
+  its own, or whose agent predates tenancy (null workspace).
+- An **untenanted** runner syncs/fires only null-workspace agents (the null↔null
+  rule that keeps the pre-tenancy suite green).
+- `_runner_or_404` and the harness-local `_agent_or_404` (both added in 43f61ae)
+  provide the gate; 404 not 403, so non-membership never leaks existence.
+
+### Which runner fires — binding first, idempotency as backstop
+
+Exclusivity is being moved to the **agent**, not the workspace: `AgentBinding`
+(agent, runner, is_active) with a partial unique index, spec'd in 7765b71. It is
+**not yet built** — the schedules work must not assume it exists.
+
+Layered, so this is correct before *and* after binding lands:
+
+1. **Once bound:** only one runner executes a given agent, so only one evaluates
+   its schedules. No race to begin with.
+2. **Until then (and for unbound agents):** both macOS-account runners may
+   evaluate the same schedule and fire the same slot. Both produce an identical
+   `idempotency_key`, and `enqueue_turn()` already treats that collision as a
+   replay — it handles both the pre-check and the `IntegrityError` race.
+
+Firing and claiming stay separate concerns: any capable in-tenant runner may
+*fire* a slot; `claim_next_turn` alone decides who *executes* it, and that is
+where binding applies. So a schedule never needs to know about bindings.
 
 ### No backfill
 
@@ -147,6 +184,14 @@ if its latest turn is not `done`, emit a typed item (`ref_kind="schedule"`)
 carrying a **Run now** action. It lands in the existing `waiting_count` badge the
 menu-bar runner panel already renders — the surface Jonathan already looks at —
 with no new plumbing and no new model.
+
+**This reaches every supervisor surface for free.** The fleet-wide
+`GET /api/agents/needs-you` (ef11bda, on the canopy-mobile branch) is implemented
+as `NeedsYouOut.model_validate(services.needs_you(a))` per agent — it *calls* the
+per-agent function above. So hooking that one function puts the nag on
+`/supervisor`, in `total_waiting` (the app-icon badge), and on the canopy-mobile
+PWA, with no schedules-specific work on any of them. Hooking the per-agent
+function rather than the fleet route is what buys this.
 
 ## Notification seam
 
@@ -204,15 +249,18 @@ No new pattern is introduced. Tenant routing comes free:
 | Creates use `response={201: ScheduleOut}` and return `Status` | `upsert_agent` |
 | Schemas live in `apps/harness/schemas.py`, Pydantic v2, `model_validate` off the ORM | house rule |
 | Errors via `ProblemError(status, title, type_=…)` → RFC 7807 `problem+json` | `apps/api/errors.py` |
-| Agent resolution reuses `apps/agents/api.py::_get_agent_or_404` | see below |
+| Agent resolution reuses `apps/harness/api.py::_agent_or_404` | see below |
 
 ### Auth + tenancy gate
 
-Schedules **reuse `_get_agent_or_404`** rather than re-rolling the check. It does
-three things that are easy to under-specify: `auto_join_workspaces(request.user)`,
-then the `request.workspace_slug` tenant check, then `wsvc.is_member` — all three
-failing to the *same* 404 as a missing agent, so tenancy never leaks existence.
-(`Workspace` PK is the slug, so `agent.workspace_id != ws` compares slugs.)
+Schedules **reuse the harness-local `_agent_or_404`** (added in 43f61ae,
+deliberately copied from `apps/agents/api.py:42` so the two are
+indistinguishable) rather than re-rolling the check or importing across api
+modules. It does three things that are easy to under-specify:
+`auto_join_workspaces(request.user)`, then the `request.workspace_slug` tenant
+check, then `wsvc.is_member` — all three failing to the *same* 404 as a missing
+agent, so tenancy never leaks existence. (`Workspace` PK is the slug, so
+`agent.workspace_id != ws` compares slugs.)
 
 ### Cron validation
 
@@ -260,6 +308,26 @@ preview is what makes cron trustworthy without a docs trip.
   the turn is `done`.
 - **Cron validation:** a bad expression 422s as `problem+json` at edit time.
 - **Tenancy:** a non-member gets 404, not 403 (no existence leak).
+- **Cross-tenant runner sync (the b4f5ead regression test):** a runner paired
+  with `capabilities={"agents": ["<victim-slug>"]}` but in another workspace must
+  see **zero** schedules from `GET /harness/schedules/`, and its `fire` must 404
+  — proving capabilities is not honored as a boundary and `prompt` never leaks.
+  Model this on `tests/test_harness_authz.py`, which must actually heartbeat the
+  runner before asserting (their commit message notes the old test never
+  exercised the claim path at all).
+
+## Concurrent work — canopy-mobile branch (`emdash/mobile-l2vmm`)
+
+Reviewed 2026-07-15 while that branch was live. It is unmerged, so this spec is
+written against `main` but must not fight it. Points of contact:
+
+| Theirs | Effect here |
+|---|---|
+| `GET /agents/needs-you` fleet inbox (ef11bda) | **Free win** — calls per-agent `needs_you()`, so the nag reaches `/supervisor` + mobile with no extra work |
+| `Runner.workspace` FK + membership gate (07a680e, 43f61ae) | Provides `_agent_or_404`/`_runner_or_404`; schedules reuse both |
+| `claim_next_turn` tenant predicate (b4f5ead, Critical) | The rule the runner-facing schedule routes must mirror |
+| `AgentBinding` — spec'd 7765b71, **not built** | Makes the fire race moot once landed; idempotency covers until then. Do not assume it exists |
+| harness migrations `0004`, `0005` | **Merge order:** they are not on `main`. If this lands second, renumber `AgentSchedule`'s migration to `0006_` and rebase. Both branches also touch `apps/harness/models.py` (they add `Runner.workspace`, we add `Turn.MISSED`) — a trivial but certain conflict |
 
 ## Open for iteration
 
