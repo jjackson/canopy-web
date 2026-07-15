@@ -64,24 +64,52 @@ def _agent_or_404(request: HttpRequest, slug: str) -> Agent:
     return agent
 
 
-def _runner_or_404(request: HttpRequest, runner_id: uuid.UUID) -> Runner:
-    """Resolve a live runner, gated on BOTH workspace membership and the pairing
-    user. Binding to runner.paired_by (not to a specific token) is deliberate:
-    BearerTokenAuthMiddleware stamps request.user = token.user and discards which
-    token was used, and PATs are rotated by design (canopy:canopy-web-pat-mint is
-    documented "re-run to rotate"), so token-binding would break the runner on
-    every rotation. Accepted residual: another token of the SAME user still works.
+def _runner_visibility_q(request: HttpRequest) -> Q:
+    """The single definition of 'runners this caller can see and act on'.
+    _runner_or_404 and list_runners MUST build from this — when they were
+    written separately they drifted: the list OR'd in workspace_id__isnull=True
+    unconditionally while the gate 404'd a null-workspace runner once a tenant
+    was pinned, so the list showed a runner every action then 404'd on.
+
+    Tenant-pinned (request.workspace_slug truthy): exact workspace match only —
+    a null-workspace runner is wrong-tenant here, NOT ungated. No separate
+    is_member check is needed in this branch: WorkspaceResolveMiddleware
+    already gates membership of the pinned workspace before it ever sets
+    request.workspace_slug, so a runner matching `ws` implies the caller is a
+    member of it.
+
+    Not pinned (flat /api/harness/... callers): the runner's workspace must be
+    one the caller is a member of, or null (the legacy-ungated path
+    pre-existing tests depend on).
+
+    Either way, paired_by must be the caller, or null (also legacy-ungated).
     """
-    runner = Runner.objects.filter(pk=runner_id).exclude(status=Runner.RETIRED).first()
-    if runner is None:
-        raise HttpError(404, "runner not found")
     wsvc.auto_join_workspaces(request.user)
     ws = getattr(request, "workspace_slug", None)
-    if ws and runner.workspace_id != ws:
-        raise HttpError(404, "runner not found")  # wrong tenant
-    if runner.workspace_id and not wsvc.is_member(request.user, runner.workspace_id):
-        raise HttpError(404, "runner not found")
-    if runner.paired_by_id and runner.paired_by_id != request.user.id:
+    if ws:
+        wq = Q(workspace_id=ws)
+    else:
+        wq = Q(workspace_id__in=wsvc.user_workspace_slugs(request.user)) | Q(workspace_id__isnull=True)
+    return wq & (Q(paired_by=request.user) | Q(paired_by__isnull=True))
+
+
+def _runner_or_404(request: HttpRequest, runner_id: uuid.UUID) -> Runner:
+    """Resolve a live runner via _runner_visibility_q — the same predicate
+    list_runners filters on, so a runner that is listed is always one you can
+    act on. Binding to runner.paired_by (not to a specific token) is
+    deliberate: BearerTokenAuthMiddleware stamps request.user = token.user and
+    discards which token was used, and PATs are rotated by design
+    (canopy:canopy-web-pat-mint is documented "re-run to rotate"), so
+    token-binding would break the runner on every rotation. Accepted residual:
+    another token of the SAME user still works.
+    """
+    runner = (
+        Runner.objects.exclude(status=Runner.RETIRED)
+        .filter(_runner_visibility_q(request))
+        .filter(pk=runner_id)
+        .first()
+    )
+    if runner is None:
         raise HttpError(404, "runner not found")
     return runner
 
@@ -124,16 +152,13 @@ def pair_runner(request: HttpRequest, payload: RunnerIn):
 
 @router.get("/runners/", response=list[RunnerOut], summary="List my runners")
 def list_runners(request: HttpRequest):
-    """The supervisor's runner status. Tenant-filtered and scoped to the pairing
-    user, matching _runner_or_404's gate — a runner you cannot act on must not be
-    listed. Retired runners are excluded at lookup, as everywhere else."""
-    wsvc.auto_join_workspaces(request.user)
-    ws = getattr(request, "workspace_slug", None)
-    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
+    """The supervisor's runner status. Filters on the exact same
+    _runner_visibility_q predicate _runner_or_404 gates on — a runner you
+    cannot act on must not be listed. Retired runners are excluded at lookup,
+    as everywhere else."""
     qs = (
         Runner.objects.exclude(status=Runner.RETIRED)
-        .filter(Q(workspace_id__in=slugs) | Q(workspace_id__isnull=True))
-        .filter(Q(paired_by=request.user) | Q(paired_by__isnull=True))
+        .filter(_runner_visibility_q(request))
         .order_by(models.F("last_heartbeat_at").desc(nulls_last=True))
     )
     return list(qs[:50])

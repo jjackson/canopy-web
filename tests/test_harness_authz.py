@@ -241,3 +241,56 @@ def test_pair_runner_with_no_workspace_homes_to_the_callers_sole_membership(owne
     )
     assert resp.status_code == 201
     assert resp.json()["workspace"] == workspace.slug
+
+
+# --- list_runners / _runner_or_404 agreement under a tenant-pinned request ----
+#
+# The two must be built from the same predicate (_runner_visibility_q) so a
+# runner that is listed is always one you can act on. Before the fix, a
+# null-workspace runner was listed under a tenant-pinned request (list OR'd in
+# workspace_id__isnull=True unconditionally) but 404'd on every action
+# (_runner_or_404's first check treated null as wrong-tenant once a tenant was
+# pinned) — the supervisor would render a runner every action then 404'd on.
+
+
+def test_pinned_null_workspace_runner_is_neither_listed_nor_actionable(owner_client, owner, workspace):
+    """Under /api/w/{ws}/harness/..., a null-workspace runner must be invisible
+    on BOTH halves: not in the list, and 404 on heartbeat. Asserted together —
+    the agreement between list and gate is the property under test."""
+    runner = Runner.objects.create(
+        name="legacy-runner", kind=Runner.EMDASH, capabilities={}, paired_by=owner,
+        workspace=None,
+    )
+    listed_ids = [
+        r["id"] for r in owner_client.get(f"/api/w/{workspace.slug}/harness/runners/").json()
+    ]
+    assert str(runner.id) not in listed_ids
+
+    hb = owner_client.post(
+        f"/api/w/{workspace.slug}/harness/runners/{runner.id}/heartbeat",
+        {"active_turn_ids": [], "degraded": False, "note": ""},
+        content_type="application/json",
+    )
+    assert hb.status_code == 404
+    assert Runner.objects.get(pk=runner.id).last_heartbeat_at is None  # untouched
+
+
+def test_pinned_matching_workspace_runner_is_listed_and_actionable(owner_client, owner, workspace):
+    """Under /api/w/{ws}/harness/..., a runner homed to THAT workspace is listed
+    and heartbeat succeeds — the positive counterpart to the null-workspace case."""
+    runner = Runner.objects.create(
+        name="tenant-runner", kind=Runner.EMDASH, capabilities={}, paired_by=owner,
+        workspace=workspace,
+    )
+    listed_ids = [
+        r["id"] for r in owner_client.get(f"/api/w/{workspace.slug}/harness/runners/").json()
+    ]
+    assert str(runner.id) in listed_ids
+
+    hb = owner_client.post(
+        f"/api/w/{workspace.slug}/harness/runners/{runner.id}/heartbeat",
+        {"active_turn_ids": [], "degraded": False, "note": ""},
+        content_type="application/json",
+    )
+    assert hb.status_code == 200
+    assert Runner.objects.get(pk=runner.id).last_heartbeat_at is not None
