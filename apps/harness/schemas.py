@@ -33,6 +33,13 @@ class RunnerOut(Schema):
     def resolve_workspace(obj) -> str | None:
         return obj.workspace_id
 
+    @staticmethod
+    def resolve_status(obj) -> str:
+        # Serve the derived value, not the stored column: heartbeat() writes
+        # ONLINE and nothing ever demotes it, so the raw status lies once a
+        # runner goes quiet. See Runner.live_status.
+        return obj.live_status
+
 
 class HeartbeatIn(Schema):
     active_turn_ids: list[str] = []

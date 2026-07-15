@@ -173,6 +173,18 @@ def list_runners(request: HttpRequest):
     return list(qs[:50])
 
 
+@router.post("/runners/{runner_id}/retire", response={204: None})
+def retire_runner(request: HttpRequest, runner_id: uuid.UUID):
+    """Retire a runner — permanent, not a liveness state (see Runner.live_status).
+    Idempotent by construction: _runner_or_404 already excludes retired runners,
+    so retiring an already-retired runner 404s at lookup rather than no-opping
+    here."""
+    runner = _runner_or_404(request, runner_id)
+    runner.status = Runner.RETIRED
+    runner.save(update_fields=["status"])
+    return Status(204, None)
+
+
 @router.post("/runners/{runner_id}/heartbeat", response=RunnerOut)
 def runner_heartbeat(request: HttpRequest, runner_id: uuid.UUID, payload: HeartbeatIn):
     runner = _runner_or_404(request, runner_id)

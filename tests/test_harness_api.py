@@ -1,12 +1,15 @@
 """API-level tests for /api/harness (runner pairing, claim loop, turn lifecycle)."""
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from django.contrib.auth.models import User
 from django.test import Client
+from django.utils import timezone
 
 from apps.agents.models import Agent
-from apps.harness.models import Runner, Turn
+from apps.harness.models import HEARTBEAT_ONLINE_WINDOW, Runner, Turn
 
 pytestmark = pytest.mark.django_db
 
@@ -259,3 +262,82 @@ def test_list_runners_excludes_retired(client, agent):
     rid = _pair(client)
     Runner.objects.filter(pk=rid).update(status=Runner.RETIRED)
     assert client.get("/api/harness/runners/").json() == []
+
+
+# --------------------------------------------------------------------------------------
+# Runner.live_status — the column says what the runner last claimed; the API must serve
+# what we can actually OBSERVE (heartbeat age), not the raw column. See models.py.
+# --------------------------------------------------------------------------------------
+
+def test_stale_heartbeat_reports_stale_even_though_column_says_online(client, agent):
+    rid = _pair(client)
+    assert _hb(client, rid).status_code == 200
+    # Push the last heartbeat outside the window without going through heartbeat()
+    # again — the stored column is untouched and still says "online".
+    old = timezone.now() - HEARTBEAT_ONLINE_WINDOW - timedelta(seconds=1)
+    Runner.objects.filter(pk=rid).update(last_heartbeat_at=old)
+
+    stored = Runner.objects.get(pk=rid)
+    assert stored.status == Runner.ONLINE  # the lie: nothing ever demoted the column
+
+    body = client.get("/api/harness/runners/").json()
+    assert len(body) == 1 and body[0]["status"] == "stale"  # the API tells the truth
+
+
+def test_never_heartbeated_reports_disconnected_regardless_of_stored_status(client, agent):
+    rid = _pair(client)
+    # Force the column to ONLINE directly (never call heartbeat()) so this test
+    # exercises the "no heartbeat at all" branch distinctly from the column value —
+    # last_heartbeat_at stays None throughout.
+    Runner.objects.filter(pk=rid).update(status=Runner.ONLINE)
+    assert Runner.objects.get(pk=rid).last_heartbeat_at is None
+
+    body = client.get("/api/harness/runners/").json()
+    assert len(body) == 1 and body[0]["status"] == "disconnected"
+
+
+def test_fresh_heartbeat_reports_online(client, agent):
+    rid = _pair(client)
+    assert _hb(client, rid).status_code == 200
+    body = client.get("/api/harness/runners/").json()
+    assert len(body) == 1 and body[0]["status"] == "online"
+
+
+def test_degraded_and_fresh_stays_degraded(client, agent):
+    rid = _pair(client)
+    resp = _hb(client, rid, degraded=True)
+    assert resp.status_code == 200 and resp.json()["status"] == "degraded"
+    body = client.get("/api/harness/runners/").json()
+    assert len(body) == 1 and body[0]["status"] == "degraded"  # not clobbered to online
+
+
+def test_retired_runner_404s_on_gated_routes(client, agent):
+    rid = _pair(client)
+    Runner.objects.filter(pk=rid).update(status=Runner.RETIRED)
+    resp = client.post(
+        f"/api/harness/runners/{rid}/heartbeat",
+        {"active_turn_ids": [], "degraded": False, "note": ""},
+        content_type="application/json",
+    )
+    assert resp.status_code == 404
+
+
+# --------------------------------------------------------------------------------------
+# POST /runners/{id}/retire
+# --------------------------------------------------------------------------------------
+
+def test_retire_runner_removes_it_from_the_list(client, agent):
+    rid = _pair(client)
+    resp = client.post(f"/api/harness/runners/{rid}/retire")
+    assert resp.status_code == 204
+    assert Runner.objects.get(pk=rid).status == Runner.RETIRED
+    assert client.get("/api/harness/runners/").json() == []
+
+
+def test_retiring_an_already_retired_runner_404s(client, agent):
+    """Idempotent by construction: _runner_or_404 excludes retired runners at
+    lookup, so a second retire is a 404, not a no-op 204 — the existing
+    lookup behaviour, not a special case added for this route."""
+    rid = _pair(client)
+    assert client.post(f"/api/harness/runners/{rid}/retire").status_code == 204
+    assert client.post(f"/api/harness/runners/{rid}/retire").status_code == 404

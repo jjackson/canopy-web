@@ -7,9 +7,16 @@ control-plane-design.md.
 """
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 from django.db import models
+from django.utils import timezone
+
+# Owned here (not services.py) so Runner.live_status can use it without a
+# models -> services import cycle (services already imports models). services.py
+# imports this constant from here rather than declaring a second one.
+HEARTBEAT_ONLINE_WINDOW = dt.timedelta(seconds=90)
 
 
 class Runner(models.Model):
@@ -82,6 +89,24 @@ class Runner(models.Model):
 
     def agent_slugs(self) -> list[str]:
         return list(self.capabilities.get("agents", []))
+
+    @property
+    def live_status(self) -> str:
+        """What we can OBSERVE, not what the runner last claimed.
+
+        `heartbeat()` writes ONLINE and nothing demotes it — a runner that dies
+        never gets to tell us. So liveness is derived from heartbeat age here,
+        and RunnerOut serves this rather than the raw column. `degraded` is
+        different: the runner self-reports it, so it survives as long as the
+        runner is still fresh enough to be reporting anything at all.
+        """
+        if self.status == self.RETIRED:
+            return self.RETIRED
+        if self.last_heartbeat_at is None:
+            return self.DISCONNECTED
+        if timezone.now() - self.last_heartbeat_at > HEARTBEAT_ONLINE_WINDOW:
+            return self.STALE
+        return self.status
 
 
 class Turn(models.Model):
