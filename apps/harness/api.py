@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
@@ -47,17 +48,47 @@ ALLOWED_EVENT_KINDS = {
 }
 
 
-def _runner_or_404(runner_id: uuid.UUID) -> Runner:
+def _agent_or_404(request: HttpRequest, slug: str) -> Agent:
+    """Resolve an agent, gated by workspace membership. A non-member gets the same
+    404 as a missing agent (no existence leak). Mirrors apps/agents/api.py:42."""
+    agent = Agent.objects.filter(slug=slug).first()
+    if agent is None:
+        raise HttpError(404, f"agent '{slug}' not found")
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    if ws and agent.workspace_id != ws:
+        raise HttpError(404, f"agent '{slug}' not found")  # wrong tenant
+    if agent.workspace_id and not wsvc.is_member(request.user, agent.workspace_id):
+        raise HttpError(404, f"agent '{slug}' not found")
+    return agent
+
+
+def _runner_or_404(request: HttpRequest, runner_id: uuid.UUID) -> Runner:
+    """Resolve a live runner, gated on BOTH workspace membership and the pairing
+    user. Binding to runner.paired_by (not to a specific token) is deliberate:
+    BearerTokenAuthMiddleware stamps request.user = token.user and discards which
+    token was used, and PATs are rotated by design (canopy:canopy-web-pat-mint is
+    documented "re-run to rotate"), so token-binding would break the runner on
+    every rotation. Accepted residual: another token of the SAME user still works.
+    """
     runner = Runner.objects.filter(pk=runner_id).exclude(status=Runner.RETIRED).first()
     if runner is None:
+        raise HttpError(404, "runner not found")
+    wsvc.auto_join_workspaces(request.user)
+    if runner.workspace_id and not wsvc.is_member(request.user, runner.workspace_id):
+        raise HttpError(404, "runner not found")
+    if runner.paired_by_id and runner.paired_by_id != request.user.id:
         raise HttpError(404, "runner not found")
     return runner
 
 
-def _turn_or_404(turn_id: uuid.UUID) -> Turn:
+def _turn_or_404(request: HttpRequest, turn_id: uuid.UUID) -> Turn:
+    """Resolve a turn, gated via its agent's workspace — a Turn has no workspace
+    FK of its own; it derives its tenant one hop away (spec section 8)."""
     turn = Turn.objects.select_related("agent", "claimed_by").filter(pk=turn_id).first()
     if turn is None:
         raise HttpError(404, "turn not found")
+    _agent_or_404(request, turn.agent.slug)  # raises 404 on wrong tenant
     return turn
 
 
@@ -89,7 +120,7 @@ def pair_runner(request: HttpRequest, payload: RunnerIn):
 
 @router.post("/runners/{runner_id}/heartbeat", response=RunnerOut)
 def runner_heartbeat(request: HttpRequest, runner_id: uuid.UUID, payload: HeartbeatIn):
-    runner = _runner_or_404(runner_id)
+    runner = _runner_or_404(request, runner_id)
     if payload.host and payload.host != runner.host:
         runner.host = payload.host
         runner.save(update_fields=["host"])
@@ -107,7 +138,7 @@ def claim_turn(request: HttpRequest, runner_id: uuid.UUID, paused: str = ""):
     agent slugs the caller has locally paused (per-agent pause) — the server skips
     their queued turns so nothing is claimed-then-released. Omitted by older runners
     (backward-compatible: no exclusions)."""
-    runner = _runner_or_404(runner_id)
+    runner = _runner_or_404(request, runner_id)
     exclude = [s for s in (p.strip() for p in paused.split(",")) if s]
     turn = services.claim_next_turn(runner, exclude_slugs=exclude or None)
     if turn is None:
@@ -120,10 +151,8 @@ def resolve_session(request: HttpRequest, runner_id: uuid.UUID, payload: Resolve
     """Given (agent, thread_key), tell THIS runner whether it can reuse an existing
     emdash session (it owns the live hint) or must spawn fresh + rehydrate context.
     Runner-scoped because reuse depends on the caller's macOS host."""
-    runner = _runner_or_404(runner_id)
-    agent = Agent.objects.filter(slug=payload.agent_slug).first()
-    if agent is None:
-        raise HttpError(404, f"agent '{payload.agent_slug}' not found")
+    runner = _runner_or_404(request, runner_id)
+    agent = _agent_or_404(request, payload.agent_slug)
     return services.resolve_session(agent, payload.thread_key, runner)
 
 
@@ -131,10 +160,8 @@ def resolve_session(request: HttpRequest, runner_id: uuid.UUID, payload: Resolve
 def record_session(request: HttpRequest, runner_id: uuid.UUID, payload: RecordSessionIn):
     """Upsert the durable link and point its live-session hint at THIS runner/host,
     after a session was created or reused for the thread. Returns the fresh resolution."""
-    runner = _runner_or_404(runner_id)
-    agent = Agent.objects.filter(slug=payload.agent_slug).first()
-    if agent is None:
-        raise HttpError(404, f"agent '{payload.agent_slug}' not found")
+    runner = _runner_or_404(request, runner_id)
+    agent = _agent_or_404(request, payload.agent_slug)
     services.record_session(
         agent, payload.thread_key, runner=runner,
         emdash_task_id=payload.emdash_task_id, session_id=payload.session_id,
@@ -145,9 +172,7 @@ def record_session(request: HttpRequest, runner_id: uuid.UUID, payload: RecordSe
 
 @router.post("/turns/", response={200: TurnOut, 201: TurnOut})
 def enqueue_turn(request: HttpRequest, payload: TurnIn):
-    agent = Agent.objects.filter(slug=payload.agent_slug).first()
-    if agent is None:
-        raise HttpError(404, f"agent '{payload.agent_slug}' not found")
+    agent = _agent_or_404(request, payload.agent_slug)
     if payload.origin not in dict(Turn.ORIGIN_CHOICES):
         raise HttpError(422, f"unknown origin '{payload.origin}'")
     if payload.routing not in dict(Turn.ROUTING_CHOICES):
@@ -165,22 +190,28 @@ def enqueue_turn(request: HttpRequest, payload: TurnIn):
 
 @router.get("/turns/", response=list[TurnOut])
 def list_turns(request: HttpRequest, agent: str | None = None, status: str | None = None):
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
     qs = Turn.objects.select_related("agent", "claimed_by").order_by("-created_at")
     if agent:
         qs = qs.filter(agent__slug=agent)
     if status:
         qs = qs.filter(status__in=status.split(","))
+    # Tenant filter: a turn's tenant is its agent's. Null-workspace agents stay
+    # visible (ungated, per the migration-safety rule).
+    qs = qs.filter(Q(agent__workspace_id__in=slugs) | Q(agent__workspace_id__isnull=True))
     return list(qs[:100])  # filter BEFORE slicing — a sliced queryset cannot be filtered
 
 
 @router.get("/turns/{turn_id}", response=TurnOut)
 def get_turn(request: HttpRequest, turn_id: uuid.UUID):
-    return _turn_or_404(turn_id)
+    return _turn_or_404(request, turn_id)
 
 
 @router.post("/turns/{turn_id}/events", response=TurnEventCountOut)
 def append_turn_events(request: HttpRequest, turn_id: uuid.UUID, payload: TurnEventsIn):
-    turn = _turn_or_404(turn_id)
+    turn = _turn_or_404(request, turn_id)
     for event in payload.events:
         if event.kind not in ALLOWED_EVENT_KINDS:
             raise HttpError(422, f"unknown event kind '{event.kind}'")
@@ -190,14 +221,14 @@ def append_turn_events(request: HttpRequest, turn_id: uuid.UUID, payload: TurnEv
 
 @router.get("/turns/{turn_id}/events", response=TurnEventsOut)
 def read_turn_events(request: HttpRequest, turn_id: uuid.UUID, after: int = 0):
-    turn = _turn_or_404(turn_id)
+    turn = _turn_or_404(request, turn_id)
     events = turn.events.filter(seq__gt=after).order_by("seq")[:500]
     return {"events": list(events)}
 
 
 @router.post("/turns/{turn_id}/start", response=TurnOut)
 def start_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnStartIn):
-    turn = _turn_or_404(turn_id)
+    turn = _turn_or_404(request, turn_id)
     if turn.status not in (Turn.CLAIMED, Turn.RUNNING):
         raise ProblemError(409, "Turn not startable", detail=f"status={turn.status}")
     return services.mark_running(turn, session_id=payload.session_id)
@@ -205,7 +236,7 @@ def start_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnStartIn):
 
 @router.post("/turns/{turn_id}/finish", response=TurnOut)
 def finish_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnFinishIn):
-    turn = _turn_or_404(turn_id)
+    turn = _turn_or_404(request, turn_id)
     if payload.status not in (Turn.DONE, Turn.FAILED):
         raise HttpError(422, "finish status must be done|failed")
     if turn.status in Turn.TERMINAL:
