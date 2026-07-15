@@ -35,7 +35,7 @@ def test_enqueues_one_turn_per_thread():
     assert ids == ["thr-1", "thr-2"]
     assert client.enqueued[0]["origin"] == "email"
     assert client.enqueued[0]["origin_ref"]["thread_id"] == "thr-1"
-    assert client.enqueued[0]["prompt"] == "/hal:turn --thread thr-1"
+    assert client.enqueued[0]["prompt"] == "/turn --thread thr-1"
 
 
 def test_idempotency_key_includes_message_count():

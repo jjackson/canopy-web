@@ -29,9 +29,9 @@ def _detail(clusters, decisions, gate="product_findings"):
 def test_enqueues_implemented_cluster_turns():
     clusters = [
         {"id": "eva-first-turn", "dispatch": [
-            {"target_agent": "eva", "origin": "email", "prompt": "/eva:turn --thread T",
+            {"target_agent": "eva", "origin": "email", "prompt": "/turn --thread T",
              "origin_ref": {"thread_id": "T"}}]},
-        {"id": "hal-skip-me", "dispatch": [{"target_agent": "hal", "prompt": "/hal:turn"}]},
+        {"id": "hal-skip-me", "dispatch": [{"target_agent": "hal", "prompt": "/turn"}]},
     ]
     decisions = {"eva-first-turn": {"decision": "implement"},
                  "hal-skip-me": {"decision": "skip"}}
@@ -46,8 +46,8 @@ def test_enqueues_implemented_cluster_turns():
 
 def test_fanout_cluster_enqueues_one_turn_each():
     clusters = [{"id": "echo-stale-board", "dispatch": [
-        {"target_agent": "echo", "prompt": "/echo:turn nudge Sarvesh"},
-        {"target_agent": "echo", "prompt": "/echo:turn nudge Amie"}]}]
+        {"target_agent": "echo", "prompt": "/turn nudge Sarvesh"},
+        {"target_agent": "echo", "prompt": "/turn nudge Amie"}]}]
     c = FakeClient([{"id": "r2", "gate": "product_findings"}],
                    {"r2": _detail(clusters, {"echo-stale-board": {"decision": "implement"}})})
     reviews.check_reviews(c)
