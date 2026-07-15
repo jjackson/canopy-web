@@ -2,7 +2,9 @@
 
 **Status:** design approved, not yet implemented
 **Date:** 2026-07-15
-**Related:** `2026-07-05-agent-execution-control-plane-design.md` (the harness — `Turn`), `2026-07-14-canopy-mobile-design.md` (the supervisor surface + the Phase 3 composer), `2026-06-24-canopy-framework-harvest-design.md` (the framework/product boundary), `2026-06-19-team-activity-timeline-design.md` (the timeline this reuses)
+**Related:** `2026-07-05-agent-execution-control-plane-design.md` (the harness — `Turn`), `2026-07-14-canopy-mobile-design.md` (the supervisor surface + the Phase 3 composer), `2026-07-15-agent-scheduled-turns-design.md` (PR #218 — independently reached this spec's core conclusion; see "Independent corroboration"), `2026-06-24-canopy-framework-harvest-design.md` (the framework/product boundary), `2026-06-19-team-activity-timeline-design.md` (the timeline this reuses)
+
+**Checked against `main` as of PR #220.** Revised after #216 (`apps/push`), #218 (scheduled turns, in flight), and #219 (runner review-spam fix) landed or opened — see §5b, "Independent corroboration", and §2.
 
 ## The problem
 
@@ -46,6 +48,17 @@ Three spellings of one payload. The runner already collapses them by hand (`revi
 ## The test this design has to pass
 
 **It must delete concepts, not add one.** A fourth representation of "a thing needing address" would be the exact failure the canopy-mobile spec names when it refuses a second command catalog: *"A second catalog would be a second thing to keep in sync — reintroducing the failure the current design prevents."* The ledger in §4 is how this design answers that charge.
+
+### Independent corroboration (PR #218, in flight)
+
+`feat(harness): agent scheduled turns` was designed with no knowledge of this spec and reached two of its conclusions unprompted:
+
+- *"**No occurrence table.** The `Turn` **is** the occurrence... canopy-web already has three half-overlapping representations of 'a thing that needs addressing'; an occurrence row would be a fourth."* — same count, same framing, same refusal.
+- It splits its router into `api_schedules.py` rather than growing `api.py`, which is the same move as `items_api.py`.
+
+It also demonstrates the cost of the object not existing yet. Its **nag** — "you never finished the session the run spawned" — is textbook Item (an agent needs something from you, and there is work to spawn if you say so). With no Item to raise, it ships as *"a projection, not an object — a source inside `needs_you()`"*, adding a **fourth producer** to the projection and a fourth `ref_kind` (`"schedule"`) to `NeedsYouItem`'s `Literal`. That is not a criticism of #218; given what exists, it is the correct local choice. It is evidence that the projection accretes a new source every time someone needs the supervisor's attention, and that each one must be hand-wired into `needs_you` **and** into `apps/push`'s receivers (§5b).
+
+**Two independent features in one week both needed this object.** Neither could have it.
 
 ## Scope
 
@@ -145,8 +158,10 @@ This is not bookkeeping. It makes the loop **traceable**: *Ada's audit turn → 
 | `gate="product_findings"` | an Item batch (§7) |
 | the source registry for the inbox | never built (§1) |
 | `notify` band in `needs_you` | `/timeline`, which already is this (§5) |
+| `apps/push`'s three hand-wired receivers | one receiver on `Item` — and its Drive-backed-agent gap stops being expressible (§5b) |
+| #218's schedule-nag projection (`ref_kind="schedule"`) | an Item, once it exists (Phase 3) |
 
-Net: one new model, six concepts retired. Three objects survive with non-overlapping roles — **`Item`** = a decision, **`Turn`** = an execution, **`AgentTask`** = tracked work that outlives a turn.
+Net: one new model, eight concepts retired. Three objects survive with non-overlapping roles — **`Item`** = a decision, **`Turn`** = an execution, **`AgentTask`** = tracked work that outlives a turn.
 
 ### 5. `notify` is not an item — it is the timeline
 
@@ -164,6 +179,17 @@ A posted sync or a shipped work product asks nothing of you. It is **activity**,
 **This costs one small addition, and the spec is explicit about it rather than assuming:** `GET /api/timeline/` today filters by `subsystem` only (`apps/timeline/api.py:49`) — there is **no `agent` filter**. Phase 2 adds one, which means `apps.agents.timeline.recent_events` gains an optional `agent` kwarg via the same opt-in seam `workspace_slugs` already uses (`_call_source` passes a kwarg only if the source accepts it, `sources.py:52`). That seam exists precisely so a source can narrow itself without the aggregator learning its models — use it; do not add a bare `agent` param to every source.
 
 This is the one place this design touches a surface that shipped days ago (#212, `WaitingOnYou.tsx` renders three bands from `RANK`). It is called out rather than buried because it is a real cost and a reviewer should weigh it: the alternative is keeping a notification concept inside an object whose entire purpose is "needs a decision".
+
+### 5b. What `apps/push` proves (added after #216 shipped)
+
+`apps/push` (PR #216) sends a Web Push when an agent's `waiting_count` rises. Because `needs_you()` is an aggregation and not an event, nothing emits "the fleet needs you now" — so push hand-wires `post_save`/`post_delete` receivers to **each producer individually**: `AgentTask`, `AgentRunGate`, `AgentRunStep` (`apps/push/signals.py`). Exactly the three producers §4 retires.
+
+Two consequences, and the second is the point:
+
+- **Phase 2 must re-point push at `Item`.** Not optional: with `needs_you` reading Items, the old receivers stop tracking what the badge shows. One receiver on one model replaces three.
+- **It closes push's documented gap.** CLAUDE.md records it: *"an agent listed in `AGENT_RUNS_DRIVE_ROOTS` (Drive-backed run store) has no DB rows for its run gates, so no signal fires and its gate-opens don't push."* That gap exists **because the inbox is a projection over things that may not be rows.** An Item is always a row. The gap does not get fixed — it stops being expressible.
+
+This is the strongest available evidence for the whole design, and it arrived independently: a feature built with no knowledge of this spec had to enumerate the producers by hand, and shipped a known hole because one of them isn't in the database.
 
 ### 6. `AgentTask.SUGGESTED` becomes an Item
 
@@ -227,8 +253,8 @@ Their **content** changes in one way, and it is not a silent one: no Item is `ki
 |---|---|---|
 | **0** | `Item` + `TurnSpec` + `dispatch()` + the `Turn`↔`Item` edge. No producer migrated. | The model, provable in isolation. |
 | **1** | Ada's findings → Items. Runner drains items (`reviews.py` deleted). Batch view. | The live pain, and it retires `product_findings` + #213. |
-| **2** | `needs_you` re-implemented over Items; `notify` → timeline. | The read path, once there are real Items to read. |
-| **3** | Run gates → Items. | Mechanical once §2 lands. |
+| **2** | `needs_you` re-implemented over Items; `notify` → timeline; **`apps/push` re-pointed at `Item`** (§5b). | The read path, once there are real Items to read. Push is not optional here — leaving its receivers on the old producers would silently stop the badge and the phone agreeing. |
+| **3** | Run gates → Items; **#218's schedule nag → an Item** (dropping `ref_kind="schedule"`). | Mechanical once §2 lands. |
 | **4** | `AgentTask.SUGGESTED` → Items; board loses the column. | Last, because it touches the surface Echo/ACE use daily. |
 
 Phase 1 before 2 is deliberate: it puts real Items in the table before anything reads from them, so the read path is written against reality rather than fixtures.
@@ -259,9 +285,13 @@ Step 3 is a **separate PR gated on step 2**, not a task in the Phase 1 plan. Del
 
 **This rewrites surfaces that work.** `needs_you`, the board, the runner's ingestion, and Ada's emitting skill all change. The phasing is the mitigation: each phase is independently shippable and independently revertible, and nothing reads Items until Phase 2.
 
-**`Item` is a generic name in a codebase that already overloads `Turn`** (`harness.Turn` = the execution envelope; `agents.AgentTurn` = the packaged report; `related_name="harness_turns"` exists solely because of that collision). If `Item` proves too thin a word in review, the fallback is `Ask` — but do not repeat the `Turn` mistake and pick a name whose plural already means something else here.
+**`Item` is a generic name in a codebase that already overloads `Turn`** (`harness.Turn` = the execution envelope; `agents.AgentTurn` = the packaged report; `related_name="harness_turns"` exists solely because of that collision). It also already overloads **`notify`**: the `needs_you` band (retired by §5) and, since #218, `apps/harness/notify.py`'s push-**channel** registry — same word, unrelated concept. And `NeedsYouItem` is itself called an "item" today, which this model replaces rather than renames. If `Item` proves too thin a word in review, the fallback is `Ask` — but do not repeat the `Turn` mistake and pick a name whose plural already means something else here.
 
-**Ada must emit `dispatch` correctly or work silently does not happen.** The current runner logs a warning and leaves the review unprocessed when an approved cluster has no `dispatch[]` (`reviews.py:63`). Preserve that behaviour: an approved Item with no dispatch is **visible**, not silently dropped.
+**#218 lands in the same four files** (`apps/harness/models.py`, `services.py`, `schemas.py`, `api.py`). Whichever merges second rebases, and the harness migration numbers will move. Neither design blocks the other: #218 adds `Turn.MISSED` and a schedule model; this adds `Item` and one nullable FK.
+
+**A bad dispatch spec must not strand an approved item — and the answer is atomicity, not retries.** If a spec names an agent that does not exist, `dispatch()` raises. Because deciding is once-only (409), committing the decision before dispatching would leave the item DECIDED-but-undispatched and permanently unfixable: approved in the UI, work never enqueued. So **decide + dispatch are one transaction** — a bad spec is a 422 on an item that is still `open`, retryable the moment the producer fixes it.
+
+This deliberately does *not* reproduce the runner's old "leave it unprocessed and retry every poll" behaviour, which **PR #219 removed** from `reviews.py` as warning spam, with reasoning that applies here verbatim: *"a resolved review's decisions are immutable, and Ada re-emits fixes as a NEW review id — so retrying this one forever can never succeed."* An immutable decision cannot be rescued by retrying it. Roll it back instead, and there is nothing to retry and nothing to reconcile — which is why this design needs no runner-side item drain at all.
 
 ## Deferred (recorded so it is not relitigated)
 

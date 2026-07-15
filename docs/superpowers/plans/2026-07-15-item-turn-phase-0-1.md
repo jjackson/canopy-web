@@ -6,7 +6,7 @@
 
 **Architecture:** Two duals in one cycle. `Turn` (exists, untouched) is work an agent does; `Item` (new, `apps/harness`) is work *you* do. A turn raises items → you decide → an approved item's `dispatch` enqueues turns. `target_agent=""` means self; Ada's fan-out is the same field set to another agent. `dispatch()` wraps the existing idempotent `services.enqueue_turn`.
 
-**Tech Stack:** Django 5 + Django Ninja 1.x + Pydantic v2 + PostgreSQL; React 19 + Vite + Tailwind 4; `canopy_runner` (stdlib-only Python daemon); pytest; Playwright.
+**Tech Stack:** Django 5 + Django Ninja 1.x + Pydantic v2 + PostgreSQL; React 19 + Vite + Tailwind 4; pytest; Playwright. (No `canopy_runner` changes — see File Structure.)
 
 **Spec:** `docs/superpowers/specs/2026-07-15-item-and-turn-design.md`
 
@@ -18,7 +18,7 @@
 - **`Item.kind ∈ {review, question}`.** There is no `notify` item — that is the timeline (Phase 2, not this plan).
 - **Non-member → 404, never 403** (no existence leak). Mirrors `apps/harness` authz; see `tests/test_harness_authz.py`.
 - **Idempotency:** items are idempotent per `idempotency_key`; dispatch is idempotent per `item-{item.id}-{i}`.
-- **Additive only.** `gate="product_findings"`, `apps/reviews`, and the runner's `reviews.py` all keep working. Retirement is a separate PR gated on Ada (see "Out of scope").
+- **Additive only.** `gate="product_findings"`, `apps/reviews`, and the runner's `reviews.py` all keep working, untouched. Retirement is a separate PR gated on Ada (see "Out of scope").
 - **Design tokens only** in frontend (`bg-card`, `text-muted-foreground`, …). No raw palette literals (`stone-*`, `orange-*`, …).
 - **Regenerate types** after any schema change: dump the schema in-process (see Task 5, Step 6), then `npx openapi-typescript`. Do not hand-edit `frontend/src/api/generated.ts`.
 - Run backend tests with `uv run pytest`. If you hit `ModuleNotFoundError`, run `uv sync --extra dev` first.
@@ -35,19 +35,26 @@
 | File | Responsibility |
 |---|---|
 | `apps/harness/models.py` (modify) | Add `Item`; add `Turn.raised_from` |
-| `apps/harness/migrations/0006_item.py` (create) | Schema for both |
+| `apps/harness/migrations/000N_item.py` (create) | Schema for both — **N is the next free number**, see Task 1 |
 | `apps/harness/dispatch.py` (create) | `TurnSpec` + `dispatch()` — the decision→work edge |
 | `apps/harness/services.py` (modify) | `create_items()`, `decide_item()`, `dismiss_item()` |
 | `apps/harness/schemas.py` (modify) | `ItemIn`, `ItemOut`, `ItemDecideIn`, `TurnSpecIn` |
-| `apps/harness/items_api.py` (create) | The two item routers (kept out of the 400-line `api.py`) |
+| `apps/harness/items_api.py` (create) | The two item routers (kept out of `api.py`) |
 | `apps/api/api.py` (modify) | Mount the item routers |
-| `packages/canopy_runner/canopy_runner/items.py` (create) | Drain decided items → enqueue turns |
-| `packages/canopy_runner/canopy_runner/client.py` (modify) | `list_fleet_items()` |
-| `packages/canopy_runner/canopy_runner/main.py` (modify) | Poll items alongside reviews (`items_poll_seconds`) |
-| `packages/canopy_runner/canopy_runner/config.py` (modify) | `items_poll_seconds` |
 | `frontend/src/api/client.v2.ts` (modify) | Add `/api/items` to `WS_SCOPED_API_PREFIXES` |
 | `frontend/src/api/items.ts` (create) | Typed client |
 | `frontend/src/pages/agents/ItemsBatchSection.tsx` (create) | The batch view |
+
+**No runner changes.** An earlier draft had the runner drain decided-but-undispatched items. `decide_item` is atomic (Task 3), so that state cannot exist — and the drain would have re-introduced exactly the retry-forever warning spam that #219 removed from `reviews.py`. There is nothing for the runner to reconcile.
+
+## Coordinate with PR #218 (open — `feat(harness): agent scheduled turns`)
+
+It touches **the same four files**: `apps/harness/models.py`, `services.py`, `schemas.py`, `api.py`, plus `apps/api/api.py`. Whichever lands second rebases.
+
+- **Migrations collide.** #218 adds `0004_turn_missed` + `0005_agentschedule`, but main already has `0004_runner_workspace` + `0005_backfill_runner_workspace`, so #218 renumbers to `0006`/`0007`. **Do not hardcode a migration number** — run `makemigrations` and take what it gives you.
+- **It adds `Turn.MISSED`**, a new terminal status. That is #218's change, not ours, and it does not conflict: our only `Turn` change stays the one nullable FK.
+- **`apps/harness/notify.py` (#218) is a push-channel registry** — "notify" there means *delivery channel*, not the `notify` inbox band this spec retires. Same word, different concept. Do not merge them.
+- **`api_schedules.py` (#218) is the same split-the-router pattern** as our `items_api.py`. Follow its conventions where they differ from ours; convergent evidence that the split is right.
 
 ---
 
@@ -57,7 +64,7 @@
 
 **Files:**
 - Modify: `apps/harness/models.py`
-- Create: `apps/harness/migrations/0006_item.py`
+- Create: `apps/harness/migrations/000N_item.py` (N = next free; see Step 4)
 - Test: `tests/test_item_models.py`
 
 **Interfaces:**
@@ -228,7 +235,9 @@ class Item(models.Model):
 - [ ] **Step 4: Generate the migration**
 
 Run: `uv run python manage.py makemigrations harness --name item`
-Expected: `Create model Item` + `Add field raised_from to turn`. Confirm the filename is `apps/harness/migrations/0006_item.py`; rename it if `makemigrations` chose another number.
+Expected: `Create model Item` + `Add field raised_from to turn`.
+
+**Take whatever number it assigns — do not rename it to match this plan.** main is at `0005_backfill_runner_workspace`, and PR #218 is in flight adding two more harness migrations. If #218 lands first, yours moves up; that is normal and fine. Run `uv run python manage.py makemigrations --check` afterwards to confirm the tree is clean.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -243,7 +252,7 @@ Expected: `595 passed, 1 skipped` (591 + the 4 new)
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/harness/models.py apps/harness/migrations/0006_item.py tests/test_item_models.py
+git add apps/harness/models.py apps/harness/migrations/ tests/test_item_models.py
 git commit -m "feat(harness): Item — the dual of Turn, and the edge between them"
 ```
 
@@ -561,6 +570,36 @@ def test_a_review_rejects_a_decision_outside_the_closed_set(ada):
         services.decide_item(item, decision="yolo", comment="", by="jj@dimagi.com")
 
 
+def test_a_failing_dispatch_rolls_the_decision_back(ada):
+    """A bad spec must NOT leave a decided-but-undispatched item. Deciding twice is
+    409, so committing the decision before dispatch would strand the item forever:
+    approved in the UI, work never enqueued, unfixable. It stays OPEN and retryable."""
+    item = _item(ada, dispatch=[{"target_agent": "ghost", "prompt": "/ghost:turn"}])
+
+    with pytest.raises(ValueError, match="ghost"):
+        services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com")
+
+    item.refresh_from_db()
+    assert item.state == Item.OPEN
+    assert item.decided_at is None
+    assert Turn.objects.count() == 0
+
+
+def test_a_partly_bad_dispatch_enqueues_nothing(ada):
+    """All-or-nothing: entry 0 must not survive entry 1 failing."""
+    item = _item(ada, dispatch=[
+        {"prompt": "/ada:conduct"},
+        {"target_agent": "ghost", "prompt": "/ghost:turn"},
+    ])
+
+    with pytest.raises(ValueError):
+        services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com")
+
+    item.refresh_from_db()
+    assert item.state == Item.OPEN
+    assert Turn.objects.count() == 0
+
+
 def test_dismiss_never_dispatches_even_with_a_decision_set(ada):
     item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}], decision=Item.IMPLEMENT)
 
@@ -587,7 +626,7 @@ Expected: FAIL — `AttributeError: module 'apps.harness.services' has no attrib
 
 - [ ] **Step 3: Write the implementation**
 
-Append to `apps/harness/services.py` (and add `from django.utils import timezone` to the imports if absent):
+Append to `apps/harness/services.py`. **No new imports needed** — it already has `IntegrityError`, `transaction` (`services.py:12`) and `timezone` (`services.py:14`); only the model import changes (see the end of this step).
 
 ```python
 class AlreadyDecided(Exception):
@@ -648,19 +687,28 @@ def decide_item(item: Item, *, decision: str, comment: str, by: str) -> tuple[It
             f"decision must be one of implement|skip|defer, got {decision!r}"
         )
 
-    item.state = Item.DECIDED
-    item.decision = decision
-    item.comment = comment or ""
-    item.decided_by = by
-    item.decided_at = timezone.now()
-    item.save(update_fields=["state", "decision", "comment", "decided_by", "decided_at"])
+    # ATOMIC, and this is the whole ballgame. dispatch() raises on a bad spec
+    # (unknown target_agent). Committing the decision first would leave the item
+    # DECIDED but undispatched — and since deciding twice is a 409, permanently
+    # unfixable: the work silently never happens while the UI says you approved it.
+    # That is the exact failure this design exists to end. Rolling back instead
+    # means a bad spec is a 422 on an item that is still OPEN, retryable the moment
+    # the producer fixes it.
+    with transaction.atomic():
+        item.state = Item.DECIDED
+        item.decision = decision
+        item.comment = comment or ""
+        item.decided_by = by
+        item.decided_at = timezone.now()
 
-    if decision != Item.IMPLEMENT:
-        return item, []
+        turns: list[Turn] = []
+        if decision == Item.IMPLEMENT:
+            turns = dispatch_item(item)
+            item.dispatched_at = timezone.now()
 
-    turns = dispatch_item(item)
-    item.dispatched_at = timezone.now()
-    item.save(update_fields=["dispatched_at"])
+        item.save(update_fields=[
+            "state", "decision", "comment", "decided_by", "decided_at", "dispatched_at",
+        ])
     return item, turns
 
 
@@ -685,7 +733,7 @@ from .models import Item, Runner, SessionLink, Turn, TurnEvent
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_item_services.py -q`
-Expected: `8 passed`
+Expected: `10 passed`
 
 - [ ] **Step 5: Run the harness suite (nothing regressed)**
 
@@ -833,14 +881,17 @@ git commit -m "feat(harness): item wire schemas — closed decision set, no noti
 - Consumes: `create_items`, `decide_item`, `dismiss_item`, `AlreadyDecided` (Task 3); `ItemIn`/`ItemOut`/`ItemDecideIn` (Task 4)
 - Produces: `agent_items_router`, `items_router`
 - Routes:
-  - `GET  /api/agents/items/` — **fleet-wide**, `?state=` (declared BEFORE `/{slug}/items/` so `items` is not read as a slug — the same trap `/agents/needs-you` navigates)
   - `GET  /api/agents/{slug}/items/` — `?state=`, `?kind=`, `?batch=`
   - `POST /api/agents/{slug}/items/` — batch create
   - `GET  /api/items/{id}/`
   - `POST /api/items/{id}/decide`
   - `POST /api/items/{id}/dismiss`
 
-**Why fleet-wide is in Phase 0 and not deferred to Phase 2:** the runner (Task 6) cannot enumerate agents — `Config` has no agent list, and `check_reviews` polls `/reviews/` fleet-wide for exactly that reason. Without this route Task 6 has nothing to poll.
+**`GET /api/agents/items/` (fleet-wide) is deliberately NOT here.** The spec lists it for the supervisor home, but nothing in Phases 0+1 consumes it — the batch view is per-agent. It ships in Phase 2 with `needs_you`.
+
+Two traps for whoever adds it, both already paid for elsewhere in this codebase:
+1. Declare it **before** `/{slug}/items/`, or `items` resolves as a slug — the trap `/agents/needs-you` navigates (`apps/agents/api.py`).
+2. Scope it in **Python**, `workspace_id in visible`, exactly as `list_agents` does — **not** a `workspace_id__in=` queryset filter. `_visible_agent_workspace_ids` can contain `None` (the unhomed-agent case) and SQL `IN` never matches NULL, so the filter would hide unhomed agents' items while `list_agents` still lists their agents. That list-shows-it/action-404s-on-it split is the exact drift `_runner_visibility_q`'s docstring was written about.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1008,7 +1059,6 @@ from __future__ import annotations
 
 import uuid
 
-from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
@@ -1054,32 +1104,6 @@ def _item_or_404(request: HttpRequest, item_id: uuid.UUID) -> Item:
     if item is None or item.agent.workspace_id not in _visible_agent_workspace_ids(request):
         raise HttpError(404, "item not found")
     return item
-
-
-@agent_items_router.get("/items/", response=list[ItemOut], summary="Fleet-wide items",
-                        openapi_extra={"x-mcp-expose": True})
-def list_fleet_items(request: HttpRequest, state: str = "") -> list[dict]:
-    """Every visible agent's items in one call. Declared BEFORE /{slug}/items/ so
-    'items' is not resolved as a slug — the same ordering trap /agents/needs-you
-    navigates. Tenant scoping mirrors list_agents exactly (both build from
-    _visible_agent_workspace_ids).
-
-    NOTE the None handling. _visible_agent_workspace_ids may include None (the
-    unhomed-agent case), and SQL `IN` never matches NULL — so a bare
-    `workspace_id__in=visible` would silently hide unhomed agents' items while
-    list_agents (which tests membership in Python) shows their agents. That is the
-    exact list-shows-it/action-404s-on-it drift `_runner_visibility_q`'s docstring
-    describes. Build the NULL branch explicitly.
-    """
-    visible = _visible_agent_workspace_ids(request)
-    slugs = {w for w in visible if w is not None}
-    q = Q(agent__workspace_id__in=slugs)
-    if None in visible:
-        q |= Q(agent__workspace_id__isnull=True)
-    qs = Item.objects.select_related("agent").filter(q)
-    if state:
-        qs = qs.filter(state=state)
-    return [_payload(i) for i in qs]
 
 
 @agent_items_router.get("/{slug}/items/", response=list[ItemOut], summary="List an agent's items",
@@ -1187,197 +1211,7 @@ git commit -m "feat(harness): items API — 404 for non-members, 409 on re-decid
 
 ## Phase 1 — Ada's findings as the first producer
 
-### Task 6: Runner drains decided items
-
-**Files:**
-- Create: `packages/canopy_runner/canopy_runner/items.py`
-- Modify: `packages/canopy_runner/canopy_runner/client.py`
-- Modify: `packages/canopy_runner/canopy_runner/main.py`
-- Test: `packages/canopy_runner/tests/test_items.py`
-
-**Interfaces:**
-- Consumes: `GET /api/agents/items/?state=decided` (Task 5, fleet-wide)
-- Produces: `check_items(client, *, seen=frozenset()) -> dict` returning `{"processed": {item_id}, "undispatched": [(item_id, agent_slug)]}`
-
-**Signature matches `check_reviews(client, *, seen)` deliberately** — no `agents` param. The runner cannot enumerate agents (`Config` has no agent list), which is why `check_reviews` polls fleet-wide too.
-
-**Note:** the server dispatches on decide (Task 3), so the runner does **not** enqueue turns for items. This drain exists to surface items whose dispatch *failed* server-side (an unknown `target_agent` 422s the decide call) — it reports, it does not re-dispatch. Keep `reviews.py` running alongside until Ada moves.
-
-- [ ] **Step 1: Write the failing test**
-
-Create `packages/canopy_runner/tests/test_items.py`:
-
-```python
-"""check_items — report decided-but-undispatched items. Never re-dispatches."""
-from __future__ import annotations
-
-from canopy_runner import items as items_mod
-
-
-class FakeClient:
-    def __init__(self, rows):
-        self._rows = rows
-        self.enqueued = []
-
-    def list_fleet_items(self, state=""):
-        return [r for r in self._rows if not state or r["state"] == state]
-
-    def enqueue_turn(self, *a, **k):  # must never be called
-        self.enqueued.append((a, k))
-        return {}
-
-
-def test_a_dispatched_item_is_processed_and_never_re_enqueued():
-    client = FakeClient([{
-        "id": "i1", "agent_slug": "ada", "state": "decided", "decision": "implement",
-        "dispatched_at": "2026-07-15T10:00:00Z", "title": "x",
-        "dispatch": [{"target_agent": "hal", "prompt": "/hal:turn"}],
-    }])
-
-    res = items_mod.check_items(client)
-
-    assert res["processed"] == {"i1"}
-    assert client.enqueued == []
-
-
-def test_an_implemented_item_that_never_dispatched_is_reported_not_processed():
-    """Left unprocessed so a later fix + re-poll surfaces it again. An approved
-    item whose work silently never happens is the worst outcome."""
-    client = FakeClient([{
-        "id": "i2", "agent_slug": "ada", "state": "decided", "decision": "implement",
-        "dispatched_at": None, "title": "x",
-        "dispatch": [{"target_agent": "ghost", "prompt": "/ghost:turn"}],
-    }])
-
-    res = items_mod.check_items(client)
-
-    assert res["processed"] == set()
-    assert res["undispatched"] == [("i2", "ada")]
-
-
-def test_a_skipped_item_is_processed_with_nothing_to_do():
-    client = FakeClient([{
-        "id": "i3", "agent_slug": "ada", "state": "decided", "decision": "skip",
-        "dispatched_at": None, "title": "x", "dispatch": [],
-    }])
-
-    res = items_mod.check_items(client)
-
-    assert res["processed"] == {"i3"}
-    assert res["undispatched"] == []
-
-
-def test_already_seen_items_are_skipped():
-    client = FakeClient([{
-        "id": "i4", "agent_slug": "ada", "state": "decided", "decision": "skip",
-        "dispatched_at": None, "title": "x", "dispatch": [],
-    }])
-
-    res = items_mod.check_items(client, seen=frozenset({"i4"}))
-
-    assert res["processed"] == set()
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd packages/canopy_runner && python -m pytest tests/test_items.py -q`
-Expected: FAIL — `ModuleNotFoundError: No module named 'canopy_runner.items'`
-
-- [ ] **Step 3: Write the implementation**
-
-Create `packages/canopy_runner/canopy_runner/items.py`:
-
-```python
-"""Report decided items whose work did not get enqueued.
-
-The server dispatches on decide (apps/harness/services.decide_item), so unlike
-reviews.py this module NEVER enqueues. Its job is the failure case: an item
-approved with a bad dispatch spec (unknown target_agent) whose work therefore
-never happened. Silence there is the worst outcome — an approved finding that
-looks done and isn't — so an undispatched item is left unprocessed and reported
-every poll until it is fixed.
-"""
-from __future__ import annotations
-
-import logging
-
-logger = logging.getLogger("canopy_runner.items")
-
-IMPLEMENT = "implement"
-
-
-def check_items(client, *, seen: frozenset[str] = frozenset()) -> dict:
-    """Poll decided items fleet-wide. Returns
-    {"processed": {item_id, ...}, "undispatched": [(item_id, agent_slug), ...]}.
-
-    Fleet-wide (no agents param) because the runner has no agent list — the same
-    reason check_reviews polls /reviews/ rather than per-agent.
-    """
-    processed: set[str] = set()
-    undispatched: list[tuple[str, str]] = []
-
-    for row in client.list_fleet_items(state="decided") or []:
-        iid = str(row.get("id") or "")
-        if not iid or iid in seen:
-            continue
-        slug = row.get("agent_slug") or "?"
-        if row.get("decision") == IMPLEMENT and not row.get("dispatched_at"):
-            undispatched.append((iid, slug))
-            logger.warning(
-                "item %s (%s) was approved but never dispatched — check its "
-                "dispatch[] target_agent; will retry once fixed: %s",
-                iid, slug, row.get("title", ""),
-            )
-            continue
-        processed.add(iid)
-
-    if undispatched:
-        logger.warning("items: %d approved but undispatched", len(undispatched))
-    return {"processed": processed, "undispatched": undispatched}
-```
-
-- [ ] **Step 4: Add the client method**
-
-In `packages/canopy_runner/canopy_runner/client.py`, beside `list_reviews`:
-
-```python
-    def list_fleet_items(self, state: str = "") -> list[dict]:
-        """Every visible agent's items in one call — the runner has no agent list."""
-        q = f"?state={state}" if state else ""
-        return self._get_api(f"/agents/items/{q}") or []
-```
-
-- [ ] **Step 5: Run tests to verify they pass**
-
-Run: `cd packages/canopy_runner && python -m pytest tests/test_items.py -q`
-Expected: `4 passed`
-
-- [ ] **Step 6: Wire into the poll loop**
-
-In `packages/canopy_runner/canopy_runner/main.py`, mirror `_maybe_check_reviews` (`main.py:151`) — read it first and copy its structure exactly rather than inventing a second cadence. Add `_maybe_check_items(cfg, client, now_fn=time.time)` that:
-
-- returns early unless `getattr(cfg, "items_poll_seconds", 0)` (add `items_poll_seconds` to `Config` with the same default as `reviews_poll_seconds`),
-- keeps its own stamp + seen files (`items-last.txt`, `items-seen.json`) beside the reviews ones,
-- calls `items_mod.check_items(client, seen=frozenset(seen))`,
-- wraps the call in the same `except Exception` that logs and never kills the loop.
-
-Then call it beside `_maybe_check_reviews(cfg, client)` at `main.py:200`. **Both run** — `reviews.py` stays until Ada moves (see Follow-ups).
-
-- [ ] **Step 7: Run the runner suite**
-
-Run: `cd packages/canopy_runner && python -m pytest -q`
-Expected: all pass (including the existing `test_reviews.py` — `reviews.py` is untouched)
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add packages/canopy_runner/canopy_runner/items.py packages/canopy_runner/canopy_runner/client.py packages/canopy_runner/canopy_runner/main.py packages/canopy_runner/canopy_runner/config.py packages/canopy_runner/tests/test_items.py
-git commit -m "feat(runner): report approved-but-undispatched items (never re-dispatch)"
-```
-
----
-
-### Task 7: The batch view
+### Task 6: The batch view
 
 **Files:**
 - Create: `frontend/src/api/items.ts`
@@ -1671,7 +1505,7 @@ git commit -m "feat(agents): item batch view — the audit's own home, not a nar
 
 ---
 
-### Task 8: Document the surface
+### Task 7: Document the surface
 
 **Files:**
 - Modify: `CLAUDE.md`
