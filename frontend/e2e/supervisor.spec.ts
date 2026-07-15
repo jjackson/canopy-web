@@ -20,4 +20,14 @@ test.describe('/supervisor', () => {
     const inbox = page.getByTestId('waiting-on-you').or(page.getByTestId('waiting-empty'))
     await expect(inbox).toBeInViewport()
   })
+
+  test('one failed call does not blank the page', async ({ page }) => {
+    // The whole point of allSettled: on cellular a single flaky call is common,
+    // and Promise.all would take the other two bands down with it.
+    await page.route('**/api/agents/needs-you', (r) => r.abort())
+    await page.goto('/supervisor')
+    await expect(page.getByTestId('supervisor-page')).toBeVisible()
+    // Runners still rendered despite needs-you failing.
+    await expect(page.getByTestId('runner-status').or(page.getByText('No runner paired'))).toBeVisible()
+  })
 })

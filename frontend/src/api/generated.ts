@@ -1634,6 +1634,56 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/push/vapid-public-key": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * The VAPID public key
+         * @description The browser needs this to subscribe. Not a secret — it ships in the JS
+         *     bundle anyway. 503 when unset so a push-less deployment says so plainly
+         *     rather than handing the browser an empty key it would fail on.
+         */
+        readonly get: operations["apps_push_api_vapid_public_key"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/push/subscribe": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Register this browser for push
+         * @description Upsert on endpoint. The browser re-sends the same endpoint on every
+         *     subscribe() call, and its keys rotate — so update rather than insert, and
+         *     re-point the row at the caller: the endpoint belongs to the BROWSER, not the
+         *     person, so on a shared device it must follow whoever is logged in now.
+         */
+        readonly post: operations["apps_push_api_subscribe"];
+        /**
+         * Unregister this browser
+         * @description Idempotent, and scoped to the caller: unsubscribing an endpoint you don't
+         *     own is a silent no-op, not a 404 — no existence leak either way.
+         */
+        readonly delete: operations["apps_push_api_unsubscribe"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4936,6 +4986,30 @@ export interface components {
              */
             readonly result_note: string;
         };
+        /** VapidKeyOut */
+        readonly VapidKeyOut: {
+            /** Public Key */
+            readonly public_key: string;
+        };
+        /** PushSubscribeIn */
+        readonly PushSubscribeIn: {
+            /** Endpoint */
+            readonly endpoint: string;
+            /** P256Dh */
+            readonly p256dh: string;
+            /** Auth */
+            readonly auth: string;
+            /**
+             * User Agent
+             * @default
+             */
+            readonly user_agent: string;
+        };
+        /** PushUnsubscribeIn */
+        readonly PushUnsubscribeIn: {
+            /** Endpoint */
+            readonly endpoint: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -7839,6 +7913,70 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["TurnOut"];
                 };
+            };
+        };
+    };
+    readonly apps_push_api_vapid_public_key: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["VapidKeyOut"];
+                };
+            };
+        };
+    };
+    readonly apps_push_api_subscribe: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PushSubscribeIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly apps_push_api_unsubscribe: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PushUnsubscribeIn"];
+            };
+        };
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

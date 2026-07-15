@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
+import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   // Path prefix when deployed as a labs tenant (labs.connect.dimagi.com/canopy).
@@ -18,7 +19,52 @@ export default defineConfig({
       process.env.VITE_CSRF_COOKIE_NAME || 'csrftoken',
     ),
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      // The deployment is path-prefixed (/canopy/ on labs). scope and start_url
+      // MUST follow it — a manifest scoped to "/" installs an app that opens the
+      // wrong site. `base` is this file's own base option, computed above.
+      base: process.env.VITE_BASE_PATH || '/',
+      scope: process.env.VITE_BASE_PATH || '/',
+      manifest: {
+        name: 'Canopy Supervisor',
+        short_name: 'Canopy',
+        description: 'What your agent fleet needs from you.',
+        // Land on the supervisor, not the workbench: this app exists to answer
+        // "what's waiting on me".
+        start_url: `${process.env.VITE_BASE_PATH || '/'}supervisor`,
+        display: 'standalone',
+        background_color: '#1c1917',
+        theme_color: '#1c1917',
+        icons: [
+          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+      workbox: {
+        // Cache the shell so the app opens instantly and survives a labs outage
+        // (this is also what makes the menubar's WKWebView resilient in Phase 5).
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // vite-plugin-pwa's generated SW only caches — it has no push listener.
+        // Without this, a push payload arrives and nothing happens (no error,
+        // no notification). importScripts (not injectManifest) keeps the
+        // plugin's own precaching intact while adding push handling.
+        importScripts: ['sw-push.js'],
+        // Stop the SW serving cached index.html for /api/ paths; they should 404/500 honestly.
+        // (Not the API-cache guard — see runtimeCaching below.)
+        navigateFallbackDenylist: [/^\/api\//, /^\/canopy\/api\//],
+        // No runtimeCaching routes registered: all non-precached fetches bypass the SW and hit
+        // the network. This keeps the API uncached (stale "0 waiting" is worse than a spinner).
+        // When adding entries here, take care not to match /api/ — nothing else guards against that.
+        runtimeCaching: [],
+      },
+      devOptions: { enabled: false },
+    }),
+  ],
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },
