@@ -45,6 +45,11 @@ const WS_SCOPED_API_PREFIXES = [
   "/api/ddd",
   "/api/timeline",
   "/api/agents",
+  // Items are agent-scoped, so /api/agents already covers the collection; the
+  // resource routes (/api/items/{id}/decide) are a separate top-level prefix and
+  // must be pinned too, or one of the two calls would be tenant-scoped and the
+  // other not.
+  "/api/items",
 ];
 
 function activeWorkspaceFromUrl(): string | null {
