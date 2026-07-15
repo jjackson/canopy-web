@@ -32,6 +32,7 @@ from .schemas import (
     AgentWorkProductOut,
     CommandResultOut,
     CountOut,
+    FleetNeedsYouOut,
     NeedsYouOut,
 )
 
@@ -67,6 +68,27 @@ def list_agents(request: HttpRequest, limit: int = 100) -> Page[AgentOut]:
         if a.workspace_id in slugs or (ws is None and a.workspace_id is None)
     ]
     return paginate(items, offset=0, limit=limit)
+
+
+@router.get("/needs-you", response=FleetNeedsYouOut,
+            summary="Fleet-wide needs-you (the supervisor home screen)")
+def fleet_needs_you(request: HttpRequest) -> FleetNeedsYouOut:
+    """Every agent's needs-you in one call, ranked busiest-first. Declared BEFORE
+    the /{slug}/ routes so 'needs-you' isn't resolved as a slug. Tenant scoping
+    mirrors list_agents exactly."""
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
+    mine = [
+        a for a in services.list_agents()
+        if a.workspace_id in slugs or (ws is None and a.workspace_id is None)
+    ]
+    blocks = [NeedsYouOut.model_validate(services.needs_you(a)) for a in mine]
+    blocks.sort(key=lambda b: (-b.waiting_count, b.agent_slug))
+    return FleetNeedsYouOut(
+        total_waiting=sum(b.waiting_count for b in blocks),
+        agents=blocks,
+    )
 
 
 @router.post("/", response={201: AgentOut}, summary="Create or update an agent (upsert by slug)",

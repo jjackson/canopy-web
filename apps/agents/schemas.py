@@ -272,6 +272,14 @@ class NeedsYouOut(StrictModel):
     items: list[NeedsYouItem] = Field(default_factory=list)
 
 
+class FleetNeedsYouOut(StrictModel):
+    """Every agent's needs-you in one response — the supervisor's home screen.
+    One round trip instead of an N+1 fan-out, which matters on cellular."""
+
+    total_waiting: int  # sum of per-agent waiting_count — the app-icon badge
+    agents: list[NeedsYouOut] = Field(default_factory=list)
+
+
 # ---- shared ----
 class CountOut(StrictModel):
     created: int = 0
