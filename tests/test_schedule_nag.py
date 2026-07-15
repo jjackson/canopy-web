@@ -60,6 +60,38 @@ def test_unfinished_occurrence_nags(agent, schedule):
     assert out["waiting_count"] == 1  # counts toward the 'N waiting on you' badge
 
 
+def test_nag_deep_links_to_the_schedules_rail(agent, schedule):
+    """A nag with an empty url renders as a dead, unclickable row — the spec's
+    central promise (the nag is where you act on it) never lands. Every other
+    needs_you builder carries a real url; this one must too."""
+    from django.contrib.auth.models import User
+
+    from apps.workspaces.models import Workspace
+
+    owner = User.objects.create_user("acme-owner", "acme-owner@dimagi.com", "pw")
+    agent.workspace = Workspace.objects.create(
+        slug="acme", display_name="Acme", created_by=owner, auto_join_domains=[]
+    )
+    agent.save()
+    hsvc.fire_schedule(schedule, SLOT)
+
+    item = next(i for i in asvc.needs_you(agent)["items"] if i["ref_kind"] == "schedule")
+
+    assert item["url"] == "/w/acme/agents/eva/schedules"
+
+
+def test_nag_url_falls_back_to_the_legacy_path_for_a_workspaceless_agent(agent, schedule):
+    """Agent.workspace is nullable (legacy rows). The flat /agents/* route
+    redirects into the active workspace, so this stays a live link — and, more
+    to the point, building the url must not crash on a null workspace."""
+    assert agent.workspace_id is None  # guard: the fixture's premise
+    hsvc.fire_schedule(schedule, SLOT)
+
+    item = next(i for i in asvc.needs_you(agent)["items"] if i["ref_kind"] == "schedule")
+
+    assert item["url"] == "/agents/eva/schedules"
+
+
 def test_finished_occurrence_clears_the_nag(agent, schedule):
     turn, _ = hsvc.fire_schedule(schedule, SLOT)
     hsvc.finish_turn(_executing(turn), status=Turn.DONE)

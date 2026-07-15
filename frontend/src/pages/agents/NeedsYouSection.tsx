@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type JSX } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
 import {
   getNeedsYou,
   listAgentTasks,
@@ -34,21 +34,37 @@ function WaitingBadge({ count }: { count: number }): JSX.Element {
   )
 }
 
-// FYI items (a posted sync / shipped work product) link out to the artifact.
+// Most items (a posted sync / shipped work product) link OUT to an artifact on
+// another host. The schedule nag instead deep-links IN, to the agent's Schedules
+// rail where Run now lives — an in-app path must stay an SPA navigation in this
+// tab, not a new-tab full page load, so route by url shape.
+const isInternal = (url: string): boolean => url.startsWith('/')
+
 function NotifyRow({ item }: { item: NeedsYouItem }): JSX.Element {
-  return (
-    <a
-      href={item.url || undefined}
-      target="_blank"
-      rel="noreferrer"
-      data-testid={`needsyou-${item.ref_kind}-${item.ref_id}`}
-      className="block rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40"
-    >
+  const className =
+    'block rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40'
+  const testId = `needsyou-${item.ref_kind}-${item.ref_id}`
+  const body = (
+    <>
       <div className="flex items-start gap-2">
         <p className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-foreground">{item.title}</p>
-        {item.url && <span aria-hidden className="shrink-0 text-primary/70">↗</span>}
+        {item.url && (
+          <span aria-hidden className="shrink-0 text-primary/70">{isInternal(item.url) ? '→' : '↗'}</span>
+        )}
       </div>
       {item.subtitle && <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{item.subtitle}</p>}
+    </>
+  )
+  if (item.url && isInternal(item.url)) {
+    return (
+      <Link to={item.url} data-testid={testId} className={className}>
+        {body}
+      </Link>
+    )
+  }
+  return (
+    <a href={item.url || undefined} target="_blank" rel="noreferrer" data-testid={testId} className={className}>
+      {body}
     </a>
   )
 }

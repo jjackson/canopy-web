@@ -10,6 +10,23 @@ from __future__ import annotations
 from collections.abc import Callable
 
 
+def _schedules_url(agent) -> str:
+    """Deep-link the nag to the agent's Schedules rail, where Run now lives.
+
+    NeedsYouItem has no `action` field, so the spec's "the nag carries a Run now
+    action" was never implementable as written — a link to the surface that owns
+    the action delivers the same intent. An empty url renders as a dead,
+    unclickable row (NeedsYouSection: `href={item.url || undefined}`).
+
+    Workspace's pk IS its slug, so `workspace_id` is the slug string and needs no
+    extra query. It is nullable on legacy agents; the flat /agents/* route
+    redirects into the caller's active workspace, so the fallback stays live.
+    """
+    if agent.workspace_id:
+        return f"/w/{agent.workspace_id}/agents/{agent.slug}/schedules"
+    return f"/agents/{agent.slug}/schedules"
+
+
 def _inbox(agent, schedule, turn) -> dict:
     """The default channel: a typed needs_you item. Passive but omnipresent —
     it rides the 'N waiting on you' badge the supervisor surfaces already show.
@@ -22,7 +39,7 @@ def _inbox(agent, schedule, turn) -> dict:
         "ref_id": schedule.id,
         "title": schedule.name,
         "subtitle": "Scheduled — not finished",
-        "url": "",
+        "url": _schedules_url(agent),
         "created_at": turn.created_at,
     }
 

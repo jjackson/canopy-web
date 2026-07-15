@@ -164,7 +164,8 @@ export type NeedsYouType = 'review' | 'question' | 'notify'
 
 export interface NeedsYouItem {
   type: NeedsYouType
-  ref_kind: 'task' | 'sync' | 'work_product'
+  // Mirrors apps/agents/schemas.py NeedsYouItem.ref_kind — keep both in step.
+  ref_kind: 'task' | 'sync' | 'work_product' | 'run' | 'schedule'
   ref_id: number
   title: string
   subtitle: string
