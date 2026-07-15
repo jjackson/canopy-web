@@ -1,21 +1,23 @@
 """Deterministic review-ingestion: turn a human-approved fleet review into harness turns.
 
 Ada (the fleet conductor) posts a canopy-web review (`gate=product_findings`) whose
-clusters each carry a `turns[]` routing block — the exact fields the harness needs:
-`{target_agent, prompt, origin, origin_ref}`. Jonathan goes through the review in the
-web UI and submits `implement | skip | defer` per cluster. This module is the runner's
-side: it polls RESOLVED reviews and, for every cluster he decided `implement`, enqueues
-the turn(s) Ada attached — routed to the right agent, with session-continuity context.
+clusters each carry a `dispatch[]` block — the exact fields the harness needs:
+`{target_agent, prompt, origin, origin_ref}`. (Named `dispatch`, NOT `turns`, so we don't
+overload "turn" — the harness turn is the *job that runs*; a dispatch entry is the
+*instruction to create one*.) Jonathan goes through the review in the web UI and submits
+`implement | skip | defer` per cluster. This module is the runner's side: it polls RESOLVED
+reviews and, for every cluster he decided `implement`, dispatches the work Ada attached —
+routed to the right agent, with session-continuity context.
 
-No LLM in the hot path — "approved cluster → its turns[]" is a fixed rule. Idempotency
+No LLM in the hot path — "approved cluster → its dispatch[]" is a fixed rule. Idempotency
 is keyed `review-<review_id>-<cluster_id>-<i>`, so re-polling never double-enqueues and
 never re-runs a finished turn. A local seen-set skips reviews already fully ingested.
 
 Ada's clusters look like:
     {"id": "eva-first-turn", "title": "…", "severity": "high", "fix_kind": "mechanical",
      "suggested_fix": "…",
-     "turns": [{"target_agent": "eva", "origin": "email", "prompt": "/eva:turn --thread <id>",
-                "origin_ref": {"thread_id": "<id>", "subject": "…"}}]}
+     "dispatch": [{"target_agent": "eva", "origin": "email", "prompt": "/eva:turn --thread <id>",
+                   "origin_ref": {"thread_id": "<id>", "subject": "…"}}]}
 """
 from __future__ import annotations
 
@@ -30,11 +32,11 @@ IMPLEMENT = "implement"
 
 
 def check_reviews(client, *, seen: frozenset[str] = frozenset(), max_reviews: int = 25) -> dict:
-    """Enqueue the turns for every `implement`-decided cluster in resolved, not-yet-seen
+    """Dispatch the work for every `implement`-decided cluster in resolved, not-yet-seen
     reviews. Returns {"enqueued": [(review_id, cluster_id, agent), …],
                       "processed": {review_id, …}}  — review ids that were fully ingested
-    (every implemented cluster had a routing block) and can be skipped next poll. A review
-    with an implemented-but-unrouted cluster is left UNprocessed so a later Ada fix + a
+    (every implemented cluster had a dispatch block) and can be skipped next poll. A review
+    with an implemented-but-undispatched cluster is left UNprocessed so a later Ada fix + a
     re-poll picks it up."""
     enqueued: list[tuple[str, str, str]] = []
     processed: set[str] = set()
@@ -49,16 +51,16 @@ def check_reviews(client, *, seen: frozenset[str] = frozenset(), max_reviews: in
         resp = detail.get("response_json") or {}
         decisions = resp.get("decisions") or {}
 
-        complete = True  # every implemented cluster had a routing block
+        complete = True  # every implemented cluster had a dispatch block
         for cluster in req.get("clusters") or []:
             cid = cluster.get("id") or ""
             if (decisions.get(cid) or {}).get("decision") != IMPLEMENT:
                 continue
-            specs = cluster.get("turns") or []
+            specs = cluster.get("dispatch") or []
             if not specs:
                 complete = False
-                logger.warning("review %s cluster '%s' was approved but has no turns[] "
-                               "routing block — Ada must emit {target_agent, prompt, origin, "
+                logger.warning("review %s cluster '%s' was approved but has no dispatch[] "
+                               "block — Ada must emit {target_agent, prompt, origin, "
                                "origin_ref}; skipping (will retry once fixed)", rid, cid)
                 continue
             for i, spec in enumerate(specs):
