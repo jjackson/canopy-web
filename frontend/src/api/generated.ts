@@ -1324,6 +1324,75 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/items/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List an agent's items */
+        readonly get: operations["apps_harness_items_api_list_items"];
+        readonly put?: never;
+        /** Raise items for an agent (batch, idempotent) */
+        readonly post: operations["apps_harness_items_api_create_items"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/items/{item_id}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get an item */
+        readonly get: operations["apps_harness_items_api_get_item"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/items/{item_id}/decide": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Decide an item (implement dispatches its work) */
+        readonly post: operations["apps_harness_items_api_decide_item"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/items/{item_id}/dismiss": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Dismiss an item */
+        readonly post: operations["apps_harness_items_api_dismiss_item"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/workspaces/": {
         readonly parameters: {
             readonly query?: never;
@@ -4793,6 +4862,134 @@ export interface components {
             /** Notify */
             readonly notify?: readonly string[] | null;
         };
+        /** ItemOut */
+        readonly ItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Idempotency Key */
+            readonly idempotency_key: string;
+            /** Kind */
+            readonly kind: string;
+            /** Title */
+            readonly title: string;
+            /** Body */
+            readonly body: string;
+            /** Origin */
+            readonly origin: string;
+            /** Origin Ref */
+            readonly origin_ref: {
+                readonly [key: string]: unknown;
+            };
+            /** State */
+            readonly state: string;
+            /** Decision */
+            readonly decision: string;
+            /** Comment */
+            readonly comment: string;
+            /** Decided By */
+            readonly decided_by: string;
+            /** Decided At */
+            readonly decided_at?: string | null;
+            /** Dispatch */
+            readonly dispatch: readonly {
+                readonly [key: string]: unknown;
+            }[];
+            /** Dispatched At */
+            readonly dispatched_at?: string | null;
+            /** Batch Key */
+            readonly batch_key: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** ItemIn */
+        readonly ItemIn: {
+            /**
+             * Kind
+             * @default review
+             * @enum {string}
+             */
+            readonly kind: "review" | "question";
+            /** Title */
+            readonly title: string;
+            /**
+             * Body
+             * @default
+             */
+            readonly body: string;
+            /**
+             * Origin
+             * @default api
+             */
+            readonly origin: string;
+            /** Origin Ref */
+            readonly origin_ref?: {
+                readonly [key: string]: unknown;
+            };
+            /** Dispatch */
+            readonly dispatch?: readonly components["schemas"]["TurnSpecIn"][];
+            /**
+             * Batch Key
+             * @default
+             */
+            readonly batch_key: string;
+            /** Idempotency Key */
+            readonly idempotency_key: string;
+            /** Raised By */
+            readonly raised_by?: string | null;
+        };
+        /**
+         * TurnSpecIn
+         * @description One deferred Turn enqueue. `target_agent=""` means the item's own agent —
+         *     self-dispatch is the default; Ada's fan-out is this field set.
+         */
+        readonly TurnSpecIn: {
+            /**
+             * Prompt
+             * @default
+             */
+            readonly prompt: string;
+            /**
+             * Target Agent
+             * @default
+             */
+            readonly target_agent: string;
+            /**
+             * Origin
+             * @default api
+             */
+            readonly origin: string;
+            /** Origin Ref */
+            readonly origin_ref?: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Routing
+             * @default prefer_local
+             */
+            readonly routing: string;
+        };
+        /** ItemDecideIn */
+        readonly ItemDecideIn: {
+            /**
+             * Decision
+             * @default
+             * @enum {string}
+             */
+            readonly decision: "implement" | "skip" | "defer" | "";
+            /**
+             * Comment
+             * @default
+             */
+            readonly comment: string;
+        };
         /** WorkspaceOut */
         readonly WorkspaceOut: {
             /** Slug */
@@ -7748,6 +7945,128 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_list_items: {
+        readonly parameters: {
+            readonly query?: {
+                readonly state?: string;
+                readonly kind?: string;
+                readonly batch?: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ItemOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_create_items: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": readonly components["schemas"]["ItemIn"][];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ItemOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_get_item: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly item_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_decide_item: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly item_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ItemDecideIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_dismiss_item: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly item_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ItemOut"];
                 };
             };
         };
