@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import uuid
 
+from django.db.models import Q
 from django.http import HttpRequest
-from ninja import Router
+from ninja import Router, Status
 from ninja.errors import HttpError
 
 from apps.agents.models import Agent
 from apps.api.auth import session_auth
 from apps.api.errors import ProblemError
+from apps.api.pagination import Page, paginate
 from apps.workspaces import services as wsvc
 
 from . import services
@@ -21,6 +23,8 @@ from .schemas import (
     ResolveSessionOut,
     RunnerIn,
     RunnerOut,
+    ScheduleFireIn,
+    ScheduleOut,
     TurnEventCountOut,
     TurnEventsIn,
     TurnEventsOut,
@@ -226,3 +230,68 @@ def finish_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnFinishIn)
         # returning a turn that looks unchanged.
         raise ProblemError(409, "Turn not finishable", detail=f"status={result.status}")
     return result
+
+
+# --------------------------------------------------------------------------------------
+# AgentSchedule — the runner-facing half. The supervisor's CRUD lives in api_schedules.py;
+# these two routes are what the laptop daemon actually calls: sync, then report a due slot.
+# --------------------------------------------------------------------------------------
+
+def _runner_schedule_qs(runner: Runner):
+    """Schedules this runner may see, gated by TENANT — never by capabilities.
+
+    capabilities is a caller-supplied routing hint declared at pairing and never
+    validated (see b4f5ead, Critical): scoping by it would let anyone pair a
+    runner declaring a victim's agent slug and read that agent's schedules,
+    leaking `prompt`. The workspace is the boundary.
+
+    The tenant is derived from `paired_by` — the human who paired the runner —
+    rather than a Runner.workspace field, deliberately:
+      * Runner.workspace does not exist on main; it is added by the concurrent
+        canopy-mobile branch (0004_runner_workspace). Adding it here would
+        collide with that migration for no gain.
+      * paired_by is server-assigned at pairing (request.user), so unlike
+        capabilities it is not attacker-controlled — which is the whole point.
+    When Runner.workspace lands, this may narrow to it; the predicate below is
+    the conservative superset of that rule, never a wider one.
+    """
+    from .models import AgentSchedule
+
+    qs = AgentSchedule.objects.filter(enabled=True).select_related("agent")
+    if runner.paired_by_id is None:
+        return qs.none()  # an orphaned runner has no identity to derive tenancy from
+    slugs = wsvc.user_workspace_slugs(runner.paired_by)
+    # Same-tenant agents, or legacy null-workspace agents (the pre-tenancy path
+    # the existing suite covers). Mirrors claim_next_turn's Q-based predicate.
+    return qs.filter(Q(agent__workspace_id__in=slugs) | Q(agent__workspace_id__isnull=True))
+
+
+@router.get("/schedules/", response=Page[ScheduleOut],
+            summary="Schedules this runner may fire (tenant-scoped)")
+def sync_schedules(request: HttpRequest, runner_id: uuid.UUID, limit: int = 200) -> Page[ScheduleOut]:
+    """The runner's schedule sync. It caches these locally, evaluates the cron
+    itself, and POSTs /fire when a slot comes due."""
+    from .api_schedules import _serialize
+
+    runner = _runner_or_404(runner_id)
+    items = [_serialize(s) for s in _runner_schedule_qs(runner)]
+    return paginate(items, offset=0, limit=min(limit, 500))
+
+
+@router.post("/schedules/{schedule_id}/fire", response={201: TurnOut},
+             summary="Report a due slot; the server materializes the turn")
+def fire_schedule_route(
+    request: HttpRequest, schedule_id: int, runner_id: uuid.UUID, payload: ScheduleFireIn
+) -> Status:
+    runner = _runner_or_404(runner_id)
+    schedule = _runner_schedule_qs(runner).filter(pk=schedule_id).first()
+    if schedule is None:
+        # 404 whether it is missing, disabled, or another tenant's — no existence leak.
+        raise HttpError(404, f"schedule {schedule_id} not found")
+    # Deliberately does NOT call release_stale_cron_turns: fire_schedule already
+    # supersedes every open occurrence, so release would add nothing here except
+    # a self-destruct on same-slot re-fire (fire skips supersede when the key
+    # exists, but release would already have killed the turn this route returns).
+    # Release runs on the CLAIM tick instead — see claim_next_turn.
+    turn, _ = services.fire_schedule(schedule, payload.slot)
+    return Status(201, turn)
