@@ -59,7 +59,7 @@ That last item is not a nice-to-have. Without it the phone is read-only in pract
 
 **Out of scope, deliberately:** the emdash session *mirror* — enumerating emdash's sidebar to see and drive sessions you started by hand. See *Deferred*. The deferral survives the scope change above because **the phone owns its own thread per target** (§2): the first message creates the session, every message after reuses it. You never need to enumerate emdash to talk to a thread you yourself started from the phone.
 
-**Multi-account is in scope now, cloud is designed for but not built.** Work runs under one macOS account until its tokens are exhausted, then switches to the other; exactly one runner is active at a time (§4). A cloud runner is a third option under that same rule, and the local-vs-cloud policy it needs (`Turn.routing` + `_kind_allows`) already exists.
+**Multi-runner is in scope now, cloud is designed for but not built.** Exactly one runner may execute a given **agent** at a time (§4) — but different agents may live on different runners, and that split grows with each agent's maturity. Work runs under one macOS account until its tokens are exhausted, then its agents are rebound to the other; a matured workhorse (ACE) can be bound to an always-on cloud runner and simply not participate in that handoff. The local-vs-cloud policy this needs (`Turn.routing` + `_kind_allows`) already exists.
 
 ## Design
 
@@ -130,43 +130,69 @@ Turn
 
 **Rejected: a pseudo-agent per repo.** It would serialize repo work behind `one_executing_turn_per_agent`, and pollute the fleet UI — every repo would acquire KPIs, a needs-you inbox, a skills catalog, and syncs it has no meaning for. A repo is not an agent and the model should not pretend otherwise.
 
-### 4. Runner activation — exactly one runner claims, switchable from the phone
+### 4. Agent→runner binding — one runner *per agent*, not one runner overall
 
-**The requirement:** work runs under `jjackson` until its Claude tokens are exhausted, then switches to `acedimagi`. **Exactly one runner is active at a time.** Later, a cloud runner becomes a third option under the same rule. This is not per-turn routing — it is *handoff*.
+**The requirement (corrected):** the unit of exclusivity is the **agent**, not the workspace. Exactly one runner may execute a given agent at a time — but different agents may live on different runners, and that split is expected to grow with each agent's maturity. A workhorse like ACE, once it is reliable, wants to be always-on in the cloud while `echo`/`eva`/`hal` stay on whichever laptop account is in use.
 
-**Finding: today, claiming is a race.** `claim_next_turn` (`services.py:102`) filters by `runner.agent_slugs()`, routing, and kind — **never by host or identity.** Each macOS account runs its own runner (launchd is per-uid, `~/.canopy/runner.json` is per-account, each pairs for its own `runner_id`), and fast user switching keeps both logged in and polling. Both claim from the same pool; whichever polls first wins. Verified empirically: with `jjackson` in the foreground, `acedimagi` had 369 live processes including Chromium renderers. A backgrounded account is fully alive.
+> An earlier draft of this section made *the workspace* the unit — "exactly one active runner, switched on token exhaustion." That is a special case of this design (bind every agent to the same runner), and it would have blocked the always-on-ACE case entirely. It was never built; `is_active` does not exist in the code.
 
-**Change:** activation is a property of the runner, enforced by the database.
+**Why exclusivity per agent matters, and it is not tidiness — it is tokens.** `SessionLink.reusable_by()` (`models.py:189`) requires `live_host == runner.host`. If an agent's turns alternate between two runners, **reuse never hits and every turn is a fresh Claude session** — `execute.py:104` logs exactly this (`NEW claude session = tokens`). So the binding must be *sticky*, not merely unique. Affinity is what makes session reuse work at all.
+
+**Finding: today, claiming is a race.** `claim_next_turn` (`services.py:102`) filters by `runner.agent_slugs()`, routing, and kind — **never by host or identity.** Each macOS account runs its own runner (launchd is per-uid, `~/.canopy/runner.json` is per-account, each pairs for its own `runner_id`), and fast user switching keeps both logged in and polling. Verified empirically: with `jjackson` in the foreground, `acedimagi` had 369 live processes including Chromium renderers. A backgrounded account is fully alive, so both runners really do race.
+
+**Change:** a binding model, in `apps/harness`.
 
 ```
-Runner
-+ is_active   bool   default False
+AgentBinding
+  agent      FK → agents.Agent   CASCADE
+  runner     FK → Runner         CASCADE
+  is_active  bool  default True
+  bound_at, bound_by
 
-UniqueConstraint(fields=["workspace"], condition=Q(is_active=True),
-                 name="one_active_runner_per_workspace")
+  UniqueConstraint(fields=["agent"], condition=Q(is_active=True),
+                   name="one_active_binding_per_agent")
 ```
 
-This deliberately mirrors `one_executing_turn_per_agent` (`harness/models.py:107`) — same idiom, same reason: make the invariant unrepresentable rather than merely intended.
+It lives in `harness`, not as an `Agent.runner` FK, because **`harness` already imports `agents`** (`harness/api.py:11`) and `agents` imports nothing from `harness`. An FK on `Agent` would invert that and make the dependency circular. Both apps are framework tier, so this is about import direction, not the product boundary.
 
-`claim_next_turn` gains `if not runner.is_active: return None`, alongside its existing `status != ONLINE` guard. An inactive runner **still heartbeats** — it stays visible, warm, and instantly switchable — but claims nothing.
+The partial unique index mirrors `one_executing_turn_per_agent` (`harness/models.py:107`) — same idiom, same reason: make the invariant unrepresentable rather than merely intended.
 
-**Handoff is one atomic call, not two.** `POST /api/harness/runners/{id}/activate` sets `is_active=True` on the target and `False` on every other runner in the workspace, in one transaction. Pause-then-resume would leave a window where both or neither are active; this has no such window.
+**`claim_next_turn` gains one exclusion:**
 
-**`target_runner` is therefore unnecessary and is not in this design.** With exactly one active runner, a turn reaches the right machine by construction. The requirement made the design smaller.
+```python
+# Affinity: an agent bound to another runner is off-limits. An UNBOUND agent
+# stays claimable by any capable runner in the tenant — today's behaviour, and
+# the migration path (no backfill needed).
+bound_elsewhere = AgentBinding.objects.filter(is_active=True).exclude(runner=runner).values("agent_id")
+candidates = candidates.exclude(agent_id__in=bound_elsewhere)
+```
 
-**Activation and pause are orthogonal, and both are needed:**
+This composes with, and does not replace, the tenant predicate (§8) — **the workspace remains the security boundary; the binding is affinity.** Three independent filters intersect: tenant (security), `capabilities` (a self-declared routing hint), and binding (affinity). Conflating any of them was the bug that made `claim_next_turn` exploitable.
 
-| | Activation | Pause |
+**Unbound is a valid state, deliberately.** It means "any capable runner in my tenant" — exactly today's behaviour — so this ships with **no backfill and no flag day**. You bind an agent when you want to pin it; until then nothing changes.
+
+**Rebinding is one atomic call.** `POST /api/harness/runners/{id}/bind` with `{agent_slugs: [...]}` activates those agents' bindings on this runner and deactivates any other active binding for each, in one transaction. There is no window where an agent is bound twice or not at all.
+
+Two operations fall out of the same primitive:
+- **Token-exhaustion handoff:** rebind `jjackson`'s agents to `acedimagi`'s runner. ACE, bound to the cloud runner, is untouched — which is the whole point of the correction.
+- **Promotion to always-on:** bind ACE to a cloud runner once and leave it.
+
+**`target_runner` is unnecessary and is not in this design.** Binding is per-agent and durable, so a turn reaches the right machine by construction; per-turn targeting would be a second, redundant mechanism.
+
+**Binding and pause are orthogonal, and both are needed:**
+
+| | Binding | Pause |
 |---|---|---|
-| Answers | *which* runner claims | *whether* the active runner claims |
-| Cardinality | exactly one per workspace | independent per runner |
-| Driven by | token exhaustion (hours/days) | dev iteration (minutes) |
+| Answers | *which* runner may execute this agent | *whether* a runner claims at all |
+| Cardinality | ≤1 active per **agent** | independent per **runner** |
+| Durability | sticky — survives restarts; changes are deliberate | transient |
+| Driven by | agent maturity; token exhaustion (hours/days) | dev iteration (minutes) |
 
-**Handoff continuity already works — no new code.** On switching to `acedimagi`, that runner cannot reuse `jjackson`'s sessions: `SessionLink.reusable_by()` (`models.py:189`) requires `live_host == runner.host`. It correctly falls through to create-and-rehydrate from the durable `summary`. This is the designed behaviour, and it is precisely why `SessionLink` splits durable state from the ephemeral live hint.
+**Handoff continuity already works — no new code.** On rebinding to `acedimagi`, that runner cannot reuse `jjackson`'s sessions (`reusable_by()` requires a host match). It correctly falls through to create-and-rehydrate from the durable `summary`. That is the designed behaviour, and precisely why `SessionLink` splits durable state from the ephemeral live hint. The one-off cost of a rebind is one fresh session per thread — which is also why you would not rebind casually.
 
-**No in-flight turn is stranded by a handoff.** In the CDP path the Turn is the *routing* job, not the work: `execute_turn` finishes it synchronously the moment the prompt lands in a session (`main.py:191-193`). Turns are short-lived, so a handoff has essentially nothing claimed to strand. The *work* continues in `jjackson`'s emdash session and simply stops when tokens run out — the next turn on that thread lands on `acedimagi` as a fresh, rehydrated session. That is the intended outcome, not a loss.
+**No in-flight turn is stranded by a rebind.** In the CDP path the Turn is the *routing* job, not the work: `execute_turn` finishes it synchronously the moment the prompt lands in a session (`main.py:191-193`). Turns are short-lived, so a rebind has essentially nothing claimed to strand. The *work* continues in `jjackson`'s emdash session and stops when tokens run out; the next turn on that thread lands on `acedimagi`, rehydrated. Intended, not a loss.
 
-**Cloud fits this model unchanged.** A cloud runner is just a runner that can be activated. The local-vs-cloud *policy* already exists and needs no work: `Turn.routing` (`prefer_local` / `local_only` / `any`) and `_kind_allows` (`services.py:93`) already prevent a cloud runner from taking a `local_only` turn — such a turn simply stays `QUEUED` until a local runner is active again. Correct behaviour, already implemented.
+**Cloud fits unchanged, and is the reason for this correction.** A cloud runner is just a runner an agent can be bound to. The local-vs-cloud *policy* already exists and needs no work: `Turn.routing` (`prefer_local` / `local_only` / `any`) and `_kind_allows` (`services.py:93`) already stop a cloud runner taking a `local_only` turn — such a turn stays `QUEUED` until a local runner can take it. So "ACE always-on in the cloud while the laptop agents come and go" is: bind ACE to the cloud runner, leave the rest unbound or bound to the active laptop.
 
 ### 5. Remote pause — and resume, which is the hard half
 
@@ -210,7 +236,7 @@ The file is no longer the normal path — it becomes a genuine emergency brake (
 
 **Residual cost, mitigated by honesty, not cleverness:** if that hand-dropped file is present, the UI reports *why* ("paused by a local sentinel — clear it at the Mac") and disables the control rather than offering a button that lies. Latency is ≤20s, so the control reads "pausing…" until the next heartbeat confirms.
 
-**Pause is per-runner**, and with §4 exactly one runner is active — so "pause" unambiguously means "stop the active runner." No fleet-wide pause concept is needed.
+**Pause is per-runner, and §4 means that is no longer the same as "the fleet".** With agents bound to different runners, pausing one runner stops only the agents bound to it — ACE on a cloud runner keeps working while you pause the laptop. That is the correct behaviour, but it makes the UI's wording load-bearing: a control labelled "Pause" must name *which runner*, and the agent cards must show which runner each agent is bound to, or "why is ACE still running?" becomes a mystery. Per-agent pause (`desired_paused_agents`) is unchanged and remains the way to stop one agent without stopping its runner.
 
 ### 6. Push — the trigger is the design work
 
@@ -247,7 +273,7 @@ The phone itself does not make this worse (it is session-auth on labs, same as t
 
 Two specifics, resolved here rather than left to the implementer:
 
-**`Turn` derives its workspace when it can, and stores it only when it cannot.** `Agent.workspace` already exists (`apps/agents/models.py:31`), so an agent Turn's tenant is `turn.agent.workspace` — deriving beats a parallel FK, because denormalized tenancy drifts. A **project** Turn (§3) has no agent, so it carries a `workspace` FK used only in that case. `Runner` needs its own FK for the same reason. The `is_active` constraint (§4) scopes to that FK.
+**`Turn` derives its workspace when it can, and stores it only when it cannot.** `Agent.workspace` already exists (`apps/agents/models.py:31`), so an agent Turn's tenant is `turn.agent.workspace` — deriving beats a parallel FK, because denormalized tenancy drifts. A **project** Turn (§3) has no agent, so it carries a `workspace` FK used only in that case. `Runner` needs its own FK for the same reason — and `claim_next_turn` uses it as the security boundary, intersected with (never replaced by) §4's binding.
 
 **Runner operations bind to `runner.paired_by` (the user), not to a specific token.** `BearerTokenAuthMiddleware` stamps `request.user = token.user` (`apps/tokens/models.py:22-25`) and discards which token was used, so token-level binding would mean plumbing the token identity through the middleware. User-level binding closes the actual hole — *any authenticated PAT* becomes *your PATs only* — and survives rotation, which matters because `canopy:canopy-web-pat-mint` is documented as "re-run to rotate" and token-binding would break the runner on every rotation. The residual gap is accepted and stated: a second token belonging to the same user can still act as that user's runner.
 
@@ -261,7 +287,7 @@ Each phase ships something usable. Nothing depends on a phase after it.
 | **1** | `/supervisor` React route: needs-you inbox, agent KPI cards, runner status. Desktop browser. | Panel parity minus local controls. Built on canopy-ui, which already stacks rail-over-main at `md:`. |
 | **2** | PWA: manifest, service worker, WebAPK install, VAPID, `PushSubscription`, `waiting_count` snapshot trigger (§6). Decide `SESSION_SAVE_EVERY_REQUEST`. | Where it stops being a smaller laptop and starts tapping you on the shoulder. Highest value, highest unknown. |
 | **3** | Dispatch: `launchable` + `args_hint` (§1); repo targets (§3 — nullable `agent`, `project`, `SessionLink`/capabilities/claim widening); the composer; **session input via the existing reuse path** (§2). | The dogfooding loop. Repo targets and session input ship together because either alone leaves the loop open. |
-| **4** | Control: `is_active` + atomic `/activate` (§4); `desired_paused` (§5); runner loop reads the heartbeat response; **menubar `_set_pause` POSTs desired-state instead of writing the file**. | Handoff on token exhaustion, and pause/resume that works from the phone regardless of origin. |
+| **4** | Control: `AgentBinding` + atomic `/bind` (§4); `desired_paused` (§5); runner loop reads the heartbeat response; **menubar `_set_pause` POSTs desired-state instead of writing the file**. | Rebind on token exhaustion; pin a matured agent to an always-on cloud runner; pause/resume that works from the phone regardless of origin. |
 | **5** | Menubar `loadRequest_` + bridge; delete `render()`. | **Last, deliberately.** The panel is a daily tool; it is not replaced until the replacement is at parity. Phases 1–4 *are* the parity. |
 
 **On sequencing Phase 3 and 4:** Phase 3 is the loop that stops you abandoning the phone; Phase 4 is what you need the day you exhaust tokens mid-session. Either order works — 3 first if you want the phone useful, 4 first if a handoff is imminent.
@@ -300,7 +326,7 @@ A "synced lightweight emdash controller" — see open sessions, continue one or 
 - **Phase 0:** a non-member PAT gets 404 (not 403) from every harness endpoint. A PAT belonging to a user who is not `runner.paired_by` cannot heartbeat, claim, or write desired-state for that runner.
 - **Phase 2:** bulk `tasks/sync` of N tasks emits ≤1 push per agent. A `waiting_count` decrease emits none.
 - **Phase 3:** a non-`launchable` skill is absent from the catalog response the composer consumes. Dispatch produces a Turn whose prompt is exactly `/{slug}:{skill} {args}`. A Turn with both `agent` and `project` set is rejected by the CheckConstraint; so is one with neither. Two concurrent project turns for the same project both execute — `one_executing_turn_per_agent` must not have leaked onto projects. A second phone message on an existing thread reuses (`open_and_send`) rather than creating. A non-`TASK_NOT_FOUND` send failure fails the turn and creates **no** second session.
-- **Phase 4:** activating runner B deactivates runner A **in one transaction**; the DB constraint rejects two active runners in a workspace. An inactive runner heartbeats but claims nothing. A paused runner **reads the heartbeat response** and resumes when `desired_paused` flips — this is the regression test for the bug that a paused runner discards its heartbeat response. Pause set from the menubar is clearable from the phone (the whole point). A hand-dropped local `PAUSED` file still wins, and the UI reports why. A `local_only` turn is not claimed by an active cloud runner and stays `QUEUED`.
+- **Phase 4:** binding an agent to runner B deactivates its binding on runner A **in one transaction**; the DB constraint rejects two active bindings for one agent. An agent bound to another runner is not claimable — and the negative test must use a **tenanted** attacker, since after the §8 backfill every real runner has a workspace and the untenanted path no longer exists in production. An **unbound** agent stays claimable by any capable runner in its tenant (the no-flag-day path). Two agents bound to two different runners both execute concurrently — that is the always-on-ACE case and the reason the workspace-level model was rejected. Pausing runner A does not stop an agent bound to runner B. A paused runner **reads the heartbeat response** and resumes when `desired_paused` flips — the regression test for the bug that a paused runner discards its heartbeat response. Pause set from the menubar is clearable from the phone (the whole point). A hand-dropped local `PAUSED` file still wins, and the UI reports why. A `local_only` turn is not claimed by a cloud runner and stays `QUEUED`.
 - **Phase 5:** existing `menubar.py` tests for tray-icon state and the launchctl controls must pass unchanged — the swap must not touch them.
 - Playwright currently defines **no mobile viewports** (`frontend/playwright.config.ts`). Phase 1 adds one.
 
