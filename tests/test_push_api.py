@@ -126,3 +126,12 @@ def test_unsubscribing_someone_elses_endpoint_does_nothing(client):
 def test_anonymous_cannot_subscribe():
     resp = Client().post("/api/push/subscribe", SUB, content_type="application/json")
     assert resp.status_code == 401
+
+
+def test_sessions_roll_forward_on_use():
+    """Django's default sets the 2-week expiry AT LOGIN and never extends it, so
+    an installed PWA would log out every fortnight regardless of use. This is the
+    setting that stops that; a future 'cleanup' removing it would be silent."""
+    from django.conf import settings
+
+    assert settings.SESSION_SAVE_EVERY_REQUEST is True

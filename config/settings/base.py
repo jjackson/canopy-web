@@ -192,6 +192,12 @@ AUTH_ALLOWED_EMAIL_DOMAIN = env("AUTH_ALLOWED_EMAIL_DOMAIN", default="dimagi.com
 # Whether LoginRequiredMiddleware enforces auth. Default on; toggle off during rollout.
 REQUIRE_AUTH = env.bool("REQUIRE_AUTH", default=True)
 
+# Rolling session: refresh the expiry on every request rather than only at login.
+# Django's default (False) sets the 2-week expiry AT LOGIN and never extends it,
+# so an installed PWA would log you out every fortnight no matter how often you
+# opened it. Costs one session write per request; fine at this scale.
+SESSION_SAVE_EVERY_REQUEST = True
+
 # --- Walkthrough sharing (apps/walkthroughs) ---
 # When False, all /api/walkthroughs/ endpoints 404 (rollout flag).
 WALKTHROUGHS_ENABLED = env.bool("WALKTHROUGHS_ENABLED", default=True)
