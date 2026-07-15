@@ -44,6 +44,7 @@ const WS_SCOPED_API_PREFIXES = [
   "/api/shareouts",
   "/api/ddd",
   "/api/timeline",
+  "/api/agents",
 ];
 
 function activeWorkspaceFromUrl(): string | null {

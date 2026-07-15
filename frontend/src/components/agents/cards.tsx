@@ -120,10 +120,10 @@ export function TurnCard({ turn }: { turn: AgentTurnOut }) {
       {turn.summary && (
         <p className="text-[13px] text-muted-foreground leading-relaxed mt-2 whitespace-pre-wrap">{turn.summary}</p>
       )}
-      {turn.task_ext_ids.length > 0 && (
+      {(turn.task_ext_ids ?? []).length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Advanced</span>
-          {turn.task_ext_ids.map((id) => (
+          {(turn.task_ext_ids ?? []).map((id) => (
             <span
               key={id}
               className="text-[10px] font-semibold text-primary bg-muted border border-border px-1.5 py-0.5 rounded"
@@ -133,9 +133,9 @@ export function TurnCard({ turn }: { turn: AgentTurnOut }) {
           ))}
         </div>
       )}
-      {turn.work_product_urls.length > 0 && (
+      {(turn.work_product_urls ?? []).length > 0 && (
         <div className="flex flex-col gap-1 mt-3">
-          {turn.work_product_urls.map((url) => (
+          {(turn.work_product_urls ?? []).map((url) => (
             <a
               key={url}
               href={url}
