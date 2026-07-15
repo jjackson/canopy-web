@@ -30,6 +30,8 @@ def subscribe(request: HttpRequest, payload: PushSubscribeIn):
     subscribe() call, and its keys rotate — so update rather than insert, and
     re-point the row at the caller: the endpoint belongs to the BROWSER, not the
     person, so on a shared device it must follow whoever is logged in now."""
+    if not settings.VAPID_PUBLIC_KEY:
+        raise HttpError(503, "push is not configured")
     PushSubscription.objects.update_or_create(
         endpoint=payload.endpoint,
         defaults={

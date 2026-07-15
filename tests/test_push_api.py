@@ -44,6 +44,15 @@ def test_vapid_public_key_503s_when_push_is_not_configured(client, settings):
     assert client.get("/api/push/vapid-public-key").status_code == 503
 
 
+def test_subscribe_503s_when_push_is_not_configured(client, settings):
+    """Empty keys mean push is off. Storing a subscription we can never send to
+    just accumulates dead rows — refuse instead."""
+    settings.VAPID_PUBLIC_KEY = ""
+    resp = client.post("/api/push/subscribe", SUB, content_type="application/json")
+    assert resp.status_code == 503
+    assert not PushSubscription.objects.filter(endpoint=SUB["endpoint"]).exists()
+
+
 def test_subscribe_stores_the_browser(client, user):
     resp = client.post("/api/push/subscribe", SUB, content_type="application/json")
     assert resp.status_code == 201
@@ -75,6 +84,18 @@ def test_resubscribing_claims_the_endpoint_for_the_new_user(client):
 
 def test_unsubscribe_removes_it(client):
     client.post("/api/push/subscribe", SUB, content_type="application/json")
+    resp = client.delete(
+        "/api/push/subscribe", {"endpoint": SUB["endpoint"]}, content_type="application/json"
+    )
+    assert resp.status_code == 204
+    assert not PushSubscription.objects.filter(endpoint=SUB["endpoint"]).exists()
+
+
+def test_unsubscribe_works_even_when_push_is_not_configured(client, settings):
+    """Cleanup must not depend on config: someone turning notifications off on a
+    deployment whose keys were pulled should still succeed."""
+    client.post("/api/push/subscribe", SUB, content_type="application/json")
+    settings.VAPID_PUBLIC_KEY = ""
     resp = client.delete(
         "/api/push/subscribe", {"endpoint": SUB["endpoint"]}, content_type="application/json"
     )
