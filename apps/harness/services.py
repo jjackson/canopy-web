@@ -187,11 +187,11 @@ def mark_running(turn: Turn, *, session_id: str = "") -> Turn:
 
 
 def finish_turn(turn: Turn, *, status: str, result_note: str = "") -> Turn:
-    """Transition CLAIMED|RUNNING|NEEDS_HUMAN -> DONE|FAILED. A no-op (no
+    """Transition CLAIMED|RUNNING|NEEDS_HUMAN -> DONE|FAILED|MISSED. A no-op (no
     event, no field writes) if the turn is already terminal — idempotent, and
     guards against resurrecting a turn already swept to lost."""
-    if status not in (Turn.DONE, Turn.FAILED):
-        raise ValueError(f"finish status must be done|failed, got {status!r}")
+    if status not in (Turn.DONE, Turn.FAILED, Turn.MISSED):
+        raise ValueError(f"finish status must be done|failed|missed, got {status!r}")
     now = timezone.now()
     updated = Turn.objects.filter(
         pk=turn.pk, status__in=[Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
