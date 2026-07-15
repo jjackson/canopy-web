@@ -108,11 +108,17 @@ def _flush() -> None:
 
 
 def mark_dirty(agent_id: int) -> None:
-    """Note that an agent's waiting set may have changed. Coalesced: the first
-    call in a transaction registers the on_commit flush, and every later call in
-    that same transaction just joins the set — so a bulk sync of N rows is one
-    recompute, not N."""
-    first = not _dirty
+    """Note that an agent's waiting set may have changed.
+
+    Registers the flush unconditionally. Redundant callbacks are free: the first
+    one to run drains the set and does the work, and the rest find it empty and
+    no-op — so a bulk sync of N rows is still ONE recompute per agent.
+
+    Do NOT re-add a `if not _dirty` guard around the registration. Django
+    discards on_commit callbacks when a transaction rolls back, but this set is
+    not transactional and keeps its entries — so the guard would see a non-empty
+    set forever after the first rollback, never register again, and silently
+    kill push process-wide until restart.
+    """
     _dirty.add(agent_id)
-    if first:
-        transaction.on_commit(_flush)
+    transaction.on_commit(_flush)

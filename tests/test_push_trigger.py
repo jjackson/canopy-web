@@ -134,6 +134,25 @@ def test_a_bulk_sync_pushes_once_per_agent_not_once_per_row(agent, sub):
     assert AgentWaitingSnapshot.objects.get(agent=agent).waiting_count == 10
 
 
+def test_a_rolled_back_transaction_does_not_wedge_push(agent, sub):
+    """Django discards on_commit callbacks on rollback, but _dirty is a plain
+    module set and keeps its entries. A `if not _dirty` guard around the
+    registration would therefore never re-register after the first rollback, and
+    push would be dead process-wide until restart. This pins that it isn't."""
+    from django.db import transaction
+
+    try:
+        with transaction.atomic():
+            _task(agent, "doomed")
+            raise RuntimeError("rollback")
+    except RuntimeError:
+        pass
+
+    with patch("apps.push.services._send_one") as send:
+        _task(agent, "after")
+    assert send.call_count == 1  # would be 0 if the registration were gated
+
+
 def test_two_agents_in_one_transaction_push_once_each(agent, workspace, user, sub):
     from django.db import transaction
 
