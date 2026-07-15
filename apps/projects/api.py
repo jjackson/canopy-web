@@ -246,7 +246,7 @@ def list_projects(
     offset: int = 0,
     limit: int = 100,
 ) -> Page[ProjectListOut]:
-    offset, limit = clamp_offset(offset), clamp_limit(limit, cap=100)
+    offset, limit = clamp_offset(offset), clamp_limit(limit, cap=500)
     qs = _scoped_project_queryset(request).order_by("-updated_at")
     serialized = _build_project_list_data(qs)
     items = [ProjectListOut.model_validate(item) for item in serialized]

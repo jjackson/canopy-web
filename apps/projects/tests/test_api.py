@@ -108,6 +108,38 @@ def test_list_projects_pagination():
     assert body["limit"] == 2
 
 
+@pytest.mark.django_db
+def test_list_projects_limit_honored_above_default_of_100():
+    """Regression test: list_projects' effective ceiling is Page.limit's le=500,
+    not the route's default=100. Before this branch there was no clamp at all;
+    a bug briefly clamped ?limit=300 down to the route's default (100), silently
+    truncating a PAT caller sweeping the portfolio without offset-paging. Seed
+    more than 100 projects and prove a ?limit=300 request is honored in full."""
+    user = _make_user()
+    for i in range(150):
+        _make_project(slug=f"proj-{i}", name=f"Project {i}")
+    c = _auth_client(user)
+    resp = c.get("/api/projects/?limit=300")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["limit"] == 300
+    assert len(body["items"]) == 150
+    assert body["total"] == 150
+
+
+@pytest.mark.django_db
+def test_list_projects_nonsense_limit_is_a_no_op_not_a_500():
+    _make_project()
+    c = _auth_client()
+    resp_zero = c.get("/api/projects/?limit=0")
+    assert resp_zero.status_code == 200
+    assert resp_zero.json()["limit"] == 1
+
+    resp_huge = c.get("/api/projects/?limit=99999")
+    assert resp_huge.status_code == 200
+    assert resp_huge.json()["limit"] == 500
+
+
 # ---------------------------------------------------------------------------
 # get_project_slugs
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate, useLocation, useParams } from 'react-rou
 import { useWorkspace } from './workspace/WorkspaceProvider'
 import { AppLayout } from './components/AppLayout/AppLayout'
 import { RouteErrorBoundary } from './components/RouteErrorBoundary'
+import { ShareRouteErrorBoundary } from './components/ShareRouteErrorBoundary'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
 import { ShareoutsPage } from './pages/ShareoutsPage'
@@ -108,7 +109,9 @@ function WorkspaceIndex() {
  * blanks everything, which is the bug, not the fix.
  *
  * Applied here rather than spelled out per route so a new route can't be added
- * without one.
+ * without one — routes that need a DIFFERENT boundary (see `/share/:token`
+ * below) set their own `errorElement` explicitly; `guarded()` only fills in
+ * the default where one isn't already present, it never overrides one.
  */
 function guarded(routes: RouteObject[]): RouteObject[] {
   return routes.map((route) => ({
@@ -169,8 +172,12 @@ export const router = createBrowserRouter(guarded([
     ],
   },
   // Public, chrome-less route — mounted OUTSIDE AppLayout so anonymous
-  // visitors aren't bounced to login by the app shell's authed calls.
-  { path: '/share/:token', element: <SessionSharePage /> },
+  // visitors aren't bounced to login by the app shell's authed calls. Carries
+  // its own light-themed `errorElement` (see `ShareRouteErrorBoundary`) so
+  // `guarded()` below leaves it alone instead of hanging the dark, "back to
+  // Canopy"-linking app boundary off a page anonymous visitors can't log
+  // into.
+  { path: '/share/:token', element: <SessionSharePage />, errorElement: <ShareRouteErrorBoundary /> },
 ]), {
   // "/" at root, "/canopy" as a labs tenant — keeps every route + <Link> under
   // the deployment's path prefix (from Vite's import.meta.env.BASE_URL).
