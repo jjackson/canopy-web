@@ -197,3 +197,67 @@ class SessionLink(models.Model):
             and self.live_host
             and self.live_host == runner.host
         )
+
+
+def _default_notify() -> list:
+    """Callable default — a mutable literal would be shared across rows."""
+    return ["inbox"]
+
+
+class AgentSchedule(models.Model):
+    """A recurring turn declaration — "Echo's weekly manager report, Fridays 9am ET".
+
+    Config lives here (server-side, so it is visible and editable in the Agent
+    UI); the *firing* is done by the runner, which syncs these rows, evaluates
+    the cron locally, and POSTs back a slot. The server then materializes a
+    normal harness Turn via services.enqueue_turn — the scheduler is a producer
+    of turns, not a second execution engine.
+
+    The Turn IS the occurrence (origin=cron, origin_ref={schedule_id, slot},
+    idempotency_key="sched:<id>:<slot>"); there is deliberately no occurrence
+    table. See docs/superpowers/specs/2026-07-15-agent-scheduled-turns-design.md.
+
+    int pk (not UUID like Runner/Turn): this projects into needs_you, whose
+    NeedsYouItem.ref_id is typed int on a StrictModel.
+
+    No workspace FK: a schedule is agent-owned and derives its tenant via
+    agent.workspace, exactly as Turn does.
+    """
+
+    agent = models.ForeignKey("agents.Agent", on_delete=models.CASCADE, related_name="schedules")
+    name = models.CharField(max_length=200, help_text='e.g. "Weekly manager report"')
+    prompt = models.TextField(help_text="What the turn is seeded with, e.g. /echo:manager-report")
+    cron = models.CharField(max_length=120, help_text="5-field cron expression, e.g. '0 9 * * 5'")
+    timezone = models.CharField(max_length=64, default="UTC", help_text="IANA tz, e.g. America/New_York")
+    enabled = models.BooleanField(default=True, help_text="Pause without deleting.")
+    routing = models.CharField(max_length=15, choices=Turn.ROUTING_CHOICES, default=Turn.PREFER_LOCAL)
+    grace_minutes = models.PositiveIntegerField(
+        default=120,
+        help_text="How long an unattended fired turn may hold the agent before it is "
+        "released as MISSED. Guards one_executing_turn_per_agent: an abandoned "
+        "session would otherwise wedge the agent indefinitely.",
+    )
+    notify = models.JSONField(
+        default=_default_notify, blank=True,
+        help_text='Channel ids resolved through the notify registry, e.g. ["inbox"].',
+    )
+    last_slot = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Newest slot fired. The supersede + no-backfill anchor.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        indexes = [models.Index(fields=["agent", "enabled"])]
+        constraints = [
+            models.UniqueConstraint(fields=["agent", "name"], name="uniq_agent_schedule_name"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"sched:{self.agent.slug}:{self.name}"
+
+    @property
+    def agent_slug(self) -> str:
+        return self.agent.slug
