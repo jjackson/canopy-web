@@ -49,8 +49,12 @@ export default defineConfig({
         // Cache the shell so the app opens instantly and survives a labs outage
         // (this is also what makes the menubar's WKWebView resilient in Phase 5).
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // NEVER cache the API: a stale "0 waiting" is worse than a spinner.
+        // Stop the SW serving cached index.html for /api/ paths; they should 404/500 honestly.
+        // (Not the API-cache guard — see runtimeCaching below.)
         navigateFallbackDenylist: [/^\/api\//, /^\/canopy\/api\//],
+        // No runtimeCaching routes registered: all non-precached fetches bypass the SW and hit
+        // the network. This keeps the API uncached (stale "0 waiting" is worse than a spinner).
+        // When adding entries here, take care not to match /api/ — nothing else guards against that.
         runtimeCaching: [],
       },
       devOptions: { enabled: false },
