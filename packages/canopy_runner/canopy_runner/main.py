@@ -533,9 +533,22 @@ def main() -> None:
     logger.info("  pause: drop %s to halt work (menu-bar app toggles this); remove to resume",
                 pause_file)
 
+    # Liveness heartbeat file: touched EVERY cycle (even idle/paused). The menu-bar app
+    # reads its mtime to tell "running" from "stale" — the log alone is a bad signal
+    # because idle cycles are deliberately quiet (~15 min between lines), which would
+    # otherwise show a healthy idle runner as "stale".
+    hb_file = Path(args.config).with_name("heartbeat")
+
+    def _beat() -> None:
+        try:
+            hb_file.write_text(str(time.time()))
+        except OSError:
+            pass
+
     idle_streak = 0
     paused = False
     while True:
+        _beat()
         if pause_file.exists():
             if not paused:
                 logger.warning("PAUSED — sentinel %s present; skipping all work (no claim, no "
