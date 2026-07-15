@@ -568,7 +568,7 @@ class Controller(NSObject):
     def applicationSupportsSecureRestorableState_(self, _app):
         return True
 
-    # -- status dot --
+    # -- status icon --
     @objc.python_method
     def refresh_status(self):
         st = _runner_state()
