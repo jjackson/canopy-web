@@ -49,6 +49,11 @@ export default defineConfig({
         // Cache the shell so the app opens instantly and survives a labs outage
         // (this is also what makes the menubar's WKWebView resilient in Phase 5).
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // vite-plugin-pwa's generated SW only caches — it has no push listener.
+        // Without this, a push payload arrives and nothing happens (no error,
+        // no notification). importScripts (not injectManifest) keeps the
+        // plugin's own precaching intact while adding push handling.
+        importScripts: ['sw-push.js'],
         // Stop the SW serving cached index.html for /api/ paths; they should 404/500 honestly.
         // (Not the API-cache guard — see runtimeCaching below.)
         navigateFallbackDenylist: [/^\/api\//, /^\/canopy\/api\//],
