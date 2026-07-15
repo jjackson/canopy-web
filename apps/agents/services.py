@@ -416,6 +416,14 @@ def needs_you(agent: Agent, notify_limit: int = 5) -> dict:
     review.extend(run_review)
     question.extend(run_question)
 
+    # Scheduled occurrences you haven't finished. Imported inside the function:
+    # apps.harness.models imports apps.agents.models, so a module-level import
+    # would cycle (same reason AgentTask.run uses a string FK ref). Both apps are
+    # framework tier, so the boundary test is satisfied.
+    from apps.harness.notify import schedule_nag_items
+
+    review.extend(schedule_nag_items(agent))
+
     items: list[dict] = review + question
     waiting_count = len(items)  # review + question are the gated items
 

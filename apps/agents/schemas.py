@@ -255,7 +255,11 @@ class CommandResultOut(StrictModel):
 # ---- "Needs you" supervisor inbox ----
 class NeedsYouItem(StrictModel):
     type: str  # 'review' | 'question' | 'notify'
-    ref_kind: str  # 'task' | 'sync' | 'work_product'
+    # After the emdash/mobile-l2vmm merge: that branch retypes this as
+    # Literal["task", "sync", "work_product", "run"] (commit 2ce30c1). It must
+    # become Literal["task", "sync", "work_product", "run", "schedule"] or the
+    # schedule nag 500s at serialization.
+    ref_kind: str  # 'task' | 'sync' | 'work_product' | 'run' | 'schedule'
     ref_id: int
     title: str
     subtitle: str = ""
