@@ -34,3 +34,22 @@ class PushSubscription(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"push:{self.user_id}:{self.endpoint[-12:]}"
+
+
+class AgentWaitingSnapshot(models.Model):
+    """The last waiting_count we pushed about, per agent.
+
+    needs_you() is an aggregation — there is no single event meaning "the fleet
+    now needs you" — so we diff against this and push only on an INCREASE.
+    Pushing on every recompute would buzz you when you CLEAR something, which is
+    the fastest way to get notifications turned off.
+    """
+
+    agent = models.OneToOneField(
+        "agents.Agent", on_delete=models.CASCADE, related_name="waiting_snapshot"
+    )
+    waiting_count = models.IntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"snapshot:{self.agent_id}:{self.waiting_count}"
