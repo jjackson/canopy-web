@@ -107,7 +107,7 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     sweep_expired_leases()
     # Lazy sweeps, both BEFORE the busy_agents read: a turn released here frees
     # its agent for the very claim we are about to make.
-    release_stale_cron_turns_all()
+    release_stale_occurrence_turns_all()
     slugs = runner.agent_slugs()
     if exclude_slugs:
         # Per-agent pause: the runner locally paused these agents; never claim their
@@ -239,7 +239,7 @@ def latest_occurrence_turn(schedule) -> Turn | None:
     return _occurrences(schedule).order_by("-created_at").first()
 
 
-def _supersede_open_turns(schedule, *, reason: str) -> int:
+def supersede_open_turns(schedule, *, reason: str) -> int:
     """Terminate this schedule's non-terminal turns as MISSED. Supersede and
     grace-release are the same operation at two timescales."""
     open_turns = _occurrences(schedule).filter(status__in=list(Turn.NON_TERMINAL))
@@ -260,7 +260,7 @@ def fire_schedule(schedule, slot: dt.datetime) -> tuple[Turn, bool]:
     key = f"sched:{schedule.id}:{slot.isoformat()}"
     with transaction.atomic():
         if not Turn.objects.filter(idempotency_key=key).exists():
-            _supersede_open_turns(schedule, reason=f"superseded by slot {slot.isoformat()}")
+            supersede_open_turns(schedule, reason=f"superseded by slot {slot.isoformat()}")
         turn, created = enqueue_turn(
             agent=schedule.agent,
             origin=Turn.ORIGIN_CRON,
@@ -276,21 +276,31 @@ def fire_schedule(schedule, slot: dt.datetime) -> tuple[Turn, bool]:
 
 
 def run_schedule_now(schedule) -> Turn:
-    """Manual off-cycle trigger. origin=manual with a uuid-suffixed key, so an
-    ad-hoc run never collides with — nor satisfies — a real slot, and last_slot
-    is untouched."""
-    turn, _ = enqueue_turn(
-        agent=schedule.agent,
-        origin=Turn.ORIGIN_MANUAL,
-        idempotency_key=f"sched:{schedule.id}:manual:{uuid.uuid4()}",
-        prompt=schedule.prompt,
-        origin_ref={"schedule_id": schedule.id, "manual": True},
-        routing=schedule.routing,
-    )
+    """Manual off-cycle trigger. Supersedes any still-open occurrence first,
+    exactly as fire_schedule does — you only ever owe the newest, however it was
+    launched. Run now is the designed remediation for an unfinished slot, so it
+    must retire the slot it remediates; otherwise finishing the manual turn
+    clears the nag (it is the newest occurrence) while the slot turn sits queued
+    and still owed, and the work runs a second time when it is claimed later.
+
+    origin=manual with a uuid-suffixed key, so an ad-hoc run never collides with
+    a real slot, and last_slot is untouched — the CADENCE is unaffected (the next
+    real slot still fires on time).
+    """
+    with transaction.atomic():
+        supersede_open_turns(schedule, reason="superseded by a manual run")
+        turn, _ = enqueue_turn(
+            agent=schedule.agent,
+            origin=Turn.ORIGIN_MANUAL,
+            idempotency_key=f"sched:{schedule.id}:manual:{uuid.uuid4()}",
+            prompt=schedule.prompt,
+            origin_ref={"schedule_id": schedule.id, "manual": True},
+            routing=schedule.routing,
+        )
     return turn
 
 
-def release_stale_cron_turns(schedule, *, now: dt.datetime | None = None) -> int:
+def release_stale_occurrence_turns(schedule, *, now: dt.datetime | None = None) -> int:
     """Release this schedule's turns that have HELD the agent past grace_minutes.
 
     This is what keeps a forgotten session from wedging the agent: an executing
@@ -304,7 +314,7 @@ def release_stale_cron_turns(schedule, *, now: dt.datetime | None = None) -> int
       - a QUEUED turn holds nothing (the index does not cover it), so releasing
         it could not unwedge anything — it would only destroy work still owed
         (laptop offline over a weekend must not retire Friday's slot). Retiring
-        a stale queued occurrence is _supersede_open_turns' job, at the right
+        a stale queued occurrence is supersede_open_turns' job, at the right
         moment.
       - created_at measures *owed* time, so a turn queued longer than grace would
         be born past-grace and get aborted on its first sweep after being claimed
@@ -325,7 +335,7 @@ def release_stale_cron_turns(schedule, *, now: dt.datetime | None = None) -> int
     return count
 
 
-def release_stale_cron_turns_all(*, now: dt.datetime | None = None) -> int:
+def release_stale_occurrence_turns_all(*, now: dt.datetime | None = None) -> int:
     """Fleet-wide release, run lazily on the claim tick (see claim_next_turn).
 
     Release belongs here, not on the fire tick: fire already supersedes
@@ -345,7 +355,7 @@ def release_stale_cron_turns_all(*, now: dt.datetime | None = None) -> int:
     if not schedule_ids:
         return 0
     return sum(
-        release_stale_cron_turns(schedule, now=now)
+        release_stale_occurrence_turns(schedule, now=now)
         for schedule in AgentSchedule.objects.filter(id__in=schedule_ids)
     )
 

@@ -1,4 +1,4 @@
-"""fire_schedule / release_stale_cron_turns — supersede, idempotency, unwedging."""
+"""fire_schedule / release_stale_occurrence_turns — supersede, idempotency, unwedging."""
 from __future__ import annotations
 
 import datetime as dt
@@ -90,7 +90,7 @@ def test_release_stale_unwedges_the_agent(schedule, agent):
         status=Turn.RUNNING, claimed_at=timezone.now() - dt.timedelta(minutes=200)
     )
 
-    released = services.release_stale_cron_turns(schedule)
+    released = services.release_stale_occurrence_turns(schedule)
 
     assert released == 1
     turn.refresh_from_db()
@@ -107,7 +107,7 @@ def test_release_spares_a_turn_inside_its_grace(schedule):
         status=Turn.RUNNING, claimed_at=timezone.now() - dt.timedelta(minutes=5)
     )
 
-    assert services.release_stale_cron_turns(schedule) == 0
+    assert services.release_stale_occurrence_turns(schedule) == 0
     turn.refresh_from_db()
     assert turn.status == Turn.RUNNING
 
@@ -121,7 +121,7 @@ def test_release_spares_a_long_queued_turn(schedule):
         created_at=timezone.now() - dt.timedelta(days=3)
     )
 
-    assert services.release_stale_cron_turns(schedule) == 0
+    assert services.release_stale_occurrence_turns(schedule) == 0
     turn.refresh_from_db()
     assert turn.status == Turn.QUEUED
 
@@ -137,7 +137,7 @@ def test_release_does_not_abort_a_freshly_claimed_long_queued_turn(schedule):
         claimed_at=timezone.now(),
     )
 
-    assert services.release_stale_cron_turns(schedule) == 0
+    assert services.release_stale_occurrence_turns(schedule) == 0
     turn.refresh_from_db()
     assert turn.status == Turn.RUNNING
 
@@ -196,10 +196,34 @@ def test_supersede_retires_an_open_manual_run(schedule):
     assert manual.status == Turn.MISSED
 
 
-def test_run_now_never_satisfies_a_real_slot(schedule):
+def test_run_now_does_not_advance_the_cadence(schedule):
+    """A manual run leaves `last_slot` alone, so the next real slot still fires
+    on time. It DOES supersede an open occurrence (see the test below) — what it
+    never does is consume a slot."""
     manual = services.run_schedule_now(schedule)
 
     assert manual.origin == Turn.ORIGIN_MANUAL
     assert manual.idempotency_key.startswith(f"sched:{schedule.id}:manual:")
     schedule.refresh_from_db()
     assert schedule.last_slot is None  # a manual run does not consume a slot
+
+
+def test_run_now_supersedes_an_open_slot_so_the_work_never_runs_twice(schedule):
+    """Run now is the spec's own designed remediation for a missed slot — so it
+    must retire the slot it is remediating.
+
+    Laptop offline Friday -> Monday the slot turn is QUEUED and nagging -> the
+    human clicks Run now. Without supersede, finishing the manual turn clears the
+    nag (it is the newest occurrence) while the slot turn sits QUEUED and still
+    owed — it gets claimed later and generates the report a SECOND time.
+    """
+    slot_turn, _ = services.fire_schedule(schedule, SLOT_A)
+    assert slot_turn.status == Turn.QUEUED
+
+    manual = services.run_schedule_now(schedule)
+
+    slot_turn.refresh_from_db()
+    assert slot_turn.status == Turn.MISSED  # retired: you only owe the newest
+    assert services.latest_occurrence_turn(schedule).pk == manual.pk
+    schedule.refresh_from_db()
+    assert schedule.last_slot == SLOT_A  # cadence untouched — the next slot still fires

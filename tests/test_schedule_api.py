@@ -106,6 +106,77 @@ def test_delete(client, agent):
     assert AgentSchedule.objects.count() == 0
 
 
+def test_delete_supersedes_open_occurrences_so_the_agent_is_not_wedged(client, agent):
+    """Deleting a schedule must terminate its open occurrences FIRST.
+
+    An executing turn holds `one_executing_turn_per_agent`, and the runner's
+    heartbeat keeps renewing its lease, so `sweep_expired_leases` never rescues
+    it — `release_stale_occurrence_turns_all` is the only unwedger, and it
+    resolves schedules by id. Delete the row and that turn becomes permanently
+    unreleasable: every subsequent turn for the agent is unclaimable forever,
+    and the nag that would surface it is gone too.
+    """
+    from apps.harness import services
+
+    schedule = AgentSchedule.objects.get(pk=_create(client).json()["id"])
+    turn, _ = services.fire_schedule(schedule, dt.datetime(2026, 7, 17, 13, tzinfo=dt.UTC))
+    # Drive it to the state a runner's claim leaves it in — QUEUED holds nothing.
+    Turn.objects.filter(pk=turn.pk).update(status=Turn.RUNNING)
+
+    assert client.delete(f"/api/agents/echo/schedules/{schedule.id}").status_code == 204
+
+    turn.refresh_from_db()
+    assert turn.status == Turn.MISSED
+    assert turn.finished_at is not None
+    # The real proof: the executing-turn index now admits a new turn for the
+    # agent. If the old turn were still executing, this insert would raise.
+    Turn.objects.create(
+        agent=agent, origin=Turn.ORIGIN_MANUAL, idempotency_key="probe",
+        status=Turn.RUNNING,
+    )
+
+
+def test_delete_retires_queued_occurrences_too(client, agent):
+    """A queued occurrence outlives its schedule otherwise — and would later
+    execute a prompt for a schedule that no longer exists."""
+    from apps.harness import services
+
+    schedule = AgentSchedule.objects.get(pk=_create(client).json()["id"])
+    turn, _ = services.fire_schedule(schedule, dt.datetime(2026, 7, 17, 13, tzinfo=dt.UTC))
+
+    client.delete(f"/api/agents/echo/schedules/{schedule.id}")
+
+    turn.refresh_from_db()
+    assert turn.status == Turn.MISSED
+
+
+def test_duplicate_name_is_409_not_500(client, agent):
+    """`uniq_agent_schedule_name` is a DB constraint — an uncaught IntegrityError
+    surfaces the UI's "New schedule" button as a 500."""
+    assert _create(client).status_code == 201
+
+    resp = _create(client)
+
+    assert resp.status_code == 409, resp.content
+    assert resp["content-type"] == "application/problem+json"
+    assert "Weekly manager report" in resp.json()["detail"]
+
+
+def test_patch_onto_a_sibling_name_is_409_not_500(client, agent):
+    """Same constraint, reached from Edit by renaming onto a sibling."""
+    _create(client)
+    sid = _create(client, name="Daily standup", cron="0 9 * * 1-5").json()["id"]
+
+    resp = client.patch(
+        f"/api/agents/echo/schedules/{sid}", {"name": "Weekly manager report"},
+        content_type="application/json",
+    )
+
+    assert resp.status_code == 409, resp.content
+    assert resp["content-type"] == "application/problem+json"
+    assert "Weekly manager report" in resp.json()["detail"]
+
+
 def test_run_now_enqueues_a_manual_turn(client, agent):
     sid = _create(client).json()["id"]
     resp = client.post(f"/api/agents/echo/schedules/{sid}/run-now")

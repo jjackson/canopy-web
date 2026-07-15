@@ -323,7 +323,7 @@ def fire_schedule_route(
     if schedule is None:
         # 404 whether it is missing, disabled, or another tenant's — no existence leak.
         raise HttpError(404, f"schedule {schedule_id} not found")
-    # Deliberately does NOT call release_stale_cron_turns: fire_schedule already
+    # Deliberately does NOT call release_stale_occurrence_turns: fire_schedule already
     # supersedes every open occurrence, so release would add nothing here except
     # a self-destruct on same-slot re-fire (fire skips supersede when the key
     # exists, but release would already have killed the turn this route returns).

@@ -38,7 +38,10 @@ def validate_timezone(name: str) -> str:
 def due_slot(
     cron: str, tz: str, *, after: dt.datetime | None, now: dt.datetime
 ) -> dt.datetime | None:
-    """The most recent slot at or before `now` that is strictly after `after`.
+    """The most recent slot strictly before `now` that is strictly after `after`.
+
+    Both bounds are exclusive: croniter.get_prev() is strictly-before, so a slot
+    landing exactly on `now` is not yet due — it is returned by the next call.
 
     Returns AT MOST ONE slot — never a backfill. Three weeks offline yields the
     newest occurrence only, which is the supersede rule applied at firing time:

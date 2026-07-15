@@ -8,12 +8,14 @@ tenant path /api/w/{ws}/agents/... works via WorkspaceResolveMiddleware.
 """
 from __future__ import annotations
 
+from django.db import IntegrityError
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router, Status
 from ninja.errors import HttpError
 
 from apps.api.auth import session_auth
+from apps.api.errors import TYPE_CONFLICT, ProblemError
 from apps.api.pagination import Page, paginate
 
 from . import services
@@ -75,12 +77,29 @@ def list_schedules(request: HttpRequest, slug: str, limit: int = 100) -> Page[Sc
     return paginate(items, offset=0, limit=limit)
 
 
+def _duplicate_name(name: str) -> ProblemError:
+    """uniq_agent_schedule_name is a DB constraint — an uncaught IntegrityError
+    surfaces the UI's "New schedule" button (and Edit's rename) as a 500. 409 is
+    what this repo already returns for a uniqueness violation (see
+    apps/projects/api.py's slug conflict, apps/workspaces/api.py)."""
+    return ProblemError(
+        409,
+        "Schedule name already exists",
+        type_=TYPE_CONFLICT,
+        detail=f"A schedule named '{name}' already exists for this agent.",
+    )
+
+
 @router.post("/{slug}/schedules/", response={201: ScheduleOut},
              summary="Create a recurring schedule",
              openapi_extra={"x-mcp-expose": True})
 def create_schedule(request: HttpRequest, slug: str, payload: ScheduleIn) -> Status:
     agent = _agent_or_404(request, slug)
-    schedule = AgentSchedule.objects.create(agent=agent, **payload.dict())
+    fields = payload.dict()
+    try:
+        schedule = AgentSchedule.objects.create(agent=agent, **fields)
+    except IntegrityError:
+        raise _duplicate_name(fields["name"]) from None
     return Status(201, _serialize(schedule))
 
 
@@ -121,7 +140,10 @@ def update_schedule(
     for key, value in fields.items():
         setattr(schedule, key, value)
     if fields:
-        schedule.save()
+        try:
+            schedule.save()
+        except IntegrityError:
+            raise _duplicate_name(schedule.name) from None
     return _serialize(schedule)
 
 
@@ -129,7 +151,20 @@ def update_schedule(
                summary="Delete a recurring schedule",
                openapi_extra={"x-mcp-expose": True})
 def delete_schedule(request: HttpRequest, slug: str, schedule_id: int) -> Status:
+    """Deleting a schedule retires its open occurrences FIRST.
+
+    There is no occurrence table — the Turn IS the occurrence, linked only by
+    origin_ref["schedule_id"] — so nothing cascades. An executing occurrence
+    holds one_executing_turn_per_agent, and release_stale_occurrence_turns_all()
+    resolves schedules by id: delete the row and that turn becomes permanently
+    unreleasable (the runner's heartbeat renews its lease, so the lease sweep
+    never rescues it either), wedging every subsequent turn for the agent
+    forever — with the nag that would surface it gone too. Superseding first also
+    retires orphaned QUEUED occurrences, which would otherwise execute a prompt
+    for a schedule that no longer exists.
+    """
     schedule = _schedule_or_404(request, slug, schedule_id)
+    services.supersede_open_turns(schedule, reason="schedule deleted")
     schedule.delete()
     return Status(204, None)
 
