@@ -3431,10 +3431,16 @@ export interface components {
         };
         /** NeedsYouItem */
         readonly NeedsYouItem: {
-            /** Type */
-            readonly type: string;
-            /** Ref Kind */
-            readonly ref_kind: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            readonly type: "review" | "question" | "notify";
+            /**
+             * Ref Kind
+             * @enum {string}
+             */
+            readonly ref_kind: "task" | "sync" | "work_product" | "run";
             /** Ref Id */
             readonly ref_id: number;
             /** Title */
@@ -3764,8 +3770,11 @@ export interface components {
             readonly title: string;
             /** Next Action */
             readonly next_action: string;
-            /** Status */
-            readonly status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "suggested" | "in_progress" | "done" | "declined";
             /** Owner */
             readonly owner: string;
             /** Assigned */
@@ -3941,8 +3950,11 @@ export interface components {
         };
         /** AgentTaskCommandIn */
         readonly AgentTaskCommandIn: {
-            /** Kind */
-            readonly kind: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "accept" | "decline" | "dispatch" | "reassign" | "edit" | "comment" | "done";
             /** Payload */
             readonly payload?: {
                 readonly [key: string]: unknown;

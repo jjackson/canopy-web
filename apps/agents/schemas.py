@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 from pydantic import Field
 
@@ -186,7 +187,7 @@ class AgentTaskOut(StrictModel):
     ext_id: str
     title: str
     next_action: str
-    status: str
+    status: Literal["suggested", "in_progress", "done", "declined"]
     owner: str
     assigned: str
     confidence: str
@@ -220,7 +221,7 @@ class AgentTaskPatch(StrictModel):
 
 # ---- task commands (the board's action queue) ----
 class AgentTaskCommandIn(StrictModel):
-    kind: str = Field(pattern=r"^(accept|decline|dispatch|reassign|edit|comment|done)$")
+    kind: Literal["accept", "decline", "dispatch", "reassign", "edit", "comment", "done"]
     payload: dict = Field(default_factory=dict)  # reason / assignee / next_action / note
     created_by: str = Field(default="", max_length=200)
 
@@ -254,8 +255,10 @@ class CommandResultOut(StrictModel):
 
 # ---- "Needs you" supervisor inbox ----
 class NeedsYouItem(StrictModel):
-    type: str  # 'review' | 'question' | 'notify'
-    ref_kind: str  # 'task' | 'sync' | 'work_product'
+    type: Literal["review", "question", "notify"]
+    # 'run' covers gate/step/completion items projected from the run lifecycle
+    # (services._run_inbox_items) — task/sync/work_product are the board items.
+    ref_kind: Literal["task", "sync", "work_product", "run"]
     ref_id: int
     title: str
     subtitle: str = ""
