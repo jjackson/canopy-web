@@ -34,11 +34,16 @@ import objc
 from AppKit import (
     NSApplication,
     NSApplicationActivationPolicyAccessory,
+    NSBezierPath,
+    NSColor,
+    NSImage,
+    NSMakePoint,
     NSMakeRect,
     NSMakeSize,
     NSMinYEdge,
     NSPopover,
     NSPopoverBehaviorTransient,
+    NSRoundLineCapStyle,
     NSStatusBar,
     NSVariableStatusItemLength,
     NSViewController,
@@ -57,6 +62,47 @@ PAUSE_FILE = CONFIG.with_name("PAUSED")
 LABEL = "com.canopy.runner"
 
 GLYPH = {"running": "🟢", "paused": "🟡", "stopped": "🔴", "stale": "🟠"}
+# Muted status tints for the bonsai icon — readable on both light + dark menu bars.
+STATUS_RGB = {
+    "running": (0.40, 0.71, 0.52),   # calm green
+    "paused":  (0.89, 0.69, 0.28),   # amber
+    "stopped": (0.85, 0.35, 0.32),   # red
+    "stale":   (0.90, 0.57, 0.27),   # orange
+}
+
+
+def _bonsai_image(state: str, px: int = 18):
+    """An understated bonsai — leaning trunk, shallow pot, three asymmetric rounded
+    foliage pads (not a conical 'christmas tree'). Drawn as a vector so it stays crisp
+    on retina, tinted by runner status."""
+    r, g, b = STATUS_RGB.get(state, STATUS_RGB["stopped"])
+
+    def _draw(_rect) -> bool:
+        NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, 1.0).set()
+        # shallow tray (trapezoid) — the bonsai cue
+        pot = NSBezierPath.bezierPath()
+        pot.moveToPoint_(NSMakePoint(5.4, 3.6))
+        pot.lineToPoint_(NSMakePoint(12.6, 3.6))
+        pot.lineToPoint_(NSMakePoint(11.7, 1.6))
+        pot.lineToPoint_(NSMakePoint(6.3, 1.6))
+        pot.closePath()
+        pot.fill()
+        # leaning trunk
+        trunk = NSBezierPath.bezierPath()
+        trunk.moveToPoint_(NSMakePoint(9.1, 3.6))
+        trunk.curveToPoint_controlPoint1_controlPoint2_(
+            NSMakePoint(8.4, 9.2), NSMakePoint(9.7, 5.6), NSMakePoint(8.0, 6.8))
+        trunk.setLineWidth_(1.9)
+        trunk.setLineCapStyle_(NSRoundLineCapStyle)
+        trunk.stroke()
+        # three asymmetric rounded foliage pads → a soft, full crown
+        for x, y, w, h in ((2.6, 8.4, 7.4, 6.2), (7.2, 9.6, 6.8, 5.8), (4.8, 11.9, 6.2, 5.0)):
+            NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(x, y, w, h)).fill()
+        return True
+
+    img = NSImage.imageWithSize_flipped_drawingHandler_(NSMakeSize(px, px), False, _draw)
+    img.setTemplate_(False)  # keep our status tint (not auto-recolored by the menu bar)
+    return img
 CARD_ACCENTS = [  # oklch categorical tokens, cycled per-agent for the initials avatar
     "oklch(0.757 0.161 53.57)",   # primary / orange
     "oklch(0.765 0.177 163.22)",  # success / emerald
@@ -318,7 +364,7 @@ def render(state: dict, agents: list[dict], base: str) -> str:
 </style></head><body>
   <div class="hdr">
     <div class="titlerow">
-      <span class="brand">🌲 Canopy Runner</span>
+      <span class="brand">🪴 Canopy Runner</span>
       <span class="pill {s}">{pill_word}</span>
     </div>
     <div class="sub">Today: <b>{state.get('created', 0)}</b> created · <b>{state.get('reused', 0)}</b> reused · log {age}</div>
@@ -356,7 +402,7 @@ class Controller(NSObject):
         bar = NSStatusBar.systemStatusBar()
         self.item = bar.statusItemWithLength_(NSVariableStatusItemLength)
         btn = self.item.button()
-        btn.setTitle_("🔴")
+        btn.setImage_(_bonsai_image("stopped"))
         btn.setTarget_(self)
         btn.setAction_("toggle:")
 
@@ -386,7 +432,7 @@ class Controller(NSObject):
     def refresh_status(self):
         st = _runner_state()
         self._state = st
-        self.item.button().setTitle_(GLYPH[st["state"]])
+        self.item.button().setImage_(_bonsai_image(st["state"]))
 
     def tick_(self, _timer):
         # Re-assert accessory (menu-bar-only) and refresh the dot.
