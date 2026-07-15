@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from django.http import HttpRequest
 from django.utils import timezone
-from ninja import Router
+from ninja import Router, Status
 
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_NOT_FOUND, ProblemError
@@ -35,18 +35,18 @@ def list_tokens(request: HttpRequest) -> list[PersonalTokenOut]:
 
 
 @router.post("/", response={201: PersonalTokenCreatedOut}, summary="Mint a token")
-def create_token(request: HttpRequest, payload: PersonalTokenCreateIn):
+def create_token(request: HttpRequest, payload: PersonalTokenCreateIn) -> Status:
     raw, token = PersonalToken.create_for_user(user=request.user, label=payload.label)
     body = _serialize(token) | {"raw": raw}
-    return 201, PersonalTokenCreatedOut.model_validate(body)
+    return Status(201, PersonalTokenCreatedOut.model_validate(body))
 
 
 @router.delete("/{pk}/", response={204: None}, summary="Revoke a token (mine only)")
-def revoke_token(request: HttpRequest, pk: int):
+def revoke_token(request: HttpRequest, pk: int) -> Status:
     token = PersonalToken.objects.filter(pk=pk, user=request.user).first()
     if token is None:
         raise ProblemError(404, "Token not found", type_=TYPE_NOT_FOUND)
     if token.revoked_at is None:
         token.revoked_at = timezone.now()
         token.save(update_fields=["revoked_at"])
-    return 204, None
+    return Status(204, None)
