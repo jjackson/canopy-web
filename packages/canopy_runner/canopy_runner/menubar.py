@@ -241,6 +241,38 @@ def _api(base: str, token: str, path: str) -> object:
         return json.loads(r.read().decode())
 
 
+def _workspace_map(base: str, token: str) -> dict:
+    """slug -> its workspace slug. The fleet legitimately spans workspaces (e.g. a
+    chief-of-staff agent lives in a different tenant than the product agents), so we list
+    each of the user's workspaces and record which agents are in it. That's how the panel
+    links every agent to ITS OWN `/w/<ws>/agents/<slug>` — linking to the *active* workspace
+    404s any agent that lives elsewhere (the bug that hid Ada/Eva)."""
+    out: dict = {}
+    try:
+        wss = _api(base, token, "/api/workspaces/") or []
+    except Exception:  # noqa: BLE001
+        return out
+    for w in (wss if isinstance(wss, list) else wss.get("items", [])):
+        ws = w.get("slug")
+        if not ws:
+            continue
+        try:
+            data = _api(base, token, f"/api/w/{ws}/agents/")
+        except Exception:  # noqa: BLE001
+            continue
+        items = data.get("items", data) if isinstance(data, dict) else data
+        for a in items:
+            if a.get("slug"):
+                out[a["slug"]] = ws
+    return out
+
+
+def _agent_url(base: str, slug: str, ws: str) -> str:
+    """Deep-link to the agent in ITS workspace; fall back to the flat (active-workspace)
+    path only when we couldn't resolve a workspace."""
+    return f"{base}/w/{ws}/agents/{slug}" if ws else f"{base}/agents/{slug}"
+
+
 def _pending_reviews(base: str, token: str, slugs: set) -> dict:
     """Pending canopy-web reviews attributed to an agent by run_id prefix (e.g.
     'ada-fleet-audit-…' -> ada). These are things the agent is waiting on YOU to decide,
@@ -276,9 +308,11 @@ def fetch_agents(base: str, token: str) -> list[dict]:
     items = data.get("items", data) if isinstance(data, dict) else data
     slugs = {a.get("slug") for a in items}
     rev_by = _pending_reviews(base, token, slugs)
+    wsmap = _workspace_map(base, token)
 
     def _enrich(a: dict) -> dict:
         slug = a.get("slug", "")
+        ws = wsmap.get(slug, "")
         detail, ny = {}, {}
         try:
             detail = _api(base, token, f"/api/agents/{slug}/")
@@ -294,10 +328,10 @@ def fetch_agents(base: str, token: str) -> list[dict]:
                 waiting.append({
                     "type": it["type"],
                     "title": it.get("title") or "",
-                    "url": it.get("url") or f"{base}/agents/{slug}",
+                    "url": it.get("url") or _agent_url(base, slug, ws),
                     "created_at": it.get("created_at"),
                 })
-        return {**a, **detail, "waiting": waiting}
+        return {**a, **detail, "_workspace": ws, "waiting": waiting}
 
     with ThreadPoolExecutor(max_workers=8) as ex:
         return list(ex.map(_enrich, items))
@@ -353,7 +387,7 @@ def _card(agent: dict, base: str, i: int, paused: bool) -> str:
     (waiting-on-you · open tasks · last active), pause/resume, click-through to the agent."""
     slug = agent.get("slug", "")
     name = html.escape(agent.get("name") or slug)
-    url = f"{base}/agents/{slug}"
+    url = _agent_url(base, slug, agent.get("_workspace", ""))
     waiting = agent.get("waiting") or []
     tasks = agent.get("task_count")
     last = _rel(agent.get("latest_turn_at"))
