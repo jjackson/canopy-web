@@ -221,7 +221,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40,<1.0" },
     { name = "canopy-agent-runs", editable = "packages/canopy_agent_runs" },
-    { name = "croniter", specifier = ">=3.0" },
+    { name = "croniter", specifier = ">=6.0,<7.0" },
     { name = "django", specifier = ">=5.0,<6.0" },
     { name = "django-allauth", extras = ["socialaccount"], specifier = ">=0.61,<1.0" },
     { name = "django-cors-headers", specifier = ">=4.3,<5.0" },

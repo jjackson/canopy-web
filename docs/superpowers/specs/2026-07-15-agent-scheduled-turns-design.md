@@ -98,6 +98,24 @@ half-overlapping representations of "a thing that needs addressing"; an
 occurrence row would be a fourth. The nag is a *projection* (below), not an
 object.
 
+**There is no FK from `Turn` to `AgentSchedule`** — the link is
+`origin_ref["schedule_id"]`. That is what keeps the Turn the occurrence rather
+than a child of one, but it means **nothing cascades on delete**, so deletion
+needs an explicit rule:
+
+> **Deleting a schedule supersedes its open occurrences first** (as `MISSED`,
+> `result_note="schedule deleted"`), then deletes the row.
+
+Both halves are load-bearing. An *executing* occurrence holds
+`one_executing_turn_per_agent`, and `release_stale_occurrence_turns_all()`
+resolves schedules by id — delete the row and that turn is permanently
+unreleasable (the runner's heartbeat keeps renewing its lease, so the lease sweep
+never rescues it either), wedging **every** subsequent turn for that agent
+forever, with the nag that would have surfaced it deleted too. A *queued*
+occurrence would otherwise outlive its schedule and later execute a prompt for a
+schedule that no longer exists. Terminal occurrences are untouched: they are the
+schedule's history, and the ledger outlives the declaration.
+
 ### One additive change to `Turn`
 
 Add a `MISSED` terminal status (`STATUS_CHOICES` + `TERMINAL`), and allow
@@ -179,15 +197,21 @@ one goal review, not three. `last_slot` is the anchor.
 
 ## Supersede and release
 
-Both happen server-side inside the `fire` transaction. They are the same idea at
-two timescales:
+Both happen server-side, and they are the same idea at two timescales — but they
+run on **different ticks**:
 
-- **Supersede:** firing slot N finds the schedule's prior non-terminal turn and
-  calls `finish_turn(status=MISSED, result_note="superseded by <slot>")`. You
-  only ever owe the newest occurrence.
-- **Release:** a cron turn unattended past `grace_minutes` gets the same
-  transition. This is what unwedges the agent, and it runs on the tick, so it
-  needs no new infrastructure.
+- **Supersede:** inside the `fire` transaction. Firing slot N finds the
+  schedule's prior non-terminal turn and calls
+  `finish_turn(status=MISSED, result_note="superseded by <slot>")`. You only ever
+  owe the newest occurrence. **Run now** supersedes on the same rule (it is the
+  designed remediation for an unfinished slot, so it must retire the slot it
+  remediates), and deleting a schedule supersedes too (see below).
+- **Release:** on the **claim** tick, not the fire tick
+  (`claim_next_turn` → `release_stale_occurrence_turns_all()`). An occurrence
+  unattended past `grace_minutes` gets the same transition. This is what unwedges
+  the agent, and a release here unblocks the very claim that triggered it. It
+  cannot live on the fire tick: a weekly schedule's fire tick is 10,080 minutes
+  apart and could never honour a 120-minute grace window.
 
 **Supersede *is* the give-up.** The recurrence already defines the nag window — a
 weekly report nags for a week, then next Friday supersedes it. No separate
@@ -197,9 +221,18 @@ weekly report nags for a week, then next Friday supersedes it. No separate
 
 `apps/agents/services.py::needs_you()` gains a source: for each enabled schedule,
 if its latest turn is not `done`, emit a typed item (`ref_kind="schedule"`)
-carrying a **Run now** action. It lands in the existing `waiting_count` badge the
-menu-bar runner panel already renders — the surface Jonathan already looks at —
-with no new plumbing and no new model.
+deep-linking to the agent's **Schedules** rail
+(`/w/:workspace/agents/:slug/schedules`), where **Run now** lives. It lands in
+the existing `waiting_count` badge the menu-bar runner panel already renders —
+the surface Jonathan already looks at — with no new plumbing and no new model.
+
+**Why a link, not an inline action.** `NeedsYouItem` has no `action` field —
+every item in that projection carries a `url` and nothing else — so an inline
+**Run now** button was never implementable without widening the shared inbox
+contract for one item type. The deep-link delivers the same intent (the nag is
+one click from the remedy) using the field every other builder already sets.
+Widening `NeedsYouItem` with typed actions is open for iteration, and would be a
+change to the inbox as a whole, not to schedules.
 
 **This reaches every supervisor surface for free.** The fleet-wide
 `GET /api/agents/needs-you` (ef11bda, on the canopy-mobile branch) is implemented
@@ -223,7 +256,14 @@ the seam with one channel beats building four that haven't been chosen.
 
 `POST /api/agents/{slug}/schedules/{id}/run-now` → same `enqueue_turn`, but
 `origin="manual"` and `idempotency_key = f"sched:{id}:manual:{uuid4}"`, so an
-ad-hoc run never collides with — or satisfies — a real slot.
+ad-hoc run never collides with a real slot and never advances `last_slot` — **the
+cadence is unaffected**; the next real slot still fires on time.
+
+It *does* **supersede** an open occurrence, exactly as `fire` does. Run now is the
+remediation the nag points at, so the alternative is incoherent: the manual turn
+would become the newest occurrence and clear the nag while the slot turn it was
+meant to satisfy sat queued and still owed — then ran the work a second time when
+a runner claimed it. You only ever owe the newest, however it was launched.
 
 ## API
 

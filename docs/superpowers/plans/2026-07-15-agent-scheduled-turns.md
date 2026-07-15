@@ -2523,7 +2523,9 @@ Not in this plan, by design: per-schedule escalation policy, catch-up/backfill, 
 
 ## Runner-side work — a separate plan
 
-This plan ships the **server + UI**, which is independently useful: schedules are creatable, editable, and **Run now** works end to end. The `canopy-runner` sync/evaluate/fire loop lives in a different repo (`packages/canopy_runner`) and gets its own plan against the API frozen here:
+This plan ships the **server + UI**, which is independently useful: schedules are creatable, editable, and **Run now** works end to end. The `canopy-runner` sync/evaluate/fire loop is **not** in this plan and gets its own, against the API frozen here.
+
+`packages/canopy_runner` lives **in this repo**, but it declares `dependencies = []` and never imports `apps.*` — deliberately, so the runner stays an installable, Django-free client of the HTTP API. So it cannot import `due_slot` (which lives in `apps/harness/cron.py`), and **nothing on this branch fires a schedule automatically yet**: `Run now` is the only trigger. That deferral is intentional — the slot math, the fire route, and their tests are frozen server-side first, and the runner loop below consumes them over HTTP:
 
 1. On each poll, `GET /api/harness/schedules/?runner_id=…`, cache locally.
 2. For each schedule, `due_slot(cron, tz, after=fire_after, now=now())` — pass
