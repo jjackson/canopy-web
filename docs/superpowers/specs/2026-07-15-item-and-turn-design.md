@@ -59,7 +59,11 @@ Three spellings of one payload. The runner already collapses them by hand (`revi
 
 Framework tier. Lives in `apps/harness` beside `Turn`, because the two are one cycle and reference each other; splitting them across apps would put a FK across an app boundary for no gain.
 
-**The import direction is a known trap here, with a known answer.** `apps.harness` imports `apps.agents.models` (`Turn.agent`), so `apps.agents` must **not** import `apps.harness` at module load — that cycles. This is the same situation `needs_you` already solved: `_run_inbox_items` lazy-imports `apps.agent_runs.resolver` inside the function body, and says why in its docstring (*"both are framework; agent_runs imports apps.agents.models — eager import would cycle"*). Follow that precedent exactly: lazy-import `Item` inside `needs_you`. Both apps are framework tier, so the architecture boundary test (`tests/test_architecture_boundary.py`) is not what stops you — Python is.
+**On the import direction — verified, and narrower than it looks.** `apps.harness.models` imports `apps.agents.models` (`Turn.agent`). The constraint that follows is only this: **`apps.agents.models` must not import `apps.harness`.** It does not today, and `apps.agents.services` / `apps.agents.api` importing `apps.harness.models` is fine — confirmed by importing both under `django.setup()`.
+
+Do **not** cargo-cult the lazy import in `_run_inbox_items`. Its docstring justifies itself with a cycle (*"agent_runs imports apps.agents.models — eager import would cycle"*), but the actual hazard there is narrower too; copying the pattern into `needs_you` for `Item` would add indirection for a cycle that does not exist. Import normally; if a cycle ever appears, it will be an `apps.agents.models` import and the fix is to move it, not to defer it.
+
+Both apps are framework tier, so `tests/test_architecture_boundary.py` has nothing to say here either way.
 
 ```
 Item
@@ -229,7 +233,15 @@ Their **content** changes in one way, and it is not a silent one: no Item is `ki
 
 Phase 1 before 2 is deliberate: it puts real Items in the table before anything reads from them, so the read path is written against reality rather than fixtures.
 
-**One plan per phase, not one plan for this spec.** Phases 0+1 together are a coherent first plan — the model plus its first real producer, which is the smallest slice that proves the design against Ada's actual traffic and retires `product_findings`. Phases 2–4 each get their own plan, written after the phase before it has shipped, because each one's real cost (what breaks in `needs_you`, what the board loses) is only legible once Items exist.
+**One plan per phase, not one plan for this spec.** Phases 0+1 together are a coherent first plan — the model plus its first real producer. Phases 2–4 each get their own plan, written after the phase before it has shipped, because each one's real cost (what breaks in `needs_you`, what the board loses) is only legible once Items exist.
+
+**Phase 1 spans two repos, and the retirement is gated on the far one.** Ada lives in her own repo (`~/emdash/repositories/ada`), so "Ada emits Items" is not a canopy-web change. The order is forced:
+
+1. **canopy-web** ships the Items API + item draining, **additively** — `product_findings` keeps working, the runner drains both.
+2. **ada** switches her audit to post Items.
+3. **canopy-web** retires `product_findings`, deletes the runner's `reviews.py`, and deletes #213's `RUN_CHILD_GATES` / attach-but-never-create / nullable-`narrative_slug` code.
+
+Step 3 is a **separate PR gated on step 2**, not a task in the Phase 1 plan. Deleting the old path before Ada has moved would strand her next audit with no decision surface at all — the precise failure this spec exists to end.
 
 ## Verification
 
