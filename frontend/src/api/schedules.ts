@@ -1,4 +1,5 @@
 import { apiV2 } from "./client.v2";
+import { problemMessage } from "./problem";
 import type { components } from "./generated";
 
 export type Schedule = components["schemas"]["ScheduleOut"];
@@ -9,7 +10,7 @@ export async function listSchedules(slug: string): Promise<Schedule[]> {
   const { data, error } = await apiV2.GET("/api/agents/{slug}/schedules/", {
     params: { path: { slug } },
   });
-  if (error) throw new Error("Failed to load schedules");
+  if (error) throw new Error(problemMessage(error, "Failed to load schedules"));
   return data.items as Schedule[];
 }
 
@@ -30,7 +31,7 @@ export async function createSchedule(
     params: { path: { slug } },
     body: body as ScheduleIn,
   });
-  if (error) throw new Error("Failed to create schedule");
+  if (error) throw new Error(problemMessage(error, "Failed to create schedule"));
   return data as unknown as Schedule;
 }
 
@@ -46,7 +47,7 @@ export async function updateSchedule(
       body,
     },
   );
-  if (error) throw new Error("Failed to update schedule");
+  if (error) throw new Error(problemMessage(error, "Failed to update schedule"));
   return data as unknown as Schedule;
 }
 
@@ -57,7 +58,7 @@ export async function deleteSchedule(slug: string, id: number): Promise<void> {
       params: { path: { slug, schedule_id: id } },
     },
   );
-  if (error) throw new Error("Failed to delete schedule");
+  if (error) throw new Error(problemMessage(error, "Failed to delete schedule"));
 }
 
 export async function runScheduleNow(
@@ -70,7 +71,7 @@ export async function runScheduleNow(
       params: { path: { slug, schedule_id: id } },
     },
   );
-  if (error) throw new Error("Failed to run schedule");
+  if (error) throw new Error(problemMessage(error, "Failed to run schedule"));
   return data as unknown as Schedule;
 }
 
@@ -86,6 +87,6 @@ export async function previewCron(
       body: { cron, timezone },
     },
   );
-  if (error) throw new Error("Failed to preview schedule");
+  if (error) throw new Error(problemMessage(error, "Failed to preview schedule"));
   return data.next_runs as string[];
 }
