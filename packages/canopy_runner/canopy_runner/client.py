@@ -109,11 +109,13 @@ class Client:
                      routing: str = "prefer_local") -> dict:
         """Enqueue a turn (idempotent on idempotency_key — safe to re-enqueue the same
         email). Used by the deterministic inbox/slack triggers."""
-        _, payload = self._call("POST", "/turns/", {
+        status, payload = self._call("POST", "/turns/", {
             "agent_slug": agent_slug, "origin": origin, "idempotency_key": idempotency_key,
             "prompt": prompt, "origin_ref": origin_ref or {}, "routing": routing,
         })
-        return payload or {}
+        # 201 = a NEW turn; 200 = idempotent hit on one we already enqueued. Callers log
+        # the difference so a re-poll of the same unread mail reads as "nothing new".
+        return {**(payload or {}), "_created": status == 201}
 
     def start(self, turn_id: str, session_id: str = "") -> None:
         self._call("POST", f"/turns/{turn_id}/start", {"session_id": session_id})
