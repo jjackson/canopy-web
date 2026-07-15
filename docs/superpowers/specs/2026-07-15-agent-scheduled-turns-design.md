@@ -58,6 +58,12 @@ agent — while the nag survives on the schedule.
 One new table, `AgentSchedule`, in `apps/harness` (framework tier — it references
 `agents.Agent`, never product apps).
 
+**Int pk, not UUID** — unlike `Runner`/`Turn`/`SessionLink`. `AgentSchedule`
+projects into the nag, and `NeedsYouItem.ref_id` is typed `int` on a
+`StrictModel`, so a UUID would fail validation at the boundary. `AgentTask` — the
+other object that projects there — is likewise int-pk'd. Runs already need a
+`_run_ref_id()` cast to work around this; a second such hack isn't worth a UUID.
+
 **No `workspace` FK.** A schedule is agent-owned, so it derives its tenant via
 `agent.workspace`, exactly as `Turn` does. Commit 43f61ae states the rule: *"A
 Turn derives its tenant via agent.workspace (no FK of its own)."* `Runner` needs
@@ -65,7 +71,7 @@ its own FK only because it is not agent-owned.
 
 | Field | Type | Purpose |
 |---|---|---|
-| `id` | UUID pk | |
+| `id` | **int pk** (AutoField) | not UUID — see below |
 | `agent` | FK `agents.Agent` | owner — **and the tenant, derived** |
 | `name` | char(200) | "Weekly manager report" |
 | `prompt` | text | what the turn is seeded with, e.g. `/echo:manager-report` |
@@ -130,12 +136,22 @@ is the **security boundary**; the two intersect, never substitute.
 A schedule-sync route scoped by capabilities would reopen exactly that hole, and
 would leak `prompt` — the same field class b4f5ead called out. So:
 
-- A **tenanted** runner syncs/fires only schedules whose `agent.workspace` matches
-  its own, or whose agent predates tenancy (null workspace).
-- An **untenanted** runner syncs/fires only null-workspace agents (the null↔null
-  rule that keeps the pre-tenancy suite green).
-- `_runner_or_404` and the harness-local `_agent_or_404` (both added in 43f61ae)
-  provide the gate; 404 not 403, so non-membership never leaks existence.
+The runner's tenant derives from **`paired_by`** — the human who paired it —
+rather than a `Runner.workspace` field, for two reasons:
+
+- `Runner.workspace` does not exist on `main`; it arrives with the concurrent
+  canopy-mobile branch (`0004_runner_workspace`). Adding it here would collide
+  with that migration for no gain.
+- `paired_by` is server-assigned from `request.user` at pairing, so — unlike
+  `capabilities` — it is not attacker-controlled. That is the entire point.
+
+So a runner syncs/fires only schedules whose `agent.workspace` is one of
+`paired_by`'s workspaces, plus null-workspace agents (the legacy pre-tenancy
+path the existing suite covers). A runner with no `paired_by` gets an empty set.
+When `Runner.workspace` lands this may narrow to it — the rule above is the
+conservative superset, never a wider one. `_runner_or_404` and the harness-local
+`_agent_or_404` provide the gate; 404 not 403, so non-membership never leaks
+existence.
 
 ### Which runner fires — binding first, idempotency as backstop
 
@@ -327,6 +343,7 @@ written against `main` but must not fight it. Points of contact:
 | `Runner.workspace` FK + membership gate (07a680e, 43f61ae) | Provides `_agent_or_404`/`_runner_or_404`; schedules reuse both |
 | `claim_next_turn` tenant predicate (b4f5ead, Critical) | The rule the runner-facing schedule routes must mirror |
 | `AgentBinding` — spec'd 7765b71, **not built** | Makes the fire race moot once landed; idempotency covers until then. Do not assume it exists |
+| `NeedsYouItem.ref_kind` → `Literal` (2ce30c1) | On `main` it is still `str`, so `"schedule"` works today. **After merge, extend the Literal** to `["task", "sync", "work_product", "run", "schedule"]` or the nag 500s at serialization |
 | harness migrations `0004`, `0005` | **Merge order:** they are not on `main`. If this lands second, renumber `AgentSchedule`'s migration to `0006_` and rebase. Both branches also touch `apps/harness/models.py` (they add `Runner.workspace`, we add `Turn.MISSED`) — a trivial but certain conflict |
 
 ## Open for iteration
