@@ -225,13 +225,15 @@ Plumbing (well-trodden): VAPID keypair, a `PushSubscription` model (`user`, `end
 
 **Named storm risk:** `POST /api/agents/{slug}/tasks/sync` upserts many rows in one request. Without the dirty-set it would emit a push per row. This is the specific case the debounce exists for, and it must have a test.
 
-### 7. Prerequisite — regenerate the agent types
+### 7. Prerequisite — migrate `agents.ts` onto the generated types
 
-`frontend/src/api/agents.ts` opens by admitting the `/api/agents/*` routes "are live on the backend but are not yet present in the generated OpenAPI types". It therefore hand-rolls `getJson`/`postJson`, duplicates the workspace rewrite and CSRF/401 handling, and **hand-declares ~15 response interfaces** (`AgentOut`, `AgentDetailOut`, `NeedsYouOut`, `AgentTaskOut`, …).
+`frontend/src/api/agents.ts` opens by stating the `/api/agents/*` routes "are live on the backend but are not yet present in the generated OpenAPI types", and therefore hand-rolls `getJson`/`postJson`, duplicates the workspace rewrite and CSRF/401 handling, and **hand-declares ~15 response interfaces** (`AgentOut`, `AgentDetailOut`, `NeedsYouOut`, `AgentTaskOut`, …).
 
-That is exactly the surface the supervisor screen is built on. Writing a second consumer against hand-maintained shapes forks the drift permanently.
+**That comment is stale, and this was verified rather than assumed.** `generated.ts` contains **all 19 agent paths**, including `/api/agents/{slug}/needs-you` — and did so even before the most recent regeneration. Generating the schema directly from the live `NinjaAPI` object yields 19 agent paths out of 85 total, so nothing is dropping them. The regen workflow is working. The precondition the comment names — "when the types are regenerated (`npm run gen:api`)" — **has already been met.**
 
-The file states regenerating fixes it "without touching callers", and `.github/workflows/regen-openapi.yml` already triggers on `apps/**/api.py` and `apps/**/schemas.py` — so the types should not be stale. **Part of this phase is finding out why they are.** Fix the cause, not just the artifact.
+So there is no root cause to chase and nothing to regenerate. The work is the migration the comment itself prescribes: move the callers to `apiV2.GET(...)`, delete the hand-rolled fetch layer, and delete the ~15 hand-declared interfaces in favour of `components["schemas"][...]`.
+
+This matters because it is exactly the surface the supervisor screen is built on. Building Phase 1 against hand-maintained shapes would fork the drift into a second consumer permanently — while the typed client sits there, already generated, unused.
 
 ### 8. Authorization — Phase 0, before any remote actuation
 
