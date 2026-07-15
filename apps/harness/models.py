@@ -38,6 +38,21 @@ class Runner(models.Model):
     # so a live session is reusable ONLY by the runner whose host matches the one that
     # created it. Jonathan runs the fleet under two accounts (token-limit failover).
     host = models.CharField(max_length=200, blank=True, default="")
+    # The human who paired this runner. Load-bearing for BOTH authz and tenancy:
+    # `_runner_or_404` pins every runner route to `paired_by`, and the harness
+    # derives the tenant from it (there is deliberately no Runner.workspace field).
+    #
+    # OPERATIONAL CONSEQUENCE — deleting a pairing user permanently bricks their
+    # runners. SET_NULL orphans the row rather than removing it; `paired_by_id`
+    # becomes NULL, and the `!=` in `_runner_or_404` is True for None, so EVERY
+    # runner route 404s for EVERY user, forever. The runner cannot be recovered by
+    # reassigning it through the API — it must be re-paired (a fresh row) and the
+    # orphaned one retired.
+    #
+    # This fail-closed behaviour is CORRECT and must stay: a runner whose owner no
+    # longer exists has no tenant to derive, and inferring one would be a privilege
+    # escalation. Deactivate a departing user (`is_active=False`) rather than
+    # deleting them if their runners should stay operable for a successor.
     paired_by = models.ForeignKey(
         "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )

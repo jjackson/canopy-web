@@ -242,6 +242,8 @@ The unified agent **run lifecycle** (run → step → artifact → verdict/QA �
 
 ### Agent harness — recurring turns (`apps/harness`, mounted at `/api/harness`)
 The runner-facing half of scheduling; the supervisor's CRUD is the `/api/agents/{slug}/schedules/` surface above. `runner_id` is a query param on every route; the tenant is derived from `runner.paired_by` (the human who paired the runner), never a `Runner.workspace` field — see the Design Decisions entry below.
+
+> **Operational note — deleting a user bricks their runners.** `Runner.paired_by` is `on_delete=SET_NULL` and `_runner_or_404` pins every runner route to it, so deleting a pairing user's Django `User` orphans their runners permanently: `paired_by` goes NULL, the pin fails closed for *every* caller, and all runner routes 404 forever. The runner must be re-paired (a new row); the orphan can only be retired. This is correct — a runner with no owner has no tenant to derive, and inferring one would be privilege escalation — so prefer deactivating a departing user (`is_active=False`) over deleting them if their runners should keep running.
 - `GET /api/harness/schedules/?runner_id=…` — runner syncs the schedules it may fire. **Tenant-scoped, never scoped by `capabilities`** (a caller-supplied hint, not a boundary — see b4f5ead).
 - `POST /api/harness/schedules/{id}/fire?runner_id=…` — the runner reports a due slot; the server materializes the turn.
 
