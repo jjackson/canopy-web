@@ -10,7 +10,7 @@ import json
 import logging
 
 from django.conf import settings
-from django.db import transaction
+from django.db import connection, transaction
 from pywebpush import WebPushException, webpush
 
 from apps.agents.models import Agent
@@ -20,9 +20,21 @@ from .models import AgentWaitingSnapshot, PushSubscription
 
 logger = logging.getLogger(__name__)
 
-# Agents touched in the current transaction. Flushed once in on_commit, so a
-# bulk sync of N tasks is ONE recompute per agent rather than N.
-_dirty: set[int] = set()
+
+def _dirty_set() -> set[int]:
+    """The agents marked in THIS connection's current transaction.
+
+    Lives on the connection, not the module: connections are thread-local
+    (django/utils/connection.py:41) while a module global is not, so two
+    concurrent requests shared one set — and whichever committed first drained
+    BOTH, recomputing the other thread's agent on a connection that could not
+    yet see its uncommitted rows. That agent's push was silently dropped. Per
+    connection is still exactly one transaction's worth, so the coalescing this
+    exists for is unaffected.
+    """
+    if not hasattr(connection, "_push_dirty"):
+        connection._push_dirty = set()
+    return connection._push_dirty
 
 
 def _send_one(sub: PushSubscription, payload: dict) -> None:
@@ -97,8 +109,9 @@ def refresh_agent_waiting(agent: Agent) -> int:
 
 def _flush() -> None:
     """Recompute every agent touched in the just-committed transaction, once."""
-    ids = set(_dirty)
-    _dirty.clear()
+    dirty = _dirty_set()
+    ids = set(dirty)
+    dirty.clear()
     for agent in Agent.objects.filter(id__in=ids):
         try:
             refresh_agent_waiting(agent)
@@ -120,5 +133,5 @@ def mark_dirty(agent_id: int) -> None:
     set forever after the first rollback, never register again, and silently
     kill push process-wide until restart.
     """
-    _dirty.add(agent_id)
+    _dirty_set().add(agent_id)
     transaction.on_commit(_flush)

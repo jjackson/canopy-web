@@ -24,26 +24,19 @@ from apps.workspaces.models import Workspace, WorkspaceMembership
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-# apps.push.services._dirty is process-global by design (see the module
-# docstring's note on it — coalescing, not per-connection). That means any
-# OTHER test anywhere in this suite that saves an AgentTask/AgentRunGate/
-# AgentRunStep under the plain (non-transaction=True) django_db marker calls
-# mark_dirty(), registers an on_commit that its rolled-back test transaction
-# never fires, and leaves that agent id sitting in _dirty forever. The next
-# mark_dirty() call anywhere in the process then sees `not _dirty` as False
-# and skips registering its OWN on_commit — so this file's assertions would
-# silently see call_count == 0 depending on what ran earlier in the session.
-# Verified by reproducing it with a single unrelated AgentTask-creating test
-# run before this file. Reset the set around every test so these tests are
-# self-contained regardless of suite order; this does not touch the
-# production module — see the report for the underlying fragility.
+# apps.push.services._dirty_set() lives on the DB connection (per-connection,
+# per-transaction — see its docstring), so it is already isolated across
+# threads/requests and does not leak between tests through any process-global
+# state. This fixture is just belt-and-braces: it clears this connection's set
+# before and after every test so a test that errors mid-transaction (leaving
+# stray ids behind) can never bleed into the next one in this file.
 @pytest.fixture(autouse=True)
 def _reset_dirty_set():
     from apps.push import services
 
-    services._dirty.clear()
+    services._dirty_set().clear()
     yield
-    services._dirty.clear()
+    services._dirty_set().clear()
 
 
 # _send_one is mocked in every test below, so no real push ever goes over the
@@ -130,6 +123,25 @@ def test_a_bulk_sync_pushes_once_per_agent_not_once_per_row(agent, sub):
         with transaction.atomic():
             for i in range(10):
                 _task(agent, f"bulk{i}")
+    assert send.call_count == 1
+    assert AgentWaitingSnapshot.objects.get(agent=agent).waiting_count == 10
+
+
+def test_the_real_tasks_sync_path_pushes_once(agent, sub):
+    """THE storm case, on the path production actually takes. The hand-rolled
+    atomic() test above cannot see this: the guarantee rests on sync_tasks being
+    @transaction.atomic (apps/agents/services.py:184), and if that decorator were
+    removed each update_or_create would commit separately and fire its own push —
+    while that test still passed."""
+    from apps.agents import services as agent_services
+    from apps.agents.schemas import AgentTaskIn
+
+    items = [
+        AgentTaskIn(ext_id=f"bulk{i}", title=f"T {i}", status="suggested")
+        for i in range(10)
+    ]
+    with patch("apps.push.services._send_one") as send:
+        agent_services.sync_tasks(agent, items)
     assert send.call_count == 1
     assert AgentWaitingSnapshot.objects.get(agent=agent).waiting_count == 10
 
