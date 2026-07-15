@@ -190,3 +190,19 @@ export async function listAgentCommands(slug: string, status?: string): Promise<
 export async function listPendingCommands(slug: string): Promise<AgentCommandOut[]> {
   return listAgentCommands(slug, 'pending')
 }
+
+export type FleetNeedsYouOut = Schemas['FleetNeedsYouOut']
+
+export async function getFleetNeedsYou(): Promise<FleetNeedsYouOut> {
+  const res = await apiV2.GET('/api/agents/needs-you')
+  const data = unwrap(res, 'getFleetNeedsYou')
+  // See toPage's comment: `agents`, and each block's `items` one level down,
+  // degrade to an ArrayLike-shaped object through openapi-fetch's
+  // Readable<T> — rebuild both levels as real arrays (Array.from, no cast).
+  return {
+    ...data,
+    agents: data.agents
+      ? Array.from(data.agents).map((a) => ({ ...a, items: a.items ? Array.from(a.items) : undefined }))
+      : undefined,
+  }
+}

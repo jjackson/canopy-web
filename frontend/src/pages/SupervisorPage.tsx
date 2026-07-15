@@ -1,8 +1,9 @@
 import { useEffect, useState, type JSX } from 'react'
-import { listAgents, type AgentOut } from '@/api/agents'
+import { listAgents, getFleetNeedsYou, type AgentOut, type FleetNeedsYouOut } from '@/api/agents'
 import { listRunners, type RunnerOut } from '@/api/harness'
 import { RunnerStatus } from '@/components/supervisor/RunnerStatus'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
+import { WaitingOnYou } from '@/components/supervisor/WaitingOnYou'
 import { Skeleton } from 'canopy-ui'
 
 // The ONE supervisor surface (spec 2026-07-14). Three consumers will load this
@@ -11,15 +12,17 @@ import { Skeleton } from 'canopy-ui'
 export default function SupervisorPage(): JSX.Element {
   const [agents, setAgents] = useState<AgentOut[] | null>(null)
   const [runners, setRunners] = useState<RunnerOut[] | null>(null)
+  const [fleet, setFleet] = useState<FleetNeedsYouOut | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([listAgents({ limit: 100 }), listRunners()])
-      .then(([page, rs]) => {
+    Promise.all([listAgents({ limit: 100 }), listRunners(), getFleetNeedsYou()])
+      .then(([page, rs, f]) => {
         if (cancelled) return
         setAgents(page.items)
         setRunners(rs)
+        setFleet(f)
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load')
@@ -39,7 +42,7 @@ export default function SupervisorPage(): JSX.Element {
     )
   }
 
-  const loading = agents === null || runners === null
+  const loading = agents === null || runners === null || fleet === null
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 p-4" data-testid="supervisor-page">
@@ -47,6 +50,13 @@ export default function SupervisorPage(): JSX.Element {
         <h1 className="text-lg font-semibold text-foreground">Supervisor</h1>
         <p className="mt-0.5 text-[12px] text-muted-foreground">Your fleet, and what it needs from you.</p>
       </header>
+
+      <section>
+        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Waiting on you {fleet && fleet.total_waiting > 0 ? `· ${fleet.total_waiting}` : ''}
+        </h2>
+        {loading ? <Skeleton className="h-24 w-full" /> : <WaitingOnYou fleet={fleet} />}
+      </section>
 
       <section>
         <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Runners</h2>
@@ -63,7 +73,11 @@ export default function SupervisorPage(): JSX.Element {
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {agents.map((a) => (
-              <AgentKpiCard key={a.slug} agent={a} waiting={0} />
+              <AgentKpiCard
+                key={a.slug}
+                agent={a}
+                waiting={(fleet.agents ?? []).find((b) => b.agent_slug === a.slug)?.waiting_count ?? 0}
+              />
             ))}
           </div>
         )}
