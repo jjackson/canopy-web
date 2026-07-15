@@ -9,6 +9,8 @@ from django.test import Client
 
 from apps.agents.models import Agent
 from apps.harness.models import AgentSchedule, Turn
+from apps.workspaces import services as wsvc
+from apps.workspaces.models import Workspace, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -144,3 +146,107 @@ def test_preview_rejects_a_bad_cron_without_saving_anything(client, agent):
     assert resp.status_code == 422
     assert resp["content-type"] == "application/problem+json"
     assert AgentSchedule.objects.count() == 0
+
+
+# --- tenancy: _agent_or_404's membership branch --------------------------
+#
+# Every fixture above creates `Agent(workspace=None)`, which short-circuits
+# `if agent.workspace_id and not wsvc.is_member(...)` before the membership
+# check ever runs. These tests give the agent a REAL workspace with
+# `auto_join_domains=[]` (load-bearing: `_agent_or_404` calls
+# `wsvc.auto_join_workspaces(request.user)` first, so a nonempty
+# auto_join_domains matching the outsider's email domain would silently make
+# them a member and the "non-member" test would pass while testing nothing)
+# so the membership check is the only thing standing between the caller and
+# the data.
+
+
+@pytest.fixture()
+def scoped_workspace():
+    owner = User.objects.create_user("acme-owner", "acme-owner@dimagi.com", "pw")
+    return Workspace.objects.create(
+        slug="acme", display_name="Acme", created_by=owner, auto_join_domains=[]
+    )
+
+
+@pytest.fixture()
+def scoped_agent(scoped_workspace):
+    return Agent.objects.create(slug="acme-echo", name="Acme Echo", workspace=scoped_workspace)
+
+
+def _schedule_body(**over):
+    body = {
+        "name": "Weekly manager report", "prompt": "/echo:manager-report",
+        "cron": "0 9 * * 5", "timezone": "America/New_York",
+    }
+    body.update(over)
+    return body
+
+
+def test_non_member_gets_404_not_403_on_every_route_and_nothing_leaks_or_writes(
+    scoped_workspace, scoped_agent
+):
+    outsider = User.objects.create_user("outsider", "outsider@dimagi.com", "pw")
+    # Guard: prove auto-join didn't silently make the outsider a member —
+    # otherwise this whole test would pass for the wrong reason.
+    assert not wsvc.is_member(outsider, scoped_workspace.slug)
+
+    c = Client()
+    c.force_login(outsider)
+    base = f"/api/agents/{scoped_agent.slug}/schedules/"
+
+    list_resp = c.get(base)
+    create_resp = c.post(base, _schedule_body(), content_type="application/json")
+    preview_resp = c.post(
+        base + "preview", {"cron": "0 9 * * 5", "timezone": "UTC"},
+        content_type="application/json",
+    )
+    patch_resp = c.patch(base + "999", {"enabled": False}, content_type="application/json")
+    delete_resp = c.delete(base + "999")
+    run_now_resp = c.post(base + "999/run-now")
+
+    for label, resp in [
+        ("list", list_resp), ("create", create_resp), ("preview", preview_resp),
+        ("patch", patch_resp), ("delete", delete_resp), ("run-now", run_now_resp),
+    ]:
+        assert resp.status_code == 404, f"{label}: expected 404, got {resp.status_code} ({resp.content})"
+        assert resp.status_code != 403, f"{label}: leaked existence via 403 instead of 404"
+
+    # No data leaked out through list, and the create attempt did not land.
+    assert AgentSchedule.objects.filter(agent=scoped_agent).count() == 0
+
+
+def test_member_of_the_agents_workspace_can_reach_every_route(scoped_workspace, scoped_agent):
+    """Sanity check for the test above: if the gate rejected EVERYONE (not just
+    non-members), the 404 assertions would pass for the wrong reason too."""
+    member = User.objects.create_user("member", "member@dimagi.com", "pw")
+    wsvc.ensure_member(scoped_workspace, member, WorkspaceMembership.OWNER)
+    assert wsvc.is_member(member, scoped_workspace.slug)
+
+    c = Client()
+    c.force_login(member)
+    base = f"/api/agents/{scoped_agent.slug}/schedules/"
+
+    create_resp = c.post(base, _schedule_body(), content_type="application/json")
+    assert create_resp.status_code == 201, create_resp.content
+    sid = create_resp.json()["id"]
+
+    list_resp = c.get(base)
+    assert list_resp.status_code == 200
+    assert list_resp.json()["total"] == 1
+
+    preview_resp = c.post(
+        base + "preview", {"cron": "0 9 * * 5", "timezone": "UTC"},
+        content_type="application/json",
+    )
+    assert preview_resp.status_code == 200
+
+    patch_resp = c.patch(base + f"{sid}", {"enabled": False}, content_type="application/json")
+    assert patch_resp.status_code == 200
+
+    run_now_resp = c.post(base + f"{sid}/run-now")
+    assert run_now_resp.status_code == 202
+
+    delete_resp = c.delete(base + f"{sid}")
+    assert delete_resp.status_code == 204
+    assert AgentSchedule.objects.filter(agent=scoped_agent).count() == 0

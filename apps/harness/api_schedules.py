@@ -82,6 +82,13 @@ def create_schedule(request: HttpRequest, slug: str, payload: ScheduleIn) -> Sta
     return Status(201, _serialize(schedule))
 
 
+# Route-ordering invariant: this literal "preview" route must stay declared
+# BEFORE the "/{slug}/schedules/{schedule_id}" routes below. Django Ninja
+# compiles path params with no int: converter, so "agents/echo/schedules/preview"
+# resolves as {"schedule_id": "preview"} once a {schedule_id} pattern exists —
+# and Django's URL resolution is method-agnostic (POST vs PATCH/DELETE doesn't
+# disambiguate), so only declaration order keeps this route reachable. Moving
+# this block below PATCH/DELETE would silently shadow it.
 @router.post("/{slug}/schedules/preview", response=SchedulePreviewOut,
              summary="Preview the next fire times for a cron expression",
              openapi_extra={"x-mcp-expose": True})
