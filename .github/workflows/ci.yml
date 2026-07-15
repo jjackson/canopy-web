@@ -42,6 +42,13 @@ jobs:
         working-directory: packages/canopy_cron
         run: uv run --project ../.. pytest -q
 
+      # Same deal for the runner: it decides WHICH slot is due and fires it, so its
+      # suite is the only thing standing between a cron typo and a fleet that
+      # silently never fires (or fires a slot that predates its schedule).
+      - name: Run canopy_runner tests (plain pytest, no Django)
+        working-directory: packages/canopy_runner
+        run: uv run --project ../.. pytest -q
+
   test-frontend:
     name: Frontend build
     runs-on: ubuntu-latest

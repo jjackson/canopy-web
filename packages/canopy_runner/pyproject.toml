@@ -3,7 +3,20 @@ name = "canopy-runner"
 version = "0.1.0"
 description = "Canopy laptop/cloud runner: claims turns from canopy-web and executes them (emdash adapter first)."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    # The cron slot math the runner fires on. Lives in-repo at packages/canopy_cron
+    # and is shared verbatim with the server (which previews fire times from the
+    # same next_slots) — the runner is Django-free and cannot import apps.*, so a
+    # shared package is the only way the editor's preview and the runner's firing
+    # can't drift. croniter's bound is declared there, once; don't restate it here.
+    "canopy-cron",
+]
+
+[tool.uv.sources]
+# In-repo, standalone, installable — same editable path-dep wiring the root
+# pyproject uses for canopy-agent-runs / canopy-cron, resolved relative to this
+# package so `uv run` here works without publishing to an index.
+canopy-cron = { path = "../canopy_cron", editable = true }
 
 [project.scripts]
 canopy-runner = "canopy_runner.main:main"

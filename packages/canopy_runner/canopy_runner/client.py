@@ -82,6 +82,27 @@ class Client:
     def post_events(self, turn_id: str, events: list[dict]) -> None:
         self._call("POST", f"/turns/{turn_id}/events", {"events": events})
 
+    def sync_schedules(self, runner_id: str) -> list[dict]:
+        """The schedules this runner may fire (tenant-scoped server-side). The runner
+        evaluates their cron locally and reports what came due — the server stores the
+        config, the runner is the tick. Response is a Page; callers want the items."""
+        from urllib.parse import urlencode
+        _, payload = self._call("GET", "/schedules/?" + urlencode({"runner_id": runner_id}))
+        return (payload or {}).get("items", [])
+
+    def fire_schedule(self, schedule_id: int, runner_id: str, slot: str) -> dict:
+        """Report a due slot; the server materializes it as a normal turn.
+
+        Safe to race — both macOS-account runners may report the same slot, and the
+        server's slot-derived idempotency_key collapses it inside enqueue_turn. The
+        route answers 201 either way, so a fresh turn and a replay are indistinguishable
+        here (and both are success — there is nothing for the runner to reconcile).
+        """
+        from urllib.parse import urlencode
+        path = f"/schedules/{schedule_id}/fire?" + urlencode({"runner_id": runner_id})
+        _, payload = self._call("POST", path, {"slot": slot})
+        return payload or {}
+
     def _get_api(self, path: str) -> object:
         """GET an arbitrary /api path (not under /api/harness) — used to read the
         reviews surface for review-ingestion. Same auth/error handling as _call."""

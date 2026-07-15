@@ -31,6 +31,7 @@ accounted for:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import logging
 import os
@@ -188,6 +189,27 @@ def _maybe_check_reviews(cfg: Config, client: Client, now_fn=time.time) -> None:
         pass
 
 
+def _fire_due_schedules(cfg: Config, client: Client, paused: set[str] | None = None) -> None:
+    """Scheduled-turn trigger: sync the schedules this runner may fire, evaluate each
+    cron locally, and report any due slot so the server materializes the turn.
+
+    Unthrottled on purpose — unlike the inbox (a subprocess per mailbox), this is one
+    HTTP GET, the same cost class as the claim it rides alongside, and the poll IS the
+    tick: throttling it would just add latency to every slot. Best-effort — a failing
+    sync (server down, token expired) logs and is skipped, never crashes the loop.
+
+    Only reached when NOT globally paused: main()'s pause sentinel `continue`s before
+    run_once, so a paused runner never fires (which would queue turns that all execute
+    the instant it resumes). Per-agent pause is honored inside check_schedules.
+    """
+    from . import schedules as schedules_mod
+    now = dt.datetime.now(dt.UTC)
+    try:
+        schedules_mod.check_schedules(client, cfg.runner_id, now=now, paused=frozenset(paused or ()))
+    except Exception as exc:  # noqa: BLE001 — scheduling never kills claiming or the inbox
+        logger.warning("schedule sync failed: %s", exc)
+
+
 def _run_once_cdp(cfg: Config, client: Client) -> str:
     """CDP executor: heartbeat (with macOS host, for reuse ownership) → claim one
     turn → route it to an emdash session (reuse or create). Turns finish synchronously
@@ -200,6 +222,7 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
     paused = _paused_agents(cfg)
     _maybe_check_inboxes(cfg, client, paused=paused)
     _maybe_check_reviews(cfg, client)
+    _fire_due_schedules(cfg, client, paused=paused)
     try:
         turn = client.claim(cfg.runner_id, paused_agents=sorted(paused))
     except ClientError as exc:

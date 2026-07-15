@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -7,8 +8,10 @@ from pathlib import Path
 import pytest
 
 from canopy_runner import emdash
+from canopy_runner import main as main_mod
+from canopy_runner.client import ClientError
 from canopy_runner.config import Config
-from canopy_runner.main import GRACE_SECONDS, run_once
+from canopy_runner.main import GRACE_SECONDS, _fire_due_schedules, run_once
 
 AUTOMATION_ID = "auto-1"
 
@@ -371,3 +374,104 @@ def test_completed_run_with_unfinished_turn_fails_after_grace(db, tmp_path, monk
     assert "grace expired" in client.failed[-1][1]
     state = json.loads(Path(cfg.state_path).read_text())
     assert "t-1" not in state["active"]  # evicted — lease can now expire
+
+
+# --- scheduled turns: the loop wiring (the decision logic is tests/test_schedules.py) ---
+
+
+def test_schedule_sync_failure_never_kills_the_loop(tmp_path):
+    """The daemon runs unattended under launchd: an unhandled exception in the
+    scheduling path would take down claiming and the inbox with it."""
+    class Boom:
+        def sync_schedules(self, runner_id):
+            raise ClientError("500 from server")
+
+    cfg = Config(base_url="http://x", token="t", runner_id="r-1", emdash_db="x",
+                 automation_ids={}, expected_migration_id=19,
+                 state_path=str(tmp_path / "state.json"))
+    _fire_due_schedules(cfg, Boom())  # must not raise
+
+
+def test_global_pause_sentinel_blocks_schedule_firing(tmp_path, monkeypatch):
+    """Paused = no work, no tokens. Firing while paused would queue scheduled turns
+    that all execute the instant the runner resumes."""
+    cfg_path = tmp_path / "runner.json"
+    cfg_path.write_text(json.dumps({
+        "base_url": "http://x", "token": "t", "runner_id": "r-1",
+        "emdash_db": str(tmp_path / "e.db"), "automation_ids": {},
+        "expected_migration_id": 19, "poll_seconds": 1,
+    }))
+    (tmp_path / "PAUSED").touch()  # the sentinel main() watches, next to the config
+
+    calls = []
+
+    class RecordingClient:
+        def __init__(self, base_url, token):
+            pass
+
+        def heartbeat(self, *a, **k):
+            calls.append("heartbeat")
+            return {}
+
+        def sync_schedules(self, runner_id):
+            calls.append("sync_schedules")
+            return []
+
+        def claim(self, *a, **k):
+            calls.append("claim")
+            return None
+
+    class StopLoopError(Exception):
+        pass
+
+    def stop(_seconds):
+        raise StopLoopError
+
+    monkeypatch.setattr(main_mod, "Client", RecordingClient)
+    monkeypatch.setattr(time, "sleep", stop)
+    monkeypatch.setattr(sys, "argv", ["canopy-runner", "run", "--config", str(cfg_path)])
+
+    with pytest.raises(StopLoopError):
+        main_mod.main()
+
+    assert "heartbeat" in calls  # still alive-but-idle to the control plane
+    assert "sync_schedules" not in calls  # ...but fired nothing
+    assert "claim" not in calls
+
+
+def test_unpaused_loop_fires_schedules_every_poll(tmp_path, monkeypatch):
+    """The counterpart to the pause test: prove the firing is actually wired into
+    the poll (the pause assertion alone would pass if it were wired nowhere)."""
+    cfg_path = tmp_path / "runner.json"
+    cfg_path.write_text(json.dumps({
+        "base_url": "http://x", "token": "t", "runner_id": "r-1",
+        "emdash_db": str(tmp_path / "e.db"), "automation_ids": {},
+        "expected_migration_id": 19, "poll_seconds": 1, "reviews_poll_seconds": 0,
+    }))
+    calls = []
+
+    class RecordingClient:
+        def __init__(self, base_url, token):
+            pass
+
+        def heartbeat(self, *a, **k):
+            return {}
+
+        def sync_schedules(self, runner_id):
+            calls.append(runner_id)
+            return []
+
+        def claim(self, *a, **k):
+            return None
+
+    class StopLoopError(Exception):
+        pass
+
+    monkeypatch.setattr(main_mod, "Client", RecordingClient)
+    monkeypatch.setattr(time, "sleep", lambda _s: (_ for _ in ()).throw(StopLoopError()))
+    monkeypatch.setattr(sys, "argv", ["canopy-runner", "run", "--config", str(cfg_path)])
+
+    with pytest.raises(StopLoopError):
+        main_mod.main()
+
+    assert calls == ["r-1"]  # synced on the poll — the poll IS the tick
