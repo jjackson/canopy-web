@@ -203,9 +203,32 @@ def _api(base: str, token: str, path: str) -> object:
         return json.loads(r.read().decode())
 
 
+def _pending_reviews(base: str, token: str, slugs: set) -> dict:
+    """Pending canopy-web reviews attributed to an agent by run_id prefix (e.g.
+    'ada-fleet-audit-…' -> ada). These are things the agent is waiting on YOU to decide,
+    and they don't show up in needs-you (reviews are a separate model)."""
+    try:
+        data = _api(base, token, "/api/reviews/?status=pending")
+    except Exception:  # noqa: BLE001
+        return {}
+    items = data if isinstance(data, list) else (data.get("items", []) if isinstance(data, dict) else [])
+    by: dict = {}
+    for r in items:
+        head = (r.get("run_id") or "").split("-")[0]
+        if head in slugs:
+            by.setdefault(head, []).append({
+                "type": "review",
+                "title": r.get("title") or "Review pending",
+                "url": f"{base}/review/{r.get('id')}",
+                "created_at": r.get("created_at"),
+            })
+    return by
+
+
 def fetch_agents(base: str, token: str) -> list[dict]:
-    """List agents, then enrich each with its detail counts (parallel). Best-effort:
-    a failed detail just leaves the base fields."""
+    """List agents, then enrich each (parallel) with the KPIs that actually matter for
+    supervising it: what's WAITING ON YOU (pending reviews + gated needs-you items, each
+    with a click-through url), open task count, and last-active time. Best-effort."""
     if not token:
         return []
     try:
@@ -213,15 +236,33 @@ def fetch_agents(base: str, token: str) -> list[dict]:
     except Exception:  # noqa: BLE001
         return []
     items = data.get("items", data) if isinstance(data, dict) else data
+    slugs = {a.get("slug") for a in items}
+    rev_by = _pending_reviews(base, token, slugs)
 
-    def _detail(a: dict) -> dict:
+    def _enrich(a: dict) -> dict:
+        slug = a.get("slug", "")
+        detail, ny = {}, {}
         try:
-            return {**a, **_api(base, token, f"/api/agents/{a['slug']}/")}
+            detail = _api(base, token, f"/api/agents/{slug}/")
         except Exception:  # noqa: BLE001
-            return a
+            pass
+        try:
+            ny = _api(base, token, f"/api/agents/{slug}/needs-you")
+        except Exception:  # noqa: BLE001
+            pass
+        waiting = list(rev_by.get(slug, []))
+        for it in (ny.get("items") or []):
+            if it.get("type") in ("review", "question"):
+                waiting.append({
+                    "type": it["type"],
+                    "title": it.get("title") or "",
+                    "url": it.get("url") or f"{base}/agents/{slug}",
+                    "created_at": it.get("created_at"),
+                })
+        return {**a, **detail, "waiting": waiting}
 
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        return list(ex.map(_detail, items))
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        return list(ex.map(_enrich, items))
 
 
 def _rel(iso: str | None) -> str:
@@ -241,41 +282,60 @@ def _rel(iso: str | None) -> str:
 
 
 # ── HTML render (Warm Earth dark) ───────────────────────────────────────────────
+def _avatar(agent: dict, i: int, cls: str = "av") -> str:
+    name = html.escape(agent.get("name") or agent.get("slug") or "?")
+    if agent.get("avatar_url"):
+        return f'<img class="{cls}" src="{html.escape(agent["avatar_url"])}" alt="">'
+    accent = CARD_ACCENTS[i % len(CARD_ACCENTS)]
+    return f'<div class="{cls}" style="background:{accent}">{(name[:1] or "?").upper()}</div>'
+
+
+def _waiting_item(w: dict, agent: dict, i: int) -> str:
+    """One 'waiting on you' row — a pending review or a gated needs-you item. The whole
+    row is a click target that opens the thing (the review screen, the task, etc.)."""
+    kind = w.get("type", "review")
+    chip = {"review": "Review", "question": "Question"}.get(kind, kind.title())
+    who = html.escape(agent.get("name") or agent.get("slug") or "")
+    title = html.escape(w.get("title") or chip)
+    when = _rel(w.get("created_at"))
+    url = html.escape(w.get("url") or "")
+    return f"""
+    <div class="wi wi-{kind}" onclick="open_agent('{url}')" title="Open on canopy-web">
+      {_avatar(agent, i, "av sm")}
+      <div class="wibody">
+        <div class="wirow"><span class="wchip {kind}">{chip}</span><span class="wtitle">{title}</span></div>
+        <div class="wmeta">{who} · waiting {when}</div>
+      </div>
+      <span class="wgo">›</span>
+    </div>"""
+
+
 def _card(agent: dict, base: str, i: int, paused: bool) -> str:
+    """Compact agent KPI row — the mobile-style card: who, status, the KPIs that matter
+    (waiting-on-you · open tasks · last active), pause/resume, click-through to the agent."""
     slug = agent.get("slug", "")
     name = html.escape(agent.get("name") or slug)
-    blurb = html.escape((agent.get("persona") or agent.get("description") or "").strip())
-    email = html.escape(agent.get("email") or "")
     url = f"{base}/agents/{slug}"
-    accent = CARD_ACCENTS[i % len(CARD_ACCENTS)]
-    initial = (name[:1] or "?").upper()
-    avatar = (f'<img class="av" src="{html.escape(agent["avatar_url"])}" alt="">'
-              if agent.get("avatar_url") else
-              f'<div class="av" style="background:{accent}">{initial}</div>')
-    stats = []
-    for label, key in (("turns", "turn_count"), ("tasks", "task_count"),
-                       ("skills", "skill_count"), ("products", "work_product_count")):
-        v = agent.get(key)
-        if v is not None:
-            stats.append(f'<span class="stat"><b>{v}</b> {label}</span>')
+    waiting = agent.get("waiting") or []
+    tasks = agent.get("task_count")
     last = _rel(agent.get("latest_turn_at"))
-    # Per-agent pause control. stopPropagation so toggling pause doesn't also open the
-    # agent's page. The whole card (minus this button) is the click target for open.
+    kpis = []
+    if waiting:
+        kpis.append(f'<span class="kpi hot">⏳ <b>{len(waiting)}</b> waiting</span>')
+    if tasks is not None:
+        kpis.append(f'<span class="kpi"><b>{tasks}</b> tasks</span>')
+    kpis.append(f'<span class="kpi">active {last}</span>')
     pa = "pauseAgent" if not paused else "resumeAgent"
     plabel = "Pause" if not paused else "Resume"
     chip = '<span class="apill">Paused</span>' if paused else ""
     return f"""
     <div class="card{' ispaused' if paused else ''}" onclick="open_agent('{html.escape(url)}')" title="Open {name} on canopy-web">
-      {avatar}
+      {_avatar(agent, i)}
       <div class="body">
-        <div class="row1"><span class="name">{name}</span>{chip}<span class="last">{last}</span></div>
-        {f'<div class="blurb">{blurb}</div>' if blurb else ''}
-        <div class="meta">{f'<span class="email">{email}</span>' if email else ''}</div>
-        <div class="cardfoot">
-          <div class="stats">{''.join(stats)}</div>
-          <button class="apause" onclick="event.stopPropagation(); act_agent('{pa}','{slug}')">{plabel}</button>
-        </div>
+        <div class="row1"><span class="name">{name}</span>{chip}</div>
+        <div class="kpis">{''.join(kpis)}</div>
       </div>
+      <button class="apause" onclick="event.stopPropagation(); act_agent('{pa}','{slug}')">{plabel}</button>
     </div>"""
 
 
@@ -288,6 +348,26 @@ def render(state: dict, agents: list[dict], base: str) -> str:
     pause_act = "resume" if state["paused"] else "pause"
     daemon_label, daemon_act = (("Stop daemon", "stop") if s != "stopped"
                                 else ("Start daemon", "start"))
+    idx = {a.get("slug"): i for i, a in enumerate(agents)}
+
+    # "Waiting on you" — the actionable inbox across the fleet (pending reviews + gated
+    # needs-you items), highest-value first so the one thing to act on is at the top.
+    waiting_rows = []
+    order = {"review": 0, "question": 1}
+    for a in agents:
+        for w in (a.get("waiting") or []):
+            waiting_rows.append((order.get(w.get("type"), 2), a, w))
+    waiting_rows.sort(key=lambda t: (t[0], (t[2].get("created_at") or "")))
+    if waiting_rows:
+        waiting_html = "".join(_waiting_item(w, a, idx.get(a.get("slug"), 0))
+                               for _, a, w in waiting_rows)
+    else:
+        waiting_html = '<div class="empty ok">Nothing needs you right now.</div>'
+    waiting_n = len(waiting_rows)
+
+    any_agent_paused = any(_agent_paused(a.get("slug", "")) for a in agents)
+    all_act, all_label = (("resumeAllAgents", "Resume all") if any_agent_paused
+                          else ("pauseAllAgents", "Pause all"))
     cards = "".join(_card(a, base, i, _agent_paused(a.get("slug", "")))
                     for i, a in enumerate(agents)) or \
         '<div class="empty">No agents found (check the runner token / connection).</div>'
@@ -327,39 +407,58 @@ def render(state: dict, agents: list[dict], base: str) -> str:
     padding: 4px 10px; cursor: pointer; }}
   .btn:hover {{ color: var(--fg); border-color: var(--dim); }}
   .btn.primary {{ color: var(--bg); background: var(--primary); border-color: var(--primary); }}
-  .sectlabel {{ text-transform: uppercase; letter-spacing: .8px; font-size: 10px;
-    color: var(--dim); font-weight: 700; padding: 12px 14px 4px; }}
-  .list {{ padding: 2px 10px 12px; display: flex; flex-direction: column; gap: 7px; }}
-  .card {{ display: flex; gap: 10px; padding: 10px; border-radius: 10px;
+  .sectlabel {{ display: flex; align-items: center; text-transform: uppercase; letter-spacing: .8px;
+    font-size: 10px; color: var(--dim); font-weight: 700; padding: 13px 14px 5px; }}
+  .sectlabel .cnt {{ color: var(--fg2); margin-left: 5px; }}
+  .sectlabel .mini {{ margin-left: auto; font-size: 10px; letter-spacing: 0; text-transform: none;
+    color: var(--fg2); background: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px 8px; cursor: pointer; font-weight: 600; }}
+  .sectlabel .mini:hover {{ color: var(--fg); border-color: var(--dim); }}
+  .list {{ padding: 2px 10px 10px; display: flex; flex-direction: column; gap: 7px; }}
+  /* waiting-on-you rows */
+  .wi {{ display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--border); cursor: pointer; }}
+  .wi:hover {{ border-color: color-mix(in oklch, var(--primary) 55%, var(--border)); }}
+  .wi-review {{ border-left: 3px solid var(--warn); }}
+  .wi-question {{ border-left: 3px solid var(--info, oklch(0.746 0.16 232.66)); }}
+  .wibody {{ min-width: 0; flex: 1; }}
+  .wirow {{ display: flex; align-items: center; gap: 7px; }}
+  .wchip {{ font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+    padding: 1px 6px; border-radius: 999px; flex: none; }}
+  .wchip.review {{ color: var(--warn); background: color-mix(in oklch, var(--warn) 15%, transparent); }}
+  .wchip.question {{ color: oklch(0.746 0.16 232.66); background: color-mix(in oklch, oklch(0.746 0.16 232.66) 15%, transparent); }}
+  .wtitle {{ font-weight: 620; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+  .wmeta {{ color: var(--dim); font-size: 11px; margin-top: 2px; }}
+  .wgo {{ color: var(--dim); font-size: 18px; flex: none; }}
+  /* agent KPI rows */
+  .card {{ display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px;
     background: var(--card); border: 1px solid var(--border); cursor: pointer; }}
   .card:hover {{ border-color: color-mix(in oklch, var(--primary) 45%, var(--border)); }}
-  .card.ispaused {{ opacity: .58; }}
+  .card.ispaused {{ opacity: .55; }}
   .card.ispaused:hover {{ opacity: .8; }}
-  .apill {{ font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+  .apill {{ font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
     color: var(--warn); background: color-mix(in oklch, var(--warn) 14%, transparent);
     border: 1px solid color-mix(in oklch, var(--warn) 30%, transparent);
     padding: 1px 6px; border-radius: 999px; }}
-  .cardfoot {{ display: flex; align-items: center; gap: 10px; margin-top: 7px; }}
-  .apause {{ margin-left: auto; font: inherit; font-size: 10.5px; font-weight: 600;
+  .apause {{ font: inherit; font-size: 10.5px; font-weight: 600; flex: none;
     color: var(--fg2); background: var(--muted); border: 1px solid var(--border);
-    border-radius: 6px; padding: 2px 9px; cursor: pointer; }}
+    border-radius: 6px; padding: 3px 10px; cursor: pointer; }}
   .apause:hover {{ color: var(--fg); border-color: var(--dim); }}
-  .av {{ width: 34px; height: 34px; border-radius: 9px; flex: none; object-fit: cover;
+  .av {{ width: 32px; height: 32px; border-radius: 9px; flex: none; object-fit: cover;
     display: flex; align-items: center; justify-content: center; color: var(--bg);
-    font-weight: 700; font-size: 15px; }}
+    font-weight: 700; font-size: 14px; }}
+  .av.sm {{ width: 26px; height: 26px; border-radius: 7px; font-size: 12px; }}
   .body {{ min-width: 0; flex: 1; }}
-  .row1 {{ display: flex; align-items: baseline; gap: 8px; }}
+  .row1 {{ display: flex; align-items: center; gap: 7px; }}
   .name {{ font-weight: 650; font-size: 13.5px; }}
-  .row1 .last {{ margin: 0; margin-left: auto; }}
-  .blurb {{ color: var(--fg2); font-size: 12px; margin-top: 2px;
-    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }}
-  .email {{ color: var(--dim); font-size: 11px; font-family: ui-monospace, monospace; }}
-  .meta {{ margin-top: 4px; }}
-  .stats {{ display: flex; gap: 12px; flex-wrap: wrap; }}
-  .stat {{ color: var(--dim); font-size: 11px; }}
-  .stat b {{ color: var(--fg); font-weight: 650; }}
-  .empty {{ color: var(--dim); padding: 20px 14px; text-align: center; }}
-  .foot {{ display: flex; gap: 6px; padding: 0 14px 14px; }}
+  .kpis {{ display: flex; gap: 10px; flex-wrap: wrap; margin-top: 3px; }}
+  .kpi {{ color: var(--dim); font-size: 11px; }}
+  .kpi b {{ color: var(--fg); font-weight: 650; }}
+  .kpi.hot {{ color: var(--warn); }}
+  .kpi.hot b {{ color: var(--warn); }}
+  .empty {{ color: var(--dim); padding: 14px; text-align: center; font-size: 12px; }}
+  .empty.ok {{ color: var(--ok); }}
+  .foot {{ display: flex; gap: 6px; padding: 4px 14px 14px; }}
   .foot .btn {{ flex: 1; text-align: center; }}
 </style></head><body>
   <div class="hdr">
@@ -370,20 +469,24 @@ def render(state: dict, agents: list[dict], base: str) -> str:
     <div class="sub">Today: <b>{state.get('created', 0)}</b> created · <b>{state.get('reused', 0)}</b> reused · log {age}</div>
     {f'<div class="last">{last_line}</div>' if last_line else ''}
     <div class="actions">
-      <button class="btn primary" onclick="act('{pause_act}')">{pause_label}</button>
+      <button class="btn primary" onclick="act('{pause_act}')">{pause_label} runner</button>
       <button class="btn" onclick="act('{daemon_act}')">{daemon_label}</button>
       <button class="btn" onclick="act('openLog')">Log</button>
       <button class="btn" onclick="act('refresh')">Refresh</button>
     </div>
   </div>
-  <div class="sectlabel">Agents · {len(agents)}</div>
+  <div class="sectlabel">Waiting on you<span class="cnt">· {waiting_n}</span></div>
+  <div class="list">{waiting_html}</div>
+  <div class="sectlabel">Agents<span class="cnt">· {len(agents)}</span>
+    <button class="mini" onclick="act('{all_act}')">{all_label}</button>
+  </div>
   <div class="list">{cards}</div>
   <div class="foot"><button class="btn" onclick="act('quit')">Quit menu-bar app</button></div>
 <script>
   function send(m) {{ window.webkit.messageHandlers.bridge.postMessage(m); }}
   function act(a) {{ send({{action: a}}); }}
   function act_agent(a, slug) {{ send({{action: a, slug: slug}}); }}
-  function open_agent(url) {{ send({{action: 'open', url: url}}); }}
+  function open_agent(url) {{ if (url) send({{action: 'open', url: url}}); }}
 </script></body></html>"""
 
 
@@ -485,6 +588,11 @@ class Controller(NSObject):
             if slug:
                 self._set_agent_pause(slug, action == "pauseAgent")
             self._render_from_cache()   # instant reflect (agents already cached)
+        elif action in ("pauseAllAgents", "resumeAllAgents"):
+            for a in self.agents:
+                if a.get("slug"):
+                    self._set_agent_pause(a["slug"], action == "pauseAllAgents")
+            self._render_from_cache()
         elif action in ("start", "stop"):
             self._daemon(action)
             self.refresh_status()
