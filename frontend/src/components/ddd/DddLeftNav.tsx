@@ -108,9 +108,15 @@ function NarrativeRuns({
   activeRunId?: string
 }) {
   const [detail, setDetail] = useState<DddNarrativeDetail | null>(null)
-  // Run-child product-findings reviews for this narrative, grouped by run_id.
-  // Sourced from the reviews list (the narrative API doesn't carry run-children),
-  // filtered to gate === 'product_findings' so they never show as version rows.
+  // Run-child product-findings reviews, grouped by run_id. Sourced from the reviews
+  // list (the narrative API doesn't carry run-children), filtered to
+  // gate === 'product_findings' so they never show as version rows.
+  //
+  // Scoping to THIS narrative is structural, not a filter: the render only ever looks
+  // up findingsByRun.get(run_id) for runs already in this narrative's version tree, so
+  // a review belonging to another narrative is simply never consulted. A run-child
+  // review carries no narrative_slug to compare against anyway — it attaches by the
+  // run it names, which is the only honest link it has.
   const [findingsByRun, setFindingsByRun] = useState<Map<string, ReviewListItem[]>>(new Map())
 
   useEffect(() => {
@@ -132,7 +138,6 @@ function NarrativeRuns({
         const byRun = new Map<string, ReviewListItem[]>()
         for (const r of reviews) {
           if (r.gate !== 'product_findings') continue
-          if (r.narrative_slug !== slug) continue
           const list = byRun.get(r.run_id) ?? []
           list.push(r)
           byRun.set(r.run_id, list)

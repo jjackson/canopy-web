@@ -240,8 +240,9 @@ export interface ReviewSubmitPayload {
 export interface ReviewDetail {
   id: string
   run_id: string
-  /** Narrative slug this review belongs to (for highlighting in the DDD shell). */
-  narrative_slug: string
+  /** Narrative slug this review belongs to (for highlighting in the DDD shell).
+   *  null for a run-child gate, which belongs to no narrative — it gets no DDD chrome. */
+  narrative_slug: string | null
   gate: string
   status: ReviewStatus
   visibility: ReviewVisibility
@@ -351,7 +352,8 @@ export interface ReviewListItem {
   gate: string
   status: ReviewStatus
   visibility: ReviewVisibility
-  narrative_slug: string
+  /** null for a run-child gate (see ReviewDetail.narrative_slug). */
+  narrative_slug: string | null
   title: string | null
   scene_count: number
   created_at: string

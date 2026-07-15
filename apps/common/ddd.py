@@ -21,3 +21,24 @@ def narrative_slug_from_run_id(run_id: str) -> str:
     """
     base = _RUN_ID_STAMP.sub("", run_id or "").strip("-")
     return base or run_id or "(untitled)"
+
+
+#: Gates whose reviews hang off the RUN, not the narrative timeline. These carry no
+#: narrative_slug and no narrative version, they never render as a version row, and
+#: they may ATTACH to a narrative but never CREATE one (``apps.runs.aggregate``).
+#:
+#: This lives here, beside the slug derivation, for the same reason that does: both
+#: ``apps.reviews`` (which assigns the slug) and ``apps.runs`` (which groups by it)
+#: must agree, and a disagreement is invisible until a phantom narrative shows up in
+#: the rail. ``apps.runs`` cannot import it from ``apps.reviews.api`` without dragging
+#: in a Ninja router.
+#:
+#: NOT the same set as ``aggregate._NON_NARRATIVE_GATES``, and the difference is load-
+#: bearing: ``external_release`` is not a *version* of a narrative but does belong to
+#: one (it approves publishing it). ``product_findings`` belongs to no narrative at all.
+RUN_CHILD_GATES = ("product_findings",)
+
+
+def is_run_child_gate(gate: str | None) -> bool:
+    """True for a review that hangs off the run rather than the narrative."""
+    return (gate or "") in RUN_CHILD_GATES

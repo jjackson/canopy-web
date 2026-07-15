@@ -11,7 +11,10 @@ from django.contrib.sessions.backends.db import SessionStore
 from apps.agents.models import (
     Agent, AgentSkill, AgentSync, AgentTask, AgentTaskCommand, AgentWorkProduct,
 )
+from apps.reviews.models import ReviewRequest
 from apps.workspaces import services as wsvc
+
+FLEET_AUDIT_RUN_ID = "ada-fleet-audit-2026-07-14"
 
 User = get_user_model()
 user, _ = User.objects.get_or_create(username="e2e", defaults={"email": "e2e@dimagi.com"})
@@ -72,6 +75,34 @@ AgentSkill.objects.create(
     agent=a, name="email-communicator", description="Send and receive email as Echo.",
     url="https://github.com/dimagi-internal/echo/blob/main/skills/email-communicator/SKILL.md")
 
+# A fleet-audit findings review — a run-child gate whose run_id is NOT a DDD run id
+# (nothing else in the system references it). It must render standalone: no DDD rail,
+# and no narrative conjured out of its run_id. Mirrors what Ada posts.
+ReviewRequest.objects.filter(run_id=FLEET_AUDIT_RUN_ID).delete()
+fleet_audit = ReviewRequest.objects.create(
+    owner=user,
+    workspace=ws,
+    run_id=FLEET_AUDIT_RUN_ID,
+    narrative_slug=None,  # create_review stores NULL for a run-child gate
+    version=0,
+    gate="product_findings",
+    visibility="link",
+    request_json={
+        "run_id": FLEET_AUDIT_RUN_ID,
+        "gate": "product_findings",
+        "iteration": 1,
+        "clusters": [
+            {
+                "id": "hal-inbox",
+                "title": "hal: discard 81 junk/stale unread emails (of 82 total)",
+                "severity": "high",
+                "fix_kind": "mechanical",
+                "suggested_fix": "All 81 are automated or older than 1 week.",
+            }
+        ],
+    },
+)
+
 session = SessionStore()
 session["_auth_user_id"] = str(user.pk)
 session["_auth_user_backend"] = settings.AUTHENTICATION_BACKENDS[0]
@@ -84,4 +115,4 @@ with open("frontend/e2e/.auth/session.txt", "w") as f:
     f.write(session.session_key)
 
 print(f"seeded: {a.tasks.count()} tasks, {a.commands.filter(status='pending').count()} pending; "
-      f"session {session.session_key[:8]}")
+      f"fleet-audit review {str(fleet_audit.id)[:8]}; session {session.session_key[:8]}")
