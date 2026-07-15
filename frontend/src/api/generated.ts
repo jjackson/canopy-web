@@ -914,7 +914,7 @@ export interface paths {
          * Fleet-wide needs-you (the supervisor home screen)
          * @description Every agent's needs-you in one call, ranked busiest-first. Declared BEFORE
          *     the /{slug}/ routes so 'needs-you' isn't resolved as a slug. Tenant scoping
-         *     mirrors list_agents exactly.
+         *     mirrors list_agents exactly (both build from _visible_agent_workspace_ids).
          */
         readonly get: operations["apps_agents_api_fleet_needs_you"];
         readonly put?: never;
