@@ -31,6 +31,9 @@ const AgentTasksSection = lazy(() =>
 const AgentTurnsSection = lazy(() =>
   import('./pages/agents/AgentTurnsSection').then((m) => ({ default: m.AgentTurnsSection })),
 )
+const SchedulesSection = lazy(() =>
+  import('./pages/agents/SchedulesSection').then((m) => ({ default: m.SchedulesSection })),
+)
 const AgentSyncsSection = lazy(() =>
   import('./pages/agents/AgentSyncsSection').then((m) => ({ default: m.AgentSyncsSection })),
 )
@@ -117,6 +120,7 @@ export const router = createBrowserRouter([
           { path: 'overview', element: <LazySection><AgentOverviewSection /></LazySection> },
           { path: 'tasks', element: <LazySection><AgentTasksSection /></LazySection> },
           { path: 'turns', element: <LazySection><AgentTurnsSection /></LazySection> },
+          { path: 'schedules', element: <LazySection><SchedulesSection /></LazySection> },
           { path: 'syncs', element: <LazySection><AgentSyncsSection /></LazySection> },
           { path: 'work-products', element: <LazySection><AgentWorkProductsSection /></LazySection> },
           { path: 'skills', element: <LazySection><AgentSkillsSection /></LazySection> },
