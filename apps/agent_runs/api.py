@@ -17,7 +17,7 @@ from ninja.errors import HttpError
 from pydantic import Field
 
 from apps.api.auth import session_auth
-from apps.api.pagination import Page, paginate
+from apps.api.pagination import Page, clamp_limit, paginate
 from apps.common.schemas import StrictModel
 
 from . import resolver
@@ -108,7 +108,7 @@ def _run_or_404(store: RunStore, slug: str, run_id: str) -> Run:
 @router.get("/{slug}/runs/", response=Page[RunSummary], summary="List an agent's runs",
             openapi_extra={"x-mcp-expose": True})
 def list_runs(request: HttpRequest, slug: str, limit: int = 100) -> Page[RunSummary]:
-    limit = min(limit, 500)
+    limit = clamp_limit(limit)
     agent, store = _store_for(request, slug)
     items = store.list_runs(agent.slug)
     return paginate(items, offset=0, limit=limit)

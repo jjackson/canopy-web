@@ -16,7 +16,7 @@ from ninja.errors import HttpError
 
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_CONFLICT, ProblemError
-from apps.api.pagination import Page, paginate
+from apps.api.pagination import Page, clamp_limit, paginate
 
 from . import services
 from .api import _agent_or_404
@@ -70,9 +70,7 @@ def _schedule_or_404(request: HttpRequest, slug: str, schedule_id: int) -> Agent
             openapi_extra={"x-mcp-expose": True})
 def list_schedules(request: HttpRequest, slug: str, limit: int = 100) -> Page[ScheduleOut]:
     agent = _agent_or_404(request, slug)
-    # max(1, ...): Page.limit is Field(ge=1, le=500) — an unfloored 0 or negative
-    # raises inside the response model, 500ing where a 422 belongs.
-    limit = max(1, min(limit, 500))
+    limit = clamp_limit(limit)
     items = [_serialize(s) for s in agent.schedules.all()]
     return paginate(items, offset=0, limit=limit)
 

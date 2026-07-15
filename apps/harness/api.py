@@ -11,7 +11,7 @@ from ninja.errors import HttpError
 from apps.agents.models import Agent
 from apps.api.auth import session_auth
 from apps.api.errors import ProblemError
-from apps.api.pagination import Page, paginate
+from apps.api.pagination import Page, clamp_limit, paginate
 from apps.workspaces import services as wsvc
 
 from . import services
@@ -112,7 +112,7 @@ def pair_runner(request: HttpRequest, payload: RunnerIn):
         host=payload.host,
         paired_by=request.user,
     )
-    return 201, runner
+    return Status(201, runner)
 
 
 @router.post("/runners/{runner_id}/heartbeat", response=RunnerOut)
@@ -139,8 +139,8 @@ def claim_turn(request: HttpRequest, runner_id: uuid.UUID, paused: str = ""):
     exclude = [s for s in (p.strip() for p in paused.split(",")) if s]
     turn = services.claim_next_turn(runner, exclude_slugs=exclude or None)
     if turn is None:
-        return 204, None
-    return 200, turn
+        return Status(204, None)
+    return Status(200, turn)
 
 
 @router.post("/runners/{runner_id}/resolve-session", response=ResolveSessionOut)
@@ -188,7 +188,7 @@ def enqueue_turn(request: HttpRequest, payload: TurnIn):
         origin_ref=payload.origin_ref,
         routing=payload.routing,
     )
-    return (201 if created else 200), turn
+    return Status(201 if created else 200, turn)
 
 
 @router.get("/turns/", response=list[TurnOut])
@@ -308,9 +308,7 @@ def sync_schedules(request: HttpRequest, runner_id: uuid.UUID, limit: int = 200)
 
     runner = _runner_or_404(request, runner_id)
     items = [_serialize(s) for s in _runner_schedule_qs(runner)]
-    # max(1, ...): Page.limit is Field(ge=1, le=500), so an unfloored limit=0 or
-    # negative raises inside the response model — a 500 where a 422 belongs.
-    return paginate(items, offset=0, limit=max(1, min(limit, 500)))
+    return paginate(items, offset=0, limit=clamp_limit(limit))
 
 
 @router.post("/schedules/{schedule_id}/fire", response={201: TurnOut},
