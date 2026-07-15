@@ -23,6 +23,10 @@ export function AgentLeftNav({ agent }: { agent: AgentDetailOut }) {
     { to: 'needs-you', label: 'Needs you', count: waiting },
     { to: 'overview', label: 'Overview' },
     { to: 'tasks', label: 'Tasks', count: agent.task_count },
+    // No count, for the same reason as Schedules below: agent detail carries no
+    // item_count. The open-item count belongs on Needs you once Phase 2 reads
+    // items — putting a second "waiting" badge here would just disagree with it.
+    { to: 'items', label: 'Items' },
     { to: 'turns', label: 'Turns', count: agent.turn_count },
     // No count: the agent detail carries no schedule_count, and a badge that
     // needs its own fetch to say "3" isn't worth a request on every rail render.
