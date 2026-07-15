@@ -1,0 +1,64 @@
+"""AgentOut must serialize the agent's workspace slug (fleet spans workspaces,
+so clients need it to build the correct /w/<workspace>/agents/<slug> deep link
+instead of assuming the active workspace — see commit 483c821)."""
+from __future__ import annotations
+
+import pytest
+from django.contrib.auth.models import User
+from django.test import Client
+
+from apps.agents.models import Agent
+from apps.workspaces.models import Workspace, WorkspaceMembership
+
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture()
+def owner():
+    return User.objects.create_user("owner", "owner@dimagi.com", "pw")
+
+
+@pytest.fixture()
+def workspace(owner):
+    ws = Workspace.objects.create(slug="canopy", display_name="Canopy", created_by=owner)
+    WorkspaceMembership.objects.create(user=owner, workspace=ws, role=WorkspaceMembership.OWNER)
+    return ws
+
+
+@pytest.fixture()
+def client(owner):
+    c = Client()
+    c.force_login(owner)
+    return c
+
+
+def test_list_agents_serializes_workspace_slug(client, workspace):
+    Agent.objects.create(slug="echo", name="Echo", workspace=workspace)
+
+    body = client.get("/api/agents/").json()
+    items = body["items"] if "items" in body else body
+    echo = next(a for a in items if a["slug"] == "echo")
+    assert echo["workspace"] == "canopy"
+
+
+def test_agent_detail_serializes_workspace_slug(client, workspace):
+    Agent.objects.create(slug="echo", name="Echo", workspace=workspace)
+
+    body = client.get("/api/agents/echo/").json()
+    assert body["workspace"] == "canopy"
+
+
+def test_agent_with_no_workspace_serializes_null(client):
+    # A pre-tenancy agent (workspace nullable for migration safety). The flat
+    # /api/agents/ compat-shim route resolves no pinned tenant, so an
+    # unhomed agent is still visible there — the nullable path must survive,
+    # not error.
+    Agent.objects.create(slug="orphan", name="Orphan", workspace=None)
+
+    list_body = client.get("/api/agents/").json()
+    items = list_body["items"] if "items" in list_body else list_body
+    orphan = next(a for a in items if a["slug"] == "orphan")
+    assert orphan["workspace"] is None
+
+    detail_body = client.get("/api/agents/orphan/").json()
+    assert detail_body["workspace"] is None

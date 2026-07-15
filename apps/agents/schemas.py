@@ -35,6 +35,20 @@ class AgentOut(StrictModel):
     avatar_url: str
     created_at: dt.datetime
     updated_at: dt.datetime
+    # The tenant that owns this agent — the fleet legitimately spans workspaces
+    # (a chief-of-staff agent can live in a different tenant than the product
+    # agents), so clients need this to build the correct deep link
+    # (/w/<workspace>/agents/<slug>) instead of assuming the active workspace,
+    # which 404s for cross-workspace agents (see commit 483c821).
+    #
+    # Aliased onto `workspace_id` rather than plain attribute resolution:
+    # `Agent.workspace` is a FK, so a naive `obj.workspace` getattr would
+    # dereference the related Workspace row (an extra query per agent) and
+    # then fail str validation on the object itself. Workspace's primary key
+    # IS its slug (apps/workspaces/models.py:29), so `agent.workspace_id` is
+    # already the slug string with zero extra queries. Nullable for migration
+    # safety, same as the FK itself.
+    workspace: str | None = Field(default=None, validation_alias="workspace_id")
 
 
 class AgentDetailOut(AgentOut):

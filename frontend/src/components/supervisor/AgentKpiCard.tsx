@@ -4,16 +4,15 @@ import type { AgentOut } from '@/api/agents'
 
 // One agent's KPIs — the React counterpart of menubar.py's _card (menubar.py:385).
 //
-// NOTE: AgentOut does not expose the agent's workspace slug — apps/agents/schemas.py
-// only accepts `workspace` as write-only input on AgentIn (to home/move an agent);
-// AgentOut/AgentDetailOut never serialize it back out. So this card cannot link
-// straight into the agent's own workspace and falls back to the flat /agents/<slug>
-// path, which resolves the ACTIVE workspace — the exact 404 that hid Ada and Eva
-// (commit 483c821) for anyone whose active workspace isn't the agent's home. Fixing
-// this for real needs AgentOut to grow a `workspace` (slug) field server-side; that
-// is out of scope here per this task's brief (no backend field additions).
+// The fleet legitimately spans workspaces (e.g. a chief-of-staff agent lives in a
+// different tenant than the product agents), so the correct deep link is
+// /w/<agent's workspace>/agents/<slug>. Linking to the ACTIVE workspace 404s any
+// agent living elsewhere (the bug fixed once already in menubar.py, commit
+// 483c821). AgentOut now serializes `workspace` (the slug), so we can build the
+// tenant-scoped link directly; only a pre-tenancy agent (workspace null) falls
+// back to the flat /agents/<slug> route.
 export function AgentKpiCard({ agent, waiting }: { agent: AgentOut; waiting: number }): JSX.Element {
-  const href = `/agents/${agent.slug}`
+  const href = agent.workspace ? `/w/${agent.workspace}/agents/${agent.slug}` : `/agents/${agent.slug}`
   return (
     <Link
       to={href}

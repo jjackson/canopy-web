@@ -3355,6 +3355,8 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
+            /** Workspace */
+            readonly workspace?: string | null;
         };
         /** Page[AgentOut] */
         readonly Page_AgentOut_: {
@@ -3480,6 +3482,8 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
+            /** Workspace */
+            readonly workspace?: string | null;
             /**
              * Sync Count
              * @default 0

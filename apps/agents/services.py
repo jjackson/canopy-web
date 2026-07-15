@@ -60,6 +60,7 @@ def agent_detail(agent: Agent) -> dict:
         "persona": agent.persona,
         "email": agent.email,
         "avatar_url": agent.avatar_url,
+        "workspace_id": agent.workspace_id,
         "created_at": agent.created_at,
         "updated_at": agent.updated_at,
         "sync_count": agent.syncs.count(),
