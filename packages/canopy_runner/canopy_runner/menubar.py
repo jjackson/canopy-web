@@ -1,6 +1,6 @@
 """Canopy Runner — a macOS menu-bar app with a click-to-open panel.
 
-The menu-bar shows just a status dot; clicking it opens a rich panel (an NSPopover
+The menu-bar shows a status-tinted tree; clicking it opens a rich panel (an NSPopover
 hosting a WKWebView) styled to canopy-web's Warm Earth palette — think Google Drive's
 menu-bar UI rather than a plain text menu. The panel shows:
 
@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime as dt
 import html
 import json
+import math
 import os
 import re
 import subprocess
@@ -32,6 +33,7 @@ from pathlib import Path
 
 import objc
 from AppKit import (
+    NSAffineTransform,
     NSApplication,
     NSApplicationActivationPolicyAccessory,
     NSBezierPath,
@@ -62,7 +64,7 @@ PAUSE_FILE = CONFIG.with_name("PAUSED")
 LABEL = "com.canopy.runner"
 
 GLYPH = {"running": "🟢", "paused": "🟡", "stopped": "🔴", "stale": "🟠"}
-# Muted status tints for the bonsai icon — readable on both light + dark menu bars.
+# Muted status tints for the tree icon — readable on both light + dark menu bars.
 STATUS_RGB = {
     "running": (0.40, 0.71, 0.52),   # calm green
     "paused":  (0.89, 0.69, 0.28),   # amber
@@ -71,38 +73,74 @@ STATUS_RGB = {
 }
 
 
-def _bonsai_image(state: str, px: int = 18):
-    """An understated bonsai — leaning trunk, shallow pot, three asymmetric rounded
-    foliage pads (not a conical 'christmas tree'). Drawn as a vector so it stays crisp
-    on retina, tinted by runner status."""
+# The tree as line segments: (start, end, stroke width). Drawn in arbitrary units —
+# _tree_image measures the result and scales it to fill the icon, so these numbers
+# only set the SHAPE. Tune angles/lengths freely; the fit is recomputed.
+TRUNK_TOP = (9.0, 6.2)
+LIMBS = ((36, 5.4), (72, 5.0), (108, 5.0), (144, 5.4))  # (degrees, length) — 4 limbs
+FORKS = (-26, 26)  # each limb splits once, at +/- this many degrees
+ICON_INSET = 0.03  # breathing room as a fraction of the icon, so it scales with px
+
+
+def _tree_segments() -> list[tuple[tuple[float, float], tuple[float, float], float]]:
+    """The bare-branch tree: heavy trunk, four limbs, each forking once. Widths taper
+    2.2 -> 1.5 -> 1.0 — that ladder is what keeps the limbs legible at 18px (finer,
+    more numerous branching mushes into a blob at menu-bar size)."""
+    segs = [((9.0, 1.3), TRUNK_TOP, 2.2)]
+    for angle, length in LIMBS:
+        tip = (TRUNK_TOP[0] + math.cos(math.radians(angle)) * length,
+               TRUNK_TOP[1] + math.sin(math.radians(angle)) * length)
+        segs.append((TRUNK_TOP, tip, 1.5))
+        for fork in FORKS:
+            fa = math.radians(angle + fork)
+            segs.append((tip, (tip[0] + math.cos(fa) * 2.6, tip[1] + math.sin(fa) * 2.6), 1.0))
+    return segs
+
+
+def _ink_bounds(segs) -> tuple[float, float, float, float]:
+    """Bounding box of the stroked segments — round caps mean each end bulges out by
+    half the line width, so the geometric bounds alone would undercount."""
+    xs = [p[0] + s * w / 2 for a, b, w in segs for p in (a, b) for s in (-1, 1)]
+    ys = [p[1] + s * w / 2 for a, b, w in segs for p in (a, b) for s in (-1, 1)]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _tree_image(state: str, px: int = 18):
+    """A spreading bare-branch tree, scaled to fill `px` and tinted by runner status.
+
+    The segment geometry is measured and fitted rather than drawn at fixed coords, so
+    the tree is centered and fills the icon box no matter how the shape is tuned.
+    Drawn as a vector so it stays crisp on retina."""
     r, g, b = STATUS_RGB.get(state, STATUS_RGB["stopped"])
+    segs = _tree_segments()
+    x0, y0, x1, y1 = _ink_bounds(segs)
+    span = max(x1 - x0, y1 - y0)  # fit the larger axis; uniform scale keeps proportions
+    scale = px * (1 - 2 * ICON_INSET) / span
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
 
     def _draw(_rect) -> bool:
         NSColor.colorWithSRGBRed_green_blue_alpha_(r, g, b, 1.0).set()
-        # shallow tray (trapezoid) — the bonsai cue
-        pot = NSBezierPath.bezierPath()
-        pot.moveToPoint_(NSMakePoint(5.4, 3.6))
-        pot.lineToPoint_(NSMakePoint(12.6, 3.6))
-        pot.lineToPoint_(NSMakePoint(11.7, 1.6))
-        pot.lineToPoint_(NSMakePoint(6.3, 1.6))
-        pot.closePath()
-        pot.fill()
-        # leaning trunk
-        trunk = NSBezierPath.bezierPath()
-        trunk.moveToPoint_(NSMakePoint(9.1, 3.6))
-        trunk.curveToPoint_controlPoint1_controlPoint2_(
-            NSMakePoint(8.4, 9.2), NSMakePoint(9.7, 5.6), NSMakePoint(8.0, 6.8))
-        trunk.setLineWidth_(1.9)
-        trunk.setLineCapStyle_(NSRoundLineCapStyle)
-        trunk.stroke()
-        # three asymmetric rounded foliage pads → a soft, full crown
-        for x, y, w, h in ((2.6, 8.4, 7.4, 6.2), (7.2, 9.6, 6.8, 5.8), (4.8, 11.9, 6.2, 5.0)):
-            NSBezierPath.bezierPathWithOvalInRect_(NSMakeRect(x, y, w, h)).fill()
+        # Ops apply to a point in reverse order of declaration: the ink is centered on
+        # the origin, scaled up (line widths with it), then moved to the icon's middle.
+        xf = NSAffineTransform.transform()
+        xf.translateXBy_yBy_(px / 2, px / 2)
+        xf.scaleBy_(scale)
+        xf.translateXBy_yBy_(-cx, -cy)
+        xf.concat()
+        for a, b_, w in segs:
+            path = NSBezierPath.bezierPath()
+            path.moveToPoint_(NSMakePoint(*a))
+            path.lineToPoint_(NSMakePoint(*b_))
+            path.setLineWidth_(w)
+            path.setLineCapStyle_(NSRoundLineCapStyle)
+            path.stroke()
         return True
 
     img = NSImage.imageWithSize_flipped_drawingHandler_(NSMakeSize(px, px), False, _draw)
     img.setTemplate_(False)  # keep our status tint (not auto-recolored by the menu bar)
     return img
+
+
 CARD_ACCENTS = [  # oklch categorical tokens, cycled per-agent for the initials avatar
     "oklch(0.757 0.161 53.57)",   # primary / orange
     "oklch(0.765 0.177 163.22)",  # success / emerald
@@ -402,7 +440,7 @@ class Controller(NSObject):
         bar = NSStatusBar.systemStatusBar()
         self.item = bar.statusItemWithLength_(NSVariableStatusItemLength)
         btn = self.item.button()
-        btn.setImage_(_bonsai_image("stopped"))
+        btn.setImage_(_tree_image("stopped"))
         btn.setTarget_(self)
         btn.setAction_("toggle:")
 
@@ -432,10 +470,10 @@ class Controller(NSObject):
     def refresh_status(self):
         st = _runner_state()
         self._state = st
-        self.item.button().setImage_(_bonsai_image(st["state"]))
+        self.item.button().setImage_(_tree_image(st["state"]))
 
     def tick_(self, _timer):
-        # Re-assert accessory (menu-bar-only) and refresh the dot.
+        # Re-assert accessory (menu-bar-only) and refresh the icon.
         NSApplication.sharedApplication().setActivationPolicy_(NSApplicationActivationPolicyAccessory)
         self.refresh_status()
 
