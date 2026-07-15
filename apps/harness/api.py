@@ -10,6 +10,7 @@ from ninja.errors import HttpError
 from apps.agents.models import Agent
 from apps.api.auth import session_auth
 from apps.api.errors import ProblemError
+from apps.workspaces import services as wsvc
 
 from . import services
 from .models import Runner, Turn
@@ -64,12 +65,24 @@ def _turn_or_404(turn_id: uuid.UUID) -> Turn:
 def pair_runner(request: HttpRequest, payload: RunnerIn):
     if payload.kind not in dict(Runner.KIND_CHOICES):
         raise HttpError(422, f"unknown runner kind '{payload.kind}'")
+    wsvc.auto_join_workspaces(request.user)
+    explicit = (payload.workspace or "").strip()
+    if explicit:
+        # Membership-gated: a missing workspace and a non-member get the same
+        # 404 (no existence leak), exactly as apps/agents does on explicit homing.
+        if not wsvc.is_member(request.user, explicit):
+            raise HttpError(404, f"workspace '{explicit}' not found")
+        ws_slug = explicit
+    else:
+        default = wsvc.user_default_workspace(request.user)
+        ws_slug = default.slug if default else None
     runner = Runner.objects.create(
         name=payload.name,
         kind=payload.kind,
         capabilities=payload.capabilities,
         host=payload.host,
         paired_by=request.user,
+        workspace_id=ws_slug,
     )
     return 201, runner
 

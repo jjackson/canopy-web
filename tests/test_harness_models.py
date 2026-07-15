@@ -62,3 +62,18 @@ def test_turn_event_seq_unique_per_turn():
     TurnEvent.objects.create(turn=t, seq=1, kind="status", payload={"s": "claimed"})
     with pytest.raises(IntegrityError):
         TurnEvent.objects.create(turn=t, seq=1, kind="status", payload={})
+
+
+def test_runner_workspace_defaults_to_null_and_accepts_a_slug():
+    """Nullable for migration safety — existing runners predate tenancy. The API
+    assigns one at pairing (Task 2 step 5); the model must permit both."""
+    bare = Runner.objects.create(name="legacy", kind=Runner.EMDASH)
+    assert bare.workspace_id is None
+
+    from django.contrib.auth.models import User
+    from apps.workspaces.models import Workspace
+
+    owner = User.objects.create_user("ws-owner", "ws-owner@dimagi.com", "pw")
+    ws = Workspace.objects.create(slug="canopy", display_name="Canopy", created_by=owner)
+    homed = Runner.objects.create(name="jj-mbp", kind=Runner.EMDASH, workspace=ws)
+    assert homed.workspace_id == "canopy"  # PK is the slug, not an int

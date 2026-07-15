@@ -38,6 +38,16 @@ class Runner(models.Model):
     # so a live session is reusable ONLY by the runner whose host matches the one that
     # created it. Jonathan runs the fleet under two accounts (token-limit failover).
     host = models.CharField(max_length=200, blank=True, default="")
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="runners",
+        help_text="The tenant that owns this runner. Nullable for migration "
+        "safety; the API assigns one at pairing (the pairer's default workspace "
+        "when unspecified). Mirrors Agent.workspace.",
+    )
     paired_by = models.ForeignKey(
         "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
