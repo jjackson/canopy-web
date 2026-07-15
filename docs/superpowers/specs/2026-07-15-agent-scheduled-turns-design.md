@@ -1,7 +1,8 @@
 # Agent scheduled turns — design
 
 **Date:** 2026-07-15
-**Status:** Approved, not yet implemented
+**Status:** Shipped (server + UI). Automatic firing awaits the runner-side
+work — see *Runner-side work* in the plan; **Run now** is the only trigger today.
 **Tier:** Framework (`apps/harness`)
 
 ## Problem
