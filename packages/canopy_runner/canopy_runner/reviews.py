@@ -35,9 +35,8 @@ def check_reviews(client, *, seen: frozenset[str] = frozenset(), max_reviews: in
     """Dispatch the work for every `implement`-decided cluster in resolved, not-yet-seen
     reviews. Returns {"enqueued": [(review_id, cluster_id, agent), …],
                       "processed": {review_id, …}}  — review ids that were fully ingested
-    (every implemented cluster had a dispatch block) and can be skipped next poll. A review
-    with an implemented-but-undispatched cluster is left UNprocessed so a later Ada fix + a
-    re-poll picks it up."""
+    — handled once and skipped on later polls. An approved cluster with no dispatch block is
+    logged once and skipped (a resolved review is immutable; Ada re-emits as a NEW review)."""
     enqueued: list[tuple[str, str, str]] = []
     processed: set[str] = set()
 
@@ -51,14 +50,12 @@ def check_reviews(client, *, seen: frozenset[str] = frozenset(), max_reviews: in
         resp = detail.get("response_json") or {}
         decisions = resp.get("decisions") or {}
 
-        complete = True  # every implemented cluster had a dispatch block
         for cluster in req.get("clusters") or []:
             cid = cluster.get("id") or ""
             if (decisions.get(cid) or {}).get("decision") != IMPLEMENT:
                 continue
             specs = cluster.get("dispatch") or []
             if not specs:
-                complete = False
                 logger.warning("review %s cluster '%s' was approved but has no dispatch[] "
                                "block — Ada must emit {target_agent, prompt, origin, "
                                "origin_ref}; skipping (will retry once fixed)", rid, cid)
@@ -66,7 +63,6 @@ def check_reviews(client, *, seen: frozenset[str] = frozenset(), max_reviews: in
             for i, spec in enumerate(specs):
                 agent = (spec.get("target_agent") or "").strip()
                 if not agent:
-                    complete = False
                     logger.warning("review %s cluster '%s' turn #%d missing target_agent; "
                                    "skipping", rid, cid, i)
                     continue
@@ -79,8 +75,10 @@ def check_reviews(client, *, seen: frozenset[str] = frozenset(), max_reviews: in
                 )
                 enqueued.append((rid, cid, agent))
 
-        if complete:
-            processed.add(rid)
+        # A resolved review's decisions are immutable, and Ada re-emits fixes as a NEW
+        # review id — so retrying this one forever can never succeed. Mark it processed
+        # regardless; the seen-set then skips it (no re-fetch, no repeated warning).
+        processed.add(rid)
 
     if enqueued:
         logger.info("reviews: enqueued %d turn(s) from %d review(s) — %s",

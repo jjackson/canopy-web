@@ -133,13 +133,15 @@ def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time,
         if paused and agent in paused:
             continue
         try:
-            ids = inbox_mod.check_inbox(
+            res = inbox_mod.check_inbox(
                 client, agent, mailbox=box["account"], gog_client=box["client"],
                 query=box.get("query", inbox_mod.DEFAULT_QUERY), max_threads=cap,
             )
-            if ids:
-                logger.info("inbox[%s]: enqueued %d thread turn(s) (cap %d) — each becomes a session",
-                            agent, len(ids), cap)
+            n_new, n_seen = len(res["new"]), len(res["seen"])
+            # Log EVERY poll, not just ones that enqueue — otherwise a healthy poll that
+            # finds nothing new is silent and you can't tell polling is happening at all.
+            logger.info("inbox[%s]: polled — %d unread (%d NEW -> session, %d already tracked)",
+                        agent, n_new + n_seen, n_new, n_seen)
         except Exception as exc:  # noqa: BLE001 — one bad inbox never kills the loop
             logger.warning("inbox check for %s failed: %s", agent, exc)
     try:
