@@ -494,7 +494,7 @@ git commit -m "feat(harness): cron slot math — validation, due_slot (no backfi
   - `fire_schedule(schedule: AgentSchedule, slot: datetime) -> tuple[Turn, bool]` — supersedes the prior unfinished cron turn, enqueues the new one, advances `last_slot`. `bool` is `created`.
   - `run_schedule_now(schedule: AgentSchedule) -> Turn` — manual trigger; `origin="manual"`, never collides with nor satisfies a real slot.
   - `release_stale_cron_turns(schedule: AgentSchedule, *, now: datetime | None = None) -> int` — releases turns held past `grace_minutes`.
-  - `latest_cron_turn(schedule: AgentSchedule) -> Turn | None`.
+  - `latest_occurrence_turn(schedule: AgentSchedule) -> Turn | None`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -634,8 +634,14 @@ Append to `apps/harness/services.py`:
 # the server materializes a normal Turn. See models.AgentSchedule.
 # --------------------------------------------------------------------------------------
 
-def latest_cron_turn(schedule) -> Turn | None:
-    """The newest turn this schedule produced, whatever its status."""
+def latest_occurrence_turn(schedule) -> Turn | None:
+    """The newest turn this schedule produced, whatever its status.
+
+    AS SHIPPED (Task 4, commit 24ade53) this selects by `origin_ref__schedule_id`
+    regardless of origin, NOT by `origin=cron`. A 'Run now' writes origin=manual,
+    and an origin=cron filter meant completing one could never clear the nag it
+    was launched from. Read apps/harness/services.py for the current source.
+    """
     return (
         Turn.objects.filter(
             agent_id=schedule.agent_id,
@@ -935,7 +941,7 @@ git commit -m "feat(harness): schedule schemas — cron validated at the API bou
 - Test: `tests/test_schedule_api.py`
 
 **Interfaces:**
-- Consumes: `_agent_or_404` from `apps/harness/api.py`; `ScheduleIn`/`SchedulePatch`/`ScheduleOut` (Task 5); `run_schedule_now`, `latest_cron_turn` (Task 4); `next_slots` (Task 3).
+- Consumes: `_agent_or_404` from `apps/harness/api.py`; `ScheduleIn`/`SchedulePatch`/`ScheduleOut` (Task 5); `run_schedule_now`, `latest_occurrence_turn` (Task 4); `next_slots` (Task 3).
 - Produces: `schedules_router` (importable as `from apps.harness.api_schedules import router as schedules_router`); `_serialize(schedule) -> ScheduleOut`.
 
 A separate module from `api.py` because the two have different audiences and different auth reasoning — human CRUD vs the machine control plane. `api.py` is already 260+ lines.
@@ -1099,7 +1105,7 @@ router = Router(auth=session_auth, tags=["schedules"])
 
 
 def _serialize(schedule: AgentSchedule) -> ScheduleOut:
-    latest = services.latest_cron_turn(schedule)
+    latest = services.latest_occurrence_turn(schedule)
     return ScheduleOut(
         id=schedule.id,
         agent_slug=schedule.agent_slug,
@@ -1576,7 +1582,7 @@ git commit -m "feat(harness): tenant-scoped schedule sync + fire (capabilities i
 - Test: `tests/test_schedule_nag.py`
 
 **Interfaces:**
-- Consumes: `latest_cron_turn` (Task 4), `AgentSchedule` (Task 2).
+- Consumes: `latest_occurrence_turn` (Task 4), `AgentSchedule` (Task 2).
 - Produces: `apps.harness.notify.CHANNELS: dict[str, Callable]`; `schedule_nag_items(agent) -> list[dict]`.
 
 Hooking the **per-agent** `needs_you()` is what makes this reach every surface: the fleet-wide `GET /agents/needs-you` calls it per agent, so `/supervisor`, `total_waiting`, and the mobile PWA all light up with no extra work.
@@ -1713,7 +1719,7 @@ def schedule_nag_items(agent) -> list[dict]:
 
     items: list[dict] = []
     for schedule in AgentSchedule.objects.filter(agent=agent, enabled=True):
-        turn = services.latest_cron_turn(schedule)
+        turn = services.latest_occurrence_turn(schedule)
         if turn is None or turn.status == Turn.DONE:
             continue  # never fired, or you finished it — nothing owed
         for channel_id in schedule.notify:
