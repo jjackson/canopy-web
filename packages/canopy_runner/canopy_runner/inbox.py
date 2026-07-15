@@ -45,11 +45,14 @@ def search_threads(mailbox: str, gog_client: str, query: str = DEFAULT_QUERY,
 
 
 def check_inbox(client, agent: str, *, mailbox: str, gog_client: str,
-                query: str = DEFAULT_QUERY, max_threads: int = 15, runner=subprocess.run) -> list[str]:
-    """Enqueue an email-origin turn for each new thread state. Returns the thread ids
-    enqueued. Idempotent on (thread, messageCount): re-polling is a no-op server-side."""
+                query: str = DEFAULT_QUERY, max_threads: int = 15, runner=subprocess.run) -> dict:
+    """Enqueue an email-origin turn for each new thread state. Returns
+    {"new": [thread_ids that became a NEW turn], "seen": [ids already tracked]} — the split
+    matters for logging: re-polling the same unread mail is idempotent server-side, so it
+    must read as "nothing new", not as fresh work."""
     threads = search_threads(mailbox, gog_client, query, max_threads, runner=runner)
-    enqueued: list[str] = []
+    new: list[str] = []
+    seen: list[str] = []
     for t in threads:
         tid = t.get("id")
         if not tid:
@@ -59,10 +62,10 @@ def check_inbox(client, agent: str, *, mailbox: str, gog_client: str,
         # Clean command only — the agent's namespaced /<slug>:turn command does everything (reads the
         # thread, triages under guardrails, marks it read). The runner hands the exact
         # thread it already resolved so the agent doesn't re-scan the inbox.
-        client.enqueue_turn(
+        res = client.enqueue_turn(
             agent, "email", f"email-{agent}-{tid}-{count}",
             origin_ref={"thread_id": tid, "from": frm, "subject": subj},
             prompt=f"/{agent}:turn --thread {tid}",
         )
-        enqueued.append(tid)
-    return enqueued
+        (new if (res or {}).get("_created") else seen).append(tid)
+    return {"new": new, "seen": seen}
