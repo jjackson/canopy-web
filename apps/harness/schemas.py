@@ -15,6 +15,7 @@ class RunnerIn(Schema):
     kind: str  # emdash|cloud|remote
     capabilities: dict = {}
     host: str = ""  # macOS user@hostname — load-bearing for session reuse across accounts
+    workspace: str = ""  # tenant slug; defaults to the pairer's default workspace
 
 
 class RunnerOut(Schema):
@@ -26,6 +27,11 @@ class RunnerOut(Schema):
     last_heartbeat_at: dt.datetime | None
     capabilities: dict
     host: str
+    workspace: str | None
+
+    @staticmethod
+    def resolve_workspace(obj) -> str | None:
+        return obj.workspace_id
 
 
 class HeartbeatIn(Schema):

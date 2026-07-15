@@ -39,6 +39,7 @@ the arrow's direction and enforce it in CI.
 | `issues` | **framework** | GitHub issue provenance / evidence capture. |
 | `mcp` | **framework** | MCP server infra + audit + rate-limit. (Individual *tools* may be product — see carve-outs.) |
 | `system` | **framework** | System metadata / AI-backend status. |
+| `push` | **framework** | Web Push subscription registry (VAPID keypair + `PushSubscription` rows). Agent-agnostic — any agent's board could trigger a send; observes `agents` (never the reverse), same direction `harness` takes. |
 | `projects` | **product** | Canopy's portfolio/insights feature: repos + which canopy skills ran (`skills[]`, `skill_name`, hygiene-skill frontend). Not a generic registry today — promote to framework only when a real second consumer needs one. |
 | `walkthroughs` | **product** | DDD walkthrough artifacts (HTML/video demos). |
 | `reviews` | **product** | DDD narrative review surface. |

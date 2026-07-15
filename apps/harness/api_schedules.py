@@ -8,7 +8,7 @@ tenant path /api/w/{ws}/agents/... works via WorkspaceResolveMiddleware.
 """
 from __future__ import annotations
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router, Status
@@ -95,7 +95,13 @@ def create_schedule(request: HttpRequest, slug: str, payload: ScheduleIn) -> Sta
     agent = _agent_or_404(request, slug)
     fields = payload.dict()
     try:
-        schedule = AgentSchedule.objects.create(agent=agent, **fields)
+        # Own atomic block (savepoint): an IntegrityError from
+        # uniq_agent_schedule_name must not poison an outer transaction — the
+        # session write SessionMiddleware makes on every response
+        # (SESSION_SAVE_EVERY_REQUEST) would otherwise hit a broken connection
+        # and 400 instead of the 409 below. Mirrors apps/projects/api.py.
+        with transaction.atomic():
+            schedule = AgentSchedule.objects.create(agent=agent, **fields)
     except IntegrityError:
         raise _duplicate_name(fields["name"]) from None
     return Status(201, _serialize(schedule))
@@ -139,7 +145,8 @@ def update_schedule(
         setattr(schedule, key, value)
     if fields:
         try:
-            schedule.save()
+            with transaction.atomic():  # savepoint — see create_schedule
+                schedule.save()
         except IntegrityError:
             raise _duplicate_name(schedule.name) from None
     return _serialize(schedule)

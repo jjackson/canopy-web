@@ -903,6 +903,28 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/needs-you": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Fleet-wide needs-you (the supervisor home screen)
+         * @description Every agent's needs-you in one call, ranked busiest-first. Declared BEFORE
+         *     the /{slug}/ routes so 'needs-you' isn't resolved as a slug. Tenant scoping
+         *     mirrors list_agents exactly (both build from _visible_agent_workspace_ids).
+         */
+        readonly get: operations["apps_agents_api_fleet_needs_you"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/agents/{slug}/": {
         readonly parameters: {
             readonly query?: never;
@@ -1264,7 +1286,20 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         readonly post?: never;
-        /** Delete a recurring schedule */
+        /**
+         * Delete a recurring schedule
+         * @description Deleting a schedule retires its open occurrences FIRST.
+         *
+         *     There is no occurrence table — the Turn IS the occurrence, linked only by
+         *     origin_ref["schedule_id"] — so nothing cascades. An executing occurrence
+         *     holds one_executing_turn_per_agent, and release_stale_occurrence_turns_all()
+         *     resolves schedules by id: delete the row and that turn becomes permanently
+         *     unreleasable (the runner's heartbeat renews its lease, so the lease sweep
+         *     never rescues it either), wedging every subsequent turn for the agent
+         *     forever — with the nag that would surface it gone too. Superseding first also
+         *     retires orphaned QUEUED occurrences, which would otherwise execute a prompt
+         *     for a schedule that no longer exists.
+         */
         readonly delete: operations["apps_harness_api_schedules_delete_schedule"];
         readonly options?: never;
         readonly head?: never;
@@ -1499,7 +1534,14 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
+        /**
+         * List my runners
+         * @description The supervisor's runner status. Filters on the exact same
+         *     _runner_visibility_q predicate _runner_or_404 gates on — a runner you
+         *     cannot act on must not be listed. Retired runners are excluded at lookup,
+         *     as everywhere else.
+         */
+        readonly get: operations["apps_harness_api_list_runners"];
         readonly put?: never;
         /** Pair Runner */
         readonly post: operations["apps_harness_api_pair_runner"];
@@ -1719,6 +1761,56 @@ export interface paths {
         /** Report a due slot; the server materializes the turn */
         readonly post: operations["apps_harness_api_fire_schedule_route"];
         readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/push/vapid-public-key": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * The VAPID public key
+         * @description The browser needs this to subscribe. Not a secret — it ships in the JS
+         *     bundle anyway. 503 when unset so a push-less deployment says so plainly
+         *     rather than handing the browser an empty key it would fail on.
+         */
+        readonly get: operations["apps_push_api_vapid_public_key"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/push/subscribe": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Register this browser for push
+         * @description Upsert on endpoint. The browser re-sends the same endpoint on every
+         *     subscribe() call, and its keys rotate — so update rather than insert, and
+         *     re-point the row at the caller: the endpoint belongs to the BROWSER, not the
+         *     person, so on a shared device it must follow whoever is logged in now.
+         */
+        readonly post: operations["apps_push_api_subscribe"];
+        /**
+         * Unregister this browser
+         * @description Idempotent, and scoped to the caller: unsubscribing an endpoint you don't
+         *     own is a silent no-op, not a 404 — no existence leak either way.
+         */
+        readonly delete: operations["apps_push_api_unsubscribe"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -3445,6 +3537,8 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
+            /** Workspace */
+            readonly workspace?: string | null;
         };
         /** Page[AgentOut] */
         readonly Page_AgentOut_: {
@@ -3492,6 +3586,58 @@ export interface components {
              */
             readonly workspace: string;
         };
+        /**
+         * FleetNeedsYouOut
+         * @description Every agent's needs-you in one response — the supervisor's home screen.
+         *     One round trip instead of an N+1 fan-out, which matters on cellular.
+         */
+        readonly FleetNeedsYouOut: {
+            /** Total Waiting */
+            readonly total_waiting: number;
+            /** Agents */
+            readonly agents?: readonly components["schemas"]["NeedsYouOut"][];
+        };
+        /** NeedsYouItem */
+        readonly NeedsYouItem: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            readonly type: "review" | "question" | "notify";
+            /**
+             * Ref Kind
+             * @enum {string}
+             */
+            readonly ref_kind: "task" | "sync" | "work_product" | "run" | "schedule";
+            /** Ref Id */
+            readonly ref_id: number;
+            /** Title */
+            readonly title: string;
+            /**
+             * Subtitle
+             * @default
+             */
+            readonly subtitle: string;
+            /**
+             * Url
+             * @default
+             */
+            readonly url: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** NeedsYouOut */
+        readonly NeedsYouOut: {
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Waiting Count */
+            readonly waiting_count: number;
+            /** Items */
+            readonly items?: readonly components["schemas"]["NeedsYouItem"][];
+        };
         /** AgentDetailOut */
         readonly AgentDetailOut: {
             /** Id */
@@ -3518,6 +3664,8 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
+            /** Workspace */
+            readonly workspace?: string | null;
             /**
              * Sync Count
              * @default 0
@@ -3547,41 +3695,6 @@ export interface components {
             readonly latest_sync_at?: string | null;
             /** Latest Turn At */
             readonly latest_turn_at?: string | null;
-        };
-        /** NeedsYouItem */
-        readonly NeedsYouItem: {
-            /** Type */
-            readonly type: string;
-            /** Ref Kind */
-            readonly ref_kind: string;
-            /** Ref Id */
-            readonly ref_id: number;
-            /** Title */
-            readonly title: string;
-            /**
-             * Subtitle
-             * @default
-             */
-            readonly subtitle: string;
-            /**
-             * Url
-             * @default
-             */
-            readonly url: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-        };
-        /** NeedsYouOut */
-        readonly NeedsYouOut: {
-            /** Agent Slug */
-            readonly agent_slug: string;
-            /** Waiting Count */
-            readonly waiting_count: number;
-            /** Items */
-            readonly items?: readonly components["schemas"]["NeedsYouItem"][];
         };
         /** AgentSyncOut */
         readonly AgentSyncOut: {
@@ -3883,8 +3996,11 @@ export interface components {
             readonly title: string;
             /** Next Action */
             readonly next_action: string;
-            /** Status */
-            readonly status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "suggested" | "in_progress" | "done" | "declined";
             /** Owner */
             readonly owner: string;
             /** Assigned */
@@ -4060,8 +4176,11 @@ export interface components {
         };
         /** AgentTaskCommandIn */
         readonly AgentTaskCommandIn: {
-            /** Kind */
-            readonly kind: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "accept" | "decline" | "dispatch" | "reassign" | "edit" | "comment" | "done";
             /** Payload */
             readonly payload?: {
                 readonly [key: string]: unknown;
@@ -4921,6 +5040,8 @@ export interface components {
             };
             /** Host */
             readonly host: string;
+            /** Workspace */
+            readonly workspace: string | null;
         };
         /** RunnerIn */
         readonly RunnerIn: {
@@ -4940,6 +5061,11 @@ export interface components {
              * @default
              */
             readonly host: string;
+            /**
+             * Workspace
+             * @default
+             */
+            readonly workspace: string;
         };
         /** HeartbeatIn */
         readonly HeartbeatIn: {
@@ -5147,6 +5273,30 @@ export interface components {
              * Format: date-time
              */
             readonly slot: string;
+        };
+        /** VapidKeyOut */
+        readonly VapidKeyOut: {
+            /** Public Key */
+            readonly public_key: string;
+        };
+        /** PushSubscribeIn */
+        readonly PushSubscribeIn: {
+            /** Endpoint */
+            readonly endpoint: string;
+            /** P256Dh */
+            readonly p256dh: string;
+            /** Auth */
+            readonly auth: string;
+            /**
+             * User Agent
+             * @default
+             */
+            readonly user_agent: string;
+        };
+        /** PushUnsubscribeIn */
+        readonly PushUnsubscribeIn: {
+            /** Endpoint */
+            readonly endpoint: string;
         };
     };
     responses: never;
@@ -6812,6 +6962,26 @@ export interface operations {
             };
         };
     };
+    readonly apps_agents_api_fleet_needs_you: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["FleetNeedsYouOut"];
+                };
+            };
+        };
+    };
     readonly apps_agents_api_get_agent: {
         readonly parameters: {
             readonly query?: never;
@@ -7848,6 +8018,26 @@ export interface operations {
             };
         };
     };
+    readonly apps_harness_api_list_runners: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["RunnerOut"][];
+                };
+            };
+        };
+    };
     readonly apps_harness_api_pair_runner: {
         readonly parameters: {
             readonly query?: never;
@@ -8209,6 +8399,70 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["TurnOut"];
                 };
+            };
+        };
+    };
+    readonly apps_push_api_vapid_public_key: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["VapidKeyOut"];
+                };
+            };
+        };
+    };
+    readonly apps_push_api_subscribe: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PushSubscribeIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly apps_push_api_unsubscribe: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PushUnsubscribeIn"];
+            };
+        };
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

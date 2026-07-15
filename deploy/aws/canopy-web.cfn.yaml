@@ -97,6 +97,12 @@ Resources:
       Name: canopy-web/drive-sa-key-json
       SecretString: "PLACEHOLDER"
 
+  VapidPrivateKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: canopy-web/vapid-private-key
+      SecretString: "PLACEHOLDER"
+
   # --- ALB target group + /canopy/* rule (slots in at a free priority
   #     alongside ace's /ace/* at prio 20 and the connect-labs default) ---
   TargetGroup:
@@ -151,6 +157,11 @@ Resources:
             # GCP deploy. The matching SA key is the CANOPY_DRIVE_SA_KEY_JSON
             # secret below.
             - { Name: CANOPY_DRIVE_ROOT_FOLDER_ID, Value: 1cUv7wQXOvVwuZ86PdhkxpFcuB4Lm9fPz }
+            # Web Push (VAPID). The public key is not a secret — it ships in the
+            # JS bundle so the browser can subscribe with it; it is the other
+            # half of the VapidPrivateKey secret below and the two must match.
+            - { Name: VAPID_PUBLIC_KEY, Value: "BI34-mR1N-xMAhF3tQ1ajAe7g9KaK1nlrhX49pRQmBgo5s-KgoTtgcfOz9ejYeeAJR-tQh9JZ1cRJUCb8td-W58" }
+            - { Name: VAPID_SUBJECT, Value: mailto:jjackson@dimagi.com }
           Secrets:
             - { Name: DJANGO_SECRET_KEY, ValueFrom: !Ref DjangoSecretKey }
             - { Name: DATABASE_URL, ValueFrom: !Ref DatabaseUrl }
@@ -158,6 +169,7 @@ Resources:
             - { Name: GOOGLE_OAUTH_CLIENT_ID, ValueFrom: !Ref GoogleOauthClientId }
             - { Name: GOOGLE_OAUTH_CLIENT_SECRET, ValueFrom: !Ref GoogleOauthClientSecret }
             - { Name: CANOPY_DRIVE_SA_KEY_JSON, ValueFrom: !Ref DriveSaKeyJson }
+            - { Name: VAPID_PRIVATE_KEY, ValueFrom: !Ref VapidPrivateKey }
           LogConfiguration:
             LogDriver: awslogs
             Options:

@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('harness', '0003_alter_turn_origin'),
+        ('harness', '0005_backfill_runner_workspace'),
     ]
 
     operations = [

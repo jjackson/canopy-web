@@ -8,13 +8,14 @@ from canopy_runner import inbox
 
 
 class FakeClient:
-    def __init__(self):
+    def __init__(self, created=True):
         self.enqueued = []
+        self._created = created
 
     def enqueue_turn(self, agent, origin, idem, *, prompt="", origin_ref=None, routing="prefer_local"):
         self.enqueued.append({"agent": agent, "origin": origin, "idem": idem,
                               "origin_ref": origin_ref, "prompt": prompt})
-        return {"id": "t-x"}
+        return {"id": "t-x", "_created": self._created}
 
 
 def _runner(threads):
@@ -31,8 +32,8 @@ def test_enqueues_one_turn_per_thread():
         {"id": "thr-1", "from": "Hal <hal@dimagi-ai.com>", "subject": "re: bednet", "messageCount": 3},
         {"id": "thr-2", "from": "x@y.com", "subject": "hi", "messageCount": 1},
     ])
-    ids = inbox.check_inbox(client, "hal", mailbox="hal@dimagi-ai.com", gog_client="canopy", runner=r)
-    assert ids == ["thr-1", "thr-2"]
+    res = inbox.check_inbox(client, "hal", mailbox="hal@dimagi-ai.com", gog_client="canopy", runner=r)
+    assert res["new"] == ["thr-1", "thr-2"]
     assert client.enqueued[0]["origin"] == "email"
     assert client.enqueued[0]["origin_ref"]["thread_id"] == "thr-1"
     assert client.enqueued[0]["prompt"] == "/hal:turn --thread thr-1"
@@ -47,7 +48,7 @@ def test_idempotency_key_includes_message_count():
 
 def test_empty_inbox_enqueues_nothing():
     client = FakeClient()
-    assert inbox.check_inbox(client, "hal", mailbox="m", gog_client="c", runner=_runner([])) == []
+    assert inbox.check_inbox(client, "hal", mailbox="m", gog_client="c", runner=_runner([])) == {"new": [], "seen": []}
     assert client.enqueued == []
 
 

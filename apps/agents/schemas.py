@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 from pydantic import Field
 
@@ -34,6 +35,20 @@ class AgentOut(StrictModel):
     avatar_url: str
     created_at: dt.datetime
     updated_at: dt.datetime
+    # The tenant that owns this agent — the fleet legitimately spans workspaces
+    # (a chief-of-staff agent can live in a different tenant than the product
+    # agents), so clients need this to build the correct deep link
+    # (/w/<workspace>/agents/<slug>) instead of assuming the active workspace,
+    # which 404s for cross-workspace agents (see commit 483c821).
+    #
+    # Aliased onto `workspace_id` rather than plain attribute resolution:
+    # `Agent.workspace` is a FK, so a naive `obj.workspace` getattr would
+    # dereference the related Workspace row (an extra query per agent) and
+    # then fail str validation on the object itself. Workspace's primary key
+    # IS its slug (apps/workspaces/models.py:29), so `agent.workspace_id` is
+    # already the slug string with zero extra queries. Nullable for migration
+    # safety, same as the FK itself.
+    workspace: str | None = Field(default=None, validation_alias="workspace_id")
 
 
 class AgentDetailOut(AgentOut):
@@ -186,7 +201,7 @@ class AgentTaskOut(StrictModel):
     ext_id: str
     title: str
     next_action: str
-    status: str
+    status: Literal["suggested", "in_progress", "done", "declined"]
     owner: str
     assigned: str
     confidence: str
@@ -220,7 +235,7 @@ class AgentTaskPatch(StrictModel):
 
 # ---- task commands (the board's action queue) ----
 class AgentTaskCommandIn(StrictModel):
-    kind: str = Field(pattern=r"^(accept|decline|dispatch|reassign|edit|comment|done)$")
+    kind: Literal["accept", "decline", "dispatch", "reassign", "edit", "comment", "done"]
     payload: dict = Field(default_factory=dict)  # reason / assignee / next_action / note
     created_by: str = Field(default="", max_length=200)
 
@@ -254,12 +269,12 @@ class CommandResultOut(StrictModel):
 
 # ---- "Needs you" supervisor inbox ----
 class NeedsYouItem(StrictModel):
-    type: str  # 'review' | 'question' | 'notify'
-    # After the emdash/mobile-l2vmm merge: that branch retypes this as
-    # Literal["task", "sync", "work_product", "run"] (commit 2ce30c1). It must
-    # become Literal["task", "sync", "work_product", "run", "schedule"] or the
-    # schedule nag 500s at serialization.
-    ref_kind: str  # 'task' | 'sync' | 'work_product' | 'run' | 'schedule'
+    type: Literal["review", "question", "notify"]
+    # 'run' covers gate/step/completion items projected from the run lifecycle
+    # (services._run_inbox_items) — task/sync/work_product are the board items.
+    # 'schedule' is the unattended-occurrence nag (apps/harness) projected in via
+    # needs_you(); it MUST stay in this Literal or the nag 500s at serialization.
+    ref_kind: Literal["task", "sync", "work_product", "run", "schedule"]
     ref_id: int
     title: str
     subtitle: str = ""
@@ -271,6 +286,14 @@ class NeedsYouOut(StrictModel):
     agent_slug: str
     waiting_count: int  # gated (review + question) items — the "N waiting on you" badge
     items: list[NeedsYouItem] = Field(default_factory=list)
+
+
+class FleetNeedsYouOut(StrictModel):
+    """Every agent's needs-you in one response — the supervisor's home screen.
+    One round trip instead of an N+1 fan-out, which matters on cellular."""
+
+    total_waiting: int  # sum of per-agent waiting_count — the app-icon badge
+    agents: list[NeedsYouOut] = Field(default_factory=list)
 
 
 # ---- shared ----

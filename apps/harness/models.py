@@ -38,21 +38,36 @@ class Runner(models.Model):
     # so a live session is reusable ONLY by the runner whose host matches the one that
     # created it. Jonathan runs the fleet under two accounts (token-limit failover).
     host = models.CharField(max_length=200, blank=True, default="")
-    # The human who paired this runner. Load-bearing for BOTH authz and tenancy:
-    # `_runner_or_404` pins every runner route to `paired_by`, and the harness
-    # derives the tenant from it (there is deliberately no Runner.workspace field).
+    # The human who paired this runner. Load-bearing for authz AND for schedule
+    # tenancy: `_runner_visibility_q` requires paired_by to be the caller (or NULL,
+    # the legacy-ungated path it keeps open on purpose), and `_runner_schedule_qs`
+    # derives the schedule tenant from it.
     #
     # OPERATIONAL CONSEQUENCE — deleting a pairing user permanently bricks their
-    # runners. SET_NULL orphans the row rather than removing it; `paired_by_id`
-    # becomes NULL, and the `!=` in `_runner_or_404` is True for None, so EVERY
-    # runner route 404s for EVERY user, forever. The runner cannot be recovered by
-    # reassigning it through the API — it must be re-paired (a fresh row) and the
-    # orphaned one retired.
+    # runners' SCHEDULES. SET_NULL orphans the row rather than removing it;
+    # `paired_by_id` becomes NULL, and `_runner_schedule_qs` returns none() for a
+    # NULL pairer, so the orphan can never sync or fire a schedule again. It must
+    # be re-paired (a fresh row) and the orphan retired.
     #
     # This fail-closed behaviour is CORRECT and must stay: a runner whose owner no
     # longer exists has no tenant to derive, and inferring one would be a privilege
     # escalation. Deactivate a departing user (`is_active=False`) rather than
     # deleting them if their runners should stay operable for a successor.
+    #
+    # `workspace` (below) now exists — it is the boundary `claim_next_turn` and
+    # `_runner_visibility_q` filter on. Narrowing the SCHEDULE derivation from
+    # paired_by to this FK is a deliberate follow-up, not a merge-time change;
+    # see the note on `_runner_schedule_qs` for how the two rules relate today.
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="runners",
+        help_text="The tenant that owns this runner. Nullable for migration "
+        "safety; the API assigns one at pairing (the pairer's default workspace "
+        "when unspecified). Mirrors Agent.workspace.",
+    )
     paired_by = models.ForeignKey(
         "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )

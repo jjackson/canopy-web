@@ -28,6 +28,7 @@ dependencies = [
     # path dep via [tool.uv.sources] below. Django's DbRunStore (apps/agent_runs)
     # implements the same Protocol over the ORM.
     "canopy-agent-runs",
+    "pywebpush>=2.3.0",
 ]
 
 [project.optional-dependencies]

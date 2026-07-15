@@ -151,6 +151,7 @@ from apps.timeline.api import router as timeline_router  # noqa: E402
 from apps.system.api import router as system_router  # noqa: E402
 from apps.harness.api import router as harness_router  # noqa: E402
 from apps.harness.api_schedules import router as schedules_router  # noqa: E402
+from apps.push.api import router as push_router  # noqa: E402
 
 api.add_router("/projects", projects_router)
 api.add_router("/issues", issues_router)
@@ -175,3 +176,4 @@ api.add_router("/timeline", timeline_router)
 api.add_router("/system", system_router)
 api.add_router("/share", session_share_router)
 api.add_router("/harness", harness_router)
+api.add_router("/push", push_router)

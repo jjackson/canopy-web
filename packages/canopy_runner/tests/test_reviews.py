@@ -29,9 +29,9 @@ def _detail(clusters, decisions, gate="product_findings"):
 def test_enqueues_implemented_cluster_turns():
     clusters = [
         {"id": "eva-first-turn", "dispatch": [
-            {"target_agent": "eva", "origin": "email", "prompt": "/eva:turn --thread T",
+            {"target_agent": "eva", "origin": "email", "prompt": "/turn --thread T",
              "origin_ref": {"thread_id": "T"}}]},
-        {"id": "hal-skip-me", "dispatch": [{"target_agent": "hal", "prompt": "/hal:turn"}]},
+        {"id": "hal-skip-me", "dispatch": [{"target_agent": "hal", "prompt": "/turn"}]},
     ]
     decisions = {"eva-first-turn": {"decision": "implement"},
                  "hal-skip-me": {"decision": "skip"}}
@@ -46,8 +46,8 @@ def test_enqueues_implemented_cluster_turns():
 
 def test_fanout_cluster_enqueues_one_turn_each():
     clusters = [{"id": "echo-stale-board", "dispatch": [
-        {"target_agent": "echo", "prompt": "/echo:turn nudge Sarvesh"},
-        {"target_agent": "echo", "prompt": "/echo:turn nudge Amie"}]}]
+        {"target_agent": "echo", "prompt": "/turn nudge Sarvesh"},
+        {"target_agent": "echo", "prompt": "/turn nudge Amie"}]}]
     c = FakeClient([{"id": "r2", "gate": "product_findings"}],
                    {"r2": _detail(clusters, {"echo-stale-board": {"decision": "implement"}})})
     reviews.check_reviews(c)
@@ -67,11 +67,13 @@ def test_non_findings_gate_ignored():
     assert c.enqueued == []
 
 
-def test_implemented_without_routing_block_is_not_marked_processed():
-    """An approved cluster with no dispatch[] can't be dispatched — leave the review
-    unprocessed so a later Ada fix + re-poll picks it up."""
+def test_implemented_without_routing_block_is_logged_and_review_still_handled_once():
+    """An approved cluster with no dispatch[] can't be dispatched. The review is still
+    marked processed — its decisions are immutable and Ada re-emits as a NEW review, so
+    retrying forever would only spam the log every poll."""
     clusters = [{"id": "eva-first-turn"}]  # no dispatch[]
     c = FakeClient([{"id": "r3", "gate": "product_findings"}],
                    {"r3": _detail(clusters, {"eva-first-turn": {"decision": "implement"}})})
     res = reviews.check_reviews(c)
-    assert c.enqueued == [] and res["processed"] == set()
+    assert c.enqueued == []            # nothing dispatchable
+    assert res["processed"] == {"r3"}  # but handled once — no perpetual re-warning

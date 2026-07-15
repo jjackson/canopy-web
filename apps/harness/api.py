@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.db import models
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Router, Status
@@ -72,32 +73,63 @@ def _agent_or_404(request: HttpRequest, slug: str) -> Agent:
     return agent
 
 
-def _runner_or_404(request: HttpRequest, runner_id: uuid.UUID) -> Runner:
-    """Resolve a runner, pinned to the user who paired it. A runner may only be
-    operated by its pairer; anyone else gets the same 404 as a missing runner (no
-    existence leak), exactly like _agent_or_404.
+def _runner_visibility_q(request: HttpRequest) -> Q:
+    """The single definition of 'runners this caller can see and act on'.
+    _runner_or_404 and list_runners MUST build from this — when they were
+    written separately they drifted: the list OR'd in workspace_id__isnull=True
+    unconditionally while the gate 404'd a null-workspace runner once a tenant
+    was pinned, so the list showed a runner every action then 404'd on.
 
-    Without this pin, runner_id — a caller-supplied query param — is the whole
-    authorization story, and any route deriving its tenant from runner.paired_by
-    lets an attacker simply CHOOSE whose paired_by is read by passing someone
-    else's runner_id. UUID4 unguessability is not an authorization check: the id
-    travels in query strings, which proxies log.
+    Tenant-pinned (request.workspace_slug truthy): exact workspace match only —
+    a null-workspace runner is wrong-tenant here, NOT ungated. No separate
+    is_member check is needed in this branch: WorkspaceResolveMiddleware
+    already gates membership of the pinned workspace before it ever sets
+    request.workspace_slug, so a runner matching `ws` implies the caller is a
+    member of it.
 
-    paired_by is nullable (on_delete=SET_NULL), and NULL must fail closed — the
-    != below is True for None, so an orphaned runner is operable by nobody.
+    Not pinned (flat /api/harness/... callers): the runner's workspace must be
+    one the caller is a member of, or null (the legacy-ungated path
+    pre-existing tests depend on).
+
+    Either way, paired_by must be the caller, or null (also legacy-ungated).
     """
-    runner = Runner.objects.filter(pk=runner_id).exclude(status=Runner.RETIRED).first()
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    if ws:
+        wq = Q(workspace_id=ws)
+    else:
+        wq = Q(workspace_id__in=wsvc.user_workspace_slugs(request.user)) | Q(workspace_id__isnull=True)
+    return wq & (Q(paired_by=request.user) | Q(paired_by__isnull=True))
+
+
+def _runner_or_404(request: HttpRequest, runner_id: uuid.UUID) -> Runner:
+    """Resolve a live runner via _runner_visibility_q — the same predicate
+    list_runners filters on, so a runner that is listed is always one you can
+    act on. Binding to runner.paired_by (not to a specific token) is
+    deliberate: BearerTokenAuthMiddleware stamps request.user = token.user and
+    discards which token was used, and PATs are rotated by design
+    (canopy:canopy-web-pat-mint is documented "re-run to rotate"), so
+    token-binding would break the runner on every rotation. Accepted residual:
+    another token of the SAME user still works.
+    """
+    runner = (
+        Runner.objects.exclude(status=Runner.RETIRED)
+        .filter(_runner_visibility_q(request))
+        .filter(pk=runner_id)
+        .first()
+    )
     if runner is None:
-        raise HttpError(404, "runner not found")
-    if runner.paired_by_id != request.user.id:
         raise HttpError(404, "runner not found")
     return runner
 
 
-def _turn_or_404(turn_id: uuid.UUID) -> Turn:
+def _turn_or_404(request: HttpRequest, turn_id: uuid.UUID) -> Turn:
+    """Resolve a turn, gated via its agent's workspace — a Turn has no workspace
+    FK of its own; it derives its tenant one hop away (spec section 8)."""
     turn = Turn.objects.select_related("agent", "claimed_by").filter(pk=turn_id).first()
     if turn is None:
         raise HttpError(404, "turn not found")
+    _agent_or_404(request, turn.agent.slug)  # raises 404 on wrong tenant
     return turn
 
 
@@ -105,14 +137,40 @@ def _turn_or_404(turn_id: uuid.UUID) -> Turn:
 def pair_runner(request: HttpRequest, payload: RunnerIn):
     if payload.kind not in dict(Runner.KIND_CHOICES):
         raise HttpError(422, f"unknown runner kind '{payload.kind}'")
+    wsvc.auto_join_workspaces(request.user)
+    explicit = (payload.workspace or "").strip()
+    if explicit:
+        # Membership-gated: a missing workspace and a non-member get the same
+        # 404 (no existence leak), exactly as apps/agents does on explicit homing.
+        if not wsvc.is_member(request.user, explicit):
+            raise HttpError(404, f"workspace '{explicit}' not found")
+        ws_slug = explicit
+    else:
+        default = wsvc.user_default_workspace(request.user)
+        ws_slug = default.slug if default else None
     runner = Runner.objects.create(
         name=payload.name,
         kind=payload.kind,
         capabilities=payload.capabilities,
         host=payload.host,
         paired_by=request.user,
+        workspace_id=ws_slug,
     )
     return Status(201, runner)
+
+
+@router.get("/runners/", response=list[RunnerOut], summary="List my runners")
+def list_runners(request: HttpRequest):
+    """The supervisor's runner status. Filters on the exact same
+    _runner_visibility_q predicate _runner_or_404 gates on — a runner you
+    cannot act on must not be listed. Retired runners are excluded at lookup,
+    as everywhere else."""
+    qs = (
+        Runner.objects.exclude(status=Runner.RETIRED)
+        .filter(_runner_visibility_q(request))
+        .order_by(models.F("last_heartbeat_at").desc(nulls_last=True))
+    )
+    return list(qs[:50])
 
 
 @router.post("/runners/{runner_id}/heartbeat", response=RunnerOut)
@@ -149,9 +207,7 @@ def resolve_session(request: HttpRequest, runner_id: uuid.UUID, payload: Resolve
     emdash session (it owns the live hint) or must spawn fresh + rehydrate context.
     Runner-scoped because reuse depends on the caller's macOS host."""
     runner = _runner_or_404(request, runner_id)
-    agent = Agent.objects.filter(slug=payload.agent_slug).first()
-    if agent is None:
-        raise HttpError(404, f"agent '{payload.agent_slug}' not found")
+    agent = _agent_or_404(request, payload.agent_slug)
     return services.resolve_session(agent, payload.thread_key, runner)
 
 
@@ -160,9 +216,7 @@ def record_session(request: HttpRequest, runner_id: uuid.UUID, payload: RecordSe
     """Upsert the durable link and point its live-session hint at THIS runner/host,
     after a session was created or reused for the thread. Returns the fresh resolution."""
     runner = _runner_or_404(request, runner_id)
-    agent = Agent.objects.filter(slug=payload.agent_slug).first()
-    if agent is None:
-        raise HttpError(404, f"agent '{payload.agent_slug}' not found")
+    agent = _agent_or_404(request, payload.agent_slug)
     services.record_session(
         agent, payload.thread_key, runner=runner,
         emdash_task_id=payload.emdash_task_id, session_id=payload.session_id,
@@ -173,9 +227,7 @@ def record_session(request: HttpRequest, runner_id: uuid.UUID, payload: RecordSe
 
 @router.post("/turns/", response={200: TurnOut, 201: TurnOut})
 def enqueue_turn(request: HttpRequest, payload: TurnIn):
-    agent = Agent.objects.filter(slug=payload.agent_slug).first()
-    if agent is None:
-        raise HttpError(404, f"agent '{payload.agent_slug}' not found")
+    agent = _agent_or_404(request, payload.agent_slug)
     if payload.origin not in dict(Turn.ORIGIN_CHOICES):
         raise HttpError(422, f"unknown origin '{payload.origin}'")
     if payload.routing not in dict(Turn.ROUTING_CHOICES):
@@ -193,22 +245,28 @@ def enqueue_turn(request: HttpRequest, payload: TurnIn):
 
 @router.get("/turns/", response=list[TurnOut])
 def list_turns(request: HttpRequest, agent: str | None = None, status: str | None = None):
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
     qs = Turn.objects.select_related("agent", "claimed_by").order_by("-created_at")
     if agent:
         qs = qs.filter(agent__slug=agent)
     if status:
         qs = qs.filter(status__in=status.split(","))
+    # Tenant filter: a turn's tenant is its agent's. Null-workspace agents stay
+    # visible (ungated, per the migration-safety rule).
+    qs = qs.filter(Q(agent__workspace_id__in=slugs) | Q(agent__workspace_id__isnull=True))
     return list(qs[:100])  # filter BEFORE slicing — a sliced queryset cannot be filtered
 
 
 @router.get("/turns/{turn_id}", response=TurnOut)
 def get_turn(request: HttpRequest, turn_id: uuid.UUID):
-    return _turn_or_404(turn_id)
+    return _turn_or_404(request, turn_id)
 
 
 @router.post("/turns/{turn_id}/events", response=TurnEventCountOut)
 def append_turn_events(request: HttpRequest, turn_id: uuid.UUID, payload: TurnEventsIn):
-    turn = _turn_or_404(turn_id)
+    turn = _turn_or_404(request, turn_id)
     for event in payload.events:
         if event.kind not in ALLOWED_EVENT_KINDS:
             raise HttpError(422, f"unknown event kind '{event.kind}'")
@@ -218,14 +276,14 @@ def append_turn_events(request: HttpRequest, turn_id: uuid.UUID, payload: TurnEv
 
 @router.get("/turns/{turn_id}/events", response=TurnEventsOut)
 def read_turn_events(request: HttpRequest, turn_id: uuid.UUID, after: int = 0):
-    turn = _turn_or_404(turn_id)
+    turn = _turn_or_404(request, turn_id)
     events = turn.events.filter(seq__gt=after).order_by("seq")[:500]
     return {"events": list(events)}
 
 
 @router.post("/turns/{turn_id}/start", response=TurnOut)
 def start_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnStartIn):
-    turn = _turn_or_404(turn_id)
+    turn = _turn_or_404(request, turn_id)
     if turn.status not in (Turn.CLAIMED, Turn.RUNNING):
         raise ProblemError(409, "Turn not startable", detail=f"status={turn.status}")
     return services.mark_running(turn, session_id=payload.session_id)
@@ -233,7 +291,7 @@ def start_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnStartIn):
 
 @router.post("/turns/{turn_id}/finish", response=TurnOut)
 def finish_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnFinishIn):
-    turn = _turn_or_404(turn_id)
+    turn = _turn_or_404(request, turn_id)
     if payload.status not in (Turn.DONE, Turn.FAILED):
         raise HttpError(422, "finish status must be done|failed")
     if turn.status in Turn.TERMINAL:
@@ -261,12 +319,8 @@ def _runner_schedule_qs(runner: Runner):
     leaking `prompt`. The workspace is the boundary.
 
     The tenant is derived from `paired_by` — the human who paired the runner —
-    rather than a Runner.workspace field, deliberately:
-      * Runner.workspace does not exist on main; it is added by the concurrent
-        canopy-mobile branch (0004_runner_workspace). Adding it here would
-        collide with that migration for no gain.
-      * paired_by is server-assigned at pairing (request.user), so the FIELD is
-        not attacker-controlled.
+    rather than the Runner.workspace FK, because paired_by is server-assigned at
+    pairing (request.user), so the FIELD is not attacker-controlled.
 
     That last point is necessary but NOT sufficient, and reading it alone is how
     this route was first shipped vulnerable. Deriving the tenant from an
@@ -276,17 +330,41 @@ def _runner_schedule_qs(runner: Runner):
     derives from paired_by AND _runner_or_404 pins the runner to request.user,
     so the row and the field are alike server-controlled.
 
-    When Runner.workspace lands, this may narrow to it; the predicate below is
-    the conservative superset of that rule, never a wider one.
+    Runner.workspace NOW EXISTS (it landed with the canopy-mobile merge) and is
+    the boundary claim_next_turn filters on. This predicate deliberately still
+    derives from paired_by; narrowing it to the FK is a follow-up, not a
+    merge-time behaviour change. Until then the two rules DIVERGE — measured, not
+    assumed:
+
+      * claim_next_turn: agent.workspace == runner.workspace (or agent.workspace
+        IS NULL); an untenanted runner gets untenanted agents only.
+      * here: agent.workspace ∈ workspaces(paired_by) (or IS NULL).
+
+    Where they differ: a runner homed to workspace `alpha` whose pairer is also a
+    member of `beta` SEES beta's schedules here, while claim_next_turn would
+    refuse to claim a beta turn on that runner. This is WIDER than the claim rule
+    — the old "conservative superset, never wider" note was simply wrong.
+
+    It is not a privilege escalation: _runner_or_404 pins the caller to
+    paired_by, and paired_by is a member of beta, so every schedule exposed here
+    (prompt included) is already readable by that same human through the
+    supervisor CRUD. The consequence is FUNCTIONAL, not a leak — firing a beta
+    slot from an alpha-homed runner materializes a turn that runner then cannot
+    claim, leaving it QUEUED. Narrowing to Runner.workspace closes the gap and is
+    the tracked follow-up.
+
+    NULL paired_by fails closed below (none()), which is stricter than
+    _runner_visibility_q's legacy-ungated allowance — an orphaned runner can be
+    operated, but can never sync or fire a schedule.
     """
     qs = AgentSchedule.objects.filter(enabled=True).select_related("agent")
     if runner.paired_by_id is None:
         return qs.none()  # an orphaned runner has no identity to derive tenancy from
     slugs = wsvc.user_workspace_slugs(runner.paired_by)
     # Same-tenant agents, or legacy null-workspace agents (the pre-tenancy path
-    # the existing suite covers). claim_next_turn has no workspace predicate on
-    # this branch; the INCOMING b4f5ead adds one of this shape, and this should
-    # converge with it on merge. Until then the invariant holds HERE, not fleet-wide.
+    # the existing suite covers). b4f5ead's claim_next_turn predicate is now
+    # merged and narrower (it keys off Runner.workspace); see the divergence
+    # documented above — converging on it is the follow-up.
     return qs.filter(Q(agent__workspace_id__in=slugs) | Q(agent__workspace_id__isnull=True))
 
 

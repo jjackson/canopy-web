@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('agents', '0008_agentturn'),
-        ('harness', '0004_turn_missed'),
+        ('harness', '0006_turn_missed'),
     ]
 
     operations = [

@@ -156,14 +156,14 @@ export function NeedsYouSection() {
       />
       {data === null ? (
         <WorkbenchSkeleton />
-      ) : data.items.length === 0 ? (
+      ) : (data.items ?? []).length === 0 ? (
         <p className="text-[13px] text-muted-foreground">
           Nothing needs you right now — Echo has the ball.
         </p>
       ) : (
         <div className="space-y-7">
           {BANDS.map((b) => (
-            <Band key={b.type} {...b} items={data.items} tasksById={tasksById} reload={reload} />
+            <Band key={b.type} {...b} items={[...(data.items ?? [])]} tasksById={tasksById} reload={reload} />
           ))}
         </div>
       )}

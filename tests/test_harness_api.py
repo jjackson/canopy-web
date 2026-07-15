@@ -228,3 +228,34 @@ def test_other_account_runner_cannot_reuse_but_gets_context(client, agent):
     r = client.post(f"/api/harness/runners/{b}/resolve-session",
                     {"agent_slug": "echo", "thread_key": "thr-1"}, content_type="application/json").json()
     assert r["reuse"] is False and r["new_thread"] is False and r["summary"] == "prior"
+
+
+def test_list_runners_returns_my_runners_newest_heartbeat_first(client, agent):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    # Newest: heartbeats now (via the API, so status/host get exercised too).
+    newest = _pair(client)
+    _hb(client, newest)
+
+    # Older: heartbeat an hour ago.
+    older = _pair(client)
+    _hb(client, older)
+    Runner.objects.filter(pk=older).update(last_heartbeat_at=timezone.now() - timedelta(hours=1))
+
+    # Never heartbeated: last_heartbeat_at stays null — must sort last (nulls_last=True).
+    never = _pair(client)
+
+    resp = client.get("/api/harness/runners/")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [r["id"] for r in body] == [newest, older, never]
+    assert body[0]["status"] == "online"
+    assert body[0]["host"] == ""
+
+
+def test_list_runners_excludes_retired(client, agent):
+    rid = _pair(client)
+    Runner.objects.filter(pk=rid).update(status=Runner.RETIRED)
+    assert client.get("/api/harness/runners/").json() == []
