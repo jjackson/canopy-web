@@ -1,7 +1,7 @@
 """Django Ninja v2 router for the projects + insights surface."""
 from __future__ import annotations
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q
 from django.http import HttpRequest
 from ninja import Body, Router, Status
@@ -259,16 +259,21 @@ def create_project(
 ) -> Status:
     ws = _resolve_create_workspace(request)
     try:
-        project = Project.objects.create(
-            name=payload.name,
-            slug=payload.slug,
-            repo_url=payload.repo_url or "",
-            deploy_url=payload.deploy_url or "",
-            visibility=payload.visibility,
-            status=payload.status,
-            skills=[s.model_dump() for s in payload.skills],
-            workspace=ws,
-        )
+        # Own atomic block (savepoint): an IntegrityError from the duplicate-slug
+        # constraint must not poison an outer transaction — e.g. the session write
+        # SessionMiddleware makes on every response (SESSION_SAVE_EVERY_REQUEST)
+        # would otherwise hit a broken connection and 500/400 instead of 409.
+        with transaction.atomic():
+            project = Project.objects.create(
+                name=payload.name,
+                slug=payload.slug,
+                repo_url=payload.repo_url or "",
+                deploy_url=payload.deploy_url or "",
+                visibility=payload.visibility,
+                status=payload.status,
+                skills=[s.model_dump() for s in payload.skills],
+                workspace=ws,
+            )
     except IntegrityError:
         raise ProblemError(
             409,

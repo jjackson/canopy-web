@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     "apps.shareouts",
     "apps.mcp",
     "apps.session_sharing",
+    "apps.push",
     "apps.agents",
     "apps.agent_runs",
     "apps.workspaces",
@@ -198,6 +199,12 @@ AUTH_ALLOWED_EMAIL_DOMAIN = env("AUTH_ALLOWED_EMAIL_DOMAIN", default="dimagi.com
 # Whether LoginRequiredMiddleware enforces auth. Default on; toggle off during rollout.
 REQUIRE_AUTH = env.bool("REQUIRE_AUTH", default=True)
 
+# Rolling session: refresh the expiry on every request rather than only at login.
+# Django's default (False) sets the 2-week expiry AT LOGIN and never extends it,
+# so an installed PWA would log you out every fortnight no matter how often you
+# opened it. Costs one session write per request; fine at this scale.
+SESSION_SAVE_EVERY_REQUEST = True
+
 # --- Walkthrough sharing (apps/walkthroughs) ---
 # When False, all /api/walkthroughs/ endpoints 404 (rollout flag).
 WALKTHROUGHS_ENABLED = env.bool("WALKTHROUGHS_ENABLED", default=True)
@@ -254,6 +261,17 @@ AGENT_RUNS_DRIVE_ROOTS = env.json("AGENT_RUNS_DRIVE_ROOTS", default={})
 # Per-user write rate limit for mutating MCP tools (e.g. clear_insights).
 MCP_WRITE_LIMIT = env.int("MCP_WRITE_LIMIT", default=10)
 MCP_WRITE_WINDOW_SECONDS = env.int("MCP_WRITE_WINDOW_SECONDS", default=60)
+
+# --- Web Push (VAPID) ---
+# The PUBLIC key is not a secret — it ships in the JS bundle; the browser needs
+# it to subscribe. The PRIVATE key signs every send and must never leave the
+# server (prod: Secrets Manager, see deploy/aws/canopy-web.cfn.yaml).
+# Empty keys disable push: the endpoints 503 and nothing is ever sent, so a
+# deployment without them degrades rather than 500s.
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", default="")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="")
+# Contact for the push service if our sends misbehave. Must be a mailto: URL.
+VAPID_SUBJECT = env("VAPID_SUBJECT", default="mailto:jjackson@dimagi.com")
 
 # AI Backend: "api" (direct Anthropic SDK) or "cli" (claude code CLI)
 AI_BACKEND = env("AI_BACKEND", default="api")
