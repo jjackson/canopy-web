@@ -1705,14 +1705,22 @@ export function ReviewPage() {
     return () => { cancelled = true }
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The DDD rail belongs to internal, signed-in browsing. Public share links
-  // (?t=token) stay standalone — the rail's APIs need a session and would just
-  // 403 for token holders. Either way we keep our own scroll container so the
-  // full-bleed AppLayout main doesn't clip the editor.
-  const showShell = !shareToken && auth.status === 'authenticated'
+  // The DDD rail belongs to internal, signed-in browsing of a review that is
+  // actually part of a narrative. Three cases get no rail:
+  //   - anonymous (the rail's APIs need a session and would just 403)
+  //   - a run-child gate (narrative_slug === null) — it belongs to no narrative,
+  //     so the DDD rail is not its chrome. Rendering it anyway is what put Ada's
+  //     fleet audit in a rail it could not navigate, under a narrative that only
+  //     existed because someone parsed its run_id.
+  //   - still loading — we don't know yet, and flashing a rail in then out is
+  //     worse than showing it a beat late.
+  // Either way we keep our own scroll container so the full-bleed AppLayout main
+  // doesn't clip the editor.
+  const showShell =
+    !shareToken && auth.status === 'authenticated' && review?.narrative_slug != null
   const withChrome = (node: ReactNode) =>
     showShell ? (
-      <DddShell activeSlug={review?.narrative_slug} activeRunId={review?.run_id}>
+      <DddShell activeSlug={review?.narrative_slug ?? undefined} activeRunId={review?.run_id}>
         {node}
       </DddShell>
     ) : (

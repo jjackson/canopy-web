@@ -13,7 +13,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from apps.common.ddd import narrative_slug_from_run_id
+from apps.common.ddd import (
+    RUN_CHILD_GATES,
+    is_run_child_gate,
+    narrative_slug_from_run_id,
+)
 from apps.reviews.models import ReviewRequest
 from apps.walkthroughs.models import Walkthrough
 
@@ -71,7 +75,11 @@ def narrative_of_review(r: ReviewRequest) -> str:
 #: ``product_findings`` is a run-child findings review (its narration is a degradation
 #: mirror). Including either pollutes the version list and lets it drive the narrative's
 #: title/phase (the "v0 findings review" bug).
-_NON_NARRATIVE_GATES = ("external_release", "product_findings")
+#:
+#: A superset of ``RUN_CHILD_GATES``: every run-child gate is non-narrative, but
+#: ``external_release`` is non-narrative while still *belonging* to a narrative — so it
+#: may create one, and a run-child gate may not.
+_NON_NARRATIVE_GATES = ("external_release", *RUN_CHILD_GATES)
 
 
 def _is_narrative_version(r: ReviewRequest) -> bool:
@@ -392,7 +400,20 @@ def _aggregate(
 
     for r in revs:
         slug = narrative_for_run_id(r.run_id, feature_map)
-        a = narr.setdefault(slug, _blank_narrative(slug))
+        # A run-child review ATTACHES to a narrative but never CREATES one. The
+        # gate cannot discriminate here: a DDD findings review and Ada's fleet
+        # audit both use `product_findings`, and the DDD one is a genuine child
+        # of a real run, so it must keep attaching. What separates them is
+        # whether a narrative exists at all — Ada's run_id is not a DDD run id,
+        # so nothing else references it. Without this, parsing a slug out of any
+        # run_id conjured a phantom narrative into the DDD rail (active, empty,
+        # unnavigable). Narrative-version reviews still create: a review-only
+        # narrative is legitimate (see narrative_for_run_id).
+        a = narr.get(slug)
+        if a is None:
+            if is_run_child_gate(r.gate):
+                continue
+            a = narr.setdefault(slug, _blank_narrative(slug))
         a["run_ids"].add(r.run_id)
         if r.owner_id:
             a["owner_ids"].add(r.owner_id)
