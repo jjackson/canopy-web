@@ -272,7 +272,9 @@ class NeedsYouItem(StrictModel):
     type: Literal["review", "question", "notify"]
     # 'run' covers gate/step/completion items projected from the run lifecycle
     # (services._run_inbox_items) — task/sync/work_product are the board items.
-    ref_kind: Literal["task", "sync", "work_product", "run"]
+    # 'schedule' is the unattended-occurrence nag (apps/harness) projected in via
+    # needs_you(); it MUST stay in this Literal or the nag 500s at serialization.
+    ref_kind: Literal["task", "sync", "work_product", "run", "schedule"]
     ref_id: int
     title: str
     subtitle: str = ""

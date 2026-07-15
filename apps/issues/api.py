@@ -10,7 +10,7 @@ from ninja import Router, Status
 
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_NOT_FOUND, ProblemError
-from apps.api.pagination import Page, paginate
+from apps.api.pagination import Page, clamp_limit, clamp_offset, paginate
 
 from .models import OriginIssue
 from .schemas import OriginIssueIn, OriginIssueOut
@@ -54,6 +54,7 @@ def list_issues(
     offset: int = 0,
     limit: int = 100,
 ) -> Page[OriginIssueOut]:
+    offset, limit = clamp_offset(offset), clamp_limit(limit)
     qs = OriginIssue.objects.all()
     if initiative:
         qs = qs.filter(initiative=initiative)

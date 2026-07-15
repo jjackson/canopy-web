@@ -5,6 +5,9 @@ import datetime as dt
 import uuid
 
 from ninja import Schema
+from pydantic import field_validator
+
+from .cron import validate_cron, validate_timezone
 
 
 class RunnerIn(Schema):
@@ -127,3 +130,112 @@ class TurnStartIn(Schema):
 class TurnFinishIn(Schema):
     status: str  # done|failed
     result_note: str = ""
+
+
+class ScheduleIn(Schema):
+    """Create payload. Cron + tz validate here so a bad expression 422s as
+    problem+json at edit time — a typo that silently never fires is the worst
+    failure mode a scheduler has."""
+
+    name: str
+    prompt: str
+    cron: str
+    timezone: str = "UTC"
+    enabled: bool = True
+    routing: str = "prefer_local"
+    grace_minutes: int = 120
+    notify: list[str] = ["inbox"]
+
+    @field_validator("cron")
+    @classmethod
+    def _check_cron(cls, v: str) -> str:
+        return validate_cron(v)
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str) -> str:
+        return validate_timezone(v)
+
+    @field_validator("name", "prompt")
+    @classmethod
+    def _non_blank(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError("must not be blank")
+        return v.strip()
+
+
+class SchedulePatch(Schema):
+    """Partial update. Every field optional; the same validators apply to any
+    field actually supplied."""
+
+    name: str | None = None
+    prompt: str | None = None
+    cron: str | None = None
+    timezone: str | None = None
+    enabled: bool | None = None
+    routing: str | None = None
+    grace_minutes: int | None = None
+    notify: list[str] | None = None
+
+    @field_validator("cron")
+    @classmethod
+    def _check_cron(cls, v: str | None) -> str | None:
+        return validate_cron(v) if v is not None else v
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str | None) -> str | None:
+        return validate_timezone(v) if v is not None else v
+
+
+class ScheduleOut(Schema):
+    id: int
+    agent_slug: str
+    name: str
+    prompt: str
+    cron: str
+    timezone: str
+    enabled: bool
+    routing: str
+    grace_minutes: int
+    notify: list[str]
+    last_slot: dt.datetime | None = None
+    # The anchor the runner MUST pass as due_slot(after=...). Server-computed as
+    # `last_slot or created_at` so the runner cannot get the fallback wrong.
+    # Without it a fresh schedule (last_slot=None) fires once for the slot BEFORE
+    # it existed — a schedule created Wednesday would immediately owe last
+    # Friday's report. See the runner-side section.
+    fire_after: dt.datetime
+    next_runs: list[dt.datetime] = []
+    last_status: str = ""
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class SchedulePreviewIn(Schema):
+    """Preview a cron the user is still typing — no row exists yet."""
+
+    cron: str
+    timezone: str = "UTC"
+
+    @field_validator("cron")
+    @classmethod
+    def _check_cron(cls, v: str) -> str:
+        return validate_cron(v)
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str) -> str:
+        return validate_timezone(v)
+
+
+class SchedulePreviewOut(Schema):
+    next_runs: list[dt.datetime]
+
+
+class ScheduleFireIn(Schema):
+    """The runner's report that a slot came due. The server re-derives nothing —
+    but the slot is only honored as an idempotency anchor, never as a claim of
+    authority: tenant scoping gates the route."""
+
+    slot: dt.datetime

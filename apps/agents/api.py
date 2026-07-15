@@ -7,7 +7,7 @@ from ninja import Router, Status
 from ninja.errors import HttpError
 
 from apps.api.auth import session_auth
-from apps.api.pagination import Page, paginate
+from apps.api.pagination import Page, clamp_limit, paginate
 from apps.workspaces import services as wsvc
 
 from . import services
@@ -77,7 +77,7 @@ def _get_agent_or_404(request: HttpRequest, slug: str):
 @router.get("/", response=Page[AgentOut], summary="List agents",
             openapi_extra={"x-mcp-expose": True})
 def list_agents(request: HttpRequest, limit: int = 100) -> Page[AgentOut]:
-    limit = min(limit, 500)
+    limit = clamp_limit(limit)
     visible = _visible_agent_workspace_ids(request)
     items = [
         AgentOut.model_validate(a)
@@ -152,7 +152,7 @@ def needs_you(request: HttpRequest, slug: str) -> NeedsYouOut:
 @router.get("/{slug}/syncs/", response=Page[AgentSyncOut], summary="List the agent's syncs",
             openapi_extra={"x-mcp-expose": True})
 def list_syncs(request: HttpRequest, slug: str, limit: int = 100) -> Page[AgentSyncOut]:
-    limit = min(limit, 500)
+    limit = clamp_limit(limit)
     agent = _get_agent_or_404(request, slug)
     items = [AgentSyncOut.model_validate(s) for s in services.list_syncs(agent, limit=limit)]
     return paginate(items, offset=0, limit=limit)
@@ -171,7 +171,7 @@ def create_sync(request: HttpRequest, slug: str, payload: AgentSyncIn) -> Status
 @router.get("/{slug}/turns/", response=Page[AgentTurnOut], summary="List the agent's turns",
             openapi_extra={"x-mcp-expose": True})
 def list_turns(request: HttpRequest, slug: str, limit: int = 100) -> Page[AgentTurnOut]:
-    limit = min(limit, 500)
+    limit = clamp_limit(limit)
     agent = _get_agent_or_404(request, slug)
     items = [AgentTurnOut.model_validate(t) for t in services.list_turns(agent, limit=limit)]
     return paginate(items, offset=0, limit=limit)
@@ -191,7 +191,7 @@ def create_turn(request: HttpRequest, slug: str, payload: AgentTurnIn) -> Status
             summary="List the agent's work products",
             openapi_extra={"x-mcp-expose": True})
 def list_work_products(request: HttpRequest, slug: str, limit: int = 200) -> Page[AgentWorkProductOut]:
-    limit = min(limit, 500)
+    limit = clamp_limit(limit)
     agent = _get_agent_or_404(request, slug)
     items = [AgentWorkProductOut.model_validate(w) for w in services.list_work_products(agent, limit=limit)]
     return paginate(items, offset=0, limit=limit)

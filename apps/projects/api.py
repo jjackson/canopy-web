@@ -14,7 +14,7 @@ from apps.api.errors import (
     TYPE_NOT_FOUND,
     ProblemError,
 )
-from apps.api.pagination import Page, paginate
+from apps.api.pagination import Page, clamp_limit, clamp_offset, paginate
 
 from .models import Project, ProjectAction, ProjectContext
 from .schemas import (
@@ -246,6 +246,7 @@ def list_projects(
     offset: int = 0,
     limit: int = 100,
 ) -> Page[ProjectListOut]:
+    offset, limit = clamp_offset(offset), clamp_limit(limit, cap=500)
     qs = _scoped_project_queryset(request).order_by("-updated_at")
     serialized = _build_project_list_data(qs)
     items = [ProjectListOut.model_validate(item) for item in serialized]
@@ -597,7 +598,7 @@ def list_insights(
     limit: int = 20,
 ) -> Page[InsightOut]:
     """Bearer-readable xfail (Phase 5.4)."""
-    limit = min(limit, 100)
+    limit = clamp_limit(limit, cap=100)
     rows = services.list_insights(
         category=category, source=source, project=project, limit=limit
     )

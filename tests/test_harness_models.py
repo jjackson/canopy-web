@@ -5,6 +5,7 @@ import pytest
 from django.db import IntegrityError
 
 from apps.agents.models import Agent
+from apps.harness import services
 from apps.harness.models import Runner, Turn, TurnEvent
 
 pytestmark = pytest.mark.django_db
@@ -62,6 +63,20 @@ def test_turn_event_seq_unique_per_turn():
     TurnEvent.objects.create(turn=t, seq=1, kind="status", payload={"s": "claimed"})
     with pytest.raises(IntegrityError):
         TurnEvent.objects.create(turn=t, seq=1, kind="status", payload={})
+
+
+def test_finish_turn_accepts_missed():
+    """MISSED is a terminal status distinct from LOST (infra failure)."""
+    agent = Agent.objects.create(slug="eva", name="Eva")
+    turn = Turn.objects.create(
+        agent=agent, origin=Turn.ORIGIN_CRON, idempotency_key="k1", status=Turn.RUNNING
+    )
+    out = services.finish_turn(turn, status=Turn.MISSED, result_note="superseded")
+
+    assert out.status == Turn.MISSED
+    assert Turn.MISSED in Turn.TERMINAL
+    assert out.finished_at is not None
+    assert out.result_note == "superseded"
 
 
 def test_runner_workspace_defaults_to_null_and_accepts_a_slug():
