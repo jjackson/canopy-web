@@ -10,6 +10,7 @@ from ninja.errors import HttpError
 from apps.agents.models import Agent
 from apps.api.auth import session_auth
 from apps.api.errors import ProblemError
+from apps.workspaces import services as wsvc
 
 from . import services
 from .models import Runner, Turn
@@ -44,6 +45,27 @@ ALLOWED_EVENT_KINDS = {
     "error",
     "heartbeat",
 }
+
+
+def _agent_or_404(request: HttpRequest, slug: str) -> Agent:
+    """Resolve an agent, gated by workspace membership. A non-member gets the
+    same 404 as a missing agent (no existence leak). Domain users are auto-joined
+    to the agent's workspace first, so the default-workspace case keeps working.
+
+    Harness-local twin of agents.api._get_agent_or_404 — deliberately duplicated
+    rather than imported: api modules must not depend on each other, and the
+    harness is framework-tier.
+    """
+    agent = Agent.objects.filter(slug=slug).first()
+    if agent is None:
+        raise HttpError(404, f"agent '{slug}' not found")
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    if ws and agent.workspace_id != ws:
+        raise HttpError(404, f"agent '{slug}' not found")  # wrong tenant
+    if agent.workspace_id and not wsvc.is_member(request.user, agent.workspace_id):
+        raise HttpError(404, f"agent '{slug}' not found")
+    return agent
 
 
 def _runner_or_404(runner_id: uuid.UUID) -> Runner:

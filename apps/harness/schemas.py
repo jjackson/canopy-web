@@ -206,6 +206,27 @@ class ScheduleOut(Schema):
     updated_at: dt.datetime
 
 
+class SchedulePreviewIn(Schema):
+    """Preview a cron the user is still typing — no row exists yet."""
+
+    cron: str
+    timezone: str = "UTC"
+
+    @field_validator("cron")
+    @classmethod
+    def _check_cron(cls, v: str) -> str:
+        return validate_cron(v)
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str) -> str:
+        return validate_timezone(v)
+
+
+class SchedulePreviewOut(Schema):
+    next_runs: list[dt.datetime]
+
+
 class ScheduleFireIn(Schema):
     """The runner's report that a slot came due. The server re-derives nothing —
     but the slot is only honored as an idempotency anchor, never as a claim of
