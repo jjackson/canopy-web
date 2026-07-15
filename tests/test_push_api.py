@@ -30,6 +30,16 @@ def client(user):
     return c
 
 
+@pytest.fixture(autouse=True)
+def _vapid_configured(settings):
+    """Every test in this module pins VAPID_PUBLIC_KEY explicitly instead of
+    inheriting whatever happens to be ambient — a dev .env locally, nothing in
+    CI. Tests that exercise the "not configured" path override this back to
+    "" in their own body (see test_vapid_public_key_503s_when_push_is_not_configured
+    and test_subscribe_503s_when_push_is_not_configured)."""
+    settings.VAPID_PUBLIC_KEY = "BPublicKeyHere"
+
+
 def test_vapid_public_key_is_served(client, settings):
     settings.VAPID_PUBLIC_KEY = "BPublicKeyHere"
     resp = client.get("/api/push/vapid-public-key")
