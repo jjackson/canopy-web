@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.agents.models import Agent
 from apps.harness import services
-from apps.harness.models import AgentSchedule, Turn
+from apps.harness.models import AgentSchedule, Runner, Turn
 
 pytestmark = pytest.mark.django_db
 
@@ -83,11 +83,11 @@ def test_release_stale_unwedges_the_agent(schedule, agent):
     """The one_executing_turn_per_agent finding: an abandoned session must not
     block the agent's next turn forever."""
     turn, _ = services.fire_schedule(schedule, SLOT_A)
-    # created_at is the grace anchor — it is when the slot fired, which is when
-    # the window to engage starts. auto_now_add only applies on insert, so a
-    # queryset .update() can backdate it.
+    # claimed_at is the grace anchor — grace_minutes bounds how long a turn may
+    # HOLD the agent, and holding starts when it is claimed (created_at would
+    # measure owed time, a different quantity).
     Turn.objects.filter(pk=turn.pk).update(
-        status=Turn.RUNNING, created_at=timezone.now() - dt.timedelta(minutes=200)
+        status=Turn.RUNNING, claimed_at=timezone.now() - dt.timedelta(minutes=200)
     )
 
     released = services.release_stale_cron_turns(schedule)
@@ -104,12 +104,96 @@ def test_release_stale_unwedges_the_agent(schedule, agent):
 def test_release_spares_a_turn_inside_its_grace(schedule):
     turn, _ = services.fire_schedule(schedule, SLOT_A)
     Turn.objects.filter(pk=turn.pk).update(
-        status=Turn.RUNNING, created_at=timezone.now() - dt.timedelta(minutes=5)
+        status=Turn.RUNNING, claimed_at=timezone.now() - dt.timedelta(minutes=5)
     )
 
     assert services.release_stale_cron_turns(schedule) == 0
     turn.refresh_from_db()
     assert turn.status == Turn.RUNNING
+
+
+def test_release_spares_a_long_queued_turn(schedule):
+    """A queued turn holds NOTHING (the executing index does not cover it), so
+    releasing it cannot unwedge anything — it would only destroy work still
+    owed. Laptop offline Friday→Monday must not retire Friday's slot."""
+    turn, _ = services.fire_schedule(schedule, SLOT_A)
+    Turn.objects.filter(pk=turn.pk).update(
+        created_at=timezone.now() - dt.timedelta(days=3)
+    )
+
+    assert services.release_stale_cron_turns(schedule) == 0
+    turn.refresh_from_db()
+    assert turn.status == Turn.QUEUED
+
+
+def test_release_does_not_abort_a_freshly_claimed_long_queued_turn(schedule):
+    """The created_at anchor's real bite: a turn queued longer than grace was
+    born past-grace and got aborted on its first sweep after being claimed —
+    killing live human work in the function meant to protect it."""
+    turn, _ = services.fire_schedule(schedule, SLOT_A)
+    Turn.objects.filter(pk=turn.pk).update(
+        status=Turn.RUNNING,
+        created_at=timezone.now() - dt.timedelta(days=3),
+        claimed_at=timezone.now(),
+    )
+
+    assert services.release_stale_cron_turns(schedule) == 0
+    turn.refresh_from_db()
+    assert turn.status == Turn.RUNNING
+
+
+def test_release_all_unwedges_on_the_claim_tick(schedule, agent):
+    """Fleet-wide release runs on claim, so a wedged agent is unblocked by the
+    very same claim — a weekly schedule's fire tick is 10,080m apart and could
+    never do this."""
+    wedged, _ = services.fire_schedule(schedule, SLOT_A)
+    Turn.objects.filter(pk=wedged.pk).update(
+        status=Turn.RUNNING, claimed_at=timezone.now() - dt.timedelta(minutes=200)
+    )
+    queued = Turn.objects.create(
+        agent=agent, origin=Turn.ORIGIN_BOARD, idempotency_key="board-1"
+    )
+    runner = Runner.objects.create(
+        name="mac-a", kind=Runner.EMDASH, host="mac-a", status=Runner.ONLINE,
+        capabilities={"agents": ["echo"]}, last_heartbeat_at=timezone.now(),
+    )
+
+    claimed = services.claim_next_turn(runner)
+
+    wedged.refresh_from_db()
+    assert wedged.status == Turn.MISSED
+    assert claimed is not None and claimed.pk == queued.pk
+
+
+def test_latest_occurrence_turn_returns_the_newest_whatever_its_status(schedule):
+    older, _ = services.fire_schedule(schedule, SLOT_A)
+    Turn.objects.filter(pk=older.pk).update(status=Turn.RUNNING)
+    older.refresh_from_db()
+    services.finish_turn(older, status=Turn.DONE)
+    assert older.status == Turn.DONE
+    newer, _ = services.fire_schedule(schedule, SLOT_B)
+
+    assert services.latest_occurrence_turn(schedule).pk == newer.pk
+
+
+def test_latest_occurrence_turn_sees_a_manual_run(schedule):
+    """"Run now" writes origin=manual; an origin=cron-only lookup would never
+    see it, so the nag it launched could never be cleared by completing it."""
+    services.fire_schedule(schedule, SLOT_A)
+
+    manual = services.run_schedule_now(schedule)
+
+    assert services.latest_occurrence_turn(schedule).pk == manual.pk
+
+
+def test_supersede_retires_an_open_manual_run(schedule):
+    """You only owe the newest attempt, however it was launched."""
+    manual = services.run_schedule_now(schedule)
+
+    services.fire_schedule(schedule, SLOT_B)
+
+    manual.refresh_from_db()
+    assert manual.status == Turn.MISSED
 
 
 def test_run_now_never_satisfies_a_real_slot(schedule):

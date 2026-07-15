@@ -187,7 +187,7 @@ class SessionLink(models.Model):
     def __str__(self) -> str:  # pragma: no cover
         return f"link:{self.agent.slug}:{self.thread_key[:16]}"
 
-    def reusable_by(self, runner: "Runner") -> bool:
+    def reusable_by(self, runner: Runner) -> bool:
         """True if `runner` owns the live session hint (same runner + same macOS host)
         and a concrete emdash task is recorded. The runner STILL must verify the task
         actually exists in its emdash before driving it — this is the server-side gate."""

@@ -14,7 +14,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
 from django.utils import timezone
 
-from .models import Runner, SessionLink, Turn, TurnEvent
+from .models import AgentSchedule, Runner, SessionLink, Turn, TurnEvent
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,9 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     if runner.status != Runner.ONLINE:
         return None
     sweep_expired_leases()
+    # Lazy sweeps, both BEFORE the busy_agents read: a turn released here frees
+    # its agent for the very claim we are about to make.
+    release_stale_cron_turns_all()
     slugs = runner.agent_slugs()
     if exclude_slugs:
         # Per-agent pause: the runner locally paused these agents; never claim their
@@ -221,28 +224,25 @@ def finish_turn(
 # the server materializes a normal Turn. See models.AgentSchedule.
 # --------------------------------------------------------------------------------------
 
-def latest_cron_turn(schedule) -> Turn | None:
-    """The newest turn this schedule produced, whatever its status."""
-    return (
-        Turn.objects.filter(
-            agent_id=schedule.agent_id,
-            origin=Turn.ORIGIN_CRON,
-            origin_ref__schedule_id=schedule.id,
-        )
-        .order_by("-created_at")
-        .first()
+def _occurrences(schedule):
+    """This schedule's turns — scheduled AND manual. Occurrence-based, not
+    origin-based: a "Run now" turn is an attempt at the same work, so it must
+    participate in latest/supersede/release exactly as a fired slot does."""
+    return Turn.objects.filter(
+        agent_id=schedule.agent_id, origin_ref__schedule_id=schedule.id
     )
+
+
+def latest_occurrence_turn(schedule) -> Turn | None:
+    """The newest turn this schedule produced — scheduled or manual run-now —
+    whatever its status."""
+    return _occurrences(schedule).order_by("-created_at").first()
 
 
 def _supersede_open_turns(schedule, *, reason: str) -> int:
     """Terminate this schedule's non-terminal turns as MISSED. Supersede and
     grace-release are the same operation at two timescales."""
-    open_turns = Turn.objects.filter(
-        agent_id=schedule.agent_id,
-        origin=Turn.ORIGIN_CRON,
-        origin_ref__schedule_id=schedule.id,
-        status__in=list(Turn.NON_TERMINAL),
-    )
+    open_turns = _occurrences(schedule).filter(status__in=list(Turn.NON_TERMINAL))
     count = 0
     for turn in open_turns:
         finish_turn(turn, status=Turn.MISSED, result_note=reason, allow_queued=True)
@@ -291,31 +291,63 @@ def run_schedule_now(schedule) -> Turn:
 
 
 def release_stale_cron_turns(schedule, *, now: dt.datetime | None = None) -> int:
-    """Release turns this schedule fired that a human has held past grace_minutes.
+    """Release this schedule's turns that have HELD the agent past grace_minutes.
 
     This is what keeps a forgotten session from wedging the agent: an executing
     turn holds one_executing_turn_per_agent, and the runner's heartbeat keeps
     renewing its lease for as long as the emdash session is open, so the ordinary
     lease sweep never rescues it.
+
+    Scoped to EXECUTING (not NON_TERMINAL) and anchored on claimed_at (not
+    created_at) because both are statements about *holding*, which is what
+    grace_minutes bounds:
+      - a QUEUED turn holds nothing (the index does not cover it), so releasing
+        it could not unwedge anything — it would only destroy work still owed
+        (laptop offline over a weekend must not retire Friday's slot). Retiring
+        a stale queued occurrence is _supersede_open_turns' job, at the right
+        moment.
+      - created_at measures *owed* time, so a turn queued longer than grace would
+        be born past-grace and get aborted on its first sweep after being claimed
+        — killing live human work in the function meant to protect it.
+    claimed_at is non-null for every EXECUTING turn: claim_next_turn writes it,
+    and claiming is the only route into those states.
     """
     now = now or timezone.now()
     cutoff = now - dt.timedelta(minutes=schedule.grace_minutes)
-    stale = Turn.objects.filter(
-        agent_id=schedule.agent_id,
-        origin=Turn.ORIGIN_CRON,
-        origin_ref__schedule_id=schedule.id,
-        status__in=list(Turn.NON_TERMINAL),
-        created_at__lt=cutoff,
-    )
+    stale = _occurrences(schedule).filter(status__in=EXECUTING, claimed_at__lt=cutoff)
     count = 0
     for turn in stale:
         finish_turn(
             turn, status=Turn.MISSED,
             result_note=f"released after {schedule.grace_minutes}m unattended",
-            allow_queued=True,
         )
         count += 1
     return count
+
+
+def release_stale_cron_turns_all(*, now: dt.datetime | None = None) -> int:
+    """Fleet-wide release, run lazily on the claim tick (see claim_next_turn).
+
+    Release belongs here, not on the fire tick: fire already supersedes
+    everything release would touch, and a weekly schedule's fire tick is 10,080
+    minutes apart — it could never honour a 120-minute grace between
+    occurrences. On claim, a release unblocks the very same claim.
+
+    The scan is a handful of rows: the executing-turn index caps this at ~one
+    turn per agent.
+    """
+    now = now or timezone.now()
+    schedule_ids = {
+        turn.origin_ref.get("schedule_id")
+        for turn in Turn.objects.filter(status__in=EXECUTING).only("origin_ref")
+    }
+    schedule_ids.discard(None)
+    if not schedule_ids:
+        return 0
+    return sum(
+        release_stale_cron_turns(schedule, now=now)
+        for schedule in AgentSchedule.objects.filter(id__in=schedule_ids)
+    )
 
 
 # --------------------------------------------------------------------------------------
