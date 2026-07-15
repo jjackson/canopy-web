@@ -68,7 +68,9 @@ def _schedule_or_404(request: HttpRequest, slug: str, schedule_id: int) -> Agent
             openapi_extra={"x-mcp-expose": True})
 def list_schedules(request: HttpRequest, slug: str, limit: int = 100) -> Page[ScheduleOut]:
     agent = _agent_or_404(request, slug)
-    limit = min(limit, 500)
+    # max(1, ...): Page.limit is Field(ge=1, le=500) — an unfloored 0 or negative
+    # raises inside the response model, 500ing where a 422 belongs.
+    limit = max(1, min(limit, 500))
     items = [_serialize(s) for s in agent.schedules.all()]
     return paginate(items, offset=0, limit=limit)
 

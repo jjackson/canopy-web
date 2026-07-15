@@ -74,9 +74,10 @@ def attacker_client(attacker_ws, victim_ws):
 def _pair_and_online(client) -> str:
     """Pair a runner DECLARING THE VICTIM'S AGENT SLUG, then heartbeat it online.
 
-    The heartbeat matters: without it the runner is not ONLINE and the paths
-    short-circuit, so the test would pass while proving nothing (b4f5ead's
-    message notes the old claim-authz test had exactly that hole).
+    The heartbeat is NOT load-bearing for these two routes: unlike
+    claim_next_turn, sync/fire have no ONLINE gate, so these tests pass
+    identically without it. It is kept for realism (a real daemon heartbeats
+    before it syncs) and to stay honest if an ONLINE gate is ever added.
 
     No workspace is set on the Runner — tenancy derives from paired_by, which the
     server assigns from request.user at pairing.
@@ -118,6 +119,62 @@ def test_cross_tenant_fire_404s(attacker_client, attacker_ws, victim_schedule):
 
     assert resp.status_code == 404  # 404 not 403 — no existence leak
     assert Turn.objects.count() == 0  # and no turn was materialized
+
+
+@pytest.fixture()
+def victim_runner(victim_ws):
+    """A runner legitimately paired by a member of the victim's tenant."""
+    user = User.objects.create_user("jj", "jj@dimagi.com", "pw")
+    wsvc.ensure_member(victim_ws, user, WorkspaceMembership.OWNER)
+    client = Client()
+    client.force_login(user)
+    return _pair_and_online(client)
+
+
+def test_foreign_runner_id_sync_404s(attacker_client, attacker_ws, victim_schedule, victim_runner):
+    """The exploit: the attacker need not spoof paired_by — she CHOOSES whose
+    paired_by is read, by passing the victim's runner_id. A runner may only be
+    operated by the user who paired it.
+    """
+    resp = attacker_client.get(f"/api/harness/schedules/?runner_id={victim_runner}")
+
+    assert resp.status_code == 404  # 404 not 403 — non-ownership must not leak existence
+    assert b"CONFIDENTIAL" not in resp.content  # the prompt never crosses the boundary
+
+
+def test_foreign_runner_id_fire_404s(attacker_client, attacker_ws, victim_schedule, victim_runner):
+    resp = attacker_client.post(
+        f"/api/harness/schedules/{victim_schedule.id}/fire?runner_id={victim_runner}",
+        {"slot": SLOT.isoformat()},
+        content_type="application/json",
+    )
+
+    assert resp.status_code == 404
+    assert Turn.objects.count() == 0  # no turn materialized on the victim's agent
+
+
+def test_orphaned_runner_fails_closed(attacker_client, attacker_ws, victim_schedule, victim_runner):
+    """Runner.paired_by is on_delete=SET_NULL, so it can be NULL on an orphaned
+    runner. NULL must FAIL CLOSED — never silently match the caller.
+    """
+    Runner.objects.filter(pk=victim_runner).update(paired_by=None)
+
+    resp = attacker_client.get(f"/api/harness/schedules/?runner_id={victim_runner}")
+
+    assert resp.status_code == 404
+
+
+def test_sync_limit_zero_422s(victim_ws, victim_schedule, victim_runner):
+    """?limit=0 must 422 at the boundary, not 500 inside the response model
+    (Page.limit is Field(ge=1)).
+    """
+    user = User.objects.get(username="jj")
+    client = Client()
+    client.force_login(user)
+
+    resp = client.get(f"/api/harness/schedules/?runner_id={victim_runner}&limit=0")
+
+    assert resp.status_code != 500, resp.content
 
 
 def test_same_tenant_runner_syncs_and_fires(victim_ws, victim_schedule):
