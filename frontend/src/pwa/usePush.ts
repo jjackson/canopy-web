@@ -106,7 +106,8 @@ export function usePush(): UsePush {
       if (sub) {
         // Server first: if the browser drops it and we then fail to tell the
         // server, it keeps pushing at a dead endpoint until a 410 prunes it.
-        await apiV2.DELETE('/api/push/subscribe', { body: { endpoint: sub.endpoint } })
+        const res = await apiV2.DELETE('/api/push/subscribe', { body: { endpoint: sub.endpoint } })
+        if (res.error) throw new Error('could not disable notifications on the server')
         await sub.unsubscribe()
       }
       setSubscribed(false)
