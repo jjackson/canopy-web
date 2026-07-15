@@ -218,6 +218,17 @@ def test_a_user_with_no_subscription_gets_nothing(agent):
     assert AgentWaitingSnapshot.objects.get(agent=agent).waiting_count == 1
 
 
+def test_the_payload_carries_count_for_the_service_worker_badge(agent, sub):
+    """SupervisorPage.setBadge only runs on mount, so a push arriving with the
+    app closed must carry its own count for the SW's push listener to set the
+    app-icon badge (frontend/public/sw-push.js)."""
+    with patch("apps.push.services._send_one") as send:
+        _task(agent, "t1")
+    assert send.call_count == 1
+    _sub_arg, payload = send.call_args[0]
+    assert payload["count"] == 1
+
+
 def test_a_dead_subscription_is_pruned(agent, sub):
     """A subscription dies silently when the app is uninstalled: the push service
     starts returning 410 Gone. Prune on that signal, not on a timer."""

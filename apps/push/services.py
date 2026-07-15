@@ -49,23 +49,35 @@ def _send_one(sub: PushSubscription, payload: dict) -> None:
         data=json.dumps(payload),
         vapid_private_key=settings.VAPID_PRIVATE_KEY,
         vapid_claims={"sub": settings.VAPID_SUBJECT},
+        timeout=10,  # pywebpush's own default is dead code: send() pops a key that is
+                     # always present, so None reaches requests.post. Unbounded here
+                     # would hold a request thread forever — and the bare except below
+                     # cannot catch a hang.
     )
 
 
-def send_to_user(user, title: str, body: str, url: str) -> int:
+def send_to_user(user, title: str, body: str, url: str, count: int | None = None) -> int:
     """Push to every browser this user has registered. Returns sends that stuck.
 
     A subscription dies silently when the app is uninstalled — the push service
     starts returning 404/410. That is the only reliable signal we get, so we
     prune on it. Any other failure is the service's problem, not the
     subscription's: count it and keep the row.
+
+    `count` (optional) rides along in the payload so the service worker's
+    `push` listener can set the app-icon badge from a push that arrives while
+    the app is closed — SupervisorPage.setBadge only runs on mount, so without
+    this the badge goes stale until the app is next opened.
     """
     if not settings.VAPID_PRIVATE_KEY:
         return 0  # push not configured — stay silent rather than raise
+    payload = {"title": title, "body": body, "url": url}
+    if count is not None:
+        payload["count"] = count
     sent = 0
     for sub in list(user.push_subscriptions.all()):
         try:
-            _send_one(sub, {"title": title, "body": body, "url": url})
+            _send_one(sub, payload)
             sent += 1
         except WebPushException as exc:
             status = getattr(getattr(exc, "response", None), "status_code", None)
@@ -106,6 +118,7 @@ def refresh_agent_waiting(agent: Agent) -> int:
         title=f"{agent.name} needs you",
         body=f"{delta} new item{'s' if delta != 1 else ''} · {count} waiting",
         url="/supervisor",
+        count=count,
     )
 
 

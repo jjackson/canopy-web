@@ -7,7 +7,12 @@ ARE models, so these receivers see them. An agent listed in
 settings.AGENT_RUNS_DRIVE_ROOTS is DriveRunStore-backed — it reads YAML from
 Drive, so no signal will ever fire for its gates and its gate-opens will not
 push. That map is {} today (its own example is {"ace": ...}), so this covers
-everything now. Such an agent's TASK pushes still work.
+everything now. Such an agent's TASK pushes still work — but "work" means a
+live Drive API call made synchronously inside on_commit, in the request path:
+_task_changed -> mark_dirty -> refresh_agent_waiting -> needs_you() ->
+_run_inbox_items() -> the resolver -> DriveRunStore. Inert today since the map
+is empty; the day it isn't, every task write on that agent pays a Drive
+round-trip on the request thread.
 """
 from __future__ import annotations
 

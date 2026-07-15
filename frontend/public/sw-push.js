@@ -29,6 +29,17 @@ self.addEventListener('push', (event) => {
       data: { url: data.url || 'supervisor' },
     }),
   )
+  // Keep the app-icon badge current even while the app is closed.
+  // SupervisorPage.setBadge only runs on mount, so a push that arrives with
+  // the app closed would otherwise leave the badge stale until next open.
+  // Guarded on both sides: the Badging API may not exist in this SW (only
+  // navigator, not self.registration, exposes it), and a throw here would
+  // otherwise silently swallow the whole 'push' listener — the one failure
+  // this handler exists to prevent — so only call it when data.count is a
+  // number.
+  if (typeof data.count === 'number' && self.navigator && self.navigator.setAppBadge) {
+    event.waitUntil(self.navigator.setAppBadge(data.count).catch(() => {}))
+  }
 })
 
 // Resolve a (possibly app-relative) notification URL against the deployment's
