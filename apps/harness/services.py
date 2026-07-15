@@ -14,12 +14,15 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
 from django.utils import timezone
 
-from .models import AgentSchedule, Runner, SessionLink, Turn, TurnEvent
+from .models import HEARTBEAT_ONLINE_WINDOW, AgentSchedule, Runner, SessionLink, Turn, TurnEvent
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_LEASE_SECONDS = 900
-HEARTBEAT_ONLINE_WINDOW = dt.timedelta(seconds=90)
+# HEARTBEAT_ONLINE_WINDOW lives on models.py (Runner.live_status uses it too;
+# models.py cannot import services.py, which already imports models.py) and is
+# re-exported here so existing importers of services.HEARTBEAT_ONLINE_WINDOW
+# keep working.
 
 
 def enqueue_turn(
@@ -102,7 +105,7 @@ EXECUTING = [Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
 
 def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECONDS,
                     exclude_slugs: list[str] | None = None) -> Turn | None:
-    if runner.status != Runner.ONLINE:
+    if runner.live_status != Runner.ONLINE:
         return None
     sweep_expired_leases()
     # Lazy sweeps, both BEFORE the busy_agents read: a turn released here frees
