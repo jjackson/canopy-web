@@ -24,6 +24,9 @@ class Config:
     executor: str = "cdp"
     cdp_port: int = 9222
     inbox_poll_seconds: int = 300
+    # How often to poll canopy-web for RESOLVED fleet reviews and enqueue the turns for
+    # each cluster the human approved (0 disables review-ingestion entirely).
+    reviews_poll_seconds: int = 300
     # {agent_slug: {"account": "<mailbox>", "client": "<gog client>", "query": "<opt>"}}
     # — the deterministic email trigger polls these and enqueues email-origin turns.
     # Per-mailbox "query" overrides the default Gmail search (e.g. restrict to certain
