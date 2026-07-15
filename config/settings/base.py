@@ -83,6 +83,7 @@ INSTALLED_APPS = [
     "apps.shareouts",
     "apps.mcp",
     "apps.session_sharing",
+    "apps.push",
     "apps.agents",
     "apps.agent_runs",
     "apps.workspaces",
