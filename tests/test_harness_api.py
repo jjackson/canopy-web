@@ -231,12 +231,26 @@ def test_other_account_runner_cannot_reuse_but_gets_context(client, agent):
 
 
 def test_list_runners_returns_my_runners_newest_heartbeat_first(client, agent):
-    rid = _pair(client)
-    _hb(client, rid)
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    # Newest: heartbeats now (via the API, so status/host get exercised too).
+    newest = _pair(client)
+    _hb(client, newest)
+
+    # Older: heartbeat an hour ago.
+    older = _pair(client)
+    _hb(client, older)
+    Runner.objects.filter(pk=older).update(last_heartbeat_at=timezone.now() - timedelta(hours=1))
+
+    # Never heartbeated: last_heartbeat_at stays null — must sort last (nulls_last=True).
+    never = _pair(client)
+
     resp = client.get("/api/harness/runners/")
     assert resp.status_code == 200
     body = resp.json()
-    assert [r["id"] for r in body] == [rid]
+    assert [r["id"] for r in body] == [newest, older, never]
     assert body[0]["status"] == "online"
     assert body[0]["host"] == ""
 

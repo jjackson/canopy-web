@@ -39,6 +39,29 @@ from .schemas import (
 router = Router(auth=session_auth, tags=["agents"])
 
 
+def _visible_agent_workspace_ids(request: HttpRequest) -> set[str | None]:
+    """The single definition of 'agent workspaces this caller can see'. A
+    workspace_id (or None, for an unhomed agent) is visible if the caller is
+    pinned to it, or — unpinned — the caller is a member of it, or it's
+    unhomed. _get_agent_or_404, list_agents, and fleet_needs_you MUST build
+    from this: they used to hand-copy this predicate three times, which is
+    exactly the failure apps/harness/api.py's _runner_visibility_q docstring
+    describes (a runner the list showed but every action 404'd on) — see that
+    docstring for the full story.
+
+    Tenant-pinned (request.workspace_slug truthy): exactly that workspace —
+    no separate membership check needed; WorkspaceResolveMiddleware already
+    gated membership of the pinned workspace before setting workspace_slug.
+
+    Not pinned (flat /api/agents/... callers): any workspace the caller is a
+    member of, plus None (the legacy-ungated unhomed-agent case)."""
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    if ws:
+        return {ws}
+    return set(wsvc.user_workspace_slugs(request.user)) | {None}
+
+
 def _get_agent_or_404(request: HttpRequest, slug: str):
     """Resolve an agent, gated by workspace membership. A non-member gets the
     same 404 as a missing agent (no existence leak). Domain users are auto-joined
@@ -46,12 +69,8 @@ def _get_agent_or_404(request: HttpRequest, slug: str):
     agent = services.get_agent(slug)
     if agent is None:
         raise HttpError(404, f"agent '{slug}' not found")
-    wsvc.auto_join_workspaces(request.user)
-    ws = getattr(request, "workspace_slug", None)
-    if ws and agent.workspace_id != ws:
-        raise HttpError(404, f"agent '{slug}' not found")  # wrong tenant
-    if agent.workspace_id and not wsvc.is_member(request.user, agent.workspace_id):
-        raise HttpError(404, f"agent '{slug}' not found")
+    if agent.workspace_id not in _visible_agent_workspace_ids(request):
+        raise HttpError(404, f"agent '{slug}' not found")  # wrong tenant / non-member
     return agent
 
 
@@ -59,13 +78,11 @@ def _get_agent_or_404(request: HttpRequest, slug: str):
             openapi_extra={"x-mcp-expose": True})
 def list_agents(request: HttpRequest, limit: int = 100) -> Page[AgentOut]:
     limit = min(limit, 500)
-    wsvc.auto_join_workspaces(request.user)
-    ws = getattr(request, "workspace_slug", None)
-    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
+    visible = _visible_agent_workspace_ids(request)
     items = [
         AgentOut.model_validate(a)
         for a in services.list_agents()
-        if a.workspace_id in slugs or (ws is None and a.workspace_id is None)
+        if a.workspace_id in visible
     ]
     return paginate(items, offset=0, limit=limit)
 
@@ -75,14 +92,9 @@ def list_agents(request: HttpRequest, limit: int = 100) -> Page[AgentOut]:
 def fleet_needs_you(request: HttpRequest) -> FleetNeedsYouOut:
     """Every agent's needs-you in one call, ranked busiest-first. Declared BEFORE
     the /{slug}/ routes so 'needs-you' isn't resolved as a slug. Tenant scoping
-    mirrors list_agents exactly."""
-    wsvc.auto_join_workspaces(request.user)
-    ws = getattr(request, "workspace_slug", None)
-    slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
-    mine = [
-        a for a in services.list_agents()
-        if a.workspace_id in slugs or (ws is None and a.workspace_id is None)
-    ]
+    mirrors list_agents exactly (both build from _visible_agent_workspace_ids)."""
+    visible = _visible_agent_workspace_ids(request)
+    mine = [a for a in services.list_agents() if a.workspace_id in visible]
     blocks = [NeedsYouOut.model_validate(services.needs_you(a)) for a in mine]
     blocks.sort(key=lambda b: (-b.waiting_count, b.agent_slug))
     return FleetNeedsYouOut(
