@@ -29,6 +29,8 @@ export function SchedulesSection(): JSX.Element {
   const [rows, setRows] = useState<Schedule[] | null>(null)
   const [editing, setEditing] = useState<Schedule | 'new' | null>(null)
   const [busy, setBusy] = useState<number | null>(null)
+  // Inline error string, the way TaskCard reports a failed board action.
+  const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     return listSchedules(agent.slug)
@@ -43,17 +45,29 @@ export function SchedulesSection(): JSX.Element {
 
   async function onRunNow(id: number) {
     setBusy(id)
+    setError(null)
     try {
       await runScheduleNow(agent.slug, id)
       await load()
+    } catch (e) {
+      // Without this the button just stops saying "Starting…" and the user is
+      // left believing a run they never got was kicked off.
+      setError(e instanceof Error ? e.message : 'Could not start that run.')
     } finally {
       setBusy(null)
     }
   }
 
   async function onToggle(row: Schedule) {
-    await updateSchedule(agent.slug, row.id, { enabled: !row.enabled })
-    await load()
+    setError(null)
+    try {
+      await updateSchedule(agent.slug, row.id, { enabled: !row.enabled })
+      await load()
+    } catch (e) {
+      // The row snaps back on reload; say why, or a failed pause reads as a
+      // successful one until the schedule fires anyway.
+      setError(e instanceof Error ? e.message : 'Could not change that schedule.')
+    }
   }
 
   return (
@@ -71,6 +85,8 @@ export function SchedulesSection(): JSX.Element {
           </button>
         }
       />
+
+      {error && <p className="mb-2 text-[11px] text-destructive">{error}</p>}
 
       {rows === null ? (
         <WorkbenchSkeleton />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Schedule } from '@/api/schedules'
 import { createSchedule, deleteSchedule, previewCron, updateSchedule } from '@/api/schedules'
 
@@ -34,6 +34,17 @@ export function ScheduleEditor({
   const [saving, setSaving] = useState(false)
   const [preview, setPreview] = useState<string[]>([])
   const [previewError, setPreviewError] = useState('')
+  const titleId = useId()
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  // Esc closes — a modal you can't dismiss from the keyboard is a trap.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   // Ask the SERVER when this cron would actually run — debounced, because the
   // user is mid-type. Never re-implement cron here: a client parser that says
@@ -67,20 +78,11 @@ export function ScheduleEditor({
       if (schedule) {
         await updateSchedule(agentSlug, schedule.id, { name, prompt, cron, timezone: tz })
       } else {
-        await createSchedule(agentSlug, {
-          name,
-          prompt,
-          cron,
-          timezone: tz,
-          // The server's own defaults, restated because the generated ScheduleIn
-          // marks every defaulted field required. Routing/grace/notify are not
-          // exposed here yet — a schedule you can't reason about is worse than
-          // one with fewer knobs.
-          enabled: true,
-          routing: 'prefer_local',
-          grace_minutes: 120,
-          notify: ['inbox'],
-        })
+        // enabled / routing / grace_minutes / notify are omitted deliberately:
+        // the server's schema owns those defaults, and restating them here would
+        // fork them. Not exposed as knobs yet — a schedule you can't reason
+        // about is worse than one with fewer knobs.
+        await createSchedule(agentSlug, { name, prompt, cron, timezone: tz })
       }
       onSaved()
     } catch (err) {
@@ -92,6 +94,15 @@ export function ScheduleEditor({
 
   async function onDelete() {
     if (!schedule) return
+    // Destructive + no undo, and it sits one row away from Cancel/Save.
+    // window.confirm is the repo's idiom for this (NarrativeLanding, RunPackage,
+    // InsightsPage all gate deletes the same way).
+    if (
+      !window.confirm(
+        `Delete the schedule "${schedule.name}"?\n\nIt will stop running on its cadence. This cannot be undone.`,
+      )
+    )
+      return
     setSaving(true)
     try {
       await deleteSchedule(agentSlug, schedule.id)
@@ -105,10 +116,24 @@ export function ScheduleEditor({
   return (
     // Scrim tokenized as bg-background/… (the AppLayout mobile-nav precedent) so
     // it dims correctly in BOTH themes — a fixed black scrim only reads right in
-    // the light one.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4">
-      <div className="w-full max-w-lg rounded-lg border border-border bg-card p-4">
-        <h3 className="mb-3 text-sm font-medium text-foreground">
+    // the light one. Click the scrim (never the card) to close.
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4"
+      onMouseDown={(e) => {
+        if (!cardRef.current?.contains(e.target as Node)) onClose()
+      }}
+    >
+      {/* shadow-xl carries the separation: in light theme --background (0.985)
+          and --card (1.0) are 0.015 apart, so the border alone leaves the card
+          floating on a scrim it barely contrasts with. */}
+      <div
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-lg rounded-lg border border-border bg-card p-4 shadow-xl"
+      >
+        <h3 id={titleId} className="mb-3 text-sm font-medium text-foreground">
           {schedule ? 'Edit schedule' : 'New schedule'}
         </h3>
 

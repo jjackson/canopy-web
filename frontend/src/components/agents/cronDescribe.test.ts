@@ -16,9 +16,48 @@ describe("describeCron", () => {
     expect(describeCron("30 6 * * *", "UTC")).toBe("Daily at 06:30 · UTC");
   });
 
-  it("falls back to the raw expression for shapes it cannot name", () => {
-    // Always correct, if not always pretty — never claim a wrong cadence.
-    expect(describeCron("0 9 * * 1-5", "UTC")).toBe("0 9 * * 1-5 · UTC");
+  // Every case below is a cron the SERVER accepts (croniter.is_valid → True), so
+  // each one is reachable: it saves, then this label renders it. The fallback is
+  // always correct if not always pretty; a confidently wrong cadence is not.
+  describe("falls back rather than name a cadence wrongly", () => {
+    it("falls back on a range in dow", () => {
+      expect(describeCron("0 9 * * 1-5", "UTC")).toBe("0 9 * * 1-5 · UTC");
+    });
+
+    it("falls back on a macro (does not throw)", () => {
+      // Only 1 field — must never blow up on the missing hour/min.
+      expect(describeCron("@daily", "UTC")).toBe("@daily · UTC");
+    });
+
+    it("falls back on hourly rather than claiming Daily", () => {
+      expect(describeCron("0 * * * *", "UTC")).toBe("0 * * * * · UTC");
+    });
+
+    it("falls back on a step in minutes", () => {
+      expect(describeCron("*/15 * * * *", "UTC")).toBe("*/15 * * * * · UTC");
+    });
+
+    it("falls back on a step in minutes at a fixed hour", () => {
+      expect(describeCron("*/5 9 * * *", "UTC")).toBe("*/5 9 * * * · UTC");
+    });
+
+    it("falls back on a 6-field expression rather than silently dropping a field", () => {
+      expect(describeCron("0 0 9 * * 5", "UTC")).toBe("0 0 9 * * 5 · UTC");
+    });
+
+    it("falls back on a step in the hour of a weekly shape", () => {
+      expect(describeCron("0 */2 * * 5", "UTC")).toBe("0 */2 * * 5 · UTC");
+    });
+
+    it("falls back on a list in minutes of a monthly shape", () => {
+      expect(describeCron("0,30 9 1 * *", "UTC")).toBe("0,30 9 1 * * · UTC");
+    });
+
+    it("is total — never throws for any string", () => {
+      for (const s of ["", "   ", "*", "not a cron", "0 9 * *", "0 9 * * * * *"]) {
+        expect(() => describeCron(s, "UTC")).not.toThrow();
+      }
+    });
   });
 });
 
@@ -37,5 +76,10 @@ describe("relative", () => {
   it("renders past hours", () => {
     vi.useFakeTimers().setSystemTime(new Date("2026-07-15T12:00:00Z"));
     expect(relative("2026-07-15T09:00:00Z")).toBe("3h ago");
+  });
+
+  it("renders 'now' inside the hour", () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-07-15T12:00:00Z"));
+    expect(relative("2026-07-15T12:10:00Z")).toBe("now");
   });
 });
