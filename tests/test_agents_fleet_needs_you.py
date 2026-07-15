@@ -63,3 +63,53 @@ def test_fleet_needs_you_excludes_other_tenants(client, owner):
     body = client.get("/api/agents/needs-you").json()
     assert body["total_waiting"] == 0
     assert body["agents"] == []
+
+
+def test_fleet_needs_you_agrees_with_per_agent_endpoints(client, workspace):
+    """The supervisor screen's fleet endpoint and each agent's own rail badge
+    endpoint must never diverge — if they do, one is lying and the supervisor is
+    untrustworthy, defeating the screen's purpose.
+
+    Both endpoints call the same services.needs_you(), but the fleet endpoint
+    re-derives its tenant scoping separately from _get_agent_or_404 (lines 79-84
+    vs 42-55 in api.py), and duplicated scoping is exactly where a divergence
+    would appear. This test pins the two endpoints' counts permanently.
+
+    The task's brief asked for manual verification against a live stack; a test
+    pins it permanently instead of once."""
+    # Create two agents with different numbers of "suggested" tasks.
+    alpha = Agent.objects.create(slug="alpha", name="Alpha", workspace=workspace)
+    beta = Agent.objects.create(slug="beta", name="Beta", workspace=workspace)
+
+    # Alpha has 2 suggested tasks; beta has 3.
+    for i in range(2):
+        AgentTask.objects.create(agent=alpha, ext_id=f"a{i}", title=f"Alpha task {i}", status="suggested")
+    for i in range(3):
+        AgentTask.objects.create(agent=beta, ext_id=f"b{i}", title=f"Beta task {i}", status="suggested")
+
+    # Get the fleet view.
+    fleet_resp = client.get("/api/agents/needs-you")
+    assert fleet_resp.status_code == 200
+    fleet = fleet_resp.json()
+
+    # Build a map of agent_slug → waiting_count from the fleet response.
+    fleet_counts = {a["agent_slug"]: a["waiting_count"] for a in fleet["agents"]}
+
+    # For each agent in the fleet, fetch its own endpoint and verify agreement.
+    for agent_slug in ["alpha", "beta"]:
+        per_agent_resp = client.get(f"/api/agents/{agent_slug}/needs-you")
+        assert per_agent_resp.status_code == 200
+        per_agent = per_agent_resp.json()
+
+        # Confirm the per-agent waiting_count matches the fleet's view of it.
+        assert per_agent["waiting_count"] == fleet_counts[agent_slug], (
+            f"Agent {agent_slug}: fleet says {fleet_counts[agent_slug]} waiting, "
+            f"but /agents/{agent_slug}/needs-you says {per_agent['waiting_count']}"
+        )
+
+    # Confirm total_waiting is the sum of per-agent waiting_counts.
+    expected_total = sum(fleet_counts.values())
+    assert fleet["total_waiting"] == expected_total, (
+        f"Fleet total_waiting={fleet['total_waiting']}, but sum of per-agent "
+        f"counts={expected_total}"
+    )
