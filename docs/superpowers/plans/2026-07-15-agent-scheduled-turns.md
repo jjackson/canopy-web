@@ -1021,6 +1021,19 @@ def test_patch_toggles_enabled(client, agent):
     assert resp.json()["enabled"] is False
 
 
+def test_patch_with_explicit_null_does_not_500(client, agent):
+    """An explicit {"cron": null} must not setattr None onto a non-nullable
+    column. SchedulePatch's validator short-circuits on None, so this can only
+    be caught here."""
+    sid = _create(client).json()["id"]
+    resp = client.patch(
+        f"/api/agents/echo/schedules/{sid}", {"cron": None},
+        content_type="application/json",
+    )
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["cron"] == "0 9 * * 5"  # unchanged, not nulled
+
+
 def test_delete(client, agent):
     sid = _create(client).json()["id"]
     assert client.delete(f"/api/agents/echo/schedules/{sid}").status_code == 204
@@ -1162,7 +1175,12 @@ def update_schedule(
     request: HttpRequest, slug: str, schedule_id: int, payload: SchedulePatch
 ) -> ScheduleOut:
     schedule = _schedule_or_404(request, slug, schedule_id)
-    fields = payload.dict(exclude_unset=True)
+    # exclude_none as well as exclude_unset: SchedulePatch's validators are
+    # `validate_cron(v) if v is not None else v`, so an explicit {"cron": null}
+    # slips past validation AND counts as "set" — setattr'ing None onto a
+    # non-nullable column would 500 where a 422 belongs. No AgentSchedule field
+    # is nullable via PATCH, so dropping None is always the right reading.
+    fields = payload.dict(exclude_unset=True, exclude_none=True)
     for key, value in fields.items():
         setattr(schedule, key, value)
     if fields:
