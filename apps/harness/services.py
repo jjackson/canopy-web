@@ -455,7 +455,7 @@ def record_session(
 # ---------------------------------------------------------------------------
 
 
-class AlreadyDecided(Exception):
+class AlreadyDecidedError(Exception):
     """An item can be decided once. A second decision is a conflict (409), not a
     second dispatch."""
 
@@ -496,13 +496,13 @@ def decide_item(item: Item, *, decision: str, comment: str, by: str) -> tuple[It
     """Resolve an open item. Only IMPLEMENT dispatches.
 
     A review needs a decision from the closed set; a question needs a non-empty
-    answer (its `decision` stays blank). Deciding twice raises AlreadyDecided —
+    answer (its `decision` stays blank). Deciding twice raises AlreadyDecidedError —
     the guard that stops a double-click becoming a second dispatch.
     """
     from .dispatch import dispatch as dispatch_item  # local: dispatch imports services
 
     if item.state != Item.OPEN:
-        raise AlreadyDecided(f"item {item.id} is already {item.state}")
+        raise AlreadyDecidedError(f"item {item.id} is already {item.state}")
 
     if item.kind == Item.QUESTION:
         if not (comment or "").strip():

@@ -33,7 +33,7 @@ class TurnSpec:
     routing: str = Turn.PREFER_LOCAL
 
     @classmethod
-    def from_dict(cls, d: dict) -> "TurnSpec":
+    def from_dict(cls, d: dict) -> TurnSpec:
         return cls(
             prompt=(d.get("prompt") or "").strip(),
             target_agent=(d.get("target_agent") or "").strip(),

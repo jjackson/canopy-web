@@ -62,7 +62,7 @@ def test_deciding_twice_raises_rather_than_dispatching_again(ada):
     item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}])
     services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com")
 
-    with pytest.raises(services.AlreadyDecided):
+    with pytest.raises(services.AlreadyDecidedError):
         services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com")
 
     assert Turn.objects.count() == 1

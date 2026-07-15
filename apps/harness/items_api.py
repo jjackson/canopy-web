@@ -107,7 +107,7 @@ def decide_item(request: HttpRequest, item_id: uuid.UUID, payload: ItemDecideIn)
             item, decision=payload.decision, comment=payload.comment,
             by=request.user.email or request.user.get_username(),
         )
-    except services.AlreadyDecided as exc:
+    except services.AlreadyDecidedError as exc:
         raise HttpError(409, str(exc)) from exc
     except ValueError as exc:
         # A bad dispatch spec, or a question with no answer. The decision rolled
