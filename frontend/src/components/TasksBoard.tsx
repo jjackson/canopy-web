@@ -302,16 +302,23 @@ function TaskActions({
           <ActionButton tone="primary" disabled={busy} onClick={() => run('accept')}>
             Accept
           </ActionButton>
-          <ActionButton
-            tone="muted"
+          {/* One-click decline: no reason required (the reason only ever feeds the
+              agent as context). Use "＋ reason" when you actually want to steer it. */}
+          <ActionButton tone="muted" disabled={busy} onClick={() => run('decline', { reason: '' })}>
+            Decline
+          </ActionButton>
+          <button
+            type="button"
             disabled={busy}
             onClick={() => {
               setError(null)
               setDeclining(true)
             }}
+            className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+            title="Decline with a reason for the agent"
           >
-            Decline
-          </ActionButton>
+            ＋ reason
+          </button>
         </div>
       )}
 
