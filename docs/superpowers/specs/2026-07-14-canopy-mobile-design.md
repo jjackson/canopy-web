@@ -53,9 +53,13 @@ The phone talks only to labs. **The laptop is never reachable from the internet*
 
 ## Scope
 
-**In scope:** agents. The supervisor inbox, the fleet KPIs, launching agent commands, and pausing the fleet.
+**In scope:** the supervisor inbox, the fleet KPIs, launching agent commands, pausing/resuming the fleet, and **sending follow-up input into a live session** — including sessions working on a repo rather than an agent.
 
-**Out of scope, deliberately:** the emdash session controller. See *Deferred* below — the decision and its rationale are recorded there so they are not relitigated.
+That last item is not a nice-to-have. Without it the phone is read-only in practice: you dogfood canopy-mobile, spot something wrong, and have no way to say so until you are back at the Mac. The loop has to close on the phone or the phone gets abandoned.
+
+**Out of scope, deliberately:** the emdash session *mirror* — enumerating emdash's sidebar to see and drive sessions you started by hand. See *Deferred*. The deferral survives the scope change above because **the phone owns its own thread per target** (§2): the first message creates the session, every message after reuses it. You never need to enumerate emdash to talk to a thread you yourself started from the phone.
+
+**Multi-account is in scope now, cloud is designed for but not built.** Work runs under one macOS account until its tokens are exhausted, then switches to the other; exactly one runner is active at a time (§4). A cloud runner is a third option under that same rule, and the local-vs-cloud policy it needs (`Turn.routing` + `_kind_allows`) already exists.
 
 ## Design
 
@@ -94,32 +98,121 @@ POST /api/harness/turns/
 
 `execute.py:57` already reads `turn.get("prompt") or f"/{agent}:turn"` and honours an arbitrary prompt. The runner claims within 20s and CDP-injects it. Nothing in `canopy_runner` changes.
 
-### 2. Remote pause — desired state on the control plane
+### 2. Session input — the reuse path, already built
 
-**Finding:** you cannot pause from a phone today, and it is architectural, not an oversight. `PAUSED` is a *file on the laptop* (`main.py:532`), and the runner passes its local pause state **upward** as `?paused=` on claim (`client.py:79`). The control plane holds no pause state at all.
+**The mechanism exists.** `cdp_control.open_and_send(task, text)` (`cdp_control.py:69`) opens a task and types into its live xterm; it is already the reuse branch of `execute_turn` (`execute.py:61-88`). Firing a Turn whose `thread_key` matches an existing `SessionLink` resolves to reuse and the text lands in the running session. **Zero runner changes.**
 
-**Change:** add desired state to `Runner`.
+**The phone owns a persistent thread per target.** A stable `thread_key` — `phone:{user}:{target}` — means the first message creates the session and every message after reuses it. This is what lets the emdash mirror stay deferred: you never enumerate emdash to reach a thread you started from the phone.
+
+**The `TASK_NOT_FOUND` rule is inherited, not weakened.** `execute.py:66` permits *only* `TASK_NOT_FOUND` to fall through from reuse to create; any other send failure fails the turn rather than duplicating a session. That rule exists because it once spawned two Hal sessions. Phone-driven input must not relax it: a flaky send is a failed turn you retry, never a second session.
+
+**Cost note:** every fall-through to create is a new Claude session and therefore tokens. The existing `REUSE FELL BACK to CREATE` warning (`execute.py:104`) already flags a persistently-failing reuse. Phone dispatch makes this path hotter, so that warning becomes worth surfacing in the UI rather than only in the log.
+
+### 3. Repo targets — the constraint that dogfooding forces
+
+`Turn.agent` is a required `CASCADE` FK, so the harness can only address agents. But the session you want to revise from the phone is working on **canopy-web** — a repo. Of 22 emdash projects, roughly 5 are agents.
+
+This is a data-model constraint, not a capability gap: **`cdp_control.create_task(project: str, ...)` is already project-generic** (`cdp_control.py:59`) — it scrolls the sidebar for `New task for <project>` and has no concept of an agent. `execute.py:113` simply passes `agent` as the project.
+
+**Change:**
+
+```
+Turn
+  agent    FK → Agent   NULL          ┐ CheckConstraint:
++ project  CharField    ""            ┘ exactly one set
+```
+
+- **`one_executing_turn_per_agent` stays agent-only.** An agent is one identity with one continuous session, so serializing it is correct. A repo is not: emdash gives every task its own worktree, so repo work is *meant* to parallelize. Extending the constraint to projects would wrongly funnel all canopy-web work into a single lane.
+- **`SessionLink`** takes the same nullable-agent + project treatment; its unique key becomes `(agent|project, thread_key)`.
+- **`Runner.capabilities`** gains `projects` alongside `agents`, and `claim_next_turn` widens `agent__slug__in=slugs` to `Q(agent__slug__in=slugs) | Q(project__in=projects)`.
+- **`execute.py`** becomes `target = turn["agent_slug"] or turn["project"]`; the CDP call underneath is unchanged.
+- **Workspace derivation** (§8) has no agent to derive from for project turns, so a project Turn carries its own `workspace` FK, used only when `agent` is null. This is the one place the derive-don't-denormalize rule cannot apply.
+
+**Rejected: a pseudo-agent per repo.** It would serialize repo work behind `one_executing_turn_per_agent`, and pollute the fleet UI — every repo would acquire KPIs, a needs-you inbox, a skills catalog, and syncs it has no meaning for. A repo is not an agent and the model should not pretend otherwise.
+
+### 4. Runner activation — exactly one runner claims, switchable from the phone
+
+**The requirement:** work runs under `jjackson` until its Claude tokens are exhausted, then switches to `acedimagi`. **Exactly one runner is active at a time.** Later, a cloud runner becomes a third option under the same rule. This is not per-turn routing — it is *handoff*.
+
+**Finding: today, claiming is a race.** `claim_next_turn` (`services.py:102`) filters by `runner.agent_slugs()`, routing, and kind — **never by host or identity.** Each macOS account runs its own runner (launchd is per-uid, `~/.canopy/runner.json` is per-account, each pairs for its own `runner_id`), and fast user switching keeps both logged in and polling. Both claim from the same pool; whichever polls first wins. Verified empirically: with `jjackson` in the foreground, `acedimagi` had 369 live processes including Chromium renderers. A backgrounded account is fully alive.
+
+**Change:** activation is a property of the runner, enforced by the database.
 
 ```
 Runner
-+ desired_paused         bool           default False
-+ desired_paused_agents  JSONField      default list
++ is_active   bool   default False
+
+UniqueConstraint(fields=["workspace"], condition=Q(is_active=True),
+                 name="one_active_runner_per_workspace")
 ```
 
-Both are returned in `RunnerOut`, which the heartbeat response already carries (`api.py:80`). **No new endpoint for the runner** — it reads what it already receives every 20s. A new `POST /api/harness/runners/{id}/desired-state` lets the phone write it (workspace-gated, per Phase 0).
+This deliberately mirrors `one_executing_turn_per_agent` (`harness/models.py:107`) — same idiom, same reason: make the invariant unrepresentable rather than merely intended.
 
-**Precedence is a union:**
+`claim_next_turn` gains `if not runner.is_active: return None`, alongside its existing `status != ONLINE` guard. An inactive runner **still heartbeats** — it stays visible, warm, and instantly switchable — but claims nothing.
+
+**Handoff is one atomic call, not two.** `POST /api/harness/runners/{id}/activate` sets `is_active=True` on the target and `False` on every other runner in the workspace, in one transaction. Pause-then-resume would leave a window where both or neither are active; this has no such window.
+
+**`target_runner` is therefore unnecessary and is not in this design.** With exactly one active runner, a turn reaches the right machine by construction. The requirement made the design smaller.
+
+**Activation and pause are orthogonal, and both are needed:**
+
+| | Activation | Pause |
+|---|---|---|
+| Answers | *which* runner claims | *whether* the active runner claims |
+| Cardinality | exactly one per workspace | independent per runner |
+| Driven by | token exhaustion (hours/days) | dev iteration (minutes) |
+
+**Handoff continuity already works — no new code.** On switching to `acedimagi`, that runner cannot reuse `jjackson`'s sessions: `SessionLink.reusable_by()` (`models.py:189`) requires `live_host == runner.host`. It correctly falls through to create-and-rehydrate from the durable `summary`. This is the designed behaviour, and it is precisely why `SessionLink` splits durable state from the ephemeral live hint.
+
+**No in-flight turn is stranded by a handoff.** In the CDP path the Turn is the *routing* job, not the work: `execute_turn` finishes it synchronously the moment the prompt lands in a session (`main.py:191-193`). Turns are short-lived, so a handoff has essentially nothing claimed to strand. The *work* continues in `jjackson`'s emdash session and simply stops when tokens run out — the next turn on that thread lands on `acedimagi` as a fresh, rehydrated session. That is the intended outcome, not a loss.
+
+**Cloud fits this model unchanged.** A cloud runner is just a runner that can be activated. The local-vs-cloud *policy* already exists and needs no work: `Turn.routing` (`prefer_local` / `local_only` / `any`) and `_kind_allows` (`services.py:93`) already prevent a cloud runner from taking a `local_only` turn — such a turn simply stays `QUEUED` until a local runner is active again. Correct behaviour, already implemented.
+
+### 5. Remote pause — and resume, which is the hard half
+
+**Requirement:** pause is a dev-iteration tool driven *from the phone*. **Resuming from the phone must work regardless of where the pause came from.** That requirement invalidates the obvious design, so it is worked through here rather than discovered in Phase 4.
+
+**Finding:** you cannot pause from a phone today, and it is architectural. `PAUSED` is a *file on the laptop* (`main.py:532`), and the runner passes its local pause state **upward** as `?paused=` on claim (`client.py:79`). The control plane holds no pause state at all.
+
+**Two things make naive remote resume fail:**
+
+1. The paused branch of the loop calls `client.heartbeat(...)` and **throws the response away** (`main.py:541-546`), so a paused runner can never learn it has been resumed.
+2. The pause check is `pause_file.exists()` — a local file **the phone cannot clear**. A pause set at the Mac would be a one-way door.
+
+This is not hypothetical: `~/.canopy/PAUSED` was present on `jjackson` at the time of writing.
+
+**Change — desired state on the runner:**
 
 ```
-effective_paused        = local PAUSED file        OR  runner.desired_paused
-effective_paused_agents = local PAUSED.<slug> glob  ∪   runner.desired_paused_agents
+Runner
++ desired_paused         bool        default False
++ desired_paused_agents  JSONField   default list
 ```
 
-**Why union:** it preserves the local file as an emergency brake that always wins when you are sitting at the machine, and adds zero regression to existing behaviour.
+Both ride `RunnerOut`, which the heartbeat response already returns (`api.py:80`) — **no new endpoint for the runner**, it reads what it already receives every 20s. A new `POST /api/harness/runners/{id}/desired-state` lets the phone write it (workspace-gated, per §8).
 
-**The cost, and its mitigation:** "resume" from the phone can appear to do nothing when a local `PAUSED` file exists. The UI must therefore render *why* it is paused ("paused locally — clear at your Mac") and disable rather than offer a dead button. Latency is ≤20s (one poll), so the control shows "pausing…" until the next heartbeat confirms — optimistic UI with honest confirmation.
+**The runner loop must read the heartbeat response before deciding to pause**, and the paused branch must keep reading it:
 
-### 3. Push — the trigger is the design work
+```
+resp             = client.heartbeat(...)          # always, and keep the response
+effective_paused = pause_file.exists() or resp["desired_paused"]
+```
+
+**The load-bearing change: the menubar's pause button stops writing the local file.** `_set_pause` (`menubar.py:681`) currently writes/unlinks `~/.canopy/PAUSED`; it must POST desired-state instead. Then pause always lives where *both* surfaces can reach it, and phone-resume works no matter where the pause originated. This lands in Phase 4 rather than waiting for Phase 5, because until it does, a pause set at the Mac is a pause the phone cannot lift — the exact frustration the phone exists to remove. Phase 5 deletes the code anyway.
+
+**Precedence stays a union**, but the local file changes role:
+
+```
+effective_paused = local PAUSED file  OR  runner.desired_paused
+```
+
+The file is no longer the normal path — it becomes a genuine emergency brake (`touch ~/.canopy/PAUSED`) for when labs is unreachable and you need work stopped now. Both UI surfaces write server state; neither writes the file. So the union's failure mode ("resume does nothing") is now reachable only when you have *deliberately* dropped a sentinel by hand, which is exactly when you want it to win.
+
+**Residual cost, mitigated by honesty, not cleverness:** if that hand-dropped file is present, the UI reports *why* ("paused by a local sentinel — clear it at the Mac") and disables the control rather than offering a button that lies. Latency is ≤20s, so the control reads "pausing…" until the next heartbeat confirms.
+
+**Pause is per-runner**, and with §4 exactly one runner is active — so "pause" unambiguously means "stop the active runner." No fleet-wide pause concept is needed.
+
+### 6. Push — the trigger is the design work
 
 Plumbing (well-trodden): VAPID keypair, a `PushSubscription` model (`user`, `endpoint`, `p256dh`, `auth`, `created_at`, `last_used_at`), subscribe/unsubscribe endpoints, `pywebpush` to send.
 
@@ -132,7 +225,7 @@ Plumbing (well-trodden): VAPID keypair, a `PushSubscription` model (`user`, `end
 
 **Named storm risk:** `POST /api/agents/{slug}/tasks/sync` upserts many rows in one request. Without the dirty-set it would emit a push per row. This is the specific case the debounce exists for, and it must have a test.
 
-### 4. Prerequisite — regenerate the agent types
+### 7. Prerequisite — regenerate the agent types
 
 `frontend/src/api/agents.ts` opens by admitting the `/api/agents/*` routes "are live on the backend but are not yet present in the generated OpenAPI types". It therefore hand-rolls `getJson`/`postJson`, duplicates the workspace rewrite and CSRF/401 handling, and **hand-declares ~15 response interfaces** (`AgentOut`, `AgentDetailOut`, `NeedsYouOut`, `AgentTaskOut`, …).
 
@@ -140,7 +233,7 @@ That is exactly the surface the supervisor screen is built on. Writing a second 
 
 The file states regenerating fixes it "without touching callers", and `.github/workflows/regen-openapi.yml` already triggers on `apps/**/api.py` and `apps/**/schemas.py` — so the types should not be stale. **Part of this phase is finding out why they are.** Fix the cause, not just the artifact.
 
-### 5. Authorization — Phase 0, before any remote actuation
+### 8. Authorization — Phase 0, before any remote actuation
 
 `TODOS.md:96-98` already names this: any authenticated PAT can claim as any runner, enqueue a turn for any agent, append events to any turn, or finish any turn. Neither `Runner` nor `Turn` has a workspace FK; no harness endpoint consults `request.workspace_slug`. `runner.capabilities["agents"]` filters what a runner *pulls* — it is a routing convenience, self-declared at pairing, not a security boundary.
 
@@ -152,7 +245,7 @@ The phone itself does not make this worse (it is session-auth on labs, same as t
 
 Two specifics, resolved here rather than left to the implementer:
 
-**`Turn` gets no workspace FK — it derives one.** `Agent.workspace` already exists (`apps/agents/models.py:31`) and `Turn.agent` is non-null, so a Turn's tenant is `turn.agent.workspace`. Adding a parallel FK would denormalize a fact already stored one hop away, and denormalized tenancy is a thing that drifts. **`Runner` does need its own FK** — it has no agent to derive from.
+**`Turn` derives its workspace when it can, and stores it only when it cannot.** `Agent.workspace` already exists (`apps/agents/models.py:31`), so an agent Turn's tenant is `turn.agent.workspace` — deriving beats a parallel FK, because denormalized tenancy drifts. A **project** Turn (§3) has no agent, so it carries a `workspace` FK used only in that case. `Runner` needs its own FK for the same reason. The `is_active` constraint (§4) scopes to that FK.
 
 **Runner operations bind to `runner.paired_by` (the user), not to a specific token.** `BearerTokenAuthMiddleware` stamps `request.user = token.user` (`apps/tokens/models.py:22-25`) and discards which token was used, so token-level binding would mean plumbing the token identity through the middleware. User-level binding closes the actual hole — *any authenticated PAT* becomes *your PATs only* — and survives rotation, which matters because `canopy:canopy-web-pat-mint` is documented as "re-run to rotate" and token-binding would break the runner on every rotation. The residual gap is accepted and stated: a second token belonging to the same user can still act as that user's runner.
 
@@ -162,12 +255,14 @@ Each phase ships something usable. Nothing depends on a phase after it.
 
 | Phase | What | Why here |
 |---|---|---|
-| **0** | Harness authz (`Runner.workspace` FK; `Turn` derives via `agent.workspace`; membership-gated enqueue; runner ops bound to `paired_by`) + regenerate agent OpenAPI types | Nothing user-visible; everything after is safer and typed. Never a window where a token could drive the laptop. |
+| **0** | Harness authz (§8): `Runner.workspace` FK, `Turn` derives via `agent.workspace`, membership-gated enqueue, runner ops bound to `paired_by`. Plus regenerate agent OpenAPI types (§7). | Nothing user-visible; everything after is safer and typed. Never a window where a token could drive the laptop. |
 | **1** | `/supervisor` React route: needs-you inbox, agent KPI cards, runner status. Desktop browser. | Panel parity minus local controls. Built on canopy-ui, which already stacks rail-over-main at `md:`. |
-| **2** | PWA: manifest, service worker, WebAPK install, VAPID, `PushSubscription`, `waiting_count` snapshot trigger | Where it stops being a smaller laptop and starts tapping you on the shoulder. Highest value, highest unknown. |
-| **3** | `launchable` + `args_hint`; the composer; enqueue on tap | The original ask: trigger specific commands as agents mature. |
-| **4** | `desired_paused` / `desired_paused_agents`; union semantics; legible pause reason | Remote control. |
-| **5** | Menubar `loadRequest_` + bridge; delete `render()` | **Last, deliberately.** The panel is a daily tool; it is not replaced until the replacement is at parity. Phases 1–4 *are* the parity. |
+| **2** | PWA: manifest, service worker, WebAPK install, VAPID, `PushSubscription`, `waiting_count` snapshot trigger (§6). Decide `SESSION_SAVE_EVERY_REQUEST`. | Where it stops being a smaller laptop and starts tapping you on the shoulder. Highest value, highest unknown. |
+| **3** | Dispatch: `launchable` + `args_hint` (§1); repo targets (§3 — nullable `agent`, `project`, `SessionLink`/capabilities/claim widening); the composer; **session input via the existing reuse path** (§2). | The dogfooding loop. Repo targets and session input ship together because either alone leaves the loop open. |
+| **4** | Control: `is_active` + atomic `/activate` (§4); `desired_paused` (§5); runner loop reads the heartbeat response; **menubar `_set_pause` POSTs desired-state instead of writing the file**. | Handoff on token exhaustion, and pause/resume that works from the phone regardless of origin. |
+| **5** | Menubar `loadRequest_` + bridge; delete `render()`. | **Last, deliberately.** The panel is a daily tool; it is not replaced until the replacement is at parity. Phases 1–4 *are* the parity. |
+
+**On sequencing Phase 3 and 4:** Phase 3 is the loop that stops you abandoning the phone; Phase 4 is what you need the day you exhaust tokens mid-session. Either order works — 3 first if you want the phone useful, 4 first if a handoff is imminent.
 
 ## Deferred (recorded so it is not relitigated)
 
@@ -181,13 +276,7 @@ A "synced lightweight emdash controller" — see open sessions, continue one or 
 - The DOM alternative is worse than it looks. `cdp_control.list_tasks()` (`cdp_control.py:54`) already exists, is tested, and **is called by nothing in the daemon** — dead code. It is also subtly broken for this purpose: the emdash sidebar **virtualizes**, so rows scrolled out of view are not in the DOM at all. `create` knows this and scrolls the scroller in ≤40 steps hunting its target (`emdash_control.mjs:45-48`); `list` does not scroll. It returns *the visible slice*, not all 22 projects.
 - Reading is far safer than the legacy `inject` executor's writes, but emdash auto-updates and its schema drifts — so a DB reader must sit behind the existing `vet` fingerprint machinery (`emdash.py:54-75`, `main.py:379-466`), which fingerprints normalized `CREATE TABLE` SQL and refuses on unvetted change.
 
-### Non-agent / repo targets
-
-`Turn.agent` is a required `CASCADE` FK to `agents.Agent`, so the harness can only address things that are agents. There are 22 emdash projects and roughly 5 are agents; the rest (canopy-web, commcare-connect, scout, connect-labs, …) are unreachable.
-
-This is a data-model constraint, not a capability gap: **`cdp_control.create_task(project: str, ...)` is already project-generic** — it scrolls the sidebar for `New task for <project>` and does not know what an agent is. `execute.py:113` simply passes `agent` as the project.
-
-If this is ever wanted, note that `one_executing_turn_per_agent` must **not** be inherited by repo targets: an agent is one identity with one continuous session, so serializing it is correct; a repo is not, and emdash gives every task its own worktree, so repo work is meant to parallelize.
+**Note:** repo targets were *also* deferred in an earlier draft and have since moved into scope (§3) — dogfooding requires them. Only the *mirror* remains deferred, and it stays deferred because the phone owns its own thread per target and never needs to enumerate emdash to reach it.
 
 ### Android freebies not in scope
 
@@ -208,7 +297,9 @@ If this is ever wanted, note that `one_executing_turn_per_agent` must **not** be
 
 - **Phase 0:** a non-member PAT gets 404 (not 403) from every harness endpoint. A PAT belonging to a user who is not `runner.paired_by` cannot heartbeat, claim, or write desired-state for that runner.
 - **Phase 2:** bulk `tasks/sync` of N tasks emits ≤1 push per agent. A `waiting_count` decrease emits none.
-- **Phase 3:** a non-`launchable` skill is absent from the catalog response the composer consumes. Dispatch produces a Turn whose prompt is exactly `/{slug}:{skill} {args}`.
-- **Phase 4:** local `PAUSED` file present + server `desired_paused=False` → still paused, and the UI reports "paused locally".
-- **Phase 5:** existing `menubar.py` tests for tray-icon state and the launchctl/PAUSED controls must pass unchanged — the swap must not touch them.
+- **Phase 3:** a non-`launchable` skill is absent from the catalog response the composer consumes. Dispatch produces a Turn whose prompt is exactly `/{slug}:{skill} {args}`. A Turn with both `agent` and `project` set is rejected by the CheckConstraint; so is one with neither. Two concurrent project turns for the same project both execute — `one_executing_turn_per_agent` must not have leaked onto projects. A second phone message on an existing thread reuses (`open_and_send`) rather than creating. A non-`TASK_NOT_FOUND` send failure fails the turn and creates **no** second session.
+- **Phase 4:** activating runner B deactivates runner A **in one transaction**; the DB constraint rejects two active runners in a workspace. An inactive runner heartbeats but claims nothing. A paused runner **reads the heartbeat response** and resumes when `desired_paused` flips — this is the regression test for the bug that a paused runner discards its heartbeat response. Pause set from the menubar is clearable from the phone (the whole point). A hand-dropped local `PAUSED` file still wins, and the UI reports why. A `local_only` turn is not claimed by an active cloud runner and stays `QUEUED`.
+- **Phase 5:** existing `menubar.py` tests for tray-icon state and the launchctl controls must pass unchanged — the swap must not touch them.
 - Playwright currently defines **no mobile viewports** (`frontend/playwright.config.ts`). Phase 1 adds one.
+
+**Untested and worth an experiment before relying on it:** whether the CDP sidecar drives emdash reliably from a *switched-away* macOS session. The sidecar is occlusion-proof (JS-dispatched clicks), but occluded-within-a-session is not the same as a session that is not on screen at all, and Chromium throttles invisible renderers. `page.evaluate()` needs no paint and layout still runs, so `create`'s scroll-and-wait for virtualized rows *should* work — but it has never been tried, and `acedimagi` has no runner configured today. This only matters if the always-on-background-account model is ever adopted; it is not needed for the switch-on-token-exhaustion model, where the active account is the foreground one.
