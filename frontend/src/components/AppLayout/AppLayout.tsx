@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { path: '/insights', label: 'Insights', tenant: false },
   { path: '/sessions', label: 'Sessions', tenant: false },
   { path: '/system', label: 'System', tenant: false },
+  { path: '/supervisor', label: 'Supervisor', tenant: false },
 ]
 
 const BACKENDS = [

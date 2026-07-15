@@ -903,6 +903,28 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/needs-you": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Fleet-wide needs-you (the supervisor home screen)
+         * @description Every agent's needs-you in one call, ranked busiest-first. Declared BEFORE
+         *     the /{slug}/ routes so 'needs-you' isn't resolved as a slug. Tenant scoping
+         *     mirrors list_agents exactly (both build from _visible_agent_workspace_ids).
+         */
+        readonly get: operations["apps_agents_api_fleet_needs_you"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/agents/{slug}/": {
         readonly parameters: {
             readonly query?: never;
@@ -1425,7 +1447,14 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
+        /**
+         * List my runners
+         * @description The supervisor's runner status. Filters on the exact same
+         *     _runner_visibility_q predicate _runner_or_404 gates on — a runner you
+         *     cannot act on must not be listed. Retired runners are excluded at lookup,
+         *     as everywhere else.
+         */
+        readonly get: operations["apps_harness_api_list_runners"];
         readonly put?: never;
         /** Pair Runner */
         readonly post: operations["apps_harness_api_pair_runner"];
@@ -3326,6 +3355,8 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
+            /** Workspace */
+            readonly workspace?: string | null;
         };
         /** Page[AgentOut] */
         readonly Page_AgentOut_: {
@@ -3373,6 +3404,58 @@ export interface components {
              */
             readonly workspace: string;
         };
+        /**
+         * FleetNeedsYouOut
+         * @description Every agent's needs-you in one response — the supervisor's home screen.
+         *     One round trip instead of an N+1 fan-out, which matters on cellular.
+         */
+        readonly FleetNeedsYouOut: {
+            /** Total Waiting */
+            readonly total_waiting: number;
+            /** Agents */
+            readonly agents?: readonly components["schemas"]["NeedsYouOut"][];
+        };
+        /** NeedsYouItem */
+        readonly NeedsYouItem: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            readonly type: "review" | "question" | "notify";
+            /**
+             * Ref Kind
+             * @enum {string}
+             */
+            readonly ref_kind: "task" | "sync" | "work_product" | "run";
+            /** Ref Id */
+            readonly ref_id: number;
+            /** Title */
+            readonly title: string;
+            /**
+             * Subtitle
+             * @default
+             */
+            readonly subtitle: string;
+            /**
+             * Url
+             * @default
+             */
+            readonly url: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** NeedsYouOut */
+        readonly NeedsYouOut: {
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Waiting Count */
+            readonly waiting_count: number;
+            /** Items */
+            readonly items?: readonly components["schemas"]["NeedsYouItem"][];
+        };
         /** AgentDetailOut */
         readonly AgentDetailOut: {
             /** Id */
@@ -3399,6 +3482,8 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
+            /** Workspace */
+            readonly workspace?: string | null;
             /**
              * Sync Count
              * @default 0
@@ -3428,41 +3513,6 @@ export interface components {
             readonly latest_sync_at?: string | null;
             /** Latest Turn At */
             readonly latest_turn_at?: string | null;
-        };
-        /** NeedsYouItem */
-        readonly NeedsYouItem: {
-            /** Type */
-            readonly type: string;
-            /** Ref Kind */
-            readonly ref_kind: string;
-            /** Ref Id */
-            readonly ref_id: number;
-            /** Title */
-            readonly title: string;
-            /**
-             * Subtitle
-             * @default
-             */
-            readonly subtitle: string;
-            /**
-             * Url
-             * @default
-             */
-            readonly url: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-        };
-        /** NeedsYouOut */
-        readonly NeedsYouOut: {
-            /** Agent Slug */
-            readonly agent_slug: string;
-            /** Waiting Count */
-            readonly waiting_count: number;
-            /** Items */
-            readonly items?: readonly components["schemas"]["NeedsYouItem"][];
         };
         /** AgentSyncOut */
         readonly AgentSyncOut: {
@@ -3764,8 +3814,11 @@ export interface components {
             readonly title: string;
             /** Next Action */
             readonly next_action: string;
-            /** Status */
-            readonly status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            readonly status: "suggested" | "in_progress" | "done" | "declined";
             /** Owner */
             readonly owner: string;
             /** Assigned */
@@ -3941,8 +3994,11 @@ export interface components {
         };
         /** AgentTaskCommandIn */
         readonly AgentTaskCommandIn: {
-            /** Kind */
-            readonly kind: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            readonly kind: "accept" | "decline" | "dispatch" | "reassign" | "edit" | "comment" | "done";
             /** Payload */
             readonly payload?: {
                 readonly [key: string]: unknown;
@@ -4659,6 +4715,8 @@ export interface components {
             };
             /** Host */
             readonly host: string;
+            /** Workspace */
+            readonly workspace: string | null;
         };
         /** RunnerIn */
         readonly RunnerIn: {
@@ -4678,6 +4736,11 @@ export interface components {
              * @default
              */
             readonly host: string;
+            /**
+             * Workspace
+             * @default
+             */
+            readonly workspace: string;
         };
         /** HeartbeatIn */
         readonly HeartbeatIn: {
@@ -6537,6 +6600,26 @@ export interface operations {
             };
         };
     };
+    readonly apps_agents_api_fleet_needs_you: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["FleetNeedsYouOut"];
+                };
+            };
+        };
+    };
     readonly apps_agents_api_get_agent: {
         readonly parameters: {
             readonly query?: never;
@@ -7422,6 +7505,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["SharedViewOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_list_runners: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["RunnerOut"][];
                 };
             };
         };

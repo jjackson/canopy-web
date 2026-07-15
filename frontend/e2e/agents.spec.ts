@@ -119,12 +119,16 @@ test('accept flips a suggested task to in progress and clears its Accept button'
   await expect(page.getByTestId('task-t2').getByRole('button', { name: /^Accept$/ })).toHaveCount(0)
 })
 
-test('decline takes a reason and moves the task to declined', async ({ page }) => {
+// #209 made Decline one click (the reason only ever fed the agent as context);
+// "＋ reason" is now the opt-in path. That change left this spec asserting a
+// reason prompt that no longer appears — Playwright doesn't run in CI, so it
+// went unnoticed. Covers the one-click path only: "＋ reason" needs its own
+// suggested task, and these specs share one DB in file order (t1/t2 are spent
+// by here, and Decline renders only while status=suggested).
+test('decline is one click — no reason required', async ({ page }) => {
   await page.goto('/w/dimagi/agents/echo/tasks')
   const card = page.getByTestId('task-t1')
-  await card.getByRole('button', { name: /^Decline$/ }).click()
-  await card.getByRole('textbox').fill('not a fit right now')
-  const [resp] = await Promise.all([cmd(page), card.getByRole('button', { name: /Confirm/i }).click()])
+  const [resp] = await Promise.all([cmd(page), card.getByRole('button', { name: /^Decline$/ }).click()])
   expect(resp.status()).toBe(201)
   await expect(page.getByTestId('task-t1')).toHaveAttribute('data-status', 'declined')
 })
