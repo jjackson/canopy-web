@@ -111,11 +111,12 @@ def test_stranger_cannot_claim_as_someone_elses_runner(owner_client, stranger_cl
     # Heartbeat the runner online FIRST — otherwise claim_next_turn bails on line 1
     # (status != ONLINE) before ever reaching the tenant/ownership check below, and
     # the 404 this test asserts would prove nothing about the claim path itself.
-    owner_client.post(
+    hb = owner_client.post(
         f"/api/harness/runners/{rid}/heartbeat",
         {"active_turn_ids": [], "degraded": False, "note": ""},
         content_type="application/json",
     )
+    assert hb.status_code == 200  # sanity: the runner is genuinely ONLINE
     assert stranger_client.post(f"/api/harness/runners/{rid}/claim").status_code == 404
 
 
@@ -144,6 +145,45 @@ def test_stranger_cannot_claim_victim_turn_via_own_untenanted_runner(
     assert hb.status_code == 200  # sanity: this is the stranger's own runner
     resp = stranger_client.post(f"/api/harness/runners/{rid}/claim")
     assert resp.status_code == 204  # no work for them — capabilities is not the gate
+    victim_turn = Turn.objects.get(pk=turn_id)
+    assert victim_turn.status == Turn.QUEUED
+    assert victim_turn.claimed_by is None
+
+
+def test_tenanted_attacker_cannot_claim_other_workspace_turn(owner_client, agent):
+    """Tenant boundary on claim_next_turn's production branch: a tenanted runner
+    (homed to workspace 'evil') cannot claim turns for agents in another workspace
+    ('canopy'). Tests the if runner.workspace_id branch (lines 131-132)."""
+    attacker = User.objects.create_user("attacker", "attacker@dimagi.com", "pw")
+    evil_ws = Workspace.objects.create(slug="evil", display_name="Evil", created_by=attacker)
+    WorkspaceMembership.objects.create(user=attacker, workspace=evil_ws, role=WorkspaceMembership.OWNER)
+    attacker_client = Client()
+    attacker_client.force_login(attacker)
+
+    # Enqueue a turn in the owner's workspace (canopy) for agent echo
+    turn_id = _enqueue(owner_client).json()["id"]
+
+    # Attacker pairs their own runner (homed to evil workspace)
+    rid = attacker_client.post(
+        "/api/harness/runners/",
+        {"name": "attacker-mbp", "kind": "emdash", "capabilities": {"agents": ["echo"]}},
+        content_type="application/json",
+    ).json()["id"]
+
+    # Heartbeat it online
+    hb = attacker_client.post(
+        f"/api/harness/runners/{rid}/heartbeat",
+        {"active_turn_ids": [], "degraded": False, "note": ""},
+        content_type="application/json",
+    )
+    assert hb.status_code == 200  # sanity: attacker's own runner is ONLINE
+
+    # Attempt to claim the owner's turn — must return 204 (no work for them)
+    # and must NOT mutate the victim's turn
+    resp = attacker_client.post(f"/api/harness/runners/{rid}/claim")
+    assert resp.status_code == 204  # tenant predicate blocks: agent not in evil workspace
+
+    # Assert non-mutation: the victim's turn is still QUEUED and unclaimed
     victim_turn = Turn.objects.get(pk=turn_id)
     assert victim_turn.status == Turn.QUEUED
     assert victim_turn.claimed_by is None
