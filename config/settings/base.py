@@ -249,6 +249,17 @@ AGENT_RUNS_DRIVE_ROOTS = env.json("AGENT_RUNS_DRIVE_ROOTS", default={})
 MCP_WRITE_LIMIT = env.int("MCP_WRITE_LIMIT", default=10)
 MCP_WRITE_WINDOW_SECONDS = env.int("MCP_WRITE_WINDOW_SECONDS", default=60)
 
+# --- Web Push (VAPID) ---
+# The PUBLIC key is not a secret — it ships in the JS bundle; the browser needs
+# it to subscribe. The PRIVATE key signs every send and must never leave the
+# server (prod: Secrets Manager, see deploy/aws/canopy-web.cfn.yaml).
+# Empty keys disable push: the endpoints 503 and nothing is ever sent, so a
+# deployment without them degrades rather than 500s.
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", default="")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="")
+# Contact for the push service if our sends misbehave. Must be a mailto: URL.
+VAPID_SUBJECT = env("VAPID_SUBJECT", default="mailto:jjackson@dimagi.com")
+
 # AI Backend: "api" (direct Anthropic SDK) or "cli" (claude code CLI)
 AI_BACKEND = env("AI_BACKEND", default="api")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")

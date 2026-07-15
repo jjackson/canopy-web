@@ -1,0 +1,97 @@
+"""Subscribe/unsubscribe. The browser re-sends the same endpoint every time it
+calls subscribe(), so subscribing twice must upsert, never duplicate."""
+from __future__ import annotations
+
+import pytest
+from django.contrib.auth.models import User
+from django.test import Client
+
+from apps.push.models import PushSubscription
+
+pytestmark = pytest.mark.django_db
+
+SUB = {
+    "endpoint": "https://fcm.googleapis.com/fcm/send/AAA",
+    "p256dh": "BKxQ_key",
+    "auth": "authsecret",
+    "user_agent": "Mozilla/5.0 (Linux; Android 14; Pixel 7)",
+}
+
+
+@pytest.fixture()
+def user():
+    return User.objects.create_user("jj", "jj@dimagi.com", "pw")
+
+
+@pytest.fixture()
+def client(user):
+    c = Client()
+    c.force_login(user)
+    return c
+
+
+def test_vapid_public_key_is_served(client, settings):
+    settings.VAPID_PUBLIC_KEY = "BPublicKeyHere"
+    resp = client.get("/api/push/vapid-public-key")
+    assert resp.status_code == 200
+    assert resp.json() == {"public_key": "BPublicKeyHere"}
+
+
+def test_vapid_public_key_503s_when_push_is_not_configured(client, settings):
+    """No keys = push is off. The endpoint must say so, not hand the browser an
+    empty string it would try to subscribe with."""
+    settings.VAPID_PUBLIC_KEY = ""
+    assert client.get("/api/push/vapid-public-key").status_code == 503
+
+
+def test_subscribe_stores_the_browser(client, user):
+    resp = client.post("/api/push/subscribe", SUB, content_type="application/json")
+    assert resp.status_code == 201
+    sub = PushSubscription.objects.get(endpoint=SUB["endpoint"])
+    assert sub.user_id == user.id
+    assert sub.p256dh == "BKxQ_key"
+
+
+def test_subscribing_twice_upserts_rather_than_duplicating(client, user):
+    client.post("/api/push/subscribe", SUB, content_type="application/json")
+    rotated = {**SUB, "p256dh": "rotated_key"}
+    resp = client.post("/api/push/subscribe", rotated, content_type="application/json")
+    assert resp.status_code == 201
+    assert PushSubscription.objects.filter(endpoint=SUB["endpoint"]).count() == 1
+    assert PushSubscription.objects.get(endpoint=SUB["endpoint"]).p256dh == "rotated_key"
+
+
+def test_resubscribing_claims_the_endpoint_for_the_new_user(client):
+    """A shared device: the endpoint is the browser's, not the person's. If
+    someone else logs in and subscribes, the endpoint must move to them — or we
+    would push one person's inbox to another's phone."""
+    other = User.objects.create_user("other", "other@dimagi.com", "pw")
+    PushSubscription.objects.create(user=other, endpoint=SUB["endpoint"], p256dh="k", auth="a")
+    resp = client.post("/api/push/subscribe", SUB, content_type="application/json")
+    assert resp.status_code == 201
+    sub = PushSubscription.objects.get(endpoint=SUB["endpoint"])
+    assert sub.user.username == "jj"
+
+
+def test_unsubscribe_removes_it(client):
+    client.post("/api/push/subscribe", SUB, content_type="application/json")
+    resp = client.delete(
+        "/api/push/subscribe", {"endpoint": SUB["endpoint"]}, content_type="application/json"
+    )
+    assert resp.status_code == 204
+    assert not PushSubscription.objects.filter(endpoint=SUB["endpoint"]).exists()
+
+
+def test_unsubscribing_someone_elses_endpoint_does_nothing(client):
+    other = User.objects.create_user("other", "other@dimagi.com", "pw")
+    PushSubscription.objects.create(user=other, endpoint="https://x/BBB", p256dh="k", auth="a")
+    resp = client.delete(
+        "/api/push/subscribe", {"endpoint": "https://x/BBB"}, content_type="application/json"
+    )
+    assert resp.status_code == 204  # idempotent, no existence leak
+    assert PushSubscription.objects.filter(endpoint="https://x/BBB").exists()
+
+
+def test_anonymous_cannot_subscribe():
+    resp = Client().post("/api/push/subscribe", SUB, content_type="application/json")
+    assert resp.status_code == 401
