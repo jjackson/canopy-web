@@ -4,10 +4,9 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
+from canopy_cron import validate_cron, validate_timezone
 from ninja import Schema
 from pydantic import field_validator
-
-from .cron import validate_cron, validate_timezone
 
 
 class RunnerIn(Schema):

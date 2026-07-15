@@ -8,6 +8,7 @@ tenant path /api/w/{ws}/agents/... works via WorkspaceResolveMiddleware.
 """
 from __future__ import annotations
 
+from canopy_cron import next_slots
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 from django.utils import timezone
@@ -20,7 +21,6 @@ from apps.api.pagination import Page, clamp_limit, paginate
 
 from . import services
 from .api import _agent_or_404
-from .cron import next_slots
 from .models import AgentSchedule
 from .schemas import (
     ScheduleIn,

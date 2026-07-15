@@ -34,6 +34,14 @@ jobs:
       - name: Run pytest
         run: uv run pytest
 
+      # The root suite sets `addopts = --ignore=packages`, so the in-repo
+      # Django-free packages need their own step or their tests never run in CI.
+      # canopy_cron's DST cases are the reason the cron math is shared at all —
+      # they must actually execute somewhere.
+      - name: Run canopy_cron tests (plain pytest, no Django)
+        working-directory: packages/canopy_cron
+        run: uv run --project ../.. pytest -q
+
   test-frontend:
     name: Frontend build
     runs-on: ubuntu-latest
