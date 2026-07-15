@@ -1172,6 +1172,114 @@ git commit -m "feat(harness): /api/agents/{slug}/schedules — human CRUD + run-
 
 ---
 
+### Task 6a: The cron preview route
+
+**Files:**
+- Modify: `apps/harness/api_schedules.py`
+- Modify: `apps/harness/schemas.py`
+- Test: `tests/test_schedule_api.py`
+
+**Interfaces:**
+- Consumes: `next_slots` (Task 3); `_agent_or_404`.
+- Produces: `POST /api/agents/{slug}/schedules/preview` → `SchedulePreviewOut{next_runs: list[datetime]}`.
+
+The editor must preview a cron the user is **still typing** — one that has no row
+yet — so `ScheduleOut.next_runs` cannot serve it. The preview is computed
+server-side by the same `next_slots()` the firing path uses: a second cron
+implementation in TypeScript could say "Fridays" while the server fires
+Thursdays, which is exactly what the preview exists to prevent.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `tests/test_schedule_api.py`:
+
+```python
+def test_preview_returns_three_fire_times(client, agent):
+    resp = client.post(
+        "/api/agents/echo/schedules/preview",
+        {"cron": "0 9 * * 5", "timezone": "America/New_York"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 200, resp.content
+    assert len(resp.json()["next_runs"]) == 3
+
+
+def test_preview_rejects_a_bad_cron_without_saving_anything(client, agent):
+    resp = client.post(
+        "/api/agents/echo/schedules/preview",
+        {"cron": "every friday please", "timezone": "UTC"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 422
+    assert resp["content-type"] == "application/problem+json"
+    assert AgentSchedule.objects.count() == 0
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `uv run pytest tests/test_schedule_api.py::test_preview_returns_three_fire_times -v`
+Expected: FAIL — 404 (route does not exist).
+
+- [ ] **Step 3: Add the schemas**
+
+Append to `apps/harness/schemas.py`:
+
+```python
+class SchedulePreviewIn(Schema):
+    """Preview a cron the user is still typing — no row exists yet."""
+
+    cron: str
+    timezone: str = "UTC"
+
+    @field_validator("cron")
+    @classmethod
+    def _check_cron(cls, v: str) -> str:
+        return validate_cron(v)
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str) -> str:
+        return validate_timezone(v)
+
+
+class SchedulePreviewOut(Schema):
+    next_runs: list[dt.datetime]
+```
+
+- [ ] **Step 4: Add the route**
+
+In `apps/harness/api_schedules.py`, add `SchedulePreviewIn, SchedulePreviewOut` to the
+`.schemas` import, and append:
+
+```python
+@router.post("/{slug}/schedules/preview", response=SchedulePreviewOut,
+             summary="Preview the next fire times for a cron expression",
+             openapi_extra={"x-mcp-expose": True})
+def preview_schedule(
+    request: HttpRequest, slug: str, payload: SchedulePreviewIn
+) -> SchedulePreviewOut:
+    """Answer 'when would this actually run?' at edit time. Computed with the same
+    next_slots() the firing path uses — the client must never re-implement cron."""
+    _agent_or_404(request, slug)
+    return SchedulePreviewOut(
+        next_runs=next_slots(payload.cron, payload.timezone, now=timezone.now(), count=3)
+    )
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `uv run pytest tests/test_schedule_api.py -v`
+Expected: PASS (8 passed)
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/harness/api_schedules.py apps/harness/schemas.py tests/test_schedule_api.py
+git commit -m "feat(harness): cron preview route — verify the expression at edit time"
+```
+
+---
+
 ### Task 7: The runner-facing sync + fire routes — tenant-scoped
 
 **Files:**
@@ -1656,7 +1764,15 @@ git commit -m "chore(api): regenerate types for the schedules surface"
 
 **Files:**
 - Create: `frontend/src/api/schedules.ts`
-- Test: manual via Task 11's UI (no vitest suite exists for `frontend/src/api/*`; follow the codebase's existing convention of typecheck-only for these thin client modules)
+- Test: typecheck-only (`npm run build`).
+
+**Why no vitest here:** the repo runs vitest (`npm run test`, 5 suites) but every
+one tests a **pure function** — `src/api/base.test.ts` covers `normalizeBase`/
+`joinBase`, not fetch wrappers. There is no `@testing-library` dependency and no
+component/render test in the codebase. These client functions are thin I/O over
+`openapi-fetch` with no branching logic, so testing them would mean introducing a
+mocking paradigm the repo has never used. Task 11's `describeCron` **is** pure
+logic and **does** get a vitest test, per that convention.
 
 **Interfaces:**
 - Consumes: `generated.ts` types (Task 9); the existing `client.v2.ts` `openapi-fetch` client.
@@ -1730,6 +1846,19 @@ export async function runScheduleNow(slug: string, id: number): Promise<Schedule
   if (error) throw error;
   return data!;
 }
+
+export async function previewCron(
+  slug: string,
+  cron: string,
+  timezone: string,
+): Promise<string[]> {
+  const { data, error } = await client.POST("/api/agents/{slug}/schedules/preview", {
+    params: { path: { slug } },
+    body: { cron, timezone },
+  });
+  if (error) throw error;
+  return data?.next_runs ?? [];
+}
 ```
 
 If the exact client import name differs from what Step 1 showed, use the one from the file — the names above assume `client.v2.ts` exports `client`.
@@ -1751,13 +1880,21 @@ git commit -m "feat(frontend): typed schedules client on the generated types"
 ### Task 11: The Schedules rail section
 
 **Files:**
+- Create: `frontend/src/components/agents/cronDescribe.ts`
+- Create: `frontend/src/components/agents/cronDescribe.test.ts`
 - Create: `frontend/src/components/agents/SchedulesSection.tsx`
 - Create: `frontend/src/components/agents/ScheduleEditor.tsx`
 - Modify: the agent workspace rail (find it — see Step 1)
 
 **Interfaces:**
 - Consumes: everything from Task 10.
-- Produces: `<SchedulesSection agentSlug={string} />`.
+- Produces: `<SchedulesSection agentSlug={string} />`; `describeCron(cron, tz)` and `relative(iso)` from `cronDescribe.ts`.
+
+`describeCron`/`relative` live in their own module, not inline in the component:
+they are pure functions with real branching, and the repo's vitest convention
+tests pure functions only (`src/api/base.test.ts`). A function inside a `.tsx`
+component file could not be tested without adding `@testing-library`, which this
+repo has deliberately never adopted.
 
 Dense table, not cards. **Semantic tokens only** — a raw `stone-*`/`orange-*` literal is a review rejection.
 
@@ -1766,25 +1903,75 @@ Dense table, not cards. **Semantic tokens only** — a raw `stone-*`/`orange-*` 
 Run: `ls frontend/src/pages/agents/ && grep -rn "NeedsYouSection" frontend/src/pages/agents/ | head`
 Expected: shows the rail page and how an existing section (`NeedsYouSection`) is registered. **Read that file** and mirror its data-loading + empty-state + heading structure rather than inventing one.
 
-- [ ] **Step 2: Write the section**
+- [ ] **Step 2: Write the failing test for the pure helpers**
 
-Create `frontend/src/components/agents/SchedulesSection.tsx`:
+Create `frontend/src/components/agents/cronDescribe.test.ts`:
 
-```tsx
-import { useCallback, useEffect, useState } from "react";
-import type { Schedule } from "@/api/schedules";
-import { listSchedules, runScheduleNow, updateSchedule } from "@/api/schedules";
-import { ScheduleEditor } from "./ScheduleEditor";
+```ts
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { describeCron, relative } from "./cronDescribe";
 
-function describeCron(cron: string, tz: string): string {
-  // Friendly rendering for the common shapes; falls back to the raw expression,
-  // which is always correct if not always pretty.
+describe("describeCron", () => {
+  it("renders a weekly schedule", () => {
+    expect(describeCron("0 9 * * 5", "America/New_York")).toBe("Fridays at 09:00 · New York");
+  });
+
+  it("renders a monthly schedule", () => {
+    expect(describeCron("0 9 1 * *", "America/New_York")).toBe(
+      "Day 1 monthly at 09:00 · New York",
+    );
+  });
+
+  it("renders a daily schedule", () => {
+    expect(describeCron("30 6 * * *", "UTC")).toBe("Daily at 06:30 · UTC");
+  });
+
+  it("falls back to the raw expression for shapes it cannot name", () => {
+    // Always correct, if not always pretty — never claim a wrong cadence.
+    expect(describeCron("0 9 * * 1-5", "UTC")).toBe("0 9 * * 1-5 · UTC");
+  });
+});
+
+describe("relative", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("renders an em dash for no value", () => {
+    expect(relative(null)).toBe("—");
+  });
+
+  it("renders future days", () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-07-15T12:00:00Z"));
+    expect(relative("2026-07-17T13:00:00Z")).toBe("in 2d");
+  });
+
+  it("renders past hours", () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-07-15T12:00:00Z"));
+    expect(relative("2026-07-15T09:00:00Z")).toBe("3h ago");
+  });
+});
+```
+
+- [ ] **Step 3: Run test to verify it fails**
+
+Run: `cd frontend && npx vitest run src/components/agents/cronDescribe.test.ts`
+Expected: FAIL — cannot resolve `./cronDescribe`.
+
+- [ ] **Step 4: Write the pure helpers**
+
+Create `frontend/src/components/agents/cronDescribe.ts`:
+
+```ts
+const DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+
+/** Friendly rendering for the common cron shapes; falls back to the raw
+ * expression, which is always correct if not always pretty. Naming a cadence
+ * wrongly would be worse than not naming it. */
+export function describeCron(cron: string, tz: string): string {
   const [min, hour, dom, mon, dow] = cron.trim().split(/\s+/);
   const time = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
-  const days = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
   const zone = tz.split("/").pop()?.replace(/_/g, " ") ?? tz;
   if (dom === "*" && mon === "*" && /^[0-6]$/.test(dow)) {
-    return `${days[Number(dow)]} at ${time} · ${zone}`;
+    return `${DAYS[Number(dow)]} at ${time} · ${zone}`;
   }
   if (dow === "*" && mon === "*" && /^\d+$/.test(dom)) {
     return `Day ${dom} monthly at ${time} · ${zone}`;
@@ -1793,7 +1980,9 @@ function describeCron(cron: string, tz: string): string {
   return `${cron} · ${zone}`;
 }
 
-function relative(iso: string | null | undefined): string {
+/** Coarse relative time — "in 2d", "3h ago". Deliberately not a full i18n
+ * formatter: the table only needs to answer "soon or not?". */
+export function relative(iso: string | null | undefined): string {
   if (!iso) return "—";
   const ms = new Date(iso).getTime() - Date.now();
   const days = Math.round(ms / 86_400_000);
@@ -1802,6 +1991,23 @@ function relative(iso: string | null | undefined): string {
   if (Math.abs(hours) >= 1) return hours > 0 ? `in ${hours}h` : `${-hours}h ago`;
   return "now";
 }
+```
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `cd frontend && npx vitest run src/components/agents/cronDescribe.test.ts`
+Expected: PASS (7 passed)
+
+- [ ] **Step 6: Write the section**
+
+Create `frontend/src/components/agents/SchedulesSection.tsx`:
+
+```tsx
+import { useCallback, useEffect, useState } from "react";
+import type { Schedule } from "@/api/schedules";
+import { listSchedules, runScheduleNow, updateSchedule } from "@/api/schedules";
+import { describeCron, relative } from "./cronDescribe";
+import { ScheduleEditor } from "./ScheduleEditor";
 
 function StatusChip({ status }: { status: string }) {
   if (!status) return <span className="text-foreground-subtle">—</span>;
@@ -1935,14 +2141,14 @@ export function SchedulesSection({ agentSlug }: { agentSlug: string }) {
 }
 ```
 
-- [ ] **Step 3: Write the editor**
+- [ ] **Step 7: Write the editor**
 
 Create `frontend/src/components/agents/ScheduleEditor.tsx`:
 
 ```tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Schedule } from "@/api/schedules";
-import { createSchedule, deleteSchedule, updateSchedule } from "@/api/schedules";
+import { createSchedule, deleteSchedule, previewCron, updateSchedule } from "@/api/schedules";
 
 const PRESETS: { label: string; cron: string }[] = [
   { label: "Weekly — Friday 9am", cron: "0 9 * * 5" },
@@ -1970,6 +2176,27 @@ export function ScheduleEditor({
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState<string[]>([]);
+  const [previewError, setPreviewError] = useState("");
+
+  // Ask the SERVER when this cron would actually run — debounced, because the
+  // user is mid-type. Never re-implement cron here: a client parser that says
+  // "Fridays" while the server fires Thursdays is the exact failure the preview
+  // exists to catch.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      previewCron(agentSlug, cron, tz)
+        .then((runs) => {
+          setPreview(runs);
+          setPreviewError("");
+        })
+        .catch(() => {
+          setPreview([]);
+          setPreviewError("Not a valid schedule.");
+        });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [agentSlug, cron, tz]);
 
   async function onSave() {
     setSaving(true);
@@ -2056,6 +2283,29 @@ export function ScheduleEditor({
           />
         </div>
 
+        <div className="mb-3 rounded border border-border bg-muted/40 px-2 py-1.5">
+          <p className="mb-0.5 text-xs text-muted-foreground">Next runs</p>
+          {previewError ? (
+            <p className="text-xs text-destructive">{previewError}</p>
+          ) : preview.length === 0 ? (
+            <p className="text-xs text-foreground-subtle">—</p>
+          ) : (
+            <ul className="text-xs text-foreground-secondary">
+              {preview.map((iso) => (
+                <li key={iso}>
+                  {new Date(iso).toLocaleString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         {error && <p className="mb-3 text-xs text-destructive">{error}</p>}
 
         <div className="flex items-center justify-between">
@@ -2094,30 +2344,31 @@ export function ScheduleEditor({
 }
 ```
 
-> **Deferred from the spec, deliberately:** the editor shows presets + the raw
-> expression, but not the live "next three fire times" preview. `ScheduleOut`
-> already carries `next_runs` from the server, so the preview is a follow-up that
-> needs no new API — add it once there is a real schedule to look at. The
-> **table** shows the next run today, which covers the trust need for now.
+**The preview is what makes a hand-typed cron trustworthy** (spec, § UI): it
+verifies the expression at edit time instead of next Friday. It calls the
+`POST /api/agents/{slug}/schedules/preview` route from Task 6a, debounced, and
+renders the server's answer — never a second cron implementation in TypeScript.
+A divergent client-side parser saying "Fridays" while the server fires Thursdays
+is precisely the failure the preview exists to prevent.
 
-- [ ] **Step 4: Mount the section in the rail**
+- [ ] **Step 8: Mount the section in the rail**
 
 Add `<SchedulesSection agentSlug={slug} />` to the agent workspace rail beside the existing sections, following exactly the registration pattern you read in Step 1.
 
-- [ ] **Step 5: Typecheck**
+- [ ] **Step 9: Typecheck**
 
 Run: `cd frontend && npm run build`
 Expected: build succeeds.
 
-- [ ] **Step 6: Verify no raw palette literals**
+- [ ] **Step 10: Verify no raw palette literals**
 
 Run: `grep -nE "stone-|orange-|zinc-|slate-|amber-|emerald-|sky-|violet-" frontend/src/components/agents/SchedulesSection.tsx frontend/src/components/agents/ScheduleEditor.tsx`
 Expected: no output.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add frontend/src/components/agents/SchedulesSection.tsx frontend/src/components/agents/ScheduleEditor.tsx frontend/src/pages/agents/
+git add frontend/src/components/agents/ frontend/src/pages/agents/
 git commit -m "feat(frontend): Schedules rail section — dense table, run-now, cron editor"
 ```
 
@@ -2181,10 +2432,10 @@ git commit -m "docs: scheduled turns — endpoints, the design decision, spec li
 Run: `uv run pytest`
 Expected: PASS (all), including `tests/test_architecture_boundary.py`.
 
-- [ ] **Frontend build**
+- [ ] **Frontend build + unit tests**
 
-Run: `cd frontend && npm run build`
-Expected: succeeds.
+Run: `cd frontend && npm run build && npm run test`
+Expected: build succeeds; vitest passes (existing 5 suites + cronDescribe).
 
 - [ ] **Migrations are complete**
 
@@ -2202,7 +2453,7 @@ Then: create a schedule in the agent's rail → click **Run now** → confirm a 
 
 ## Deferred (spec's "Open for iteration")
 
-Not in this plan, by design: per-schedule escalation policy, catch-up/backfill, notify channels beyond `inbox`, and the editor's live next-three-fire-times preview (`ScheduleOut.next_runs` already carries the data).
+Not in this plan, by design: per-schedule escalation policy, catch-up/backfill, and notify channels beyond `inbox`.
 
 ## Runner-side work — a separate plan
 
