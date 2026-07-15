@@ -118,10 +118,25 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
         # Phase 0 has no cloud runners, so keep the simple rule: cloud never
         # takes local_only.
     busy_agents = Turn.objects.filter(status__in=EXECUTING).values("agent_id")
+    # Tenant boundary: capabilities is a caller-supplied routing hint, not a
+    # security boundary (a caller can declare whatever agent slugs it likes at
+    # pairing). The workspace is the actual gate, applied as an intersection
+    # with the capabilities filter above, not an alternative to it. A tenanted
+    # runner may only claim turns whose agent is in that same workspace, or
+    # whose agent predates tenancy (null workspace — the legacy-ungated path).
+    # An untenanted runner may only claim turns whose agent is ALSO untenanted
+    # — this null<->null rule is what keeps the pre-tenancy test suite (runner
+    # + agent both created with no workspace) working without opening a hole.
+    # Mirrors the same Q-based tenant filter in api.py::list_turns.
+    if runner.workspace_id:
+        tenant_q = Q(agent__workspace_id=runner.workspace_id) | Q(agent__workspace_id__isnull=True)
+    else:
+        tenant_q = Q(agent__workspace_id__isnull=True)
     candidates = (
         Turn.objects.filter(status=Turn.QUEUED, agent__slug__in=slugs)
         .exclude(agent_id__in=busy_agents)
         .filter(routing_q)
+        .filter(tenant_q)
         .order_by("created_at")
     )
     now = timezone.now()

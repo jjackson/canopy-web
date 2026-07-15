@@ -44,6 +44,7 @@ const WS_SCOPED_API_PREFIXES = [
   "/api/shareouts",
   "/api/ddd",
   "/api/timeline",
+  "/api/agents",
 ];
 
 function activeWorkspaceFromUrl(): string | null {
@@ -53,17 +54,53 @@ function activeWorkspaceFromUrl(): string | null {
   return m ? m[1] : null;
 }
 
+/**
+ * Rewrite a flat /api/<app>/… request onto the tenant path
+ * /api/w/:ws/<app>/…, preserving the body. Exported (rather than inlined in
+ * the onRequest closure) so it's unit-testable without a live DOM/fetch
+ * environment — see client.v2.test.ts.
+ *
+ * Do NOT do `new Request(url, request)`: that constructor form adopts the
+ * source Request's body as a *live stream*, which consumes/disturbs it — any
+ * POST/PATCH/PUT then fails at the network layer with "TypeError: Failed to
+ * fetch" (no response, no status, nothing to debug from). Read the body
+ * fully first instead; GET/HEAD cannot carry a body at all (the Request
+ * constructor throws if one is supplied), so omit it for those methods.
+ */
+export async function rewriteForWorkspace(request: Request, ws: string): Promise<Request> {
+  const url = new URL(request.url);
+  // openapi-fetch already prefixed API_BASE; match + rewrite against the
+  // deployment-relative path so /canopy/api/projects → /canopy/api/w/:ws/projects.
+  const rel = url.pathname.slice(API_BASE.length);
+  url.pathname = `${API_BASE}/api/w/${ws}${rel.slice("/api".length)}`;
+  const hasBody = !["GET", "HEAD"].includes(request.method);
+  const body = hasBody ? await request.arrayBuffer() : undefined;
+  return new Request(url, {
+    method: request.method,
+    headers: request.headers,
+    body,
+    credentials: request.credentials,
+    mode: request.mode,
+    cache: request.cache,
+    redirect: request.redirect,
+    referrer: request.referrer,
+    referrerPolicy: request.referrerPolicy,
+    integrity: request.integrity,
+    keepalive: request.keepalive,
+    signal: request.signal,
+  });
+}
+
 apiV2.use({
   async onRequest({ request }) {
     const ws = activeWorkspaceFromUrl();
     if (!ws) return request;
     const url = new URL(request.url);
-    // openapi-fetch already prefixed API_BASE; match + rewrite against the
+    // openapi-fetch already prefixed API_BASE; match against the
     // deployment-relative path so /canopy/api/projects → /canopy/api/w/:ws/projects.
     const rel = url.pathname.slice(API_BASE.length);
     if (WS_SCOPED_API_PREFIXES.some((p) => rel.startsWith(p))) {
-      url.pathname = `${API_BASE}/api/w/${ws}${rel.slice("/api".length)}`;
-      return new Request(url, request);
+      return rewriteForWorkspace(request, ws);
     }
     return request;
   },
