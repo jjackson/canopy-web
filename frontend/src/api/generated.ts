@@ -4035,6 +4035,10 @@ export interface components {
             readonly url: string;
             /** Improvement Note */
             readonly improvement_note: string;
+            /** Launchable */
+            readonly launchable: boolean;
+            /** Args Hint */
+            readonly args_hint: string;
             /**
              * Updated At
              * Format: date-time
@@ -4068,6 +4072,16 @@ export interface components {
              * @default
              */
             readonly improvement_note: string;
+            /**
+             * Launchable
+             * @default false
+             */
+            readonly launchable: boolean;
+            /**
+             * Args Hint
+             * @default
+             */
+            readonly args_hint: string;
         };
         /** AgentTaskLink */
         readonly AgentTaskLink: {
@@ -5318,7 +5332,11 @@ export interface components {
              */
             readonly id: string;
             /** Agent Slug */
-            readonly agent_slug: string;
+            readonly agent_slug: string | null;
+            /** Project */
+            readonly project: string;
+            /** Target */
+            readonly target: string;
             /** Origin */
             readonly origin: string;
             /** Status */
@@ -5396,8 +5414,16 @@ export interface components {
         };
         /** TurnIn */
         readonly TurnIn: {
-            /** Agent Slug */
+            /**
+             * Agent Slug
+             * @default
+             */
             readonly agent_slug: string;
+            /**
+             * Project
+             * @default
+             */
+            readonly project: string;
             /** Origin */
             readonly origin: string;
             /** Idempotency Key */

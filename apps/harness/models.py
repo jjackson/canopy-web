@@ -94,6 +94,12 @@ class Runner(models.Model):
     def agent_slugs(self) -> list[str]:
         return list(self.capabilities.get("agents", []))
 
+    def project_names(self) -> list[str]:
+        """The repos this runner declares it can drive. Like `agents`, this is a
+        self-declared ROUTING hint, not a security boundary — the workspace is the
+        gate, and the two intersect (b4f5ead)."""
+        return list(self.capabilities.get("projects", []))
+
     @property
     def live_status(self) -> str:
         """What we can OBSERVE, not what the runner last claimed.
@@ -138,9 +144,33 @@ class Turn(models.Model):
     ROUTING_CHOICES = [(PREFER_LOCAL, "Prefer local"), (LOCAL_ONLY, "Local only"), (ANY, "Any")]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # A turn targets EITHER an agent or a repo — exactly one (see the
+    # target_is_agent_xor_project constraint).
+    #
     # related_name is harness_turns (not "turns"): apps.agents.AgentTurn — the
     # packaged turn *report* — already claims agent.turns.
-    agent = models.ForeignKey("agents.Agent", on_delete=models.CASCADE, related_name="harness_turns")
+    agent = models.ForeignKey(
+        "agents.Agent", on_delete=models.CASCADE, related_name="harness_turns",
+        null=True, blank=True,
+    )
+    # The repo case. The session you want to revise from the phone is working on
+    # canopy-web — a repo, not an agent (of 22 emdash projects, ~5 are agents).
+    # This is a data-model gap, not a capability one: cdp_control.create_task is
+    # already project-generic and has no concept of an agent.
+    #
+    # A pseudo-agent per repo was rejected: it would serialize repo work behind
+    # one_executing_turn_per_agent (emdash gives every task its own worktree, so
+    # repo work is *meant* to parallelize) and give every repo KPIs, a needs-you
+    # inbox, and a skills catalog it has no meaning for.
+    project = models.CharField(max_length=100, blank=True, default="")
+    # Tenancy is DERIVED for agent turns (turn.agent.workspace) — denormalized
+    # tenancy drifts. A project turn has no agent to derive from, so it is the one
+    # accepted exception: it carries its own FK, read ONLY when agent is null.
+    workspace = models.ForeignKey(
+        "workspaces.Workspace", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="project_turns",
+        help_text="Set only for project turns, which have no agent to derive tenancy from.",
+    )
     # The Item whose approval enqueued this turn — the other half of the cycle
     # (Item.raised_by points back). Null for turns with no decision behind them:
     # the phone composer (a human asking directly), cron schedules, inbox polls.
@@ -173,15 +203,37 @@ class Turn(models.Model):
         ]
         constraints = [
             # Serialize EXECUTION, not intake: queued turns stack freely.
+            #
+            # Stays AGENT-ONLY on purpose. An agent is one identity with one
+            # continuous session, so serializing it is correct; a repo is not —
+            # emdash gives every task its own worktree. Widening this to projects
+            # would funnel all canopy-web work into a single lane.
+            #
+            # Project turns have agent=NULL and NULLs never compare equal, so they
+            # do not participate here at all. That is load-bearing, not incidental,
+            # so it has its own test.
             models.UniqueConstraint(
                 fields=["agent"],
                 condition=models.Q(status__in=["claimed", "running", "needs_human"]),
                 name="one_executing_turn_per_agent",
-            )
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(agent__isnull=False, project="")
+                    | models.Q(agent__isnull=True) & ~models.Q(project="")
+                ),
+                name="turn_targets_agent_xor_project",
+            ),
         ]
 
+    @property
+    def target(self) -> str:
+        """The emdash project to drive — an agent's slug or a repo's name. The CDP
+        layer underneath takes a project name either way."""
+        return self.agent.slug if self.agent_id else self.project
+
     def __str__(self) -> str:  # pragma: no cover
-        return f"turn:{self.agent.slug}:{self.status}:{self.id.hex[:8]}"
+        return f"turn:{self.target}:{self.status}:{self.id.hex[:8]}"
 
 
 class TurnEvent(models.Model):
@@ -224,9 +276,15 @@ class SessionLink(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Mirrors Turn: a link belongs to an agent XOR a repo. The phone owns a
+    # persistent thread per target (`phone:{user}:{target}`), which is what lets
+    # the emdash mirror stay deferred — you never enumerate emdash to reach a
+    # thread you started from the phone.
     agent = models.ForeignKey(
-        "agents.Agent", on_delete=models.CASCADE, related_name="session_links"
+        "agents.Agent", on_delete=models.CASCADE, related_name="session_links",
+        null=True, blank=True,
     )
+    project = models.CharField(max_length=100, blank=True, default="")
     thread_key = models.CharField(max_length=255, help_text="Gmail thread_id or a topic key")
     agent_task_ext_id = models.CharField(max_length=255, blank=True, default="")
     summary = models.TextField(blank=True, default="", help_text="Rolling context for rehydration")
@@ -245,13 +303,44 @@ class SessionLink(models.Model):
 
     class Meta:
         ordering = ["-updated_at"]
-        indexes = [models.Index(fields=["agent", "thread_key"])]
+        indexes = [
+            models.Index(fields=["agent", "thread_key"]),
+            models.Index(fields=["project", "thread_key"]),
+        ]
         constraints = [
-            models.UniqueConstraint(fields=["agent", "thread_key"], name="sessionlink_unique_per_agent_thread")
+            # TWO partial constraints, not one over a nullable column.
+            #
+            # `UniqueConstraint(fields=["agent", "thread_key"])` alone does NOT
+            # constrain project links: their agent is NULL, and NULL never equals
+            # NULL, so ("canopy-web", NULL, "phone:jj:canopy-web") would be
+            # insertable twice — every phone message forking a new session, which
+            # is exactly the duplicate-session failure the reuse path exists to
+            # prevent. Each partial constraint covers the rows it applies to.
+            models.UniqueConstraint(
+                fields=["agent", "thread_key"],
+                condition=models.Q(agent__isnull=False),
+                name="sessionlink_unique_per_agent_thread",
+            ),
+            models.UniqueConstraint(
+                fields=["project", "thread_key"],
+                condition=models.Q(agent__isnull=True),
+                name="sessionlink_unique_per_project_thread",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(agent__isnull=False, project="")
+                    | models.Q(agent__isnull=True) & ~models.Q(project="")
+                ),
+                name="sessionlink_targets_agent_xor_project",
+            ),
         ]
 
+    @property
+    def target(self) -> str:
+        return self.agent.slug if self.agent_id else self.project
+
     def __str__(self) -> str:  # pragma: no cover
-        return f"link:{self.agent.slug}:{self.thread_key[:16]}"
+        return f"link:{self.target}:{self.thread_key[:16]}"
 
     def reusable_by(self, runner: Runner) -> bool:
         """True if `runner` owns the live session hint (same runner + same macOS host)

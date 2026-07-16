@@ -37,7 +37,9 @@ DEFAULT_LEASE_SECONDS = 900
 
 def enqueue_turn(
     *,
-    agent,
+    agent=None,
+    project: str = "",
+    workspace=None,
     origin: str,
     idempotency_key: str,
     prompt: str = "",
@@ -45,7 +47,16 @@ def enqueue_turn(
     routing: str = Turn.PREFER_LOCAL,
 ) -> tuple[Turn, bool]:
     """Queued turns stack freely — the executing-turn index never blocks intake
-    (new turns are born `queued`, which the index does not cover)."""
+    (new turns are born `queued`, which the index does not cover).
+
+    Targets an agent XOR a project. A project turn must carry a workspace: it has
+    no agent to derive tenancy from, and claim_next_turn fails it closed without
+    one, so accepting it here would silently queue a turn nothing can ever run.
+    """
+    if bool(agent) == bool(project):
+        raise ValueError("a turn targets an agent XOR a project")
+    if project and workspace is None:
+        raise ValueError("a project turn needs a workspace")
     existing = Turn.objects.filter(idempotency_key=idempotency_key).first()
     if existing is not None:
         return existing, False
@@ -53,6 +64,10 @@ def enqueue_turn(
         with transaction.atomic():
             turn = Turn.objects.create(
                 agent=agent,
+                project=project,
+                # Agent turns derive tenancy via agent.workspace and must not
+                # denormalize a second copy that can drift.
+                workspace=workspace if project else None,
                 origin=origin,
                 idempotency_key=idempotency_key,
                 prompt=prompt,
@@ -122,11 +137,14 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     # its agent for the very claim we are about to make.
     release_stale_occurrence_turns_all()
     slugs = runner.agent_slugs()
+    projects = runner.project_names()
     if exclude_slugs:
         # Per-agent pause: the runner locally paused these agents; never claim their
         # queued turns (they stay QUEUED, resumed the moment the pause is lifted).
+        # Scoped to agents by name and by nature — pausing an agent says nothing
+        # about a repo, so project turns keep flowing.
         slugs = [s for s in slugs if s not in set(exclude_slugs)]
-    if not slugs:
+    if not slugs and not projects:
         return None
     routing_q = Q(routing__in=[Turn.PREFER_LOCAL, Turn.LOCAL_ONLY, Turn.ANY])
     if runner.kind == Runner.CLOUD:
@@ -166,9 +184,25 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     # pre-tenancy suite (runner + agent both null) runs on. Not a production hole
     # — agents/0007 backfilled every live agent onto a workspace.
     ws_slugs = wsvc.user_workspace_slugs(runner.paired_by) if runner.paired_by_id else set()
-    tenant_q = Q(agent__workspace_id__in=ws_slugs) | Q(agent__workspace_id__isnull=True)
+    # Project turns are gated on their OWN workspace FK and get NO null-workspace
+    # escape hatch. The naive widening is a hole: a project turn has agent=NULL,
+    # so `agent__workspace_id__isnull=True` — the leg that ungates pre-tenancy
+    # AGENTS — matches every project turn, making them claimable by any runner in
+    # any tenant. The two legs must therefore be split by target kind, and the
+    # project leg fails closed on a NULL workspace.
+    agent_tenant_q = Q(agent__workspace_id__in=ws_slugs) | Q(agent__workspace_id__isnull=True)
+    tenant_q = (Q(agent__isnull=False) & agent_tenant_q) | (
+        Q(agent__isnull=True) & Q(workspace_id__in=ws_slugs)
+    )
+    # `busy_agents` serializes AGENTS only, and a project turn (agent_id NULL)
+    # must not be swept up by it. This plain exclude() is correct: Django compiles
+    # it to `NOT (agent_id IN (…) AND agent_id IS NOT NULL)`, so NULL-agent rows
+    # survive rather than falling into SQL's NULL-propagation trap. Verified by
+    # test_a_busy_agent_does_not_block_a_project_turn, which is what makes it safe
+    # to rely on.
     candidates = (
-        Turn.objects.filter(status=Turn.QUEUED, agent__slug__in=slugs)
+        Turn.objects.filter(status=Turn.QUEUED)
+        .filter(Q(agent__slug__in=slugs) | Q(project__in=projects))
         .exclude(agent_id__in=busy_agents)
         .filter(routing_q)
         .filter(tenant_q)
@@ -410,8 +444,24 @@ def release_stale_occurrence_turns_all(*, now: dt.datetime | None = None) -> int
 # SessionLink — durable thread↔session mapping (cross-account); see models.SessionLink
 # --------------------------------------------------------------------------------------
 
-def resolve_session(agent, thread_key: str, runner: Runner) -> dict:
-    """Given (agent, thread_key) and the CURRENTLY-active runner, decide how to execute.
+def _link_target(agent, project: str) -> dict:
+    """Lookup kwargs for a link's target, enforcing the agent-XOR-project rule in
+    Python as well as in the DB.
+
+    Both keys are always present and one is always the empty/NULL sentinel. That
+    is deliberate: `filter(agent=a)` alone would match a project row whose agent
+    is NULL only by accident of the query, and `get_or_create(agent=None)` would
+    otherwise omit `project` and create a row the CheckConstraint rejects.
+    """
+    if bool(agent) == bool(project):
+        raise ValueError("a session link targets an agent XOR a project")
+    return {"agent": agent, "project": ""} if agent else {"agent": None, "project": project}
+
+
+def resolve_session(agent, thread_key: str, runner: Runner, *, project: str = "") -> dict:
+    """Given (target, thread_key) and the CURRENTLY-active runner, decide how to execute.
+
+    `agent` may be None when `project` is given — the phone addresses repos too.
 
     Returns a plan dict:
       - reuse (bool): the live session hint is owned by THIS runner/host — the runner
@@ -423,7 +473,9 @@ def resolve_session(agent, thread_key: str, runner: Runner) -> dict:
 
     Never assumes the live session is reachable: reuse is only proposed when the hint's
     runner + macOS host match the caller (the two-account failover invariant)."""
-    link = SessionLink.objects.filter(agent=agent, thread_key=thread_key).first()
+    link = SessionLink.objects.filter(
+        thread_key=thread_key, **_link_target(agent, project)
+    ).first()
     if link is None:
         return {"reuse": False, "emdash_task_id": "", "agent_task_ext_id": "",
                 "summary": "", "link_id": None, "new_thread": True}
@@ -442,6 +494,7 @@ def record_session(
     thread_key: str,
     *,
     runner: Runner,
+    project: str = "",
     emdash_task_id: str = "",
     session_id: str = "",
     agent_task_ext_id: str | None = None,
@@ -455,7 +508,7 @@ def record_session(
     durable context accumulated so far."""
     with transaction.atomic():
         link, _ = SessionLink.objects.select_for_update().get_or_create(
-            agent=agent, thread_key=thread_key
+            thread_key=thread_key, **_link_target(agent, project)
         )
         link.live_runner = runner
         link.live_host = runner.host

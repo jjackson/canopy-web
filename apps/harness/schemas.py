@@ -72,7 +72,10 @@ class RecordSessionIn(Schema):
 
 
 class TurnIn(Schema):
-    agent_slug: str
+    # Exactly one of agent_slug / project. Enforced in the view (422) rather than
+    # by a validator so the error matches the rest of the harness's shape.
+    agent_slug: str = ""
+    project: str = ""
     origin: str
     idempotency_key: str
     prompt: str = ""
@@ -82,7 +85,12 @@ class TurnIn(Schema):
 
 class TurnOut(Schema):
     id: uuid.UUID
-    agent_slug: str
+    # Exactly one of these is set — a turn targets an agent or a repo, never
+    # both. Consumers should read `target` unless they specifically need to know
+    # which kind it is.
+    agent_slug: str | None
+    project: str
+    target: str
     origin: str
     status: str
     routing: str
@@ -98,8 +106,10 @@ class TurnOut(Schema):
     lease_expires_at: dt.datetime | None
 
     @staticmethod
-    def resolve_agent_slug(obj) -> str:
-        return obj.agent.slug
+    def resolve_agent_slug(obj) -> str | None:
+        # None for project turns — dereferencing obj.agent unconditionally is
+        # what this used to do, and it 500s the moment agent can be NULL.
+        return obj.agent.slug if obj.agent_id else None
 
     @staticmethod
     def resolve_claimed_by_name(obj) -> str | None:

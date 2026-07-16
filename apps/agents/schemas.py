@@ -147,6 +147,9 @@ class AgentSkillIn(StrictModel):
     description: str = ""
     url: str = Field(default="", max_length=500)
     improvement_note: str = ""
+    # Fail closed: a publish that predates these fields marks nothing launchable.
+    launchable: bool = False
+    args_hint: str = Field(default="", max_length=120)
 
 
 class AgentSkillCatalogIn(StrictModel):
@@ -162,6 +165,8 @@ class AgentSkillOut(StrictModel):
     description: str
     url: str
     improvement_note: str
+    launchable: bool
+    args_hint: str
     updated_at: dt.datetime
 
 
