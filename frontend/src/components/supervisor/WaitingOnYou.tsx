@@ -1,17 +1,15 @@
 import type { JSX } from 'react'
-import type { FleetNeedsYouOut, NeedsYouItem, NeedsYouType } from '@/api/agents'
+import type { FleetNeedsYouOut, NeedsYouItem } from '@/api/agents'
+import { NEEDS_YOU_BAND as BAND, NEEDS_YOU_RANK as RANK } from '@/lib/needsYouBands'
 
 // Cross-fleet "waiting on you" — the React counterpart of menubar.py's section
 // (menubar.py:427). Ranked exactly as the server ranks it: review, then
 // question, then notify. Read-only for now: rows link out. Acting on an item
 // inline is Phase 3, with the composer.
-const RANK: NeedsYouType[] = ['review', 'question', 'notify']
-
-const BAND: Record<NeedsYouType, { label: string; dot: string }> = {
-  review: { label: 'Review', dot: 'bg-muted-foreground' },
-  question: { label: 'Question', dot: 'bg-warning' },
-  notify: { label: 'Notify', dot: 'bg-primary/50' },
-}
+//
+// The bands' identity is shared with the agent rail's NeedsYouSection (see
+// lib/needsYouBands) — that's the part that drifted. The rendering is
+// deliberately not shared: this is a read-only queue, that one is actionable.
 
 type Row = NeedsYouItem & { agent_slug: string }
 

@@ -10,16 +10,25 @@ import {
 } from '@/api/agents'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 import { TaskCard } from '@/components/TasksBoard'
+import { NEEDS_YOU_BAND, NEEDS_YOU_RANK } from '@/lib/needsYouBands'
 import { WorkbenchSubHeader, WorkbenchSkeleton } from 'canopy-ui'
 
 // The three bands, in rank order. Each is a distinct kind of human attention:
 // a decision to make (review), an answer Echo is blocked on (question), or an
 // FYI with no gate (notify).
-const BANDS: { type: NeedsYouType; label: string; blurb: string; dot: string }[] = [
-  { type: 'review', label: 'Review', blurb: 'Suggestions awaiting your validate / decline', dot: 'bg-muted-foreground' },
-  { type: 'question', label: 'Question', blurb: 'Echo is blocked and needs a decision', dot: 'bg-warning' },
-  { type: 'notify', label: 'Notify', blurb: 'Recent work — no action needed', dot: 'bg-primary/50' },
-]
+//
+// Order/label/dot come from lib/needsYouBands, shared with /supervisor's
+// WaitingOnYou — that identity is what drifted once (the Review dot rendered a
+// different colour on each surface). The blurbs stay here: only this rail shows
+// them, so they can't drift.
+const BLURBS: Record<NeedsYouType, string> = {
+  review: 'Suggestions awaiting your validate / decline',
+  question: 'Echo is blocked and needs a decision',
+  notify: 'Recent work — no action needed',
+}
+
+const BANDS: { type: NeedsYouType; label: string; blurb: string; dot: string }[] =
+  NEEDS_YOU_RANK.map((type) => ({ type, blurb: BLURBS[type], ...NEEDS_YOU_BAND[type] }))
 
 // The "N waiting on you" badge — mirrors the board's "N queued for Echo".
 function WaitingBadge({ count }: { count: number }): JSX.Element {
