@@ -110,6 +110,18 @@ The catalog mirrors the repo, and that is the problem: Echo publishes 20 skills 
 
 ---
 
+## Shipping split (decided during execution)
+
+Tasks 1-5 are the whole backend — model, constraints, tenancy, claim routing,
+enqueue — and ship as their own PR. They are safe alone: a project turn is only
+claimable by a runner declaring `projects` in `capabilities`, and the live runner
+(`jj-mbp-cdp`) declares only agents, so `Q(project__in=[])` matches nothing.
+Verified against prod, not assumed.
+
+Tasks 6-8 (runner target, composer, session input) are the client half and follow.
+The spec's "repo targets and session input ship together" is about user-facing
+capability; the backend landing first changes no existing behaviour.
+
 ## Verification
 
 - [ ] `uv run pytest` with `.env` moved aside
