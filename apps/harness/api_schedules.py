@@ -14,6 +14,8 @@ supersede logic lives in the service, so these handlers no longer touch the ORM.
 """
 from __future__ import annotations
 
+import datetime as dt
+
 from django.http import HttpRequest
 from ninja import Router, Status
 from ninja.errors import HttpError
@@ -21,14 +23,17 @@ from ninja.errors import HttpError
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_CONFLICT, ProblemError
 from apps.api.pagination import Page, clamp_limit, paginate
+from apps.workspaces import services as wsvc
 
 from . import schedule_services as ss
 from .schemas import (
+    ScheduledFireOut,
     ScheduleIn,
     ScheduleOut,
     SchedulePatch,
     SchedulePreviewIn,
     SchedulePreviewOut,
+    ScheduleWeekOut,
 )
 
 router = Router(auth=session_auth, tags=["schedules"])
@@ -51,6 +56,37 @@ def _duplicate_name(name: str) -> ProblemError:
         type_=TYPE_CONFLICT,
         detail=f"A schedule named '{name}' already exists for this agent.",
     )
+
+
+def _visible_workspace_ids(request: HttpRequest) -> set:
+    """The workspaces whose agents this caller may see — pinned to one (tenant
+    URL) or spanning every membership (flat/personal). Built from wsvc
+    primitives, NOT by importing agents.api._visible_agent_workspace_ids: a
+    harness api module must not depend on the agents api module (the same rule
+    that duplicated _agent_or_404). None = legacy unhomed agents."""
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    if ws:
+        return {ws}
+    return set(wsvc.user_workspace_slugs(request.user)) | {None}
+
+
+# Route-ordering invariant: this literal "/schedules/week" route must stay
+# declared BEFORE the "/{slug}/schedules/..." routes below — the same defensive
+# ordering the "preview" route relies on. Ninja compiles path params with no
+# int: converter and Django resolves method-agnostically, so once a {slug}
+# pattern exists first, "agents/schedules/week" would bind {"slug": "schedules"}
+# and this route would be unreachable. Declaration order keeps "schedules"
+# literal.
+@router.get("/schedules/week", response=ScheduleWeekOut,
+            summary="A week of scheduled fires across the visible fleet",
+            openapi_extra={"x-mcp-expose": True})
+def schedule_week(request: HttpRequest, start: dt.datetime) -> ScheduleWeekOut:
+    """Every enabled schedule the caller can see, each with its fires in
+    [start, start+7d). Scope is the URL: flat → all my workspaces; /w/{ws}/ →
+    that one (WorkspaceResolveMiddleware sets request.workspace_slug)."""
+    rows = ss.week_schedules(_visible_workspace_ids(request), start)
+    return ScheduleWeekOut(start=start, items=[ScheduledFireOut(**r) for r in rows])
 
 
 @router.get("/{slug}/schedules/", response=Page[ScheduleOut],
