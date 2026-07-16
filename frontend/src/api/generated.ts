@@ -4128,6 +4128,10 @@ export interface components {
             readonly assigned: string;
             /** Confidence */
             readonly confidence: string;
+            /** Score */
+            readonly score: string;
+            /** Review */
+            readonly review: string;
             /** Rationale */
             readonly rationale: string;
             /** Source Url */
@@ -4179,6 +4183,16 @@ export interface components {
              * @default
              */
             readonly confidence: string;
+            /**
+             * Score
+             * @default
+             */
+            readonly score: string;
+            /**
+             * Review
+             * @default
+             */
+            readonly review: string;
             /**
              * Rationale
              * @default
@@ -4239,6 +4253,10 @@ export interface components {
             readonly assigned?: string | null;
             /** Confidence */
             readonly confidence?: string | null;
+            /** Score */
+            readonly score?: string | null;
+            /** Review */
+            readonly review?: string | null;
             /** Rationale */
             readonly rationale?: string | null;
             /** Source Url */
