@@ -42,6 +42,9 @@ dev = [
     "pytest-asyncio>=0.23,<1.0",
     "ruff>=0.4,<1.0",
     "schemathesis>=3.30,<4.0",
+    # dev-only: channels.testing.WebsocketCommunicator imports daphne's live
+    # test harness at package import time. Prod serves WS via uvicorn, not daphne.
+    "daphne>=4.1,<5.0",
 ]
 
 [build-system]
