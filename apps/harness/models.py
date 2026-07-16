@@ -285,6 +285,15 @@ class SessionLink(models.Model):
         null=True, blank=True,
     )
     project = models.CharField(max_length=100, blank=True, default="")
+    # Tenant for PROJECT links only. Agent links derive their tenant via
+    # agent.workspace and are gated by _agent_or_404 at the API; a project link
+    # has no agent, so without this any runner could read another user's rolling
+    # `summary` + live task id by guessing thread_key. Set at record time from the
+    # claimed turn's workspace (which already passed the claim tenant gate).
+    workspace = models.ForeignKey(
+        "workspaces.Workspace", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="project_session_links",
+    )
     thread_key = models.CharField(max_length=255, help_text="Gmail thread_id or a topic key")
     agent_task_ext_id = models.CharField(max_length=255, blank=True, default="")
     summary = models.TextField(blank=True, default="", help_text="Rolling context for rehydration")
@@ -322,14 +331,27 @@ class SessionLink(models.Model):
                 name="sessionlink_unique_per_agent_thread",
             ),
             models.UniqueConstraint(
-                fields=["project", "thread_key"],
+                # workspace is in the project link's IDENTITY (services._link_target):
+                # a link is scoped to its tenant, so a guessed thread_key from
+                # another workspace creates a separate row and cannot hijack this
+                # one. (project, workspace) both non-NULL for every project row.
+                fields=["project", "workspace", "thread_key"],
                 condition=models.Q(agent__isnull=True),
                 name="sessionlink_unique_per_project_thread",
             ),
             models.CheckConstraint(
+                # An agent link derives tenancy and stores NO workspace (a stored
+                # copy would be the denormalization we avoid). A project link MUST
+                # carry one — the unique constraint above only dedupes when
+                # workspace is non-NULL, so a NULL-workspace project row would
+                # silently permit duplicate live-session hijacks.
                 condition=(
-                    models.Q(agent__isnull=False, project="")
-                    | models.Q(agent__isnull=True) & ~models.Q(project="")
+                    models.Q(agent__isnull=False, project="", workspace__isnull=True)
+                    | (
+                        models.Q(agent__isnull=True)
+                        & ~models.Q(project="")
+                        & models.Q(workspace__isnull=False)
+                    )
                 ),
                 name="sessionlink_targets_agent_xor_project",
             ),

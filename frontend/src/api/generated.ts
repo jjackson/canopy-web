@@ -1694,7 +1694,7 @@ export interface paths {
         readonly put?: never;
         /**
          * Resolve Session
-         * @description Given (agent, thread_key), tell THIS runner whether it can reuse an existing
+         * @description Given (target, thread_key), tell THIS runner whether it can reuse an existing
          *     emdash session (it owns the live hint) or must spawn fresh + rehydrate context.
          *     Runner-scoped because reuse depends on the caller's macOS host.
          */
@@ -5365,6 +5365,8 @@ export interface components {
             readonly project: string;
             /** Target */
             readonly target: string;
+            /** Workspace Slug */
+            readonly workspace_slug: string | null;
             /** Origin */
             readonly origin: string;
             /** Status */
@@ -5414,15 +5416,41 @@ export interface components {
         };
         /** ResolveSessionIn */
         readonly ResolveSessionIn: {
-            /** Agent Slug */
+            /**
+             * Agent Slug
+             * @default
+             */
             readonly agent_slug: string;
+            /**
+             * Project
+             * @default
+             */
+            readonly project: string;
+            /**
+             * Workspace
+             * @default
+             */
+            readonly workspace: string;
             /** Thread Key */
             readonly thread_key: string;
         };
         /** RecordSessionIn */
         readonly RecordSessionIn: {
-            /** Agent Slug */
+            /**
+             * Agent Slug
+             * @default
+             */
             readonly agent_slug: string;
+            /**
+             * Project
+             * @default
+             */
+            readonly project: string;
+            /**
+             * Workspace
+             * @default
+             */
+            readonly workspace: string;
             /** Thread Key */
             readonly thread_key: string;
             /**

@@ -26,8 +26,8 @@ class FakeClient:
         self.failed = []
         self.recorded = []
 
-    def resolve_session(self, runner_id, agent, thread_key):
-        self.calls.append(("resolve", agent, thread_key))
+    def resolve_session(self, runner_id, agent, thread_key, *, project="", workspace=""):
+        self.calls.append(("resolve", agent, thread_key, project, workspace))
         return dict(self.plan)
 
     def start(self, turn_id, session_id=""):
@@ -44,6 +44,7 @@ class FakeClient:
 
     def record_session(self, runner_id, agent, thread_key, **kw):
         self.recorded.append((agent, thread_key, kw))
+
 
 
 def _turn(**kw):
@@ -155,7 +156,36 @@ def test_thread_key_defaults_to_agent_main_when_no_ref(monkeypatch):
     monkeypatch.setattr(cdp_control, "create_task", lambda *a, **k: {"task": "x"})
     client = FakeClient({"reuse": False, "new_thread": True, "summary": ""})
     execute.execute_turn(_cfg(), client, "r-1", _turn(origin_ref={}))
-    assert client.calls[0] == ("resolve", "hal", "hal:main")
+    assert client.calls[0] == ("resolve", "hal", "hal:main", "", "")
+
+
+def test_a_project_turn_drives_the_repo_and_carries_its_tenant(monkeypatch):
+    """A repo turn (agent_slug None, project set) resolves + drives against the
+    project name, and threads project + workspace to the session-link calls so
+    the durable link is tenant-scoped. cdp_control is unchanged — it always took
+    a project name."""
+    created = {}
+    monkeypatch.setattr(
+        cdp_control, "create_task",
+        lambda project, prompt, **k: created.update(project=project, prompt=prompt) or {"task": "ct"},
+    )
+    client = FakeClient({"reuse": False, "new_thread": True, "summary": ""})
+    turn = {
+        "id": "t-9", "agent_slug": None, "project": "canopy-web",
+        "workspace_slug": "canopy", "origin_ref": {}, "prompt": "fix the header",
+    }
+
+    result = execute.execute_turn(_cfg(), client, "r-1", turn)
+
+    assert result == "created:t-9:ct"
+    # resolve keyed on the repo, tagged with project + workspace
+    assert client.calls[0] == ("resolve", "", "canopy-web:main", "canopy-web", "canopy")
+    # the CDP create drove the repo as its emdash project, with the composer's prompt
+    assert created == {"project": "canopy-web", "prompt": "fix the header"}
+    # the durable link was recorded with the repo's tenant
+    agent_arg, thread_key, kw = client.recorded[0]
+    assert agent_arg == ""
+    assert kw["project"] == "canopy-web" and kw["workspace"] == "canopy"
 
 
 def test_task_name_is_readable_subject_plus_stamp():
