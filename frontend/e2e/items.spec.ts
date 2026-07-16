@@ -31,3 +31,18 @@ test('implementing an item decides it and dispatches its work', async ({ page })
   // Decided once: the buttons are gone, so it cannot be double-dispatched.
   await expect(item.getByRole('button', { name: 'implement' })).toHaveCount(0)
 })
+
+test('an open item shows in the agent inbox and the fleet supervisor', async ({ page }) => {
+  // Phase 2: needs_you reads real Items alongside its remaining projections, so
+  // Ada's audit reaches the supervisor's queue without borrowing anything.
+  await page.goto('/w/dimagi/agents/ada/needs-you')
+  await expect(page.getByText('hal: discard 81 junk/stale unread emails')).toBeVisible()
+
+  await page.goto('/supervisor')
+  await expect(page.getByTestId('waiting-on-you')).toContainText(
+    'hal: discard 81 junk/stale unread emails',
+  )
+  // The inbox row names where implementing sends the work — Ada's fan-out,
+  // visible without opening the item.
+  await expect(page.getByTestId('waiting-on-you')).toContainText('dispatches to hal')
+})
