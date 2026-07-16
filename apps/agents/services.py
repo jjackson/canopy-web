@@ -327,6 +327,58 @@ def _run_ref_id(run_id: str) -> int:
         return 0
 
 
+def _item_inbox_items(agent: Agent) -> tuple[list[dict], list[dict]]:
+    """An agent's OPEN items, as (review, question) bands.
+
+    Unlike every other source here this is not a projection — an Item is a real
+    row that already carries its own title, body, and state, so there is nothing
+    to derive and nothing that can drift. `decided`/`dismissed` items are simply
+    gone from the queue; no reconciliation, no staleness window.
+
+    `apps.harness` imports `apps.agents.models`, so this import must stay inside
+    the function — importing harness at module scope from apps.agents.MODELS would
+    cycle. (services/api may import it eagerly; models may not. Keeping it local
+    here costs nothing and removes the question.)
+    """
+    from apps.harness.models import Item
+
+    review: list[dict] = []
+    question: list[dict] = []
+    for it in agent.items.filter(state=Item.OPEN).order_by("created_at"):
+        row = {
+            "type": "review" if it.kind == Item.REVIEW else "question",
+            "ref_kind": "item",
+            "ref_id": str(it.id),
+            "title": it.title,
+            "subtitle": _item_subtitle(it),
+            "url": _item_url(agent, it),
+            "created_at": it.created_at,
+        }
+        (review if it.kind == Item.REVIEW else question).append(row)
+    return review, question
+
+
+def _item_subtitle(item) -> str:
+    """Where implementing sends the work — the supervisor's most useful hint, and
+    the one place Ada's fan-out is visible in the inbox itself."""
+    targets = [
+        (d or {}).get("target_agent") or item.agent.slug
+        for d in (item.dispatch or [])
+    ]
+    if not targets:
+        return ""
+    return f"dispatches to {', '.join(dict.fromkeys(targets))}"
+
+
+def _item_url(agent: Agent, item) -> str:
+    """Deep-link to the item's batch view. Tenant-prefixed: every agent surface
+    lives under /w/<ws>/, and an unprefixed link would bounce through the
+    workspace redirect."""
+    ws = agent.workspace_id or ""
+    base = f"/w/{ws}/agents/{agent.slug}/items" if ws else f"/agents/{agent.slug}/items"
+    return f"{base}?batch={item.batch_key}" if item.batch_key else base
+
+
 def _run_inbox_items(agent: Agent) -> tuple[list[dict], list[dict], list[dict]]:
     """Project an agent's RUN STATE onto the inbox bands (spec §5), reusing the
     existing review/question/notify types — no new types invented:
@@ -422,6 +474,15 @@ def needs_you(agent: Agent, notify_limit: int = 5) -> dict:
     # Scheduled occurrences you haven't finished. Both apps are framework tier,
     # so this cross-import is allowed by the boundary test.
     review.extend(schedule_nag_items(agent))
+
+    # Real Items — the only entries here that are OBJECTS rather than projections.
+    # ADDITIVE on purpose: every band above is still a projection, because tasks
+    # (Phase 4) and run gates (Phase 3) have not migrated yet. Switching to
+    # items-only now would empty the inbox rather than unify it. Each projection
+    # above deletes itself as its producer moves onto Item.
+    item_review, item_question = _item_inbox_items(agent)
+    review.extend(item_review)
+    question.extend(item_question)
 
     items: list[dict] = review + question
     waiting_count = len(items)  # review + question are the gated items

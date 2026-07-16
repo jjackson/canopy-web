@@ -3700,9 +3700,9 @@ export interface components {
              * Ref Kind
              * @enum {string}
              */
-            readonly ref_kind: "task" | "sync" | "work_product" | "run" | "schedule";
+            readonly ref_kind: "task" | "sync" | "work_product" | "run" | "schedule" | "item";
             /** Ref Id */
-            readonly ref_id: number;
+            readonly ref_id: number | string;
             /** Title */
             readonly title: string;
             /**
