@@ -1,7 +1,6 @@
 """DbRunStore read path — create ORM rows, assert the read model matches."""
 from __future__ import annotations
 
-import datetime as dt
 
 import pytest
 

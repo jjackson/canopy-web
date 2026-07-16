@@ -9,7 +9,7 @@ from django.test import Client
 from django.utils import timezone
 
 from apps.agents.models import Agent
-from apps.harness.models import HEARTBEAT_ONLINE_WINDOW, Runner, Turn
+from apps.harness.models import HEARTBEAT_ONLINE_WINDOW, Runner
 
 pytestmark = pytest.mark.django_db
 

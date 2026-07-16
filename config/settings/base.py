@@ -3,7 +3,6 @@ Base Django settings for canopy-web.
 
 Common settings shared across all environments.
 """
-import os
 import sys
 from pathlib import Path
 

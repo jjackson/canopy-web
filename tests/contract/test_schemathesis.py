@@ -26,12 +26,11 @@ import schemathesis
 from hypothesis import HealthCheck, settings
 
 # Per-endpoint example count. Schemathesis is property-based: each (path × method)
-# runs `max_examples` generated requests. The default (100) × canopy-web's many
-# endpoints made this a ~6-min blocker on every PR. So PRs run a fast smoke (a few
-# examples each — still hits every endpoint and catches the contract breaks that
-# matter: wrong status codes / schema mismatches), and the nightly job
-# (.github/workflows/contract-nightly.yml) sets SCHEMATHESIS_MAX_EXAMPLES high for
-# exhaustive fuzzing off the PR critical path.
+# runs `max_examples` generated requests. These tests need a live server (from_uri
+# below), which PR CI does not stand up — so on PRs the suite SKIPS. It runs in the
+# nightly job (.github/workflows/contract-nightly.yml), which sets
+# SCHEMATHESIS_MAX_EXAMPLES high for exhaustive fuzzing, and locally against a
+# running server. The low default here keeps an ad-hoc local run fast.
 _MAX_EXAMPLES = int(os.environ.get("SCHEMATHESIS_MAX_EXAMPLES", "6"))
 
 SCHEMA_URL = os.environ.get(

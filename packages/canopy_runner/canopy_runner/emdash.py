@@ -18,7 +18,6 @@ because the DOM cannot answer it (see `task_state`).
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 import time
 from contextlib import contextmanager

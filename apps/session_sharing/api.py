@@ -36,7 +36,6 @@ from .schemas import (
     ArcCreateIn,
     ArcCreateOut,
     ArcDetailOut,
-    ArcItemOut,
     ArcListItemOut,
     ArcPatchIn,
     SessionDetailOut,

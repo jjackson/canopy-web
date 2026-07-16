@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.agents.models import Agent
 from apps.harness import services
-from apps.harness.models import Runner, Turn, TurnEvent
+from apps.harness.models import Runner, Turn
 
 pytestmark = pytest.mark.django_db
 
