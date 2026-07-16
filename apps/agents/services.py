@@ -216,7 +216,7 @@ def sync_tasks(agent: Agent, items: list) -> dict:
 
 
 _TASK_FIELDS = ("title", "next_action", "status", "owner", "assigned", "confidence",
-                "rationale", "source_url", "plan", "due", "notes", "position")
+                "score", "review", "rationale", "source_url", "plan", "due", "notes", "position")
 
 
 def create_task(agent: Agent, data) -> AgentTask:

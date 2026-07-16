@@ -228,6 +228,12 @@ class AgentTask(models.Model):
     owner = models.CharField(max_length=120, blank=True, default="", help_text="Human stakeholder who owns the outcome — never the agent.")
     assigned = models.CharField(max_length=120, blank=True, default="", help_text="Who the next action waits on — the agent or a person.")
     confidence = models.CharField(max_length=10, blank=True, default="", help_text="high / low — how sure the agent is about a suggestion.")
+    # The agent's self-assessment, captured WHEN the task is marked done — so a
+    # manager sync reads the score from completion time instead of re-grading
+    # weeks later. `score` is a short grade ("A-", "B+", "4/5"); `review` is the
+    # one-line why. Blank until the task is completed.
+    score = models.CharField(max_length=8, blank=True, default="", help_text="Self-grade at completion — e.g. A-, B+, 4/5.")
+    review = models.TextField(blank=True, default="", help_text="One-line self-review captured when the task was completed.")
     # Context the agent stores when it suggests a task, so it doesn't re-derive
     # from email when a human says "go do it."
     rationale = models.TextField(blank=True, default="", help_text="Why the agent suggested this / why now.")

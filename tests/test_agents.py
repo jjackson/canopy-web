@@ -126,8 +126,8 @@ def test_replace_skills_mirrors_catalog():
 
 def _task(**kw):
     base = dict(ext_id="t", title="T", next_action="", status="suggested", owner="",
-                assigned="", confidence="", rationale="", source_url="", plan="",
-                due=None, links=[], notes="", position=0, source="sheet")
+                assigned="", confidence="", score="", review="", rationale="", source_url="",
+                plan="", due=None, links=[], notes="", position=0, source="sheet")
     base.update(kw)
     return SimpleNamespace(**base)
 
@@ -230,6 +230,30 @@ def test_agenttask_run_link_round_trips():
     run.delete()                                                 # on_delete=SET_NULL
     task.refresh_from_db()
     assert task.run_id is None and AgentTask.objects.filter(pk=task.pk).exists()
+
+
+def test_agenttask_score_review_captured_at_completion():
+    """A task carries a self-grade + one-line review scored WHEN it's marked
+    done, so a manager sync reads completion-time scores instead of re-grading.
+    Blank on suggestion; set via patch at done; surfaced on the Out schema."""
+    from apps.agents.schemas import AgentTaskOut
+
+    agent = _agent()
+    t = services.create_task(agent, _task(ext_id="t1", title="Solina guide", status="in_progress"))
+    assert t.score == "" and t.review == ""                       # unscored while in flight
+    # completion: patch status=done with the grade captured at that moment
+    services.patch_task(t, {"status": "done", "score": "A-",
+                            "review": "provenance-checked; transcript-grounded"})
+    t.refresh_from_db()
+    assert t.status == "done" and t.score == "A-"
+    assert t.review == "provenance-checked; transcript-grounded"
+    # the score/review round-trip out through the API schema
+    out = AgentTaskOut.model_validate(t, from_attributes=True)
+    assert out.score == "A-" and out.review.startswith("provenance-checked")
+    # create-time scoring works too (e.g. importing already-done history)
+    t2 = services.create_task(agent, _task(ext_id="t2", title="MLC submission",
+                                           status="done", score="B", review="you rewrote it to ship"))
+    assert t2.score == "B" and t2.review == "you rewrote it to ship"
 
 
 def test_command_flow_accept_then_apply_and_decline():

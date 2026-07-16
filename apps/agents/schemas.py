@@ -184,6 +184,8 @@ class AgentTaskIn(StrictModel):
     owner: str = Field(default="", max_length=120)
     assigned: str = Field(default="", max_length=120)
     confidence: str = Field(default="", max_length=10)
+    score: str = Field(default="", max_length=8)
+    review: str = ""
     rationale: str = ""
     source_url: str = Field(default="", max_length=500)
     plan: str = ""
@@ -210,6 +212,8 @@ class AgentTaskOut(StrictModel):
     owner: str
     assigned: str
     confidence: str
+    score: str
+    review: str
     rationale: str
     source_url: str
     plan: str
@@ -229,6 +233,8 @@ class AgentTaskPatch(StrictModel):
     owner: str | None = Field(default=None, max_length=120)
     assigned: str | None = Field(default=None, max_length=120)
     confidence: str | None = Field(default=None, max_length=10)
+    score: str | None = Field(default=None, max_length=8)
+    review: str | None = None
     rationale: str | None = None
     source_url: str | None = Field(default=None, max_length=500)
     plan: str | None = None
