@@ -1,5 +1,35 @@
 import { describe, it, expect } from 'vitest'
-import { rewriteForWorkspace } from './client.v2'
+import { rewriteForWorkspace, shouldBounceToLogin } from './client.v2'
+
+// The login-loop breaker. A lapsed session should bounce through OAuth exactly
+// once; a second 401 landing back inside the window means the round-trip isn't
+// sticking (rejected cookie, IdP hiccup, a service worker shadowing /accounts/ —
+// the #244 outage), so we must HOLD and surface the login screen instead of
+// navigating again. This is the pure decision behind that guard; the DOM/
+// sessionStorage plumbing around it is not exercised here (this file's "no live
+// DOM" convention), but the branch that actually prevents the infinite loop is.
+describe('shouldBounceToLogin', () => {
+  const WINDOW = 10_000
+
+  it('bounces when the session lapses and we have never redirected', () => {
+    expect(shouldBounceToLogin(0, 1_000_000)).toBe(true)
+  })
+
+  it('holds — breaks the loop — on a second 401 within the window', () => {
+    const now = 1_000_000
+    expect(shouldBounceToLogin(now - 500, now)).toBe(false)
+  })
+
+  it('bounces again once the window has elapsed (a genuine later expiry)', () => {
+    const now = 1_000_000
+    expect(shouldBounceToLogin(now - (WINDOW + 1), now)).toBe(true)
+  })
+
+  it('treats the exact window boundary as elapsed, so it bounces', () => {
+    const now = 1_000_000
+    expect(shouldBounceToLogin(now - WINDOW, now)).toBe(true)
+  })
+})
 
 // Regression test for the workspace-rewrite middleware eating request bodies.
 //

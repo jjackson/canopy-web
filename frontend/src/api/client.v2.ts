@@ -2,12 +2,63 @@ import createClient from "openapi-fetch";
 import type { paths } from "./generated";
 import { API_BASE, getCsrfToken } from "./base";
 
-function redirectToLogin(): never {
+// A lapsed session should bounce the user through OAuth exactly ONCE. The guard
+// below is what makes that a bounce and not a loop: if we land back here still
+// 401 within this window of the last bounce, the round-trip isn't sticking (a
+// rejected cookie, an IdP hiccup, a service worker shadowing /accounts/ — the
+// #244 outage), so we STOP navigating and let the 401 fall through to the
+// in-app login screen, which the user drives by hand. Defense in depth: an
+// infinite redirect loop is now structurally impossible regardless of *why* the
+// session won't take. sessionStorage (not a module-scope var) because the
+// timestamp must survive the full-page OAuth navigation to Google and back.
+const LOGIN_REDIRECT_AT_KEY = "canopy:auth:lastLoginRedirectAt";
+const LOGIN_LOOP_WINDOW_MS = 10_000;
+
+/**
+ * Pure loop-breaker decision, split out so it's unit-testable without a DOM
+ * (this file's convention — see rewriteForWorkspace). Bounce to OAuth only if we
+ * have NOT already bounced within the window; a second 401 inside it means the
+ * round-trip isn't sticking, so hold and let the login screen render instead.
+ */
+export function shouldBounceToLogin(lastRedirectAt: number, now: number): boolean {
+  return !(lastRedirectAt > 0 && now - lastRedirectAt < LOGIN_LOOP_WINDOW_MS);
+}
+
+/**
+ * Clear the loop guard once a request has authenticated, so a genuine later
+ * expiry still gets its own clean single bounce. Called by AuthProvider on a
+ * successful /api/me. Best-effort — sessionStorage can throw in private mode.
+ */
+export function noteAuthSucceeded(): void {
+  try {
+    sessionStorage.removeItem(LOGIN_REDIRECT_AT_KEY);
+  } catch {
+    /* sessionStorage unavailable (private mode / sandboxed frame) — guard is best-effort */
+  }
+}
+
+function redirectToLogin(): void {
+  let lastRedirectAt = 0;
+  try {
+    lastRedirectAt = Number(sessionStorage.getItem(LOGIN_REDIRECT_AT_KEY)) || 0;
+  } catch {
+    /* unavailable — treat as "never redirected" and allow the one bounce */
+  }
+  if (!shouldBounceToLogin(lastRedirectAt, Date.now())) {
+    // We bounced moments ago and we're back with another 401 — we're looping.
+    // Do NOT navigate; let the caller surface the login screen (getMe → null →
+    // <LoginPrompt/>, whose Sign-in button is a user-driven single attempt).
+    return;
+  }
+  try {
+    sessionStorage.setItem(LOGIN_REDIRECT_AT_KEY, String(Date.now()));
+  } catch {
+    /* unavailable — a best-effort guard is better than blocking the redirect */
+  }
   const next = encodeURIComponent(window.location.pathname + window.location.search);
   // Prefix-aware: BASE_URL is "/" at root and "/canopy/" as a labs tenant, so
   // this stays under the deployment instead of bouncing to a sibling tenant.
   window.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/accounts/google/login/?next=${next}`;
-  throw new Error("Redirecting to login");
 }
 
 // Per-token public-link routes (e.g. /review/<id>?t=…) self-gate on their share
