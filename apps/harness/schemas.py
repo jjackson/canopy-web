@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from typing import Any, Literal
 
 from canopy_cron import validate_cron, validate_timezone
 from ninja import Schema
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 
 class RunnerIn(Schema):
@@ -31,6 +32,13 @@ class RunnerOut(Schema):
     @staticmethod
     def resolve_workspace(obj) -> str | None:
         return obj.workspace_id
+
+    @staticmethod
+    def resolve_status(obj) -> str:
+        # Serve the derived value, not the stored column: heartbeat() writes
+        # ONLINE and nothing ever demotes it, so the raw status lies once a
+        # runner goes quiet. See Runner.live_status.
+        return obj.live_status
 
 
 class HeartbeatIn(Schema):
@@ -238,3 +246,61 @@ class ScheduleFireIn(Schema):
     authority: tenant scoping gates the route."""
 
     slot: dt.datetime
+
+
+# ---------------------------------------------------------------------------
+# Items — the supervisor's queue (the dual of Turn)
+# ---------------------------------------------------------------------------
+
+
+class TurnSpecIn(Schema):
+    """One deferred Turn enqueue. `target_agent=""` means the item's own agent —
+    self-dispatch is the default; Ada's fan-out is this field set."""
+
+    prompt: str = ""
+    target_agent: str = ""
+    origin: str = "api"
+    origin_ref: dict[str, Any] = Field(default_factory=dict)
+    routing: str = "prefer_local"
+
+
+class ItemIn(Schema):
+    # No `notify` kind: an FYI asks nothing of you, and that is the timeline.
+    kind: Literal["review", "question"] = "review"
+    title: str = Field(min_length=1, max_length=300)
+    body: str = ""
+    origin: str = "api"
+    origin_ref: dict[str, Any] = Field(default_factory=dict)
+    dispatch: list[TurnSpecIn] = Field(default_factory=list)
+    batch_key: str = ""
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    raised_by: uuid.UUID | None = None
+
+
+class ItemOut(Schema):
+    id: uuid.UUID
+    agent_slug: str
+    # Echoed back so a producer can reconcile its batch against what landed, and so
+    # the UI has a stable, human-readable key for test ids.
+    idempotency_key: str
+    kind: str
+    title: str
+    body: str
+    origin: str
+    origin_ref: dict[str, Any]
+    state: str
+    decision: str
+    comment: str
+    decided_by: str
+    decided_at: dt.datetime | None = None
+    dispatch: list[dict[str, Any]]
+    dispatched_at: dt.datetime | None = None
+    batch_key: str
+    created_at: dt.datetime
+
+
+class ItemDecideIn(Schema):
+    # CLOSED set — a generic inbox must render buttons for an item it has never
+    # seen. "" is valid for a question, whose answer is the comment.
+    decision: Literal["implement", "skip", "defer", ""] = ""
+    comment: str = ""

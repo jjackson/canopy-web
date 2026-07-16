@@ -11,10 +11,12 @@ from django.contrib.sessions.backends.db import SessionStore
 from apps.agents.models import (
     Agent, AgentSkill, AgentSync, AgentTask, AgentTaskCommand, AgentWorkProduct,
 )
+from apps.harness.models import Item
 from apps.reviews.models import ReviewRequest
 from apps.workspaces import services as wsvc
 
 FLEET_AUDIT_RUN_ID = "ada-fleet-audit-2026-07-14"
+FLEET_AUDIT_BATCH = "fleet-audit-2026-07-14"
 
 User = get_user_model()
 user, _ = User.objects.get_or_create(username="e2e", defaults={"email": "e2e@dimagi.com"})
@@ -101,6 +103,29 @@ fleet_audit = ReviewRequest.objects.create(
             }
         ],
     },
+)
+
+# Ada's fleet audit as ITEMS — the surface that replaces the borrowed DDD review
+# page. Two open items in her queue, both dispatching to another agent (the
+# manager case: target_agent != self). hal must exist for dispatch to resolve.
+ada_agent, _ = Agent.objects.update_or_create(slug="ada", defaults=dict(
+    name="Ada", email="ada@dimagi-ai.com", description="Fleet conductor.",
+    persona="Conducts the fleet.", workspace=ws))
+Agent.objects.update_or_create(slug="hal", defaults=dict(
+    name="Hal", email="hal@dimagi-ai.com", description="Inbox agent.",
+    persona="Triages email.", workspace=ws))
+Item.objects.filter(agent=ada_agent).delete()
+Item.objects.create(
+    agent=ada_agent, kind="review", origin="api", batch_key=FLEET_AUDIT_BATCH,
+    idempotency_key="fa-hal-inbox", title="hal: discard 81 junk/stale unread emails",
+    body="All 81 are automated or older than 1 week.",
+    dispatch=[{"target_agent": "hal", "prompt": "/hal:turn", "origin": "email"}],
+)
+Item.objects.create(
+    agent=ada_agent, kind="review", origin="api", batch_key=FLEET_AUDIT_BATCH,
+    idempotency_key="fa-lily", title="hal: ONE buried HUMAN email — Lily Olson",
+    body="A real person who never got an answer.",
+    dispatch=[{"target_agent": "hal", "prompt": "/hal:turn --thread lily", "origin": "email"}],
 )
 
 session = SessionStore()

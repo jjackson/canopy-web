@@ -16,12 +16,23 @@ from django.utils import timezone
 
 from apps.workspaces import services as wsvc
 
-from .models import AgentSchedule, Runner, SessionLink, Turn, TurnEvent
+from .models import (
+    HEARTBEAT_ONLINE_WINDOW,
+    AgentSchedule,
+    Item,
+    Runner,
+    SessionLink,
+    Turn,
+    TurnEvent,
+)
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_LEASE_SECONDS = 900
-HEARTBEAT_ONLINE_WINDOW = dt.timedelta(seconds=90)
+# HEARTBEAT_ONLINE_WINDOW lives on models.py (Runner.live_status uses it too;
+# models.py cannot import services.py, which already imports models.py) and is
+# re-exported here so existing importers of services.HEARTBEAT_ONLINE_WINDOW
+# keep working.
 
 
 def enqueue_turn(
@@ -104,7 +115,7 @@ EXECUTING = [Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
 
 def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECONDS,
                     exclude_slugs: list[str] | None = None) -> Turn | None:
-    if runner.status != Runner.ONLINE:
+    if runner.live_status != Runner.ONLINE:
         return None
     sweep_expired_leases()
     # Lazy sweeps, both BEFORE the busy_agents read: a turn released here frees
@@ -457,3 +468,100 @@ def record_session(
             link.summary = summary
         link.save()
     return link
+
+
+# ---------------------------------------------------------------------------
+# Items — the supervisor's queue (the dual of Turn)
+# ---------------------------------------------------------------------------
+
+
+class AlreadyDecidedError(Exception):
+    """An item can be decided once. A second decision is a conflict (409), not a
+    second dispatch."""
+
+
+def create_items(*, agent, payloads: list[dict]) -> list[Item]:
+    """Create items for an agent, idempotent per idempotency_key. A producer that
+    re-posts its batch (a retried audit) gets the same rows back, not duplicates."""
+    out: list[Item] = []
+    for p in payloads:
+        key = p["idempotency_key"]
+        existing = Item.objects.filter(idempotency_key=key).first()
+        if existing is not None:
+            out.append(existing)
+            continue
+        try:
+            with transaction.atomic():
+                out.append(Item.objects.create(
+                    agent=agent,
+                    kind=p.get("kind") or Item.REVIEW,
+                    title=p["title"],
+                    body=p.get("body") or "",
+                    origin=p.get("origin") or Turn.ORIGIN_API,
+                    origin_ref=p.get("origin_ref") or {},
+                    dispatch=p.get("dispatch") or [],
+                    batch_key=p.get("batch_key") or "",
+                    idempotency_key=key,
+                    raised_by_id=p.get("raised_by") or None,
+                ))
+        except IntegrityError:
+            replay = Item.objects.filter(idempotency_key=key).first()
+            if replay is None:
+                raise
+            out.append(replay)
+    return out
+
+
+def decide_item(item: Item, *, decision: str, comment: str, by: str) -> tuple[Item, list[Turn]]:
+    """Resolve an open item. Only IMPLEMENT dispatches.
+
+    A review needs a decision from the closed set; a question needs a non-empty
+    answer (its `decision` stays blank). Deciding twice raises AlreadyDecidedError —
+    the guard that stops a double-click becoming a second dispatch.
+    """
+    from .dispatch import dispatch as dispatch_item  # local: dispatch imports services
+
+    if item.state != Item.OPEN:
+        raise AlreadyDecidedError(f"item {item.id} is already {item.state}")
+
+    if item.kind == Item.QUESTION:
+        if not (comment or "").strip():
+            raise ValueError("a question is resolved by its answer — comment must not be empty")
+        decision = ""
+    elif decision not in (Item.IMPLEMENT, Item.SKIP, Item.DEFER):
+        raise ValueError(
+            f"decision must be one of implement|skip|defer, got {decision!r}"
+        )
+
+    # ATOMIC, and this is the whole ballgame. dispatch() raises on a bad spec
+    # (unknown target_agent). Committing the decision first would leave the item
+    # DECIDED but undispatched — and since deciding twice is a 409, permanently
+    # unfixable: the work silently never happens while the UI says you approved it.
+    # Rolling back instead means a bad spec is a 422 on an item that is still OPEN,
+    # retryable the moment the producer fixes it.
+    with transaction.atomic():
+        item.state = Item.DECIDED
+        item.decision = decision
+        item.comment = comment or ""
+        item.decided_by = by
+        item.decided_at = timezone.now()
+
+        turns: list[Turn] = []
+        if decision == Item.IMPLEMENT:
+            turns = dispatch_item(item)
+            item.dispatched_at = timezone.now()
+
+        item.save(update_fields=[
+            "state", "decision", "comment", "decided_by", "decided_at", "dispatched_at",
+        ])
+    return item, turns
+
+
+def dismiss_item(item: Item, *, by: str) -> Item:
+    """Retire an item without acting. Never dispatches, whatever `decision` holds —
+    a producer that raised it in error, or a subject that changed under it."""
+    item.state = Item.DISMISSED
+    item.decided_by = by
+    item.decided_at = timezone.now()
+    item.save(update_fields=["state", "decided_by", "decided_at"])
+    return item
