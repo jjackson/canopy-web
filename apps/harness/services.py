@@ -122,11 +122,14 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     # its agent for the very claim we are about to make.
     release_stale_occurrence_turns_all()
     slugs = runner.agent_slugs()
+    projects = runner.project_names()
     if exclude_slugs:
         # Per-agent pause: the runner locally paused these agents; never claim their
         # queued turns (they stay QUEUED, resumed the moment the pause is lifted).
+        # Scoped to agents by name and by nature — pausing an agent says nothing
+        # about a repo, so project turns keep flowing.
         slugs = [s for s in slugs if s not in set(exclude_slugs)]
-    if not slugs:
+    if not slugs and not projects:
         return None
     routing_q = Q(routing__in=[Turn.PREFER_LOCAL, Turn.LOCAL_ONLY, Turn.ANY])
     if runner.kind == Runner.CLOUD:
@@ -166,9 +169,25 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     # pre-tenancy suite (runner + agent both null) runs on. Not a production hole
     # — agents/0007 backfilled every live agent onto a workspace.
     ws_slugs = wsvc.user_workspace_slugs(runner.paired_by) if runner.paired_by_id else set()
-    tenant_q = Q(agent__workspace_id__in=ws_slugs) | Q(agent__workspace_id__isnull=True)
+    # Project turns are gated on their OWN workspace FK and get NO null-workspace
+    # escape hatch. The naive widening is a hole: a project turn has agent=NULL,
+    # so `agent__workspace_id__isnull=True` — the leg that ungates pre-tenancy
+    # AGENTS — matches every project turn, making them claimable by any runner in
+    # any tenant. The two legs must therefore be split by target kind, and the
+    # project leg fails closed on a NULL workspace.
+    agent_tenant_q = Q(agent__workspace_id__in=ws_slugs) | Q(agent__workspace_id__isnull=True)
+    tenant_q = (Q(agent__isnull=False) & agent_tenant_q) | (
+        Q(agent__isnull=True) & Q(workspace_id__in=ws_slugs)
+    )
+    # `busy_agents` serializes AGENTS only, and a project turn (agent_id NULL)
+    # must not be swept up by it. This plain exclude() is correct: Django compiles
+    # it to `NOT (agent_id IN (…) AND agent_id IS NOT NULL)`, so NULL-agent rows
+    # survive rather than falling into SQL's NULL-propagation trap. Verified by
+    # test_a_busy_agent_does_not_block_a_project_turn, which is what makes it safe
+    # to rely on.
     candidates = (
-        Turn.objects.filter(status=Turn.QUEUED, agent__slug__in=slugs)
+        Turn.objects.filter(status=Turn.QUEUED)
+        .filter(Q(agent__slug__in=slugs) | Q(project__in=projects))
         .exclude(agent_id__in=busy_agents)
         .filter(routing_q)
         .filter(tenant_q)

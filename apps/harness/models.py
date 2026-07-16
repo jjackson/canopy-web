@@ -94,6 +94,12 @@ class Runner(models.Model):
     def agent_slugs(self) -> list[str]:
         return list(self.capabilities.get("agents", []))
 
+    def project_names(self) -> list[str]:
+        """The repos this runner declares it can drive. Like `agents`, this is a
+        self-declared ROUTING hint, not a security boundary — the workspace is the
+        gate, and the two intersect (b4f5ead)."""
+        return list(self.capabilities.get("projects", []))
+
     @property
     def live_status(self) -> str:
         """What we can OBSERVE, not what the runner last claimed.
