@@ -124,3 +124,93 @@ def test_turn_out_still_serializes_an_agent_turn():
     assert out.agent_slug == "hal"
     assert out.project == ""
     assert out.target == "hal"
+
+
+# ---- SessionLink: the same agent-XOR-project treatment ----
+def test_two_session_links_for_the_same_project_thread_are_rejected():
+    """The NULL trap. Making `agent` nullable silently guts
+    UniqueConstraint(["agent", "thread_key"]) for project rows: their agent is
+    NULL, NULL never equals NULL, so the same (project, thread_key) inserts
+    twice. Every phone message would fork a new session — the exact
+    duplicate-session failure the reuse path exists to prevent.
+
+    Hence two PARTIAL constraints. This test fails against the naive one.
+    """
+    from apps.harness.models import SessionLink
+
+    SessionLink.objects.create(project="canopy-web", thread_key="phone:jj:canopy-web")
+    with pytest.raises(IntegrityError):
+        SessionLink.objects.create(project="canopy-web", thread_key="phone:jj:canopy-web")
+
+
+def test_the_same_thread_key_on_different_projects_is_fine():
+    from apps.harness.models import SessionLink
+
+    SessionLink.objects.create(project="canopy-web", thread_key="phone:jj:t")
+    SessionLink.objects.create(project="ace-web", thread_key="phone:jj:t")  # no raise
+
+
+def test_agent_session_links_still_unique_per_thread():
+    from apps.harness.models import SessionLink
+
+    a = _agent()
+    SessionLink.objects.create(agent=a, thread_key="phone:jj:echo")
+    with pytest.raises(IntegrityError):
+        SessionLink.objects.create(agent=a, thread_key="phone:jj:echo")
+
+
+def test_a_session_link_cannot_target_both():
+    from apps.harness.models import SessionLink
+
+    with pytest.raises(IntegrityError):
+        SessionLink.objects.create(agent=_agent(), project="canopy-web", thread_key="t")
+
+
+def test_record_then_resolve_a_project_session_reuses_it():
+    """The whole point of Phase 3's session input: the phone owns a persistent
+    thread per target, so message 2 must resolve to REUSE rather than fork a new
+    Claude session. Nothing new is built for this — a stable thread_key lands on
+    the existing reuse path."""
+    from apps.harness import services
+    from apps.harness.models import Runner
+
+    runner = Runner.objects.create(
+        name="jj-mbp", kind=Runner.EMDASH, host="jj-mac",
+        capabilities={"projects": ["canopy-web"]},
+    )
+    services.record_session(
+        None, "phone:jj:canopy-web", runner=runner, project="canopy-web",
+        emdash_task_id="task-1", session_id="sess-1",
+    )
+    plan = services.resolve_session(None, "phone:jj:canopy-web", runner, project="canopy-web")
+
+    assert plan["reuse"] is True
+    assert plan["emdash_task_id"] == "task-1"
+    assert plan["new_thread"] is False
+
+
+def test_recording_the_same_project_thread_twice_updates_one_link():
+    """get_or_create must find the existing row, not trip the unique constraint
+    or spawn a second link (which would mean a second session)."""
+    from apps.harness import services
+    from apps.harness.models import Runner, SessionLink
+
+    r = Runner.objects.create(name="jj-mbp", kind=Runner.EMDASH, host="jj-mac")
+    services.record_session(None, "phone:jj:canopy-web", runner=r, project="canopy-web",
+                            emdash_task_id="task-1")
+    services.record_session(None, "phone:jj:canopy-web", runner=r, project="canopy-web",
+                            emdash_task_id="task-2")
+
+    assert SessionLink.objects.filter(project="canopy-web").count() == 1
+    assert SessionLink.objects.get(project="canopy-web").live_emdash_task_id == "task-2"
+
+
+def test_a_session_link_target_must_be_exactly_one_thing():
+    from apps.harness import services
+    from apps.harness.models import Runner
+
+    r = Runner.objects.create(name="jj-mbp", kind=Runner.EMDASH)
+    with pytest.raises(ValueError):
+        services.resolve_session(_agent(), "t", r, project="canopy-web")
+    with pytest.raises(ValueError):
+        services.resolve_session(None, "t", r)

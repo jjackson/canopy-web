@@ -410,8 +410,24 @@ def release_stale_occurrence_turns_all(*, now: dt.datetime | None = None) -> int
 # SessionLink — durable thread↔session mapping (cross-account); see models.SessionLink
 # --------------------------------------------------------------------------------------
 
-def resolve_session(agent, thread_key: str, runner: Runner) -> dict:
-    """Given (agent, thread_key) and the CURRENTLY-active runner, decide how to execute.
+def _link_target(agent, project: str) -> dict:
+    """Lookup kwargs for a link's target, enforcing the agent-XOR-project rule in
+    Python as well as in the DB.
+
+    Both keys are always present and one is always the empty/NULL sentinel. That
+    is deliberate: `filter(agent=a)` alone would match a project row whose agent
+    is NULL only by accident of the query, and `get_or_create(agent=None)` would
+    otherwise omit `project` and create a row the CheckConstraint rejects.
+    """
+    if bool(agent) == bool(project):
+        raise ValueError("a session link targets an agent XOR a project")
+    return {"agent": agent, "project": ""} if agent else {"agent": None, "project": project}
+
+
+def resolve_session(agent, thread_key: str, runner: Runner, *, project: str = "") -> dict:
+    """Given (target, thread_key) and the CURRENTLY-active runner, decide how to execute.
+
+    `agent` may be None when `project` is given — the phone addresses repos too.
 
     Returns a plan dict:
       - reuse (bool): the live session hint is owned by THIS runner/host — the runner
@@ -423,7 +439,9 @@ def resolve_session(agent, thread_key: str, runner: Runner) -> dict:
 
     Never assumes the live session is reachable: reuse is only proposed when the hint's
     runner + macOS host match the caller (the two-account failover invariant)."""
-    link = SessionLink.objects.filter(agent=agent, thread_key=thread_key).first()
+    link = SessionLink.objects.filter(
+        thread_key=thread_key, **_link_target(agent, project)
+    ).first()
     if link is None:
         return {"reuse": False, "emdash_task_id": "", "agent_task_ext_id": "",
                 "summary": "", "link_id": None, "new_thread": True}
@@ -442,6 +460,7 @@ def record_session(
     thread_key: str,
     *,
     runner: Runner,
+    project: str = "",
     emdash_task_id: str = "",
     session_id: str = "",
     agent_task_ext_id: str | None = None,
@@ -455,7 +474,7 @@ def record_session(
     durable context accumulated so far."""
     with transaction.atomic():
         link, _ = SessionLink.objects.select_for_update().get_or_create(
-            agent=agent, thread_key=thread_key
+            thread_key=thread_key, **_link_target(agent, project)
         )
         link.live_runner = runner
         link.live_host = runner.host
