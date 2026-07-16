@@ -162,3 +162,23 @@ def test_week_schedules_scoped_to_given_workspaces(owner, agent, ws):
     ss.create_schedule(owner, "eva", _fields(cron="0 9 * * *"))
     rows = ss.week_schedules({"some-other-ws"}, dt.datetime(2026, 7, 13, tzinfo=dt.UTC))
     assert rows == []
+
+
+def test_week_schedules_none_in_set_includes_unhomed_agents():
+    """`None` in workspace_ids means 'legacy unhomed agents' (workspace_id IS
+    NULL). Django's `__in={None, ...}` silently drops None — SQL IN never
+    matches NULL — so week_schedules adds an explicit isnull=True branch.
+    Pin it both ways: present when None is in the set, absent when it isn't."""
+    orphan = Agent.objects.create(slug="orphan", name="Orphan")  # no workspace
+    AgentSchedule.objects.create(
+        agent=orphan, name="Orphan sched", prompt="p", cron="0 9 * * *", timezone="UTC"
+    )
+    start = dt.datetime(2026, 7, 13, 0, 0, tzinfo=dt.UTC)
+
+    included = ss.week_schedules({None}, start)
+    assert len(included) == 1
+    assert included[0]["schedule"]["name"] == "Orphan sched"
+    assert included[0]["workspace_slug"] is None
+
+    excluded = ss.week_schedules({"somews"}, start)
+    assert excluded == []
