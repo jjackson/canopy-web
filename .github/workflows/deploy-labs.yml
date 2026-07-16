@@ -12,7 +12,7 @@ name: Deploy to Labs (AWS)
 # provisioner (ECR repo, secrets, target group, listener rule, task def, service,
 # using the SHARED task/exec roles). This workflow handles every ongoing deploy:
 # it sources the live task def, swaps ONLY the image (so env/secrets/resources
-# never drift from the stack), optionally migrates, then rolls the service.
+# never drift from the stack), migrates automatically, then rolls the service.
 #
 # Required GitHub secrets (see deploy/aws + Phase 2 of the labs migration):
 #   AWS_ROLE_ARN         — the shared github-actions-labs-deploy OIDC role
@@ -25,10 +25,10 @@ name: Deploy to Labs (AWS)
 on:
   workflow_dispatch:
     inputs:
-      run_migrations:
-        description: 'Run database migrations before cutover'
+      skip_migrations:
+        description: 'EMERGENCY ONLY: skip migrations. They run automatically by default.'
         type: boolean
-        required: true
+        required: false
         default: false
 
 concurrency:
@@ -150,11 +150,18 @@ jobs:
           echo "::notice::Registered $NEW_ARN"
 
       - name: Run database migrations
-        if: ${{ inputs.run_migrations == true }}
+        if: ${{ inputs.skip_migrations != true }}
         run: |
-          # One-off Fargate task on the NEW task def (new code), command
-          # overridden to `migrate`. Runs BEFORE the service cutover so new code
-          # never serves against an un-migrated schema.
+          # Runs on EVERY deploy by default — `migrate --noinput` is idempotent, a
+          # near-instant no-op when nothing is pending, so there is no cost to always
+          # running it and no way to forget. (A deploy of new code that SELECTs a
+          # not-yet-added column is exactly how /api/agents/tasks 500'd in prod when a
+          # migration shipped un-run; automatic migration removes that whole failure
+          # class.) Escape hatch: skip_migrations=true for the rare emergency.
+          #
+          # One-off Fargate task on the NEW task def (new code), command overridden to
+          # `migrate`. Runs BEFORE the service cutover so new code never serves against
+          # an un-migrated schema.
           TASK_ARN=$(aws ecs run-task \
             --cluster "${{ env.ECS_CLUSTER }}" \
             --task-definition "${{ steps.register-task.outputs.task-def-arn }}" \
@@ -198,7 +205,7 @@ jobs:
             echo "| Ref | \`${{ github.ref_name }}\` @ \`${{ github.sha }}\` |"
             echo "| Image | \`${{ env.ECR_REPO }}:${{ github.sha }}\` |"
             echo "| Task definition | \`${{ steps.register-task.outputs.task-def-arn }}\` |"
-            echo "| Migrations run | \`${{ inputs.run_migrations }}\` |"
+            echo "| Migrations | \`${{ inputs.skip_migrations == true && 'SKIPPED (emergency)' || 'ran automatically' }}\` |"
             echo "| Service | \`${{ env.ECS_SERVICE }}\` |"
             echo "| URL | https://labs.connect.dimagi.com/canopy/ |"
           } >> "$GITHUB_STEP_SUMMARY"
