@@ -124,12 +124,28 @@ def _runner_or_404(request: HttpRequest, runner_id: uuid.UUID) -> Runner:
 
 
 def _turn_or_404(request: HttpRequest, turn_id: uuid.UUID) -> Turn:
-    """Resolve a turn, gated via its agent's workspace — a Turn has no workspace
-    FK of its own; it derives its tenant one hop away (spec section 8)."""
+    """Resolve a turn, gated by its tenant.
+
+    An AGENT turn derives its tenant one hop away, via agent.workspace (spec
+    section 8) — it has no workspace FK of its own, because denormalized tenancy
+    drifts. A PROJECT turn has no agent to derive from, so it carries its own
+    workspace FK and is gated on that instead. Same 404-not-403 rule either way:
+    non-membership must not leak existence.
+    """
     turn = Turn.objects.select_related("agent", "claimed_by").filter(pk=turn_id).first()
     if turn is None:
         raise HttpError(404, "turn not found")
-    _agent_or_404(request, turn.agent.slug)  # raises 404 on wrong tenant
+    if turn.agent_id:
+        _agent_or_404(request, turn.agent.slug)  # raises 404 on wrong tenant
+        return turn
+
+    # Project turn: gate on its own workspace, mirroring _agent_or_404's checks.
+    wsvc.auto_join_workspaces(request.user)
+    ws = getattr(request, "workspace_slug", None)
+    if ws and turn.workspace_id != ws:
+        raise HttpError(404, "turn not found")  # wrong tenant
+    if turn.workspace_id and not wsvc.is_member(request.user, turn.workspace_id):
+        raise HttpError(404, "turn not found")
     return turn
 
 

@@ -5332,7 +5332,11 @@ export interface components {
              */
             readonly id: string;
             /** Agent Slug */
-            readonly agent_slug: string;
+            readonly agent_slug: string | null;
+            /** Project */
+            readonly project: string;
+            /** Target */
+            readonly target: string;
             /** Origin */
             readonly origin: string;
             /** Status */
