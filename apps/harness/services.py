@@ -444,21 +444,32 @@ def release_stale_occurrence_turns_all(*, now: dt.datetime | None = None) -> int
 # SessionLink — durable thread↔session mapping (cross-account); see models.SessionLink
 # --------------------------------------------------------------------------------------
 
-def _link_target(agent, project: str) -> dict:
+def _link_target(agent, project: str, workspace=None) -> dict:
     """Lookup kwargs for a link's target, enforcing the agent-XOR-project rule in
     Python as well as in the DB.
 
-    Both keys are always present and one is always the empty/NULL sentinel. That
-    is deliberate: `filter(agent=a)` alone would match a project row whose agent
-    is NULL only by accident of the query, and `get_or_create(agent=None)` would
-    otherwise omit `project` and create a row the CheckConstraint rejects.
+    Both agent/project keys are always present and one is always the empty/NULL
+    sentinel. That is deliberate: `filter(agent=a)` alone would match a project row
+    whose agent is NULL only by accident of the query, and `get_or_create(agent=
+    None)` would otherwise omit `project` and create a row the CheckConstraint
+    rejects.
+
+    For a PROJECT, `workspace` is part of the IDENTITY, not just a stored field:
+    it goes in the get_or_create/filter lookup so a link is scoped to the caller's
+    tenant by construction. Without it, one runner's get_or_create on a guessed
+    thread_key would FIND (and hijack) another tenant's link. With it, the guess
+    lands in the guesser's own workspace and never touches the victim's row.
     """
     if bool(agent) == bool(project):
         raise ValueError("a session link targets an agent XOR a project")
-    return {"agent": agent, "project": ""} if agent else {"agent": None, "project": project}
+    if agent:
+        return {"agent": agent, "project": ""}
+    if workspace is None:
+        raise ValueError("a project session link needs a workspace")
+    return {"agent": None, "project": project, "workspace": workspace}
 
 
-def resolve_session(agent, thread_key: str, runner: Runner, *, project: str = "") -> dict:
+def resolve_session(agent, thread_key: str, runner: Runner, *, project: str = "", workspace=None) -> dict:
     """Given (target, thread_key) and the CURRENTLY-active runner, decide how to execute.
 
     `agent` may be None when `project` is given — the phone addresses repos too.
@@ -474,7 +485,7 @@ def resolve_session(agent, thread_key: str, runner: Runner, *, project: str = ""
     Never assumes the live session is reachable: reuse is only proposed when the hint's
     runner + macOS host match the caller (the two-account failover invariant)."""
     link = SessionLink.objects.filter(
-        thread_key=thread_key, **_link_target(agent, project)
+        thread_key=thread_key, **_link_target(agent, project, workspace)
     ).first()
     if link is None:
         return {"reuse": False, "emdash_task_id": "", "agent_task_ext_id": "",
@@ -495,6 +506,7 @@ def record_session(
     *,
     runner: Runner,
     project: str = "",
+    workspace=None,
     emdash_task_id: str = "",
     session_id: str = "",
     agent_task_ext_id: str | None = None,
@@ -505,10 +517,16 @@ def record_session(
     Called after a session is created or reused so the next inbound event on the thread
     resolves to the right session (or, from the other account, knows to rehydrate). Only
     overwrites agent_task_ext_id/summary when a value is passed — otherwise preserves the
-    durable context accumulated so far."""
+    durable context accumulated so far.
+
+    `workspace` stamps a PROJECT link's tenant (agent links derive it via the
+    agent). The API caller must have already gated the runner's pairer against
+    this workspace — the service stores, it does not authorize."""
+    # workspace is part of a project link's identity (see _link_target), so it is
+    # set by get_or_create's lookup — no separate assignment needed.
     with transaction.atomic():
         link, _ = SessionLink.objects.select_for_update().get_or_create(
-            thread_key=thread_key, **_link_target(agent, project)
+            thread_key=thread_key, **_link_target(agent, project, workspace)
         )
         link.live_runner = runner
         link.live_host = runner.host

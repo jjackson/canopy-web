@@ -49,22 +49,29 @@ class Client:
         )
         return payload or {}
 
-    def resolve_session(self, runner_id: str, agent_slug: str, thread_key: str) -> dict:
+    def resolve_session(self, runner_id: str, agent_slug: str, thread_key: str, *,
+                        project: str = "", workspace: str = "") -> dict:
         """Ask the control plane whether THIS runner can reuse an existing emdash
-        session for (agent, thread) or must spawn fresh + rehydrate. See SessionLink."""
+        session for (target, thread) or must spawn fresh + rehydrate. See SessionLink.
+
+        Pass EITHER agent_slug OR (project + workspace) — a project session is
+        tenant-gated on its workspace, which the turn carries."""
         _, payload = self._call(
             "POST", f"/runners/{runner_id}/resolve-session",
-            {"agent_slug": agent_slug, "thread_key": thread_key},
+            {"agent_slug": agent_slug, "project": project, "workspace": workspace,
+             "thread_key": thread_key},
         )
         return payload or {}
 
     def record_session(self, runner_id: str, agent_slug: str, thread_key: str, *,
+                       project: str = "", workspace: str = "",
                        emdash_task_id: str = "", session_id: str = "",
                        agent_task_ext_id: str | None = None, summary: str | None = None) -> dict:
         """Record/point the durable thread link at THIS runner's live session."""
         _, payload = self._call(
             "POST", f"/runners/{runner_id}/record-session",
-            {"agent_slug": agent_slug, "thread_key": thread_key,
+            {"agent_slug": agent_slug, "project": project, "workspace": workspace,
+             "thread_key": thread_key,
              "emdash_task_id": emdash_task_id, "session_id": session_id,
              "agent_task_ext_id": agent_task_ext_id, "summary": summary},
         )
@@ -102,28 +109,6 @@ class Client:
         path = f"/schedules/{schedule_id}/fire?" + urlencode({"runner_id": runner_id})
         _, payload = self._call("POST", path, {"slot": slot})
         return payload or {}
-
-    def _get_api(self, path: str) -> object:
-        """GET an arbitrary /api path (not under /api/harness) — used to read the
-        reviews surface for review-ingestion. Same auth/error handling as _call."""
-        url = f"{self.base_url}/api{path}"
-        req = urllib.request.Request(url, method="GET")
-        req.add_header("Authorization", f"Bearer {self.token}")
-        try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-                raw = resp.read()
-        except urllib.error.HTTPError as exc:
-            raise ClientError(f"GET {path} -> {exc.code}") from exc
-        except urllib.error.URLError as exc:
-            raise ClientError(f"GET {path} -> {exc.reason}") from exc
-        return json.loads(raw) if raw else None
-
-    def list_reviews(self, status: str = "") -> list[dict]:
-        q = f"?status={status}" if status else ""
-        return self._get_api(f"/reviews/{q}") or []
-
-    def get_review(self, review_id: str) -> dict:
-        return self._get_api(f"/reviews/{review_id}/") or {}
 
     def enqueue_turn(self, agent_slug: str, origin: str, idempotency_key: str, *,
                      prompt: str = "", origin_ref: dict | None = None,

@@ -1,9 +1,26 @@
 """
-Production Django settings for Cloud Run + Cloud SQL deployment.
+Production Django settings for the AWS ECS Fargate deployment
+(https://labs.connect.dimagi.com/canopy/; provisioned by deploy/aws/canopy-web.cfn.yaml).
 """
+from django.core.exceptions import ImproperlyConfigured
+
 from .base import *  # noqa: F401, F403
+from .base import INSECURE_DEV_SECRET_KEY, SECRET_KEY
 
 DEBUG = False
+
+# Refuse to boot on the insecure dev default. base.py keeps that default so local
+# `runserver` works with no setup, but in production it must come from the
+# environment (the SECRET_KEY secret in the ECS task def). This assertion is the
+# durable fix for the DJANGO_SECRET_KEY/SECRET_KEY name mismatch that let prod
+# silently sign cookies with the public placeholder — a misconfigured deploy now
+# crashes loudly instead of running compromised.
+if SECRET_KEY == INSECURE_DEV_SECRET_KEY:
+    raise ImproperlyConfigured(
+        "SECRET_KEY is the insecure dev default in a production settings module. "
+        "Set the SECRET_KEY environment variable to a strong secret "
+        "(ECS task def maps it from the canopy-web/django-secret-key Secrets Manager entry)."
+    )
 
 # Cloud Run sets PORT; uvicorn binds to it.
 # ALLOWED_HOSTS was declared as a list type in base.py, so env() returns a list.

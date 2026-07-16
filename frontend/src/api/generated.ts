@@ -1681,7 +1681,7 @@ export interface paths {
         readonly put?: never;
         /**
          * Resolve Session
-         * @description Given (agent, thread_key), tell THIS runner whether it can reuse an existing
+         * @description Given (target, thread_key), tell THIS runner whether it can reuse an existing
          *     emdash session (it owns the live hint) or must spawn fresh + rehydrate context.
          *     Runner-scoped because reuse depends on the caller's macOS host.
          */
@@ -1794,6 +1794,34 @@ export interface paths {
         readonly put?: never;
         /** Finish Turn */
         readonly post: operations["apps_harness_api_finish_turn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/turns/{turn_id}/cancel": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Cancel Turn
+         * @description Cancel a QUEUED turn that has not started — the misfire case the phone
+         *     composer needs (dispatch the wrong command, take it back before a runner
+         *     claims it). Records it FAILED with a cancelled note; there is no separate
+         *     CANCELLED status because nothing downstream distinguishes the two, and adding
+         *     one would touch the TERMINAL set every sweep and projection depends on.
+         *
+         *     QUEUED only. A claimed/running turn is already executing in an emdash session;
+         *     stopping that is a racy, different operation (the runner owns the lease) and
+         *     is deliberately out of scope — cancel is 'un-queue', not 'kill'.
+         */
+        readonly post: operations["apps_harness_api_cancel_turn"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -5324,6 +5352,8 @@ export interface components {
             readonly project: string;
             /** Target */
             readonly target: string;
+            /** Workspace Slug */
+            readonly workspace_slug: string | null;
             /** Origin */
             readonly origin: string;
             /** Status */
@@ -5373,15 +5403,41 @@ export interface components {
         };
         /** ResolveSessionIn */
         readonly ResolveSessionIn: {
-            /** Agent Slug */
+            /**
+             * Agent Slug
+             * @default
+             */
             readonly agent_slug: string;
+            /**
+             * Project
+             * @default
+             */
+            readonly project: string;
+            /**
+             * Workspace
+             * @default
+             */
+            readonly workspace: string;
             /** Thread Key */
             readonly thread_key: string;
         };
         /** RecordSessionIn */
         readonly RecordSessionIn: {
-            /** Agent Slug */
+            /**
+             * Agent Slug
+             * @default
+             */
             readonly agent_slug: string;
+            /**
+             * Project
+             * @default
+             */
+            readonly project: string;
+            /**
+             * Workspace
+             * @default
+             */
+            readonly workspace: string;
             /** Thread Key */
             readonly thread_key: string;
             /**
@@ -8714,6 +8770,28 @@ export interface operations {
                 readonly "application/json": components["schemas"]["TurnFinishIn"];
             };
         };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_cancel_turn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly turn_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
         readonly responses: {
             /** @description OK */
             readonly 200: {

@@ -151,44 +151,6 @@ def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time,
         pass
 
 
-def _maybe_check_reviews(cfg: Config, client: Client, now_fn=time.time) -> None:
-    """At most every reviews_poll_seconds, ingest RESOLVED fleet reviews: enqueue the
-    turns for each cluster the human approved. Best-effort — a failing poll logs and is
-    skipped, never crashes the loop. A local seen-set (reviews-seen.json) skips reviews
-    already fully ingested so we don't re-fetch/re-enqueue them every poll."""
-    if not getattr(cfg, "reviews_poll_seconds", 0):
-        return
-    base = Path(cfg.state_path) if cfg.state_path else Path("runner-state.json")
-    stamp = base.with_name("reviews-last.txt")
-    seen_path = base.with_name("reviews-seen.json")
-    try:
-        last = float(stamp.read_text())
-    except (OSError, ValueError):
-        last = 0.0
-    if now_fn() - last < cfg.reviews_poll_seconds:
-        return
-    try:
-        seen = set(json.loads(seen_path.read_text()))
-    except (OSError, ValueError):
-        seen = set()
-    from . import reviews as reviews_mod
-    try:
-        res = reviews_mod.check_reviews(client, seen=frozenset(seen))
-    except Exception as exc:  # noqa: BLE001 — review-ingestion never kills the loop
-        logger.warning("review ingestion failed: %s", exc)
-        return
-    newly = res.get("processed") or set()
-    if newly:
-        try:
-            seen_path.write_text(json.dumps(sorted(seen | newly)))
-        except OSError:
-            pass
-    try:
-        stamp.write_text(str(now_fn()))
-    except OSError:
-        pass
-
-
 def _fire_due_schedules(cfg: Config, client: Client, paused: set[str] | None = None) -> None:
     """Scheduled-turn trigger: sync the schedules this runner may fire, evaluate each
     cron locally, and report any due slot so the server materializes the turn.
@@ -221,7 +183,10 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
     client.heartbeat(cfg.runner_id, [], host=host_id())
     paused = _paused_agents(cfg)
     _maybe_check_inboxes(cfg, client, paused=paused)
-    _maybe_check_reviews(cfg, client)
+    # Fleet-audit review ingestion was removed when Ada moved to Items: approving
+    # an Item dispatches its work server-side (in the decide transaction), so there
+    # is no resolved review for the runner to poll. DDD findings reviews are applied
+    # by the DDD orchestrator, never here.
     _fire_due_schedules(cfg, client, paused=paused)
     try:
         turn = client.claim(cfg.runner_id, paused_agents=sorted(paused))
