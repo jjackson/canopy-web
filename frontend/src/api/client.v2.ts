@@ -52,6 +52,12 @@ const WS_SCOPED_API_PREFIXES = [
   "/api/items",
 ];
 
+// A request header a caller sets to pin the tenant explicitly when the page it
+// dispatches from is not itself workspace-scoped. Never leaves the browser — the
+// onRequest middleware consumes it and rewrites the path to /api/w/:ws/…. Exported
+// so callers reference the constant rather than re-typing the string.
+export const WORKSPACE_HEADER = "X-Canopy-Workspace";
+
 function activeWorkspaceFromUrl(): string | null {
   // Strip the deployment prefix (/canopy) before reading the app route.
   const p = window.location.pathname.slice(API_BASE.length);
@@ -98,6 +104,17 @@ export async function rewriteForWorkspace(request: Request, ws: string): Promise
 
 apiV2.use({
   async onRequest({ request }) {
+    // Explicit workspace override. A caller on a NON-tenant surface (/supervisor,
+    // whose URL carries no /w/:ws/) can still pin a workspace by setting this
+    // header — used when a resource is workspace-owned but the page it is dispatched
+    // from is not (a repo turn's tenant, chosen in the composer). Takes precedence
+    // over the URL, applies to ANY path (not just the WS_SCOPED_API_PREFIXES list,
+    // which is for the implicit URL-driven case), and is stripped before the send.
+    const pinned = request.headers.get(WORKSPACE_HEADER);
+    if (pinned) {
+      request.headers.delete(WORKSPACE_HEADER);
+      return rewriteForWorkspace(request, pinned);
+    }
     const ws = activeWorkspaceFromUrl();
     if (!ws) return request;
     const url = new URL(request.url);

@@ -68,4 +68,41 @@ test.describe('/supervisor', () => {
     await expect(page.getByTestId('composer-sent')).toBeVisible()
     expect(posted).toMatchObject({ agent_slug: 'echo', prompt: '/echo:story-ideation bednets' })
   })
+
+  test('a repo dispatch pins its workspace and routes to the tenant endpoint', async ({ page }) => {
+    await page.goto('/supervisor')
+    await page.getByTestId('composer-mode-repo').click()
+
+    // A repo turn's tenant is first-class and defaults to dimagi (the e2e
+    // workspace), shown in the selector — not hidden server magic.
+    await expect(page.getByTestId('composer-workspace')).toHaveValue('dimagi')
+    await page.getByTestId('composer-project').fill('canopy-web')
+
+    let url: string | null = null
+    let posted: Record<string, unknown> | null = null
+    let headers: Record<string, string> = {}
+    // The proof the workspace is pinned: the request lands on the TENANT-scoped
+    // path /api/w/dimagi/…, not the flat mount (which would 422 a multi-workspace
+    // user). WORKSPACE_HEADER drove the client-side rewrite.
+    await page.route('**/api/w/*/harness/turns/', async (route) => {
+      url = route.request().url()
+      posted = route.request().postDataJSON()
+      headers = route.request().headers()
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ id: 't-2', agent_slug: null, project: 'canopy-web', target: 'canopy-web', status: 'queued' }),
+      })
+    })
+
+    await page.getByTestId('composer-args').fill('fix the header spacing')
+    await page.getByTestId('composer-send').click()
+
+    await expect(page.getByTestId('composer-sent')).toBeVisible()
+    expect(url).toContain('/api/w/dimagi/harness/turns/')
+    expect(posted).toMatchObject({ project: 'canopy-web', prompt: 'fix the header spacing' })
+    // The pin header is consumed by the rewrite and must NOT reach the wire — it
+    // is a client-side routing signal, not something the server should ever see.
+    expect(headers['x-canopy-workspace']).toBeUndefined()
+  })
 })

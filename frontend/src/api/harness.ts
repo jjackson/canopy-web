@@ -1,7 +1,7 @@
 // Harness API client — the runner registry and turn lifecycle. Separate from
 // ./agents because a Runner is not an agent: the harness is framework tier and
 // the agent surface is product tier (see ARCHITECTURE.md).
-import { apiV2 } from './client.v2'
+import { apiV2, WORKSPACE_HEADER } from './client.v2'
 import type { components } from './generated'
 
 export type RunnerOut = components['schemas']['RunnerOut']
@@ -23,35 +23,42 @@ export async function listRunners(): Promise<RunnerOut[]> {
   return Array.from(unwrap(res, 'listRunners'))
 }
 
-// Dispatch a command to an AGENT from the phone composer. Agent turns route
-// through the flat mount cleanly — the server resolves the agent's single
-// workspace, so there is no tenant ambiguity to disambiguate.
+// Dispatch a turn from the phone composer — to an agent OR a repo.
 //
-// Repo (project) dispatch is deliberately NOT here yet: a project turn carries
-// its OWN workspace, and a repo like canopy-web is not owned by one workspace,
-// so the composer must first answer "which tenant does this repo turn belong to"
-// AND route to /api/w/{ws}/... (the flat route 422s a multi-workspace user).
-// That is a real design decision, tracked in the Phase 3 plan — not a rushed
-// raw-fetch here.
+// An AGENT turn routes through the flat mount: the server derives the agent's
+// single workspace, so there is nothing to disambiguate.
+//
+// A REPO turn's tenant is FIRST-CLASS — the turn is owned by a workspace, and the
+// caller says which. `/supervisor` is not a tenant surface, so we pin the
+// workspace explicitly via WORKSPACE_HEADER, which the v2 client rewrites onto
+// /api/w/{ws}/harness/turns/ (the server gates membership there). No hidden
+// default: the composer chooses the workspace (defaulting its VALUE to dimagi),
+// so repo→workspace ownership stays explicit and survives into cloud/multiplayer.
 export async function enqueueTurn(input: {
-  agentSlug: string
+  agentSlug?: string
+  project?: string
+  workspace?: string
   prompt: string
 }): Promise<TurnOut> {
-  const { agentSlug, prompt } = input
+  const { agentSlug = '', project = '', workspace = '', prompt } = input
+  const target = agentSlug || project
   // A stable-enough idempotency key: a double-tap of Send within the same second
   // collapses server-side rather than firing twice.
-  const key = `cmd-${agentSlug}-${Date.now()}`
-  const res = await apiV2.POST('/api/harness/turns/', {
-    body: {
-      agent_slug: agentSlug,
-      project: '',
-      origin: 'manual',
-      idempotency_key: key,
-      prompt,
-      origin_ref: {},
-      routing: 'prefer_local',
-    },
-  })
+  const key = `cmd-${target}-${Date.now()}`
+  const body = {
+    agent_slug: agentSlug,
+    project,
+    origin: 'manual',
+    idempotency_key: key,
+    prompt,
+    origin_ref: {},
+    routing: 'prefer_local',
+  }
+  // A repo turn must land in its owning workspace; pin it explicitly.
+  const init = project
+    ? { body, headers: { [WORKSPACE_HEADER]: workspace } }
+    : { body }
+  const res = await apiV2.POST('/api/harness/turns/', init)
   return unwrap(res, 'enqueueTurn')
 }
 
