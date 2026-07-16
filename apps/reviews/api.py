@@ -26,7 +26,7 @@ from django.utils import timezone
 from ninja import Router, Status
 
 from apps.api.auth import session_auth
-from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, ProblemError
+from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, TYPE_VALIDATION, ProblemError
 from apps.common.csrf import csrf_rejected
 from apps.runs.ddd import (
     RUN_CHILD_GATES,
@@ -266,6 +266,17 @@ def create_review(request: HttpRequest, payload: ReviewCreateIn) -> Status:
             version = ReviewRequest.next_version(narrative_slug)
         else:
             version = max(ReviewRequest.next_version(narrative_slug) - 1, 1)
+
+    # Guard the free-string request_json values against their column limits before
+    # the write. They come from an unbounded dict, so an over-length value is a
+    # Postgres-only "value too long" 500 (SQLite dev/test doesn't enforce varchar
+    # length, so it slips through CI). Bound off the model so this can't drift.
+    for field, value in (("run_id", run_id), ("gate", gate), ("narrative_slug", narrative_slug or "")):
+        limit = ReviewRequest._meta.get_field(field).max_length
+        if limit and len(value) > limit:
+            raise ProblemError(
+                422, f"{field} exceeds the {limit}-character limit", type_=TYPE_VALIDATION
+            )
 
     # Assign the owning workspace: the /w/{ws} prefix pins it (membership already
     # verified upstream); else fall back to the org default so an unchanged
