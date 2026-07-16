@@ -29,7 +29,14 @@ if env_file.exists():
     env.read_env(str(env_file))
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env("SECRET_KEY", default="django-insecure-change-me-in-production")
+# This is a shared, deliberately-insecure default so a fresh checkout can run
+# `manage.py runserver` with zero setup — localhost signs nothing worth stealing,
+# so devs do NOT each need their own key. It is NOT a real secret: the `django-
+# insecure-` prefix is Django's own marker for exactly this. Production reads
+# SECRET_KEY from the environment and production.py hard-fails if it ever sees
+# this default (see the assertion there), so prod can never fall back to it.
+INSECURE_DEV_SECRET_KEY = "django-insecure-change-me-in-production"
+SECRET_KEY = env("SECRET_KEY", default=INSECURE_DEV_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env("DEBUG")

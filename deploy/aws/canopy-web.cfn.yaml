@@ -163,7 +163,10 @@ Resources:
             - { Name: VAPID_PUBLIC_KEY, Value: "BI34-mR1N-xMAhF3tQ1ajAe7g9KaK1nlrhX49pRQmBgo5s-KgoTtgcfOz9ejYeeAJR-tQh9JZ1cRJUCb8td-W58" }
             - { Name: VAPID_SUBJECT, Value: mailto:jjackson@dimagi.com }
           Secrets:
-            - { Name: DJANGO_SECRET_KEY, ValueFrom: !Ref DjangoSecretKey }
+            # Name MUST be SECRET_KEY — that's what config/settings/base.py reads.
+            # (It was DJANGO_SECRET_KEY, which nothing read, so prod silently fell
+            # back to the insecure dev default; production.py now hard-fails on that.)
+            - { Name: SECRET_KEY, ValueFrom: !Ref DjangoSecretKey }
             - { Name: DATABASE_URL, ValueFrom: !Ref DatabaseUrl }
             - { Name: REDIS_URL, ValueFrom: !Ref RedisUrl }
             - { Name: GOOGLE_OAUTH_CLIENT_ID, ValueFrom: !Ref GoogleOauthClientId }
