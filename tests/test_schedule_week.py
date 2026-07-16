@@ -29,8 +29,12 @@ def setup():
     # A third workspace the owner is NOT a member of.
     stranger = User.objects.create_user("s", "s@x.com", "pw")
     c = Workspace.objects.create(slug="gamma", display_name="g", created_by=stranger, auto_join_domains=[])
-    ea = Agent.objects.create(slug="eva", name="Eva", workspace=a)
-    hb = Agent.objects.create(slug="hal", name="Hal", workspace=b)
+    # Agents are referenced by slug in the schedules below; the bindings for eva
+    # and hal are unused (pyflakes F841), so don't assign them. ghost is homed to
+    # a workspace the owner isn't a member of, and its schedule is created
+    # directly (below), so it keeps its binding.
+    Agent.objects.create(slug="eva", name="Eva", workspace=a)
+    Agent.objects.create(slug="hal", name="Hal", workspace=b)
     gc = Agent.objects.create(slug="ghost", name="Ghost", workspace=c)
     ss.create_schedule(owner, "eva", dict(name="A", prompt="p", cron="0 9 * * *", timezone="UTC",
                                           enabled=True, routing="prefer_local", grace_minutes=120, notify=["inbox"]))
