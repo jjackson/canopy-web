@@ -40,6 +40,7 @@ the arrow's direction and enforce it in CI.
 | `mcp` | **framework** | MCP server infra + audit + rate-limit. (Individual *tools* may be product — see carve-outs.) |
 | `system` | **framework** | System metadata / AI-backend status. |
 | `push` | **framework** | Web Push subscription registry (VAPID keypair + `PushSubscription` rows). Agent-agnostic — any agent's board could trigger a send; observes `agents` (never the reverse), same direction `harness` takes. |
+| `realtime` | **framework** | WebSocket transport (Django Channels + Redis): live-tails the `harness` `TurnEvent` ledger (`turn.{id}`) and pushes `/supervisor` runner-status + waiting-count deltas. Fan-out mirrors `push` (signal/`post_save` → `on_commit` → `group_send`); observes `harness`/`push`/`agents`, never the reverse. Wave 4 (`docs/superpowers/specs/2026-07-16-realtime-chat-cloud-runner-program-design.md`). |
 | `projects` | **product** | Canopy's portfolio/insights feature: repos + which canopy skills ran (`skills[]`, `skill_name`, hygiene-skill frontend). Not a generic registry today — promote to framework only when a real second consumer needs one. |
 | `walkthroughs` | **product** | DDD walkthrough artifacts (HTML/video demos). |
 | `reviews` | **product** | DDD narrative review surface. |

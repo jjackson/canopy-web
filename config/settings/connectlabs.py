@@ -65,3 +65,12 @@ if _REDIS_URL:
             "LOCATION": _REDIS_URL,
         }
     }
+    # W4: the Channels layer lands here now that `channels` is a dependency. A
+    # dedicated prefix keeps channel-layer pub/sub from colliding with the Django
+    # cache on the same shared ElastiCache instance.
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [_REDIS_URL], "prefix": "canopy:realtime:"},
+        }
+    }
