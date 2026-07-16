@@ -28,7 +28,7 @@ from ninja import Router, Status
 from apps.api.auth import session_auth
 from apps.api.errors import TYPE_FORBIDDEN, TYPE_NOT_FOUND, ProblemError
 from apps.common.csrf import csrf_rejected
-from apps.common.ddd import (
+from apps.runs.ddd import (
     RUN_CHILD_GATES,
     is_run_child_gate,
     narrative_slug_from_run_id,

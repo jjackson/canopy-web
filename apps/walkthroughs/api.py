@@ -26,7 +26,7 @@ from apps.api.errors import (
     ProblemError,
 )
 
-from apps.common.ddd import narrative_slug_from_run_id
+from apps.runs.ddd import narrative_slug_from_run_id
 from apps.runs.aggregate import has_narrative_version
 from apps.workspaces import services as wsvc
 

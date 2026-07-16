@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from apps.common.ddd import (
+from apps.runs.ddd import (
     RUN_CHILD_GATES,
     is_run_child_gate,
     narrative_slug_from_run_id,

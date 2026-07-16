@@ -45,6 +45,21 @@ ALLOWED_FILES = {
     "apps/mcp/tools/insights.py",
 }
 
+# Framework files allowed to name a PRODUCT module PATH in a STRING literal (not an
+# import). The import test above can't see these — the whole point of a string
+# reference is to dodge a hard framework→product import — so this second gate
+# catches the content leak the AST import-check is blind to. Keep it SHORT.
+STRING_REF_ALLOWED = ALLOWED_FILES | {
+    # The timeline registry resolves each product event-source by dotted path via
+    # import_module precisely to AVOID a framework→product import; the string
+    # indirection IS the documented seam (ARCHITECTURE.md, timeline row). A missing
+    # product app degrades gracefully rather than crashing the framework.
+    "apps/timeline/sources.py",
+}
+
+# Product app names as they'd appear inside a dotted module path in a string.
+_PRODUCT_MODULE_PREFIXES = tuple(f"apps.{p}" for p in PRODUCT)
+
 
 def _imported_apps(path: pathlib.Path) -> set[str]:
     """The set of local app names this module imports (via `apps.<name>`)."""
@@ -78,6 +93,41 @@ def test_framework_apps_do_not_import_product() -> None:
     assert not violations, (
         "FRAMEWORK code must not import PRODUCT code (see ARCHITECTURE.md):\n  "
         + "\n  ".join(violations)
+    )
+
+
+def _product_module_strings(path: pathlib.Path) -> set[str]:
+    """Product module paths (`apps.<product>...`) named in this module's string
+    literals — including its docstring. Catches content the import-check can't see:
+    a lazy `import_module("apps.reviews...")`, a dotted path in a registry, etc."""
+    tree = ast.parse(path.read_text(), filename=str(path))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            for prefix in _PRODUCT_MODULE_PREFIXES:
+                if prefix in node.value:
+                    found.add(prefix)
+    return found
+
+
+def test_framework_source_does_not_reference_product_modules() -> None:
+    """The framework→product arrow must hold for CONTENT, not just imports. A
+    framework file that names a product module in a string is coupled to product
+    just as surely as one that imports it — see the ddd.py move (product run-id
+    grammar that had been parked in apps/common)."""
+    violations: list[str] = []
+    for app in sorted(FRAMEWORK - COMPOSITION_ROOT):
+        for path in (APPS / app).rglob("*.py"):
+            rel = path.relative_to(ROOT).as_posix()
+            if _is_excluded(rel, path.name) or rel in STRING_REF_ALLOWED:
+                continue
+            leaked = _product_module_strings(path)
+            if leaked:
+                violations.append(f"{rel} names product module(s) {sorted(leaked)} in a string")
+    assert not violations, (
+        "FRAMEWORK code must not reference PRODUCT modules, even as strings "
+        "(see ARCHITECTURE.md). Move the code to a product app, or document a new "
+        "seam in STRING_REF_ALLOWED:\n  " + "\n  ".join(violations)
     )
 
 

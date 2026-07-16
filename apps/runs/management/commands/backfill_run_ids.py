@@ -19,7 +19,7 @@ import collections
 
 from django.core.management.base import BaseCommand
 
-from apps.common.ddd import narrative_slug_from_run_id
+from apps.runs.ddd import narrative_slug_from_run_id
 from apps.reviews.models import ReviewRequest
 from apps.runs.inference import infer
 from apps.walkthroughs.models import Walkthrough

@@ -58,13 +58,26 @@ The boundary holds everywhere except these documented, intentional places:
    composition-root shape as the api hub. **Candidate for inversion** later
    (let `projects` register its own tool via `AppConfig.ready`), which would
    remove this carve-out.
+3. **`apps/timeline/sources.py` — a string registry of product event-sources.**
+   Timeline resolves each source by dotted path via `import_module` precisely to
+   AVOID a hard framework→product import; a missing product app degrades
+   gracefully. The string indirection is the seam. Allowlisted in the content
+   guard (below), not the import guard — it holds no product import.
 
 ## Enforcement
 
 `tests/test_architecture_boundary.py` (pure stdlib `ast`, runs in the normal
-`uv run pytest` CI job) parses every framework app and fails if any non-test file
-imports a product app, except the carve-outs above. It also fails if a **new** app
-isn't classified into a tier here — so the boundary can't silently rot.
+`uv run pytest` CI job) enforces the arrow two ways, so the boundary can't rot:
+
+- **Imports** — parses every framework app and fails if any non-test file
+  *imports* a product app, except the carve-outs above.
+- **Content** — fails if a framework file merely *names* a product module in a
+  string literal (a lazy `import_module`, a registry path, product logic parked in
+  a framework file). This is the gate that catches what the import-check is blind
+  to — e.g. the DDD run-id grammar that had been living in `apps/common/ddd.py`
+  and now sits in `apps/runs`. Seam #3 is the one allowlisted exception.
+
+It also fails if a **new** app isn't classified into a tier here.
 
 Adding a new app? Put it in `FRAMEWORK` or `PRODUCT` in both this doc and that
 test. Need framework code to touch product? Don't — move the code to a product
