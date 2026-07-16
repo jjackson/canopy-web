@@ -66,3 +66,91 @@ def _resolve_schedule(
     if schedule is None:
         raise ScheduleNotFound(f"{agent_slug}/{schedule_id}")
     return schedule
+
+
+def serialize_schedule(schedule: AgentSchedule) -> dict:
+    """The single serialized shape. REST builds ScheduleOut(**this); the MCP
+    tools return it directly. fire_after = last_slot or created_at is the anchor
+    the runner passes to due_slot — last_slot is NULL until the first fire, and
+    an unbounded backward lookup would fire a slot predating the schedule."""
+    latest = services.latest_occurrence_turn(schedule)
+    return {
+        "id": schedule.id,
+        "agent_slug": schedule.agent_slug,
+        "name": schedule.name,
+        "prompt": schedule.prompt,
+        "cron": schedule.cron,
+        "timezone": schedule.timezone,
+        "enabled": schedule.enabled,
+        "routing": schedule.routing,
+        "grace_minutes": schedule.grace_minutes,
+        "notify": schedule.notify,
+        "last_slot": schedule.last_slot,
+        "fire_after": schedule.last_slot or schedule.created_at,
+        "next_runs": next_slots(schedule.cron, schedule.timezone, now=timezone.now(), count=3),
+        "last_status": latest.status if latest else "",
+        "created_at": schedule.created_at,
+        "updated_at": schedule.updated_at,
+    }
+
+
+def list_schedules(user, agent_slug: str, *, workspace_slug: str | None = None) -> list[AgentSchedule]:
+    agent = _resolve_agent(user, agent_slug, workspace_slug=workspace_slug)
+    return list(agent.schedules.all())
+
+
+def create_schedule(
+    user, agent_slug: str, fields: dict, *, workspace_slug: str | None = None
+) -> AgentSchedule:
+    agent = _resolve_agent(user, agent_slug, workspace_slug=workspace_slug)
+    try:
+        # Own savepoint: an IntegrityError from uniq_agent_schedule_name must not
+        # poison the request transaction (SESSION_SAVE_EVERY_REQUEST would then
+        # 400 instead of surfacing the 409). Mirrors apps/projects/api.py.
+        with transaction.atomic():
+            return AgentSchedule.objects.create(agent=agent, **fields)
+    except IntegrityError:
+        raise DuplicateScheduleName(fields["name"]) from None
+
+
+def update_schedule(
+    user, agent_slug: str, schedule_id: int, fields: dict, *, workspace_slug: str | None = None
+) -> AgentSchedule:
+    schedule = _resolve_schedule(user, agent_slug, schedule_id, workspace_slug=workspace_slug)
+    for key, value in fields.items():
+        setattr(schedule, key, value)
+    if fields:
+        try:
+            with transaction.atomic():  # savepoint — see create_schedule
+                schedule.save()
+        except IntegrityError:
+            raise DuplicateScheduleName(schedule.name) from None
+    return schedule
+
+
+def delete_schedule(
+    user, agent_slug: str, schedule_id: int, *, workspace_slug: str | None = None
+) -> None:
+    """Retire open occurrences FIRST — see the module docstring and the spec.
+    There is no Turn->AgentSchedule FK, so nothing cascades; an executing
+    occurrence would otherwise hold one_executing_turn_per_agent forever."""
+    schedule = _resolve_schedule(user, agent_slug, schedule_id, workspace_slug=workspace_slug)
+    services.supersede_open_turns(schedule, reason="schedule deleted")
+    schedule.delete()
+
+
+def run_schedule_now(
+    user, agent_slug: str, schedule_id: int, *, workspace_slug: str | None = None
+) -> AgentSchedule:
+    schedule = _resolve_schedule(user, agent_slug, schedule_id, workspace_slug=workspace_slug)
+    services.run_schedule_now(schedule)
+    return schedule
+
+
+def preview_cron(
+    user, agent_slug: str, cron: str, timezone_name: str, *, workspace_slug: str | None = None
+) -> list[dt.datetime]:
+    """agent_slug is for authorization only (you must see the agent to preview
+    against it) — matches the REST preview route, which resolves + ignores it."""
+    _resolve_agent(user, agent_slug, workspace_slug=workspace_slug)
+    return next_slots(cron, timezone_name, now=timezone.now(), count=3)
