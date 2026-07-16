@@ -18,6 +18,7 @@ from apps.workspaces.models import Workspace
 
 from . import services
 from .models import AgentSchedule, Runner, Turn
+from .schedule_services import serialize_schedule
 from .schemas import (
     HeartbeatIn,
     RecordSessionIn,
@@ -498,11 +499,8 @@ def sync_schedules(request: HttpRequest, runner_id: uuid.UUID, limit: int = 200)
     runner in the tenant claims it). Gating here would impose a boot-order dependency
     — a fresh daemon would have to sync before its first heartbeat.
     """
-    # Imported inside to dodge a real cycle: api_schedules imports .api at module level.
-    from .api_schedules import _serialize
-
     runner = _runner_or_404(request, runner_id)
-    items = [_serialize(s) for s in _runner_schedule_qs(runner)]
+    items = [ScheduleOut(**serialize_schedule(s)) for s in _runner_schedule_qs(runner)]
     return paginate(items, offset=0, limit=clamp_limit(limit))
 
 

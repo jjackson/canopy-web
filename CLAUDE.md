@@ -313,7 +313,7 @@ Empty `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` disable push: the endpoints 503 and
 - `GET /api/system/{kind}/{name}` — Capability detail for one skill/agent/command. Drives the `/system` Workflows view.
 
 ### MCP (`apps/mcp`, mounted at `/api/mcp/`)
-Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config/asgi.py`. Auth is enforced inside the server via `MultiAuth` (per-user PAT `CanopyPATVerifier`, always on; interactive Google OAuth is an env-gated seam, `MCP_OAUTH_ENABLED`). Every tool call writes an `MCPAuditLog` row; mutating tools are rate-limited per user. Tools today: `list_insights` (read) + `clear_insights` (write). The legacy single-shared `CANOPY_MCP_BEARER` and the hand-rolled ASGI gate are gone. See `docs/architecture/mcp-surface.md`.
+Not a Ninja router — a FastMCP 3.x Streamable-HTTP ASGI app mounted in `config/asgi.py`. Auth is enforced inside the server via `MultiAuth` (per-user PAT `CanopyPATVerifier`, always on; interactive Google OAuth is an env-gated seam, `MCP_OAUTH_ENABLED`). Every tool call writes an `MCPAuditLog` row; mutating tools are rate-limited per user. Tools today: `list_insights` + `clear_insights` (insights), and `list_schedules` / `preview_cron` (read) + `create_schedule` / `update_schedule` / `delete_schedule` / `run_schedule_now` (write) for recurring turns. The schedule tools call `apps/harness/schedule_services.py`, the same request-free service layer the REST routes call, so the MCP and REST surfaces can't drift. The legacy single-shared `CANOPY_MCP_BEARER` and the hand-rolled ASGI gate are gone. See `docs/architecture/mcp-surface.md`.
 
 ## Design Decisions
 
