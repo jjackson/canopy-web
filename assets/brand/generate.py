@@ -7,7 +7,8 @@ into every committed image the product needs, so nothing is drawn just-in-time a
 build or runtime. Edit `tree.py` to change the shape, then run this and commit the
 results — never hand-edit the outputs.
 
-    python assets/brand/generate.py          # regenerate all, in place
+    python3 -m venv .venv && .venv/bin/pip install pyobjc-framework-Cocoa  # one-time
+    .venv/bin/python assets/brand/generate.py                              # regenerate all
 
 Outputs (all committed, first-class):
     assets/brand/tree.svg                 master vector (white tree on black)
