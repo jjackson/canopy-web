@@ -266,17 +266,34 @@ def enqueue_turn(request: HttpRequest, payload: TurnIn):
     if payload.agent_slug:
         agent = _agent_or_404(request, payload.agent_slug)
     else:
-        # A project turn carries its own tenant. current_workspace already gates
-        # membership on an explicit slug, so a non-member's enqueue cannot land in
-        # someone else's workspace. 404 rather than 403: the harness must not leak
-        # which tenants exist (same rule as _agent_or_404).
+        # A project turn carries its own tenant.
         wsvc.auto_join_workspaces(request.user)
-        try:
-            workspace = wsvc.current_workspace(
-                request.user, getattr(request, "workspace_slug", None)
-            )
-        except ValueError:
-            raise HttpError(404, "workspace not found")
+        ws_slug = getattr(request, "workspace_slug", None)
+        if ws_slug:
+            # current_workspace gates membership on an explicit slug, so a
+            # non-member's enqueue cannot land in someone else's workspace. 404
+            # rather than 403: the harness must not leak which tenants exist
+            # (same rule as _agent_or_404).
+            try:
+                workspace = wsvc.current_workspace(request.user, ws_slug)
+            except ValueError:
+                raise HttpError(404, "workspace not found")
+        else:
+            workspace = wsvc.user_default_workspace(request.user)
+            if workspace is None:
+                # None means 0 memberships OR 2+ (ambiguous), and the two deserve
+                # different answers. A 404 for the ambiguous case is a lie that
+                # cost real debugging time: the flat shim 404'd every project
+                # enqueue for a 2-workspace user (which the actual prod user is)
+                # while reporting "not found". There is nothing to leak here —
+                # they are the caller's OWN workspaces — so name the fix.
+                if wsvc.user_workspace_slugs(request.user):
+                    raise HttpError(
+                        422,
+                        "you belong to multiple workspaces; enqueue via "
+                        "/api/w/{workspace}/harness/turns/",
+                    )
+                raise HttpError(404, "workspace not found")
 
     turn, created = services.enqueue_turn(
         agent=agent,
