@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import datetime as dt
 
-from canopy_cron import next_slots
+from canopy_cron import next_slots, slots_between
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.agents.models import Agent
@@ -145,6 +146,30 @@ def run_schedule_now(
     schedule = _resolve_schedule(user, agent_slug, schedule_id, workspace_slug=workspace_slug)
     services.run_schedule_now(schedule)
     return schedule
+
+
+def week_schedules(workspace_ids: set, start: dt.datetime) -> list[dict]:
+    """Every ENABLED schedule in `workspace_ids`, each with its fires in the
+    week [start, start+7d). `workspace_ids` is the caller's already-resolved
+    visible-workspace set (the route computes it from apps.workspaces.services),
+    so this stays request-free. A None in the set means 'legacy unhomed agents'
+    — matched explicitly, since SQL IN never matches NULL."""
+    end = start + dt.timedelta(days=7)
+    non_null = {w for w in workspace_ids if w is not None}
+    q = Q(agent__workspace_id__in=non_null)
+    if None in workspace_ids:
+        q |= Q(agent__workspace_id__isnull=True)
+    schedules = (
+        AgentSchedule.objects.filter(enabled=True).filter(q).select_related("agent")
+    )
+    rows = []
+    for s in schedules:
+        rows.append({
+            "schedule": serialize_schedule(s),
+            "workspace_slug": s.agent.workspace_id,
+            "fires": slots_between(s.cron, s.timezone, start=start, end=end),
+        })
+    return rows
 
 
 def preview_cron(

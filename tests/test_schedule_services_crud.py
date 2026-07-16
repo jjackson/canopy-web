@@ -141,3 +141,24 @@ def test_mcp_shape_no_workspace_pin_still_gated(agent):
     outsider = User.objects.create_user("m", "m@evil.com", "pw")
     with pytest.raises(ss.ScheduleNotFound):
         ss.list_schedules(outsider, "eva")
+
+
+def test_week_schedules_gathers_enabled_with_fires(owner, agent, ws):
+    ss.create_schedule(owner, "eva", _fields(name="Daily", cron="0 9 * * *", timezone="UTC"))
+    ss.create_schedule(owner, "eva", _fields(name="Paused", cron="0 9 * * *", timezone="UTC", enabled=False))
+    start = dt.datetime(2026, 7, 13, 0, 0, tzinfo=dt.UTC)
+
+    rows = ss.week_schedules({ws.slug}, start)
+
+    assert len(rows) == 1  # the disabled one is excluded
+    row = rows[0]
+    assert row["schedule"]["name"] == "Daily"
+    assert row["workspace_slug"] == ws.slug
+    assert len(row["fires"]) == 7  # daily over the week
+
+
+def test_week_schedules_scoped_to_given_workspaces(owner, agent, ws):
+    # A schedule in a workspace NOT in the set must not appear.
+    ss.create_schedule(owner, "eva", _fields(cron="0 9 * * *"))
+    rows = ss.week_schedules({"some-other-ws"}, dt.datetime(2026, 7, 13, tzinfo=dt.UTC))
+    assert rows == []

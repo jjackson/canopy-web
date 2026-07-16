@@ -257,6 +257,17 @@ class ScheduleOut(Schema):
     updated_at: dt.datetime
 
 
+class ScheduledFireOut(Schema):
+    schedule: ScheduleOut
+    workspace_slug: str | None = None
+    fires: list[dt.datetime]
+
+
+class ScheduleWeekOut(Schema):
+    start: dt.datetime
+    items: list[ScheduledFireOut]
+
+
 class SchedulePreviewIn(Schema):
     """Preview a cron the user is still typing — no row exists yet."""
 
