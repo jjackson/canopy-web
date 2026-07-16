@@ -127,3 +127,23 @@ capability; the backend landing first changes no existing behaviour.
 - [ ] `uv run pytest` with `.env` moved aside
 - [ ] `npm run build`, `npm run test`, `npx playwright test`
 - [ ] PR, CI green, merge, deploy, **verify the live ECS image tag == the merge SHA** (not that the workflow says success)
+
+## Blockers found by probing prod (must clear before Task 6 ships)
+
+1. **A probe turn is stuck QUEUED in prod** (`project=canopy-web`, `idempotency_key=probe-p3-4`,
+   id `1dfc5754-…`). Enqueued while verifying #232 on Postgres. It is inert *only* because no
+   runner declares `canopy-web` — the moment Task 6 adds `"projects": ["canopy-web"]` to the
+   runner's capabilities it gets claimed and types "probe" into a real emdash session. **Delete it
+   before the runner learns projects.** The token user is not staff, so admin delete 403s; needs
+   staff access or a management command.
+
+2. **No way to cancel a QUEUED turn.** `finish` 409s on a queued turn (only claimed/running are
+   finishable). The phone composer makes this urgent — a misfired dispatch must be cancellable.
+   Add `POST /turns/{id}/cancel` (queued → a terminal state) before or with the composer (Task 7).
+
+3. **`SessionLink` project rows have no tenant.** `resolve_session` returns a thread's rolling
+   `summary` + live task id; for agent links `_agent_or_404` gates it, but a project `SessionLink`
+   has no workspace FK, so any runner paired by any user could read another user's session context
+   by guessing `thread_key`. The spec (§3) never addressed project-link tenancy. Options: add a
+   `workspace` FK to `SessionLink` (mirrors Turn), or gate the resolve/record endpoints on the
+   runner's own tenant. Decide before the runner drives project sessions (Task 6/8).

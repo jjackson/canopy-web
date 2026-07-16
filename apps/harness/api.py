@@ -266,17 +266,34 @@ def enqueue_turn(request: HttpRequest, payload: TurnIn):
     if payload.agent_slug:
         agent = _agent_or_404(request, payload.agent_slug)
     else:
-        # A project turn carries its own tenant. current_workspace already gates
-        # membership on an explicit slug, so a non-member's enqueue cannot land in
-        # someone else's workspace. 404 rather than 403: the harness must not leak
-        # which tenants exist (same rule as _agent_or_404).
+        # A project turn carries its own tenant.
         wsvc.auto_join_workspaces(request.user)
-        try:
-            workspace = wsvc.current_workspace(
-                request.user, getattr(request, "workspace_slug", None)
-            )
-        except ValueError:
-            raise HttpError(404, "workspace not found")
+        ws_slug = getattr(request, "workspace_slug", None)
+        if ws_slug:
+            # current_workspace gates membership on an explicit slug, so a
+            # non-member's enqueue cannot land in someone else's workspace. 404
+            # rather than 403: the harness must not leak which tenants exist
+            # (same rule as _agent_or_404).
+            try:
+                workspace = wsvc.current_workspace(request.user, ws_slug)
+            except ValueError:
+                raise HttpError(404, "workspace not found")
+        else:
+            workspace = wsvc.user_default_workspace(request.user)
+            if workspace is None:
+                # None means 0 memberships OR 2+ (ambiguous), and the two deserve
+                # different answers. A 404 for the ambiguous case is a lie that
+                # cost real debugging time: the flat shim 404'd every project
+                # enqueue for a 2-workspace user (which the actual prod user is)
+                # while reporting "not found". There is nothing to leak here —
+                # they are the caller's OWN workspaces — so name the fix.
+                if wsvc.user_workspace_slugs(request.user):
+                    raise HttpError(
+                        422,
+                        "you belong to multiple workspaces; enqueue via "
+                        "/api/w/{workspace}/harness/turns/",
+                    )
+                raise HttpError(404, "workspace not found")
 
     turn, created = services.enqueue_turn(
         agent=agent,
@@ -351,6 +368,31 @@ def finish_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnFinishIn)
         # returning a turn that looks unchanged.
         raise ProblemError(409, "Turn not finishable", detail=f"status={result.status}")
     return result
+
+
+@router.post("/turns/{turn_id}/cancel", response=TurnOut)
+def cancel_turn(request: HttpRequest, turn_id: uuid.UUID):
+    """Cancel a QUEUED turn that has not started — the misfire case the phone
+    composer needs (dispatch the wrong command, take it back before a runner
+    claims it). Records it FAILED with a cancelled note; there is no separate
+    CANCELLED status because nothing downstream distinguishes the two, and adding
+    one would touch the TERMINAL set every sweep and projection depends on.
+
+    QUEUED only. A claimed/running turn is already executing in an emdash session;
+    stopping that is a racy, different operation (the runner owns the lease) and
+    is deliberately out of scope — cancel is 'un-queue', not 'kill'.
+    """
+    turn = _turn_or_404(request, turn_id)
+    if turn.status in Turn.TERMINAL:
+        return turn  # idempotent
+    if turn.status != Turn.QUEUED:
+        raise ProblemError(
+            409, "Turn not cancelable",
+            detail=f"status={turn.status}; only a queued turn can be cancelled",
+        )
+    return services.finish_turn(
+        turn, status=Turn.FAILED, result_note="cancelled by supervisor", allow_queued=True
+    )
 
 
 # --------------------------------------------------------------------------------------

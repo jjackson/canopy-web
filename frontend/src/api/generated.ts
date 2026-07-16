@@ -1813,6 +1813,34 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/harness/turns/{turn_id}/cancel": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Cancel Turn
+         * @description Cancel a QUEUED turn that has not started — the misfire case the phone
+         *     composer needs (dispatch the wrong command, take it back before a runner
+         *     claims it). Records it FAILED with a cancelled note; there is no separate
+         *     CANCELLED status because nothing downstream distinguishes the two, and adding
+         *     one would touch the TERMINAL set every sweep and projection depends on.
+         *
+         *     QUEUED only. A claimed/running turn is already executing in an emdash session;
+         *     stopping that is a racy, different operation (the runner owns the lease) and
+         *     is deliberately out of scope — cancel is 'un-queue', not 'kill'.
+         */
+        readonly post: operations["apps_harness_api_cancel_turn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/harness/schedules/": {
         readonly parameters: {
             readonly query?: never;
@@ -8727,6 +8755,28 @@ export interface operations {
                 readonly "application/json": components["schemas"]["TurnFinishIn"];
             };
         };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_cancel_turn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly turn_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
         readonly responses: {
             /** @description OK */
             readonly 200: {

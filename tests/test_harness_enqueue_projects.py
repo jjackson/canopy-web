@@ -95,3 +95,41 @@ def test_agent_turns_still_enqueue(cli, canopy):
     # Agent turns DERIVE tenancy via agent.workspace — they must not denormalize
     # a second copy that can drift out of step with the agent's own workspace.
     assert turn.workspace_id is None
+
+
+def test_a_multi_workspace_user_is_told_to_name_one_not_404d(client, db, jj, canopy):
+    """The gap my suite had, found only by probing prod.
+
+    Every test user here had exactly ONE workspace, so current_workspace always
+    resolved. The real prod user belongs to two ('connect' and 'dimagi'), which
+    makes the default ambiguous — and the flat route 404'd every project enqueue
+    while reporting "workspace not found". The turn was fine; the error was a lie.
+
+    Nothing to protect here: they are the caller's own workspaces, so name the fix
+    rather than hide behind the 404-not-403 rule (which exists to avoid leaking
+    OTHER tenants' existence).
+    """
+    _ws("dimagi", jj)  # jj is now in two
+    client.force_login(jj)
+
+    resp = _post(client, project="canopy-web")
+
+    assert resp.status_code == 422, resp.content
+    assert "multiple workspaces" in resp.json()["detail"]
+    assert not Turn.objects.exists()
+
+
+def test_a_multi_workspace_user_can_enqueue_via_the_tenant_scoped_route(client, db, jj, canopy):
+    """The other half: naming the workspace works. Verified against prod too —
+    POST /api/w/connect/harness/turns/ queued a canopy-web turn."""
+    _ws("dimagi", jj)
+    client.force_login(jj)
+
+    resp = client.post(
+        "/api/w/canopy/harness/turns/",
+        data={"project": "canopy-web", "origin": "manual", "idempotency_key": "k1"},
+        content_type="application/json",
+    )
+
+    assert resp.status_code == 201, resp.content
+    assert Turn.objects.get(idempotency_key="k1").workspace_id == "canopy"
