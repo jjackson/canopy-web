@@ -25,12 +25,15 @@ export function bucketByDay(items: ScheduleWeekItem[], weekStart: Date): DayColu
     d.setHours(0, 0, 0, 0);
     return { index: i, date: d, fires: [] };
   });
-  const weekStartMidnight = new Date(cols[0].date);
+  const weekStartMidnight = cols[0].date;
   for (const item of items) {
     for (const iso of item.fires) {
       const when = new Date(iso);
-      // days since the week's Monday, in local time
-      const dayIdx = Math.floor((startOfLocalDay(when).getTime() - weekStartMidnight.getTime()) / 86_400_000);
+      // days since the week's Monday, by LOCAL calendar-date components — not
+      // a raw millisecond delta, which breaks on any week containing a DST
+      // transition (a 23h or 25h local day makes the /86_400_000 divide land
+      // on the wrong column for every day after the transition).
+      const dayIdx = localDayIndex(when, weekStartMidnight);
       if (dayIdx >= 0 && dayIdx < 7) cols[dayIdx].fires.push({ when, item });
     }
   }
@@ -38,10 +41,14 @@ export function bucketByDay(items: ScheduleWeekItem[], weekStart: Date): DayColu
   return cols;
 }
 
-function startOfLocalDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
+/** Whole local-calendar-day distance between `when` and `weekStart`, DST-safe.
+ * Built from each Date's LOCAL Y/M/D (not the UTC getters) via `Date.UTC`,
+ * which always yields exactly-24h days — so the difference divided by
+ * 86_400_000 is an exact integer regardless of DST transitions in between. */
+function localDayIndex(when: Date, weekStart: Date): number {
+  const a = Date.UTC(when.getFullYear(), when.getMonth(), when.getDate());
+  const b = Date.UTC(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
+  return Math.round((a - b) / 86_400_000);
 }
 
 export interface Filters {

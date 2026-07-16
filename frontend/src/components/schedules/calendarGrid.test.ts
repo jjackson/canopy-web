@@ -34,6 +34,29 @@ describe("bucketByDay", () => {
   });
 });
 
+describe("bucketByDay DST regression", () => {
+  it("buckets fires correctly across a mid-week DST transition (run under TZ=Asia/Jerusalem)", () => {
+    // Israel's 2026 spring-forward is Friday 2026-03-27 (a 23h local day),
+    // for the week of Monday 2026-03-23. US/EU zones transition on a Sunday
+    // (the last column), so this bug is invisible there — it needs a
+    // mid-week-transition zone to catch. Dates are built from LOCAL Date
+    // parts (matching the style above) so this only exercises the DST math
+    // when actually run under TZ=Asia/Jerusalem; under other zones the
+    // assertions below are skipped so the suite doesn't false-fail elsewhere.
+    if (Intl.DateTimeFormat().resolvedOptions().timeZone !== "Asia/Jerusalem") {
+      return;
+    }
+    const weekStart = new Date(2026, 2, 23); // local Mon 2026-03-23 00:00
+    const satFire = new Date(2026, 2, 28, 9, 0, 0).toISOString(); // after the Fri transition
+    const sunFire = new Date(2026, 2, 29, 9, 0, 0).toISOString();
+    const items = [item("Weekly", "eva", "alpha", [satFire, sunFire])];
+    const cols = bucketByDay(items, weekStart);
+    expect(cols[5].fires).toHaveLength(1); // Saturday = index 5
+    expect(cols[6].fires).toHaveLength(1); // Sunday = index 6
+    expect(cols[4].fires).toHaveLength(0); // Friday must stay empty
+  });
+});
+
 describe("matchesFilters", () => {
   const it0 = item("A", "eva", "alpha", []);
   it("passes when no filter is set", () => {
