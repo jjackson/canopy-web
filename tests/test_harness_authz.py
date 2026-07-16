@@ -189,6 +189,91 @@ def test_tenanted_attacker_cannot_claim_other_workspace_turn(owner_client, agent
     assert victim_turn.claimed_by is None
 
 
+# --- claim scope: one runner, a fleet that spans workspaces (the outage) -------
+
+
+def test_runner_claims_for_agents_in_any_workspace_its_pairer_belongs_to(owner, owner_client, workspace):
+    """The production shape, and the outage this pins closed.
+
+    There is ONE laptop runner but the agent fleet deliberately spans workspaces:
+    `eva` is homed to the runner's own workspace, `ace` to a sibling one. The
+    pairing human is a member of BOTH. Scoping the claim by `runner.workspace_id`
+    (the shipped rule) let the runner claim only `eva` — `ace`'s turns sat QUEUED
+    forever, which is exactly what happened on production (4 of 5 agents unable to
+    execute any turn at all).
+
+    The claim must scope by the workspaces `runner.paired_by` is a member of —
+    consistent with `_runner_schedule_qs`, which already derives tenancy that way
+    for the schedule-sync route. `owner` can already drive `ace` through the UI,
+    so claiming for it is no escalation.
+    """
+    sibling = Workspace.objects.create(
+        slug="connect", display_name="Connect", created_by=owner, auto_join_domains=[]
+    )
+    WorkspaceMembership.objects.create(
+        user=owner, workspace=sibling, role=WorkspaceMembership.OWNER
+    )
+    Agent.objects.create(slug="eva", name="Eva", workspace=workspace)
+    Agent.objects.create(slug="ace", name="Ace", workspace=sibling)
+
+    # One runner, homed to `workspace` (as the 0005 backfill homed the live one),
+    # declaring the whole fleet in its capabilities.
+    rid = owner_client.post(
+        "/api/harness/runners/",
+        {
+            "name": "jj-mbp-cdp",
+            "kind": "emdash",
+            "capabilities": {"agents": ["eva", "ace"]},
+            "workspace": workspace.slug,
+        },
+        content_type="application/json",
+    ).json()["id"]
+    assert Runner.objects.get(pk=rid).workspace_id == workspace.slug  # sanity: homed to one
+
+    hb = owner_client.post(
+        f"/api/harness/runners/{rid}/heartbeat",
+        {"active_turn_ids": [], "degraded": False, "note": ""},
+        content_type="application/json",
+    )
+    assert hb.status_code == 200  # sanity: ONLINE, or claim_next_turn bails before the scope check
+
+    turn_id = _enqueue(owner_client, slug="ace", key="k-ace").json()["id"]
+
+    resp = owner_client.post(f"/api/harness/runners/{rid}/claim")
+    assert resp.status_code == 200, "the cross-workspace turn must be claimable"
+    assert resp.json()["id"] == turn_id
+    claimed = Turn.objects.get(pk=turn_id)
+    assert claimed.status == Turn.CLAIMED
+    assert str(claimed.claimed_by_id) == rid
+
+
+def test_runner_with_null_paired_by_claims_nothing_tenanted(owner_client, agent, workspace):
+    """Runner.paired_by is SET_NULL, so an orphaned runner must fail closed: with
+    no pairer there is no identity to derive a tenant from, and inferring one
+    would be a privilege escalation. It must claim NOTHING tenanted — not
+    everything, and not the workspace it happens to still be homed to.
+
+    (It retains the null-workspace legacy leg, which is what the pre-tenancy
+    suite runs on; see test_harness_services.py, whose runners are all
+    paired_by=None. A null-workspace agent is ungated everywhere in this
+    codebase, and none exist in production.)
+    """
+    orphan = Runner.objects.create(
+        name="orphan", kind=Runner.EMDASH, capabilities={"agents": ["echo"]},
+        paired_by=None, workspace=workspace,
+    )
+    from apps.harness import services as hsvc
+
+    hsvc.heartbeat(orphan, active_turn_ids=[])  # ONLINE, or this proves nothing
+    assert Runner.objects.get(pk=orphan.id).status == Runner.ONLINE
+
+    turn_id = _enqueue(owner_client).json()["id"]
+    assert hsvc.claim_next_turn(orphan) is None
+    victim = Turn.objects.get(pk=turn_id)
+    assert victim.status == Turn.QUEUED
+    assert victim.claimed_by is None
+
+
 def test_list_turns_only_shows_my_tenants_turns(owner_client, stranger_client, agent):
     _enqueue(owner_client)
     resp = stranger_client.get("/api/harness/turns/")

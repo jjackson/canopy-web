@@ -38,26 +38,30 @@ class Runner(models.Model):
     # so a live session is reusable ONLY by the runner whose host matches the one that
     # created it. Jonathan runs the fleet under two accounts (token-limit failover).
     host = models.CharField(max_length=200, blank=True, default="")
-    # The human who paired this runner. Load-bearing for authz AND for schedule
-    # tenancy: `_runner_visibility_q` requires paired_by to be the caller (or NULL,
-    # the legacy-ungated path it keeps open on purpose), and `_runner_schedule_qs`
-    # derives the schedule tenant from it.
+    # The human who paired this runner. Load-bearing for authz AND for tenancy:
+    # `_runner_visibility_q` requires paired_by to be the caller (or NULL, the
+    # legacy-ungated path it keeps open on purpose), and BOTH `_runner_schedule_qs`
+    # and `claim_next_turn` derive the tenant from it — a runner may sync/fire/claim
+    # for agents in any workspace its pairer belongs to.
     #
     # OPERATIONAL CONSEQUENCE — deleting a pairing user permanently bricks their
-    # runners' SCHEDULES. SET_NULL orphans the row rather than removing it;
-    # `paired_by_id` becomes NULL, and `_runner_schedule_qs` returns none() for a
-    # NULL pairer, so the orphan can never sync or fire a schedule again. It must
-    # be re-paired (a fresh row) and the orphan retired.
+    # runners. SET_NULL orphans the row rather than removing it; `paired_by_id`
+    # becomes NULL, `_runner_schedule_qs` returns none() for a NULL pairer, and
+    # `claim_next_turn` resolves an empty workspace set — so the orphan can never
+    # sync, fire, or claim anything tenanted again. It must be re-paired (a fresh
+    # row) and the orphan retired.
     #
     # This fail-closed behaviour is CORRECT and must stay: a runner whose owner no
     # longer exists has no tenant to derive, and inferring one would be a privilege
     # escalation. Deactivate a departing user (`is_active=False`) rather than
     # deleting them if their runners should stay operable for a successor.
     #
-    # `workspace` (below) now exists — it is the boundary `claim_next_turn` and
-    # `_runner_visibility_q` filter on. Narrowing the SCHEDULE derivation from
-    # paired_by to this FK is a deliberate follow-up, not a merge-time change;
-    # see the note on `_runner_schedule_qs` for how the two rules relate today.
+    # `workspace` (below) is where the runner LIVES — it is NOT the claim
+    # boundary, and must not be made one. Scoping claims to that single FK is
+    # exactly the outage this fleet hit: one laptop runner serves an agent fleet
+    # that deliberately spans workspaces, so FK-scoping left 4 of 5 agents unable
+    # to execute any turn. The FK gates runner VISIBILITY (`_runner_visibility_q`,
+    # `list_runners`); `paired_by` gates what a runner may WORK FOR.
     workspace = models.ForeignKey(
         "workspaces.Workspace",
         on_delete=models.PROTECT,
