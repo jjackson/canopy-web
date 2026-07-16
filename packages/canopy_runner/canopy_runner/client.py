@@ -103,28 +103,6 @@ class Client:
         _, payload = self._call("POST", path, {"slot": slot})
         return payload or {}
 
-    def _get_api(self, path: str) -> object:
-        """GET an arbitrary /api path (not under /api/harness) — used to read the
-        reviews surface for review-ingestion. Same auth/error handling as _call."""
-        url = f"{self.base_url}/api{path}"
-        req = urllib.request.Request(url, method="GET")
-        req.add_header("Authorization", f"Bearer {self.token}")
-        try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-                raw = resp.read()
-        except urllib.error.HTTPError as exc:
-            raise ClientError(f"GET {path} -> {exc.code}") from exc
-        except urllib.error.URLError as exc:
-            raise ClientError(f"GET {path} -> {exc.reason}") from exc
-        return json.loads(raw) if raw else None
-
-    def list_reviews(self, status: str = "") -> list[dict]:
-        q = f"?status={status}" if status else ""
-        return self._get_api(f"/reviews/{q}") or []
-
-    def get_review(self, review_id: str) -> dict:
-        return self._get_api(f"/reviews/{review_id}/") or {}
-
     def enqueue_turn(self, agent_slug: str, origin: str, idempotency_key: str, *,
                      prompt: str = "", origin_ref: dict | None = None,
                      routing: str = "prefer_local") -> dict:
