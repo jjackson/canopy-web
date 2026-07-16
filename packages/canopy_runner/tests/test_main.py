@@ -446,7 +446,7 @@ def test_unpaused_loop_fires_schedules_every_poll(tmp_path, monkeypatch):
     cfg_path.write_text(json.dumps({
         "base_url": "http://x", "token": "t", "runner_id": "r-1",
         "emdash_db": str(tmp_path / "e.db"), "automation_ids": {},
-        "expected_migration_id": 19, "poll_seconds": 1, "reviews_poll_seconds": 0,
+        "expected_migration_id": 19, "poll_seconds": 1,
     }))
     calls = []
 
