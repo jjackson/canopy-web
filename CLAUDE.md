@@ -235,7 +235,7 @@ An `Agent` (e.g. "Echo") is a first-class entity — distinct from a code Projec
 - `POST /api/agents/{slug}/schedules/preview` — preview the next 3 fire times for a cron+tz pair, computed with the same `next_slots()` the firing path uses (so the client never re-implements cron)
 
 ### Agent runs (`apps/agent_runs`, mounted under `/api/agents`)
-The unified agent **run lifecycle** (run → step → artifact → verdict/QA → decision → gate → fork) as a storage-agnostic read model behind a `RunStore` Protocol (DB adapter persists rows; Drive adapter reads ACE's YAML). The keystone of the framework harvest — see `docs/superpowers/specs/2026-06-29-unified-agent-run-lifecycle-design.md`. Backed by the installable Django-free `canopy_runs` library.
+The unified agent **run lifecycle** (run → step → artifact → verdict/QA → decision → gate → fork) as a storage-agnostic read model behind a `RunStore` Protocol (DB adapter persists rows; Drive adapter reads ACE's YAML). The keystone of the framework harvest — see `docs/superpowers/specs/2026-06-29-unified-agent-run-lifecycle-design.md`. Backed by the installable Django-free `canopy_agent_runs` library (`packages/canopy_agent_runs`).
 - `GET /api/agents/{slug}/runs/` — List an agent's runs (paginated)
 - `POST /api/agents/{slug}/runs/` — Create a run
 - `GET /api/agents/{slug}/runs/{run_id}/` — Full run read model
@@ -262,6 +262,8 @@ The agent-execution control plane: paired `Runner`s (laptop emdash daemons, clou
 **Recurring turns** — the runner-facing half of scheduling; the supervisor's CRUD is the `/api/agents/{slug}/schedules/` surface above. `runner_id` is a query param on both routes; the tenant is derived from `runner.paired_by` (the human who paired the runner) rather than the `Runner.workspace` FK — see the Design Decisions entry below.
 - `GET /api/harness/schedules/?runner_id=…` — runner syncs the schedules it may fire. **Tenant-scoped, never scoped by `capabilities`** (a caller-supplied hint, not a boundary — see b4f5ead).
 - `POST /api/harness/schedules/{id}/fire?runner_id=…` — the runner reports a due slot; the server materializes the turn.
+
+Firing is automatic: on each poll tick the runner syncs its schedules, evaluates every cron with `canopy_cron.due_slot(cron, tz, after=fire_after)`, and POSTs any due slot to `fire`. The anchor is the server-computed `ScheduleOut.fire_after` (`= last_slot or created_at`), never `last_slot` — see the Design Decisions entry below. Both halves of the slot math are backed by the installable Django-free `canopy_cron` library (`packages/canopy_cron`): the server's `preview` endpoint and the runner's firing call the **same** `next_slots()` / `due_slot()`, so the UI cannot promise "Fridays" while the runner fires Thursdays. It also owns the `croniter>=6.0,<7.0` bound, once, where the DST/slot semantics live.
 
 > **Operational note — deleting a user bricks their runners' schedules.** `Runner.paired_by` is `on_delete=SET_NULL`, and `_runner_schedule_qs` derives the schedule tenant from it, failing closed when it is NULL: deleting a pairing user's Django `User` orphans their runners, and every schedule route then returns nothing for that runner, forever. The runner must be re-paired (a new row); the orphan can only be retired. This is correct — a runner with no owner has no tenant to derive, and inferring one would be privilege escalation — so prefer deactivating a departing user (`is_active=False`) over deleting them if their runners should keep running.
 
@@ -352,7 +354,7 @@ Design **specs** (the "why" record) live in `docs/superpowers/specs/`. The execu
 - `docs/superpowers/specs/2026-06-19-team-activity-timeline-design.md` — `/timeline` team activity feed design (shipped, PR #138)
 - `docs/superpowers/specs/2026-06-24-canopy-framework-harvest-design.md` — Canopy-as-the-framework harvest strategy (umbrella for Waves 0–4: the framework/product boundary + what moves out of ACE)
 - `docs/superpowers/specs/2026-06-28-shared-agent-client-design.md` — Shared agent-client, the framework's first harvested piece
-- `docs/superpowers/specs/2026-06-29-unified-agent-run-lifecycle-design.md` — Unified agent⊕run lifecycle (Wave 1 keystone; the `apps/agent_runs` + `canopy_runs` library, shipped PR #154)
+- `docs/superpowers/specs/2026-06-29-unified-agent-run-lifecycle-design.md` — Unified agent⊕run lifecycle (Wave 1 keystone; the `apps/agent_runs` + `canopy_agent_runs` library, shipped PR #154)
 - `docs/superpowers/specs/2026-06-29-wave2-3-harvest-execution.md` — Wave 2/3 execution spec (run-step verdicts + multi-tenant workspaces; shipped PRs #158–#162)
 - `docs/superpowers/specs/2026-06-30-workspace-multi-tenancy-design.md` — Workspace-as-tenant full multi-tenancy design (anchor-roots-inherit-children, `/w/` reclaim, path-prefix API; shipped PR #183)
 - `docs/superpowers/specs/2026-07-05-agent-execution-control-plane-design.md` — Agent-execution control plane: paired `Runner`s heartbeat and claim queued `Turn`s, with an append-only `TurnEvent` ledger
