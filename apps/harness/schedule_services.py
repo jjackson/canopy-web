@@ -150,11 +150,19 @@ def run_schedule_now(
 
 def week_schedules(workspace_ids: set, start: dt.datetime) -> list[dict]:
     """Every ENABLED schedule in `workspace_ids`, each with its fires in the
-    week [start, start+7d). `workspace_ids` is the caller's already-resolved
+    week [start, start+8d). `workspace_ids` is the caller's already-resolved
     visible-workspace set (the route computes it from apps.workspaces.services),
     so this stays request-free. A None in the set means 'legacy unhomed agents'
     — matched explicitly, since SQL IN never matches NULL."""
-    end = start + dt.timedelta(days=7)
+    # 8 days, not 7, because `start` is a fixed UTC instant (local-Monday-
+    # midnight) but the grid renders 7 LOCAL calendar days — which is up to 169h
+    # on a fall-back week (a 25h local day) and only 167h on spring-forward. A
+    # fixed 7*24h window would drop a fire in the final local hour of Sunday on a
+    # fall-back week (it lands in the Sunday column but past the 168h cutoff). One
+    # extra day of slack absorbs the ±1h DST wobble with margin; the client's own
+    # `dayIdx < 7` guard (bucketByDay) trims any fire that overflows into day 7,
+    # so widening the window never double-counts or shows next week's fires.
+    end = start + dt.timedelta(days=8)
     non_null = {w for w in workspace_ids if w is not None}
     q = Q(agent__workspace_id__in=non_null)
     if None in workspace_ids:

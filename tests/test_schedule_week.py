@@ -60,5 +60,7 @@ def test_tenant_pinned_returns_one_workspace(setup):
 def test_fires_present_in_the_week(setup):
     resp = setup.get(f"/api/agents/schedules/week?start={START}")
     item = next(i for i in resp.json()["items"] if i["schedule"]["name"] == "A")
-    assert len(item["fires"]) == 7  # daily
+    # daily; the window over-fetches 8 days so no local-day fire is dropped on a
+    # DST week (the client's dayIdx<7 guard trims the surplus back to 7 columns).
+    assert len(item["fires"]) == 8
     assert item["workspace_slug"] == "alpha"

@@ -154,7 +154,31 @@ def test_week_schedules_gathers_enabled_with_fires(owner, agent, ws):
     row = rows[0]
     assert row["schedule"]["name"] == "Daily"
     assert row["workspace_slug"] == ws.slug
-    assert len(row["fires"]) == 7  # daily over the week
+    assert len(row["fires"]) == 8  # daily; window over-fetches 8 days (client trims to 7)
+
+
+def test_week_schedules_includes_final_local_hour_on_fallback_week(owner, agent, ws):
+    """DST fall-back regression: the grid renders 7 LOCAL calendar days, which is
+    169h on a fall-back week (a 25h local day), but `start` is a fixed UTC instant.
+    A schedule firing in the final local hour of Sunday lands in the Sunday column
+    yet past a fixed 7*24h=168h window — dropped from the response. week_schedules
+    over-fetches (8 days) so no local-day fire is ever missed.
+
+    America/New_York, week of Mon 2026-10-26 (fall-back Sun 2026-11-01), daily
+    23:30 local: all 7 fires must be returned, not 6 (the last one, Sun 23:30,
+    is what a 168h window drops)."""
+    ss.create_schedule(
+        owner, "eva",
+        _fields(name="Late daily", cron="30 23 * * *", timezone="America/New_York"),
+    )
+    # Local-Monday-midnight as the fixed UTC instant the client sends: in late
+    # October NY is EDT (UTC-4), so Mon 2026-10-26 00:00 local = 04:00 UTC.
+    start = dt.datetime(2026, 10, 26, 4, 0, tzinfo=dt.UTC)
+
+    rows = ss.week_schedules({ws.slug}, start)
+
+    row = next(r for r in rows if r["schedule"]["name"] == "Late daily")
+    assert len(row["fires"]) == 7  # not 6 — the fall-back-Sunday fire is included
 
 
 def test_week_schedules_scoped_to_given_workspaces(owner, agent, ws):
