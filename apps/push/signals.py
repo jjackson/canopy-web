@@ -1,7 +1,15 @@
 """post_save receivers that mark an agent dirty when its waiting set may have
 changed. Wiring only — whether to push is services.refresh_agent_waiting's call.
 
-KNOWN GAP, deliberate: run-derived items reach needs_you() through the RunStore
+One receiver per producer of the waiting set — which is the shape needs_you() has
+today, and the reason this file has a KNOWN GAP below. `Item` (the last receiver)
+is the exception and the direction of travel: it is a real row, so it needs no
+hops, cannot be Drive-backed, and cannot go stale. As Phases 3-4 move tasks and
+run gates onto Item, their receivers collapse into that one and the gap below
+stops being expressible. See 2026-07-15-item-and-turn-design.md §5b.
+
+KNOWN GAP, deliberate (applies to the run-derived receivers ONLY, never to Item):
+run-derived items reach needs_you() through the RunStore
 resolver (apps/agent_runs/resolver.py). DbRunStore is the default and its rows
 ARE models, so these receivers see them. An agent listed in
 settings.AGENT_RUNS_DRIVE_ROOTS is DriveRunStore-backed — it reads YAML from
@@ -24,6 +32,7 @@ from django.dispatch import receiver
 
 from apps.agent_runs.models import AgentRunGate, AgentRunStep
 from apps.agents.models import AgentTask
+from apps.harness.models import Item
 
 from .services import mark_dirty
 
@@ -32,6 +41,15 @@ logger = logging.getLogger(__name__)
 
 @receiver([post_save, post_delete], sender=AgentTask)
 def _task_changed(sender, instance: AgentTask, **kwargs) -> None:
+    mark_dirty(instance.agent_id)  # the FK shadow attribute — no query
+
+
+@receiver([post_save, post_delete], sender=Item)
+def _item_changed(sender, instance: Item, **kwargs) -> None:
+    """The only receiver here whose source is an OBJECT, not a projection — which
+    is why it needs no hops and cannot hit the Drive gap above: an Item is always
+    a row. As Phases 3-4 move the other producers onto Item, their receivers
+    delete into this one."""
     mark_dirty(instance.agent_id)  # the FK shadow attribute — no query
 
 

@@ -101,7 +101,11 @@ function Band({
           // Task items render the SAME actionable board card — you accept /
           // decline / dispatch right here, no bounce to the board.
           if (i.ref_kind === 'task') {
-            const task = tasksById.get(i.ref_id)
+            // ref_id widened to `number | string` when Items joined the inbox
+            // (their pk is a UUID). TS can't narrow it from ref_kind — the two
+            // fields are independent — but a task's ref_id is always its int pk,
+            // so coerce at this boundary rather than union the map's key type.
+            const task = tasksById.get(Number(i.ref_id))
             if (!task) return null
             return (
               <div key={`task-${i.ref_id}`} data-testid={`needsyou-task-${i.ref_id}`}>

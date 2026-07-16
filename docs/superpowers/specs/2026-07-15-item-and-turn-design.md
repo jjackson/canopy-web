@@ -253,11 +253,14 @@ Their **content** changes in one way, and it is not a silent one: no Item is `ki
 |---|---|---|
 | **0** | `Item` + `TurnSpec` + `dispatch()` + the `Turn`↔`Item` edge. No producer migrated. | The model, provable in isolation. |
 | **1** | Ada's findings → Items. Runner drains items (`reviews.py` deleted). Batch view. | The live pain, and it retires `product_findings` + #213. |
-| **2** | `needs_you` re-implemented over Items; `notify` → timeline; **`apps/push` re-pointed at `Item`** (§5b). | The read path, once there are real Items to read. Push is not optional here — leaving its receivers on the old producers would silently stop the badge and the phone agreeing. |
+| **2** | `needs_you` **also** reads Items; **`apps/push` also watches `Item`** (§5b). | The read path, once there are real Items to read. Push is not optional here — leaving its receivers on the old producers would silently stop the badge and the phone agreeing. |
+| **2b** | `notify` → timeline (§5). | Separable from 2a and touches a surface that shipped days ago (#212's `WaitingOnYou`), so it gets its own decision rather than riding along. |
 | **3** | Run gates → Items; **#218's schedule nag → an Item** (dropping `ref_kind="schedule"`). | Mechanical once §2 lands. |
 | **4** | `AgentTask.SUGGESTED` → Items; board loses the column. | Last, because it touches the surface Echo/ACE use daily. |
 
 Phase 1 before 2 is deliberate: it puts real Items in the table before anything reads from them, so the read path is written against reality rather than fixtures.
+
+**Correction, found while executing Phase 2 (and exactly the cost this phasing predicted would only be legible then): Phase 2 must be ADDITIVE.** The table above originally said "`needs_you` re-implemented over Items", which would have **emptied the inbox**: `needs_you` has six producers (suggested tasks, blocked tasks, run gates, #218's schedule nag, syncs, work products), and tasks do not migrate until Phase 4 and run gates until Phase 3. So `needs_you` reads Items *alongside* its projections, and each projection deletes itself as its producer moves. `needs_you` becomes the pure query §4 promises only after Phase 4 — not after Phase 2.
 
 **One plan per phase, not one plan for this spec.** Phases 0+1 together are a coherent first plan — the model plus its first real producer. Phases 2–4 each get their own plan, written after the phase before it has shipped, because each one's real cost (what breaks in `needs_you`, what the board loses) is only legible once Items exist.
 

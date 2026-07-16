@@ -274,8 +274,13 @@ class NeedsYouItem(StrictModel):
     # (services._run_inbox_items) — task/sync/work_product are the board items.
     # 'schedule' is the unattended-occurrence nag (apps/harness) projected in via
     # needs_you(); it MUST stay in this Literal or the nag 500s at serialization.
-    ref_kind: Literal["task", "sync", "work_product", "run", "schedule"]
-    ref_id: int
+    # 'item' is a real harness.Item — the only entry here that is an OBJECT rather
+    # than a projection. The others retire into it as their producers migrate
+    # (Phases 3-4); see 2026-07-15-item-and-turn-design.md.
+    ref_kind: Literal["task", "sync", "work_product", "run", "schedule", "item"]
+    # str because Item's pk is a UUID; the projected kinds still send their int pk.
+    # Consumers use this only for React keys / test ids, so a union is free there.
+    ref_id: int | str
     title: str
     subtitle: str = ""
     url: str = ""
