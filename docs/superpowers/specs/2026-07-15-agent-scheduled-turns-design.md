@@ -1,8 +1,10 @@
 # Agent scheduled turns — design
 
 **Date:** 2026-07-15
-**Status:** Shipped (server + UI). Automatic firing awaits the runner-side
-work — see *Runner-side work* in the plan; **Run now** is the only trigger today.
+**Status:** Shipped (server + UI + runner). Schedules fire automatically: the
+runner syncs them each poll tick, evaluates each cron with `canopy_cron.due_slot`
+(anchored on the server-computed `fire_after`), and POSTs the due slot to
+`/api/harness/schedules/{id}/fire`. **Run now** remains the off-cycle trigger.
 **Tier:** Framework (`apps/harness`)
 
 ## Problem
