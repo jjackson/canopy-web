@@ -20,8 +20,10 @@ from . import services
 from .models import AgentSchedule, Runner, Turn
 from .schedule_services import serialize_schedule
 from .schemas import (
+    CountOut,
     HeartbeatIn,
     RecordSessionIn,
+    ReportSessionsIn,
     ResolveSessionIn,
     ResolveSessionOut,
     RunnerIn,
@@ -307,6 +309,20 @@ def record_session(request: HttpRequest, runner_id: uuid.UUID, payload: RecordSe
         agent_task_ext_id=payload.agent_task_ext_id, summary=payload.summary,
     )
     return services.resolve_session(agent, payload.thread_key, runner)
+
+
+@router.post("/runners/{runner_id}/sessions", response=CountOut)
+def report_sessions(request: HttpRequest, runner_id: uuid.UUID, payload: ReportSessionsIn):
+    """The runner reports the open emdash sessions it can see. Wholesale per runner.
+    Owner-gated via _runner_or_404 (404, not 403). Sessions are tenant-owned; they
+    default to the runner's workspace (dimagi in practice), which the pairer is a
+    member of by construction."""
+    runner = _runner_or_404(request, runner_id)
+    ws = runner.workspace
+    if ws is None:
+        raise HttpError(404, "runner has no workspace")
+    count = services.replace_reported_sessions(runner, ws, payload.sessions)
+    return CountOut(count=count)
 
 
 @router.post("/turns/", response={200: TurnOut, 201: TurnOut})

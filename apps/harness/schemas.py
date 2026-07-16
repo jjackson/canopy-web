@@ -90,6 +90,22 @@ class RecordSessionIn(Schema):
     summary: str | None = None
 
 
+class ReportedSessionIn(Schema):
+    emdash_task: str  # the emdash task NAME
+    project: str = ""
+    status: str = ""
+    last_interacted_at: dt.datetime | None = None
+    recent_messages: list = []  # Phase B populates this; ignored/empty in Phase A
+
+
+class ReportSessionsIn(Schema):
+    sessions: list[ReportedSessionIn] = []
+
+
+class CountOut(Schema):
+    count: int
+
+
 class TurnIn(Schema):
     # Exactly one of agent_slug / project. Enforced in the view (422) rather than
     # by a validator so the error matches the rest of the harness's shape.

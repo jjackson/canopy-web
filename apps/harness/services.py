@@ -501,6 +501,18 @@ def resolve_session(agent, thread_key: str, runner: Runner, *, project: str = ""
     }
 
 
+def _aware(value: dt.datetime | None) -> dt.datetime | None:
+    """Coerce a possibly-naive datetime to aware (UTC). The runner sends ISO8601
+    (typically already UTC via a trailing "Z"), but a naive value would otherwise
+    hit Django's USE_TZ=True as a silent local-time footgun rather than a clean
+    UTC stamp."""
+    if value is None:
+        return None
+    if timezone.is_naive(value):
+        return timezone.make_aware(value, dt.timezone.utc)
+    return value
+
+
 def record_session(
     agent,
     thread_key: str,
@@ -540,6 +552,38 @@ def record_session(
             link.summary = summary
         link.save()
     return link
+
+
+@transaction.atomic
+def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
+    """Wholesale-replace this runner's reported EmdashSessions, and upsert a
+    SessionLink per session so `continue` rides the existing reuse path.
+
+    Wholesale: a session that vanished from emdash simply stops being reported and
+    disappears here. The SessionLinks are NOT deleted on drop — a durable link that
+    revives when the session reappears is harmless, and deleting them would fight the
+    reuse machinery; a stale link only ever resolves to reuse if its live hint still
+    matches, which the next real report refreshes.
+    """
+    from .models import EmdashSession
+
+    EmdashSession.objects.filter(runner=runner).delete()
+    EmdashSession.objects.bulk_create([
+        EmdashSession(
+            runner=runner, workspace=workspace, emdash_task=s.emdash_task,
+            project=s.project, status=s.status,
+            last_interacted_at=_aware(s.last_interacted_at),
+            recent_messages=list(s.recent_messages or []),
+        )
+        for s in sessions
+    ])
+    for s in sessions:
+        if s.project:
+            record_session(
+                None, f"emdash:{s.emdash_task}", runner=runner, project=s.project,
+                workspace=workspace, emdash_task_id=s.emdash_task,
+            )
+    return len(sessions)
 
 
 # ---------------------------------------------------------------------------
