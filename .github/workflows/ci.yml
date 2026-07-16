@@ -56,6 +56,15 @@ jobs:
         working-directory: packages/canopy_runner
         run: uv run --with pytest pytest
 
+      # canopy_agent_runs is the Django-free run-lifecycle core that apps/agent_runs
+      # imports directly (schemas, stores, the Drive client) — not dead code — yet its
+      # suite had never run in CI. `--extra drive` is required, not optional polish:
+      # the Drive google_client tests import googleapiclient, which lives in the
+      # package's optional `drive` group. Without it 10 tests fail on ImportError.
+      - name: Run canopy_agent_runs tests
+        working-directory: packages/canopy_agent_runs
+        run: uv run --extra drive --with pytest pytest
+
   test-frontend:
     name: Frontend build
     runs-on: ubuntu-latest
