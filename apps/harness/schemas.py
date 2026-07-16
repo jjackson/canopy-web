@@ -9,6 +9,15 @@ from canopy_cron import validate_cron, validate_timezone
 from ninja import Schema
 from pydantic import Field, field_validator
 
+# Kept in lockstep with Turn.ORIGIN_CHOICES / Turn.ROUTING_CHOICES (models.py).
+# These are the values the DB columns accept (origin max_length=10, routing
+# max_length=15); typing the INPUT schemas as Literals turns an out-of-set value
+# into a 422 at the API boundary instead of a Postgres "value too long" 500 that
+# SQLite CI can't reproduce. Output schemas stay `str` — they serialize values the
+# DB already validated, and a Literal there would break on any legacy row.
+Origin = Literal["board", "api", "slack", "cron", "manual", "email"]
+Routing = Literal["prefer_local", "local_only", "any"]
+
 
 class RunnerIn(Schema):
     name: str
@@ -86,11 +95,11 @@ class TurnIn(Schema):
     # by a validator so the error matches the rest of the harness's shape.
     agent_slug: str = ""
     project: str = ""
-    origin: str
+    origin: Origin
     idempotency_key: str
     prompt: str = ""
     origin_ref: dict = {}
-    routing: str = "prefer_local"
+    routing: Routing = "prefer_local"
 
 
 class TurnOut(Schema):
@@ -288,9 +297,9 @@ class TurnSpecIn(Schema):
 
     prompt: str = ""
     target_agent: str = ""
-    origin: str = "api"
+    origin: Origin = "api"
     origin_ref: dict[str, Any] = Field(default_factory=dict)
-    routing: str = "prefer_local"
+    routing: Routing = "prefer_local"
 
 
 class ItemIn(Schema):
@@ -298,7 +307,7 @@ class ItemIn(Schema):
     kind: Literal["review", "question"] = "review"
     title: str = Field(min_length=1, max_length=300)
     body: str = ""
-    origin: str = "api"
+    origin: Origin = "api"
     origin_ref: dict[str, Any] = Field(default_factory=dict)
     dispatch: list[TurnSpecIn] = Field(default_factory=list)
     batch_key: str = ""

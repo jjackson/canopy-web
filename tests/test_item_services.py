@@ -125,6 +125,35 @@ def test_dismiss_never_dispatches_even_with_a_decision_set(ada):
     assert Turn.objects.count() == 0
 
 
+def test_dismiss_refuses_an_already_decided_item(ada):
+    # Dismissing a decided-and-dispatched item would erase who approved it while its
+    # turns keep running. Dismiss guards on state exactly like decide does.
+    item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}])
+    item, _turns = services.decide_item(
+        item, decision=Item.IMPLEMENT, comment="", by="approver@dimagi.com"
+    )
+    assert item.state == Item.DECIDED
+
+    with pytest.raises(services.AlreadyDecidedError):
+        services.dismiss_item(item, by="dismisser@dimagi.com")
+
+    item.refresh_from_db()
+    assert item.state == Item.DECIDED  # unchanged
+    assert item.decided_by == "approver@dimagi.com"  # approval record intact
+    assert item.dispatched_at is not None  # the dispatched turn still stands
+
+
+def test_dismiss_twice_is_a_conflict_not_a_silent_rewrite(ada):
+    item = _item(ada)
+    services.dismiss_item(item, by="first@dimagi.com")
+
+    with pytest.raises(services.AlreadyDecidedError):
+        services.dismiss_item(item, by="second@dimagi.com")
+
+    item.refresh_from_db()
+    assert item.decided_by == "first@dimagi.com"
+
+
 def test_create_items_is_idempotent_per_key(ada):
     payload = [{"kind": "review", "title": "a", "origin": "audit", "idempotency_key": "dupe"}]
 

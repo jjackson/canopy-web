@@ -119,6 +119,12 @@ def decide_item(request: HttpRequest, item_id: uuid.UUID, payload: ItemDecideIn)
 @items_router.post("/{item_id}/dismiss", response=ItemOut, summary="Dismiss an item")
 def dismiss_item(request: HttpRequest, item_id: uuid.UUID) -> dict:
     item = _item_or_404(request, item_id)
-    return _payload(services.dismiss_item(
-        item, by=request.user.email or request.user.get_username(),
-    ))
+    try:
+        item = services.dismiss_item(
+            item, by=request.user.email or request.user.get_username(),
+        )
+    except services.AlreadyDecidedError as exc:
+        # Already decided or dismissed — mirror decide's 409 so a double-click or a
+        # dismiss-after-approve can't overwrite the decision record.
+        raise HttpError(409, str(exc)) from exc
+    return _payload(item)

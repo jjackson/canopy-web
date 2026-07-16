@@ -5001,8 +5001,9 @@ export interface components {
             /**
              * Origin
              * @default api
+             * @enum {string}
              */
-            readonly origin: string;
+            readonly origin: "board" | "api" | "slack" | "cron" | "manual" | "email";
             /** Origin Ref */
             readonly origin_ref?: {
                 readonly [key: string]: unknown;
@@ -5038,8 +5039,9 @@ export interface components {
             /**
              * Origin
              * @default api
+             * @enum {string}
              */
-            readonly origin: string;
+            readonly origin: "board" | "api" | "slack" | "cron" | "manual" | "email";
             /** Origin Ref */
             readonly origin_ref?: {
                 readonly [key: string]: unknown;
@@ -5047,8 +5049,9 @@ export interface components {
             /**
              * Routing
              * @default prefer_local
+             * @enum {string}
              */
-            readonly routing: string;
+            readonly routing: "prefer_local" | "local_only" | "any";
         };
         /** ItemDecideIn */
         readonly ItemDecideIn: {
@@ -5519,8 +5522,11 @@ export interface components {
              * @default
              */
             readonly project: string;
-            /** Origin */
-            readonly origin: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            readonly origin: "board" | "api" | "slack" | "cron" | "manual" | "email";
             /** Idempotency Key */
             readonly idempotency_key: string;
             /**
@@ -5538,8 +5544,9 @@ export interface components {
             /**
              * Routing
              * @default prefer_local
+             * @enum {string}
              */
-            readonly routing: string;
+            readonly routing: "prefer_local" | "local_only" | "any";
         };
         /** TurnEventCountOut */
         readonly TurnEventCountOut: {
