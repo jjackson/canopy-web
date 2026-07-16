@@ -57,7 +57,10 @@ export async function enqueueTurn(input: {
     // emdash task each time. The runner reads origin_ref.thread_key.
     origin_ref: threadKey ? { thread_key: threadKey } : {},
     routing: 'prefer_local',
-  }
+    // `satisfies` keeps the origin/routing string literals narrow so they match the
+    // generated enum unions (origin: board|api|…; routing: prefer_local|…) instead
+    // of widening to `string`, and flags any future TurnIn schema drift here.
+  } satisfies components['schemas']['TurnIn']
   // A repo turn must land in its owning workspace; pin it explicitly.
   const init = project
     ? { body, headers: { [WORKSPACE_HEADER]: workspace } }
