@@ -1740,6 +1740,29 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/harness/runners/{runner_id}/sessions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Report Sessions
+         * @description The runner reports the open emdash sessions it can see. Wholesale per runner.
+         *     Owner-gated via _runner_or_404 (404, not 403). Sessions are tenant-owned; they
+         *     default to the runner's workspace (dimagi in practice), which the pairer is a
+         *     member of by construction.
+         */
+        readonly post: operations["apps_harness_api_report_sessions"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/harness/turns/": {
         readonly parameters: {
             readonly query?: never;
@@ -1752,6 +1775,27 @@ export interface paths {
         readonly put?: never;
         /** Enqueue Turn */
         readonly post: operations["apps_harness_api_enqueue_turn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/sessions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description Open emdash sessions the caller can see — across their workspaces, live runners
+         *     only, newest-first. Drives the phone's Open Sessions list.
+         */
+        readonly get: operations["apps_harness_api_list_sessions"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -4018,20 +4062,7 @@ export interface components {
         };
         /** CountOut */
         readonly CountOut: {
-            /**
-             * Created
-             * @default 0
-             */
-            readonly created: number;
-            /**
-             * Replaced
-             * @default 0
-             */
-            readonly replaced: number;
-            /**
-             * Count
-             * @default 0
-             */
+            /** Count */
             readonly count: number;
         };
         /** AgentWorkProductBatchIn */
@@ -5510,6 +5541,36 @@ export interface components {
             /** Summary */
             readonly summary?: string | null;
         };
+        /** ReportSessionsIn */
+        readonly ReportSessionsIn: {
+            /**
+             * Sessions
+             * @default []
+             */
+            readonly sessions: readonly components["schemas"]["ReportedSessionIn"][];
+        };
+        /** ReportedSessionIn */
+        readonly ReportedSessionIn: {
+            /** Emdash Task */
+            readonly emdash_task: string;
+            /**
+             * Project
+             * @default
+             */
+            readonly project: string;
+            /**
+             * Status
+             * @default
+             */
+            readonly status: string;
+            /** Last Interacted At */
+            readonly last_interacted_at?: string | null;
+            /**
+             * Recent Messages
+             * @default []
+             */
+            readonly recent_messages: readonly unknown[];
+        };
         /** TurnIn */
         readonly TurnIn: {
             /**
@@ -5547,6 +5608,28 @@ export interface components {
              * @enum {string}
              */
             readonly routing: "prefer_local" | "local_only" | "any";
+        };
+        /** EmdashSessionOut */
+        readonly EmdashSessionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Emdash Task */
+            readonly emdash_task: string;
+            /** Project */
+            readonly project: string;
+            /** Status */
+            readonly status: string;
+            /** Last Interacted At */
+            readonly last_interacted_at: string | null;
+            /** Recent Messages */
+            readonly recent_messages: readonly unknown[];
+            /** Workspace */
+            readonly workspace: string;
+            /** Runner Name */
+            readonly runner_name: string;
         };
         /** TurnEventCountOut */
         readonly TurnEventCountOut: {
@@ -8687,6 +8770,32 @@ export interface operations {
             };
         };
     };
+    readonly apps_harness_api_report_sessions: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReportSessionsIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CountOut"];
+                };
+            };
+        };
+    };
     readonly apps_harness_api_list_turns: {
         readonly parameters: {
             readonly query?: {
@@ -8739,6 +8848,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_list_sessions: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["EmdashSessionOut"][];
                 };
             };
         };

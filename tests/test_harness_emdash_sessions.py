@@ -94,3 +94,34 @@ def test_a_non_owner_cannot_report_for_another_users_runner():
     resp = _report(c, runner.id, [{"emdash_task": "x", "project": "canopy-web"}])
     assert resp.status_code == 404
     assert EmdashSession.objects.filter(runner=runner).count() == 0
+
+
+def test_list_is_tenant_scoped_and_hides_offline_runners():
+    from datetime import timedelta
+    from django.test import Client
+
+    jj = _user("jj")
+    ws = _ws("dimagi", jj)
+    live = _runner(jj, ws)
+    EmdashSession.objects.create(runner=live, workspace=ws, emdash_task="cloud-runner",
+                                 project="canopy-web", status="in_progress")
+
+    # An offline runner's session is hidden (not deleted).
+    stale = Runner.objects.create(
+        name="old-mbp", kind=Runner.EMDASH, host="old", paired_by=jj, workspace=ws,
+        status=Runner.ONLINE, last_heartbeat_at=timezone.now() - timedelta(hours=2),
+    )
+    EmdashSession.objects.create(runner=stale, workspace=ws, emdash_task="ghost", project="canopy-web")
+
+    c = Client()
+    c.force_login(jj)
+    rows = c.get("/api/harness/sessions").json()
+    tasks = {r["emdash_task"] for r in rows}
+    assert tasks == {"cloud-runner"}  # ghost hidden: its runner is not live
+
+    # A non-member sees nothing.
+    mallory = _user("mallory")
+    _ws("mallory-space", mallory)
+    mc = Client()
+    mc.force_login(mallory)
+    assert mc.get("/api/harness/sessions").json() == []

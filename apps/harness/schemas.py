@@ -102,6 +102,25 @@ class ReportSessionsIn(Schema):
     sessions: list[ReportedSessionIn] = []
 
 
+class EmdashSessionOut(Schema):
+    id: uuid.UUID
+    emdash_task: str
+    project: str
+    status: str
+    last_interacted_at: dt.datetime | None
+    recent_messages: list
+    workspace: str
+    runner_name: str
+
+    @staticmethod
+    def resolve_workspace(obj) -> str:
+        return obj.workspace_id
+
+    @staticmethod
+    def resolve_runner_name(obj) -> str:
+        return obj.runner.name
+
+
 class CountOut(Schema):
     count: int
 

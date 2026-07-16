@@ -21,6 +21,7 @@ from .models import AgentSchedule, Runner, Turn
 from .schedule_services import serialize_schedule
 from .schemas import (
     CountOut,
+    EmdashSessionOut,
     HeartbeatIn,
     RecordSessionIn,
     ReportSessionsIn,
@@ -394,6 +395,13 @@ def list_turns(request: HttpRequest, agent: str | None = None, status: str | Non
     # visible (ungated, per the migration-safety rule).
     qs = qs.filter(Q(agent__workspace_id__in=slugs) | Q(agent__workspace_id__isnull=True))
     return list(qs[:100])  # filter BEFORE slicing — a sliced queryset cannot be filtered
+
+
+@router.get("/sessions", response=list[EmdashSessionOut])
+def list_sessions(request: HttpRequest):
+    """Open emdash sessions the caller can see — across their workspaces, live runners
+    only, newest-first. Drives the phone's Open Sessions list."""
+    return services.list_visible_sessions(request.user)
 
 
 @router.get("/turns/{turn_id}", response=TurnOut)

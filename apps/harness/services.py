@@ -586,6 +586,21 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     return len(sessions)
 
 
+def list_visible_sessions(user) -> list:
+    """Open sessions in the caller's workspaces whose runner is LIVE. Runner liveness
+    (not deletion) is what suppresses a briefly-offline runner's stale rows — see
+    Runner.live_status. Newest-first."""
+    from .models import EmdashSession
+
+    ws_slugs = wsvc.user_workspace_slugs(user)
+    rows = (
+        EmdashSession.objects.filter(workspace_id__in=ws_slugs)
+        .select_related("runner", "workspace")
+        .order_by("-last_interacted_at")
+    )
+    return [s for s in rows if s.runner.live_status == Runner.ONLINE]
+
+
 # ---------------------------------------------------------------------------
 # Items — the supervisor's queue (the dual of Turn)
 # ---------------------------------------------------------------------------
