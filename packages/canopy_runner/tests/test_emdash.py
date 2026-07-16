@@ -12,6 +12,7 @@ from canopy_runner.emdash import (
     inject_run,
     promote_task,
     run_status,
+    task_state,
 )
 
 AUTOMATION_ID = "auto-1"
@@ -40,6 +41,7 @@ def db(tmp_path: Path) -> str:
         );
         CREATE TABLE tasks (
           id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL,
+          archived_at TEXT,
           created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
           type TEXT DEFAULT 'task' NOT NULL, automation_run_id TEXT
         );
@@ -162,3 +164,72 @@ def test_connections_are_closed(db, monkeypatch):
 
     assert len(created) >= 2
     assert len(closed) == len(created)
+
+
+# --------------------------------------------------------------------------------------
+# task_state — READ-ONLY existence truth for the reuse decision (see execute.execute_turn)
+# --------------------------------------------------------------------------------------
+
+def _add_task(db, name, *, archived_at=None, task_id=None):
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, name, status, archived_at) VALUES (?, 'proj-1', ?, 'in_progress', ?)",
+        (task_id or str(uuid.uuid4()), name, archived_at),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_task_state_live(db):
+    _add_task(db, "eva-org-research-790c-0715-1352")
+    assert task_state(db, "eva-org-research-790c-0715-1352") == "live"
+
+
+def test_task_state_archived(db):
+    _add_task(db, "eva-org-research-790c-0715-1216", archived_at="2026-07-15T19:07:21.147Z")
+    assert task_state(db, "eva-org-research-790c-0715-1216") == "archived"
+
+
+def test_task_state_absent(db):
+    assert task_state(db, "never-existed") == "absent"
+
+
+def test_task_state_unknown_when_db_unreadable(tmp_path):
+    """An unreadable/missing DB must NOT masquerade as 'absent' — that would be a false
+    'gone' and duplicate a live session. The caller degrades to the CDP verdict instead."""
+    assert task_state(str(tmp_path / "nope.db"), "anything") == "unknown"
+
+
+def test_task_state_does_not_create_a_db_file(tmp_path):
+    """sqlite3.connect() creates an empty file by default — don't litter emdash's dir."""
+    missing = tmp_path / "nope.db"
+    task_state(str(missing), "anything")
+    assert not missing.exists()
+
+
+def test_task_state_is_read_only_and_ungated_by_the_migration_pin(db):
+    """Reads can't corrupt emdash, so unlike inject_run they are NOT behind the vetted
+    pin — a drifted emdash must still be able to answer 'does this task exist?'."""
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE __drizzle_migrations SET id=999")
+    conn.commit()
+    conn.close()
+    _add_task(db, "still-answerable")
+    assert task_state(db, "still-answerable") == "live"
+
+
+def test_task_state_prefers_the_newest_row_for_a_reused_name(db):
+    """Task names aren't unique in emdash's schema. If a name was reused, the newest row
+    decides — an old archived namesake must not report the live one as gone."""
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, name, status, archived_at, created_at) "
+        "VALUES ('old', 'proj-1', 'dup-name', 'in_progress', '2026-07-14T00:00:00Z', '2026-07-14T00:00:00Z')"
+    )
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, name, status, archived_at, created_at) "
+        "VALUES ('new', 'proj-1', 'dup-name', 'in_progress', NULL, '2026-07-15T00:00:00Z')"
+    )
+    conn.commit()
+    conn.close()
+    assert task_state(db, "dup-name") == "live"
