@@ -54,9 +54,23 @@ export default defineConfig({
         // no notification). importScripts (not injectManifest) keeps the
         // plugin's own precaching intact while adding push handling.
         importScripts: ['sw-push.js'],
-        // Stop the SW serving cached index.html for /api/ paths; they should 404/500 honestly.
-        // (Not the API-cache guard — see runtimeCaching below.)
-        navigateFallbackDenylist: [/^\/api\//, /^\/canopy\/api\//],
+        // navigateFallback defaults to index.html, so the SW answers EVERY
+        // navigation with the cached SPA shell unless the path is denylisted
+        // here. That must exclude Django-owned routes — above all /accounts/
+        // (OAuth): without it the SW swallows the `me → 401 → redirect to
+        // /accounts/google/login/` navigation and re-serves the shell, so a
+        // lapsed session can never re-login and the app spins forever (the
+        // server sees the me-401 churn with zero /accounts/ hits). /api/, /admin/,
+        // /static/, /auth/ (CLI authorize) and /health/ are backend too. The
+        // optional (canopy/) prefix covers both the labs tenant mount and root.
+        navigateFallbackDenylist: [
+          /^\/(canopy\/)?api\//,
+          /^\/(canopy\/)?accounts\//,
+          /^\/(canopy\/)?admin\//,
+          /^\/(canopy\/)?static\//,
+          /^\/(canopy\/)?auth\//,
+          /^\/(canopy\/)?health\/?$/,
+        ],
         // No runtimeCaching routes registered: all non-precached fetches bypass the SW and hit
         // the network. This keeps the API uncached (stale "0 waiting" is worse than a spinner).
         // When adding entries here, take care not to match /api/ — nothing else guards against that.
