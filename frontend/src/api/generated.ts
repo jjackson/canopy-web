@@ -4035,6 +4035,10 @@ export interface components {
             readonly url: string;
             /** Improvement Note */
             readonly improvement_note: string;
+            /** Launchable */
+            readonly launchable: boolean;
+            /** Args Hint */
+            readonly args_hint: string;
             /**
              * Updated At
              * Format: date-time
@@ -4068,6 +4072,16 @@ export interface components {
              * @default
              */
             readonly improvement_note: string;
+            /**
+             * Launchable
+             * @default false
+             */
+            readonly launchable: boolean;
+            /**
+             * Args Hint
+             * @default
+             */
+            readonly args_hint: string;
         };
         /** AgentTaskLink */
         readonly AgentTaskLink: {

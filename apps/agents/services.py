@@ -168,6 +168,8 @@ def replace_skills(agent: Agent, items: list) -> int:
                 description=s.description,
                 url=s.url,
                 improvement_note=s.improvement_note,
+                launchable=s.launchable,
+                args_hint=s.args_hint,
             )
             for s in items
         ]

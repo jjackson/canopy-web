@@ -98,15 +98,27 @@ def test_work_products_upsert_by_url():
     assert AgentWorkProduct.objects.get(agent=agent).title == "Story v2"
 
 
+def _skill_in(**kw):
+    """Stand-in for AgentSkillIn. Mirrors its fields (and its defaults) — the
+    service is deliberately strict rather than getattr-defensive, because its one
+    real caller always hands it a Pydantic AgentSkillIn where the defaults are
+    guaranteed. Keep this in step with the schema."""
+    return SimpleNamespace(**{
+        "description": "", "url": "", "improvement_note": "",
+        "launchable": False, "args_hint": "",
+        **kw,
+    })
+
+
 def test_replace_skills_mirrors_catalog():
     agent = _agent()
     services.replace_skills(agent, [
-        SimpleNamespace(name="email-communicator", description="email", url="u1", improvement_note=""),
-        SimpleNamespace(name="story-draft", description="write", url="u2", improvement_note="fixed slop"),
+        _skill_in(name="email-communicator", description="email", url="u1"),
+        _skill_in(name="story-draft", description="write", url="u2", improvement_note="fixed slop"),
     ])
     assert agent.skills.count() == 2
     services.replace_skills(agent, [
-        SimpleNamespace(name="email-communicator", description="email v2", url="u1", improvement_note=""),
+        _skill_in(name="email-communicator", description="email v2", url="u1"),
     ])
     assert agent.skills.count() == 1
     assert AgentSkill.objects.get(agent=agent).description == "email v2"

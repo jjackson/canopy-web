@@ -159,6 +159,19 @@ class AgentSkill(models.Model):
     description = models.TextField(blank=True, default="")
     url = models.URLField(max_length=500, blank=True, default="", help_text="Link to the SKILL.md.")
     improvement_note = models.TextField(blank=True, default="")
+    # Which skills are human entry points. The catalog mirrors the repo, and most
+    # of what a mature agent publishes is not launchable: a pre-send discipline
+    # another skill invokes, a superseded skill, a reference doc, a one-time
+    # per-machine setup. Rendering the whole catalog as phone buttons puts
+    # `/echo:setup` one thumb away. Defaults False so an agent that has not
+    # adopted the field publishes nothing launchable — fail closed.
+    launchable = models.BooleanField(
+        default=False, help_text="Offer this skill as a command on the phone composer."
+    )
+    args_hint = models.CharField(
+        max_length=120, blank=True, default="",
+        help_text='What the command takes, e.g. "topic (optional)". Renders as the input placeholder.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
