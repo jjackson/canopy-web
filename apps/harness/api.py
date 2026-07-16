@@ -14,6 +14,7 @@ from apps.api.auth import session_auth
 from apps.api.errors import ProblemError
 from apps.api.pagination import Page, clamp_limit, paginate
 from apps.workspaces import services as wsvc
+from apps.workspaces.models import Workspace
 
 from . import services
 from .models import AgentSchedule, Runner, Turn
@@ -229,12 +230,38 @@ def claim_turn(request: HttpRequest, runner_id: uuid.UUID, paused: str = ""):
     return Status(200, turn)
 
 
+def _project_workspace_or_404(request: HttpRequest, ws_slug: str):
+    """Tenant-gate a project session's workspace, mirroring _agent_or_404 for the
+    agent case. A project link has no agent to derive tenancy from, so without
+    this any runner could read another user's rolling `summary` by guessing
+    thread_key.
+
+    The workspace is passed EXPLICITLY (from the turn the runner is executing, via
+    TurnOut.workspace_slug), not derived from a default: the pairer may belong to
+    several workspaces, and a project turn already carries the one it belongs to.
+    The pairer must be a member of it. Same 404-not-403 rule: a non-member gets
+    404, never a disclosure that the workspace exists.
+    """
+    wsvc.auto_join_workspaces(request.user)
+    if not ws_slug or not wsvc.is_member(request.user, ws_slug):
+        raise HttpError(404, "workspace not found")
+    ws = Workspace.objects.filter(slug=ws_slug).first()
+    if ws is None:
+        raise HttpError(404, "workspace not found")
+    return ws
+
+
 @router.post("/runners/{runner_id}/resolve-session", response=ResolveSessionOut)
 def resolve_session(request: HttpRequest, runner_id: uuid.UUID, payload: ResolveSessionIn):
-    """Given (agent, thread_key), tell THIS runner whether it can reuse an existing
+    """Given (target, thread_key), tell THIS runner whether it can reuse an existing
     emdash session (it owns the live hint) or must spawn fresh + rehydrate context.
     Runner-scoped because reuse depends on the caller's macOS host."""
     runner = _runner_or_404(request, runner_id)
+    if payload.project:
+        ws = _project_workspace_or_404(request, payload.workspace)
+        return services.resolve_session(
+            None, payload.thread_key, runner, project=payload.project, workspace=ws
+        )
     agent = _agent_or_404(request, payload.agent_slug)
     return services.resolve_session(agent, payload.thread_key, runner)
 
@@ -244,6 +271,16 @@ def record_session(request: HttpRequest, runner_id: uuid.UUID, payload: RecordSe
     """Upsert the durable link and point its live-session hint at THIS runner/host,
     after a session was created or reused for the thread. Returns the fresh resolution."""
     runner = _runner_or_404(request, runner_id)
+    if payload.project:
+        ws = _project_workspace_or_404(request, payload.workspace)
+        services.record_session(
+            None, payload.thread_key, runner=runner, project=payload.project, workspace=ws,
+            emdash_task_id=payload.emdash_task_id, session_id=payload.session_id,
+            agent_task_ext_id=payload.agent_task_ext_id, summary=payload.summary,
+        )
+        return services.resolve_session(
+            None, payload.thread_key, runner, project=payload.project, workspace=ws
+        )
     agent = _agent_or_404(request, payload.agent_slug)
     services.record_session(
         agent, payload.thread_key, runner=runner,

@@ -27,9 +27,16 @@ from . import cdp_control, emdash
 logger = logging.getLogger("canopy_runner.execute")
 
 
+def _target(turn: dict) -> str:
+    """The emdash project to drive — an agent's slug or a repo's name. The CDP
+    layer underneath takes a project name either way; this is the one place the
+    two turn kinds converge."""
+    return turn.get("agent_slug") or turn.get("project") or ""
+
+
 def _thread_key(turn: dict) -> str:
     ref = turn.get("origin_ref") or {}
-    return ref.get("thread_key") or ref.get("thread_id") or f"{turn['agent_slug']}:main"
+    return ref.get("thread_key") or ref.get("thread_id") or f"{_target(turn)}:main"
 
 
 def _slug(text: str, n: int = 28) -> str:
@@ -54,14 +61,24 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
     """Route one claimed turn to an emdash session (reuse or create). Returns a short
     action string: reused:<id> | created:<id>:<task> | failed:<id>."""
     turn_id = turn["id"]
-    agent = turn["agent_slug"]
+    # `agent` names the emdash project to drive for BOTH turn kinds — an agent's
+    # slug or, for a repo turn, the project name. cdp_control takes a project name
+    # either way, so the executor below is unchanged; only the session-link calls
+    # need to know which kind it is (a project link is tenant-gated on workspace).
+    agent_slug = turn.get("agent_slug") or ""
+    project = turn.get("project") or ""
+    workspace = turn.get("workspace_slug") or ""
+    agent = agent_slug or project  # the CDP/emdash target
     ref = turn.get("origin_ref") or {}
     thread_key = _thread_key(turn)
     # The prompt is a clean command — the agent's namespaced /<slug>:turn does all the work.
     # Default (board turns with no prompt): a full turn. drain-turn is retired.
+    # A repo turn always carries an explicit prompt (the composer requires it).
     work_prompt = turn.get("prompt") or f"/{agent}:turn"
 
-    plan = client.resolve_session(runner_id, agent, thread_key)
+    plan = client.resolve_session(
+        runner_id, agent_slug, thread_key, project=project, workspace=workspace
+    )
     client.start(turn_id)
     # Log the plan: "why did it create a new session?" must be answerable from the log
     # alone. Without this the reuse decision was invisible and every diagnosis started
@@ -116,7 +133,8 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
                             turn_id, agent, thread_key, task)
                 client.post_events(turn_id, [{"kind": "status",
                     "payload": {"status": "reused_session", "task": task, "thread_key": thread_key}}])
-                client.record_session(runner_id, agent, thread_key, emdash_task_id=task)
+                client.record_session(runner_id, agent_slug, thread_key,
+                                      project=project, workspace=workspace, emdash_task_id=task)
                 client.finish(turn_id, note=f"delivered to existing session '{task}'")
                 return f"reused:{turn_id}"
 
@@ -145,7 +163,8 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
         "payload": {"status": "created_session", "task": task, "thread_key": thread_key,
                     "rehydrated": bool(summary)}}])
     client.record_session(
-        runner_id, agent, thread_key, emdash_task_id=task,
+        runner_id, agent_slug, thread_key, project=project, workspace=workspace,
+        emdash_task_id=task,
         agent_task_ext_id=ref.get("agent_task_ext_id"),
         summary=summary or None,
     )

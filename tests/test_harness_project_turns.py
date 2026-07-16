@@ -130,24 +130,48 @@ def test_turn_out_still_serializes_an_agent_turn():
 def test_two_session_links_for_the_same_project_thread_are_rejected():
     """The NULL trap. Making `agent` nullable silently guts
     UniqueConstraint(["agent", "thread_key"]) for project rows: their agent is
-    NULL, NULL never equals NULL, so the same (project, thread_key) inserts
-    twice. Every phone message would fork a new session — the exact
+    NULL, NULL never equals NULL, so the same (project, workspace, thread_key)
+    inserts twice. Every phone message would fork a new session — the exact
     duplicate-session failure the reuse path exists to prevent.
 
     Hence two PARTIAL constraints. This test fails against the naive one.
     """
     from apps.harness.models import SessionLink
 
-    SessionLink.objects.create(project="canopy-web", thread_key="phone:jj:canopy-web")
+    ws = _ws()
+    SessionLink.objects.create(project="canopy-web", workspace=ws, thread_key="phone:jj:canopy-web")
     with pytest.raises(IntegrityError):
-        SessionLink.objects.create(project="canopy-web", thread_key="phone:jj:canopy-web")
+        SessionLink.objects.create(project="canopy-web", workspace=ws, thread_key="phone:jj:canopy-web")
 
 
 def test_the_same_thread_key_on_different_projects_is_fine():
     from apps.harness.models import SessionLink
 
-    SessionLink.objects.create(project="canopy-web", thread_key="phone:jj:t")
-    SessionLink.objects.create(project="ace-web", thread_key="phone:jj:t")  # no raise
+    ws = _ws()
+    SessionLink.objects.create(project="canopy-web", workspace=ws, thread_key="phone:jj:t")
+    SessionLink.objects.create(project="ace-web", workspace=ws, thread_key="phone:jj:t")  # no raise
+
+
+def test_the_same_project_thread_in_different_workspaces_does_not_collide():
+    """Tenant isolation by construction. A guessed thread_key from another
+    workspace makes a SEPARATE row — it cannot find, and so cannot hijack, the
+    victim's link. This is why workspace is in the project link's identity."""
+    from apps.harness.models import SessionLink
+
+    a, b = _ws("canopy"), _ws("dimagi")
+    SessionLink.objects.create(project="canopy-web", workspace=a, thread_key="phone:jj:canopy-web")
+    SessionLink.objects.create(project="canopy-web", workspace=b, thread_key="phone:jj:canopy-web")  # no raise
+    assert SessionLink.objects.filter(project="canopy-web").count() == 2
+
+
+def test_a_project_session_link_must_carry_a_workspace():
+    """The unique constraint only dedupes when workspace is non-NULL, so a
+    workspace-less project link would silently allow the duplicates the whole
+    design prevents. The check constraint forbids it."""
+    from apps.harness.models import SessionLink
+
+    with pytest.raises(IntegrityError):
+        SessionLink.objects.create(project="canopy-web", thread_key="phone:jj:x")  # no workspace
 
 
 def test_agent_session_links_still_unique_per_thread():
@@ -174,19 +198,43 @@ def test_record_then_resolve_a_project_session_reuses_it():
     from apps.harness import services
     from apps.harness.models import Runner
 
+    ws = _ws()
     runner = Runner.objects.create(
         name="jj-mbp", kind=Runner.EMDASH, host="jj-mac",
         capabilities={"projects": ["canopy-web"]},
     )
     services.record_session(
-        None, "phone:jj:canopy-web", runner=runner, project="canopy-web",
+        None, "phone:jj:canopy-web", runner=runner, project="canopy-web", workspace=ws,
         emdash_task_id="task-1", session_id="sess-1",
     )
-    plan = services.resolve_session(None, "phone:jj:canopy-web", runner, project="canopy-web")
+    plan = services.resolve_session(
+        None, "phone:jj:canopy-web", runner, project="canopy-web", workspace=ws
+    )
 
     assert plan["reuse"] is True
     assert plan["emdash_task_id"] == "task-1"
     assert plan["new_thread"] is False
+
+
+def test_resolving_a_project_thread_in_the_wrong_workspace_finds_nothing():
+    """The tenant gate. Even holding the exact thread_key, a runner scoped to a
+    DIFFERENT workspace resolves new_thread — never the victim's summary/task."""
+    from apps.harness import services
+    from apps.harness.models import Runner
+
+    owner_ws, other_ws = _ws("canopy"), _ws("dimagi")
+    r = Runner.objects.create(name="jj-mbp", kind=Runner.EMDASH, host="jj-mac")
+    services.record_session(
+        None, "phone:jj:canopy-web", runner=r, project="canopy-web", workspace=owner_ws,
+        emdash_task_id="secret-task", summary="secret context",
+    )
+    plan = services.resolve_session(
+        None, "phone:jj:canopy-web", r, project="canopy-web", workspace=other_ws
+    )
+
+    assert plan["new_thread"] is True
+    assert plan["emdash_task_id"] == ""
+    assert plan["summary"] == ""
 
 
 def test_recording_the_same_project_thread_twice_updates_one_link():
@@ -195,11 +243,12 @@ def test_recording_the_same_project_thread_twice_updates_one_link():
     from apps.harness import services
     from apps.harness.models import Runner, SessionLink
 
+    ws = _ws()
     r = Runner.objects.create(name="jj-mbp", kind=Runner.EMDASH, host="jj-mac")
     services.record_session(None, "phone:jj:canopy-web", runner=r, project="canopy-web",
-                            emdash_task_id="task-1")
+                            workspace=ws, emdash_task_id="task-1")
     services.record_session(None, "phone:jj:canopy-web", runner=r, project="canopy-web",
-                            emdash_task_id="task-2")
+                            workspace=ws, emdash_task_id="task-2")
 
     assert SessionLink.objects.filter(project="canopy-web").count() == 1
     assert SessionLink.objects.get(project="canopy-web").live_emdash_task_id == "task-2"

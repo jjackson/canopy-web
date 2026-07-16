@@ -49,7 +49,9 @@ class HeartbeatIn(Schema):
 
 
 class ResolveSessionIn(Schema):
-    agent_slug: str
+    agent_slug: str = ""
+    project: str = ""  # set instead of agent_slug for a repo session
+    workspace: str = ""  # required with project: the turn's tenant (gates the pairer)
     thread_key: str
 
 
@@ -63,7 +65,9 @@ class ResolveSessionOut(Schema):
 
 
 class RecordSessionIn(Schema):
-    agent_slug: str
+    agent_slug: str = ""
+    project: str = ""  # set instead of agent_slug for a repo session
+    workspace: str = ""  # required with project: the turn's tenant (gates the pairer)
     thread_key: str
     emdash_task_id: str = ""
     session_id: str = ""
@@ -91,6 +95,10 @@ class TurnOut(Schema):
     agent_slug: str | None
     project: str
     target: str
+    # The tenant the runner must pass back to record/resolve a PROJECT session
+    # link (the pairer may belong to several workspaces; the turn knows its own).
+    # Derived: agent turns report their agent's workspace, project turns their own.
+    workspace_slug: str | None
     origin: str
     status: str
     routing: str
@@ -110,6 +118,11 @@ class TurnOut(Schema):
         # None for project turns — dereferencing obj.agent unconditionally is
         # what this used to do, and it 500s the moment agent can be NULL.
         return obj.agent.slug if obj.agent_id else None
+
+    @staticmethod
+    def resolve_workspace_slug(obj) -> str | None:
+        # Agent turns derive tenancy via the agent; project turns store their own.
+        return obj.agent.workspace_id if obj.agent_id else obj.workspace_id
 
     @staticmethod
     def resolve_claimed_by_name(obj) -> str | None:

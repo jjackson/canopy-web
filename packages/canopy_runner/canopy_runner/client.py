@@ -49,22 +49,29 @@ class Client:
         )
         return payload or {}
 
-    def resolve_session(self, runner_id: str, agent_slug: str, thread_key: str) -> dict:
+    def resolve_session(self, runner_id: str, agent_slug: str, thread_key: str, *,
+                        project: str = "", workspace: str = "") -> dict:
         """Ask the control plane whether THIS runner can reuse an existing emdash
-        session for (agent, thread) or must spawn fresh + rehydrate. See SessionLink."""
+        session for (target, thread) or must spawn fresh + rehydrate. See SessionLink.
+
+        Pass EITHER agent_slug OR (project + workspace) — a project session is
+        tenant-gated on its workspace, which the turn carries."""
         _, payload = self._call(
             "POST", f"/runners/{runner_id}/resolve-session",
-            {"agent_slug": agent_slug, "thread_key": thread_key},
+            {"agent_slug": agent_slug, "project": project, "workspace": workspace,
+             "thread_key": thread_key},
         )
         return payload or {}
 
     def record_session(self, runner_id: str, agent_slug: str, thread_key: str, *,
+                       project: str = "", workspace: str = "",
                        emdash_task_id: str = "", session_id: str = "",
                        agent_task_ext_id: str | None = None, summary: str | None = None) -> dict:
         """Record/point the durable thread link at THIS runner's live session."""
         _, payload = self._call(
             "POST", f"/runners/{runner_id}/record-session",
-            {"agent_slug": agent_slug, "thread_key": thread_key,
+            {"agent_slug": agent_slug, "project": project, "workspace": workspace,
+             "thread_key": thread_key,
              "emdash_task_id": emdash_task_id, "session_id": session_id,
              "agent_task_ext_id": agent_task_ext_id, "summary": summary},
         )
