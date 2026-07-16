@@ -16,6 +16,7 @@ self-loopback anymore. The implementation lives in `apps/mcp/`.
 | `auth.py` | `CanopyPATVerifier` — a FastMCP `TokenVerifier` that resolves a Personal Access Token to a Django user (mirrors `apps.tokens.middleware`). |
 | `server.py` | The `FastMCP("canopy-web")` instance with `MultiAuth` (PAT + optional OAuth), and `build_http_app()` for the ASGI mount. |
 | `tools/insights.py` | `list_insights` (read) + `clear_insights` (write) tools. |
+| `tools/schedules.py` | `list_schedules` / `preview_cron` (read) + `create_schedule` / `update_schedule` / `delete_schedule` / `run_schedule_now` (write) tools over `AgentSchedule`. |
 | `rate_limit.py` | Per-user write rate limit (mutating tools). |
 | `audit.py` | `current_user_id()` + `write_audit()` (writes `MCPAuditLog`). |
 | `models.py` | `MCPAuditLog` — one row per tool call. |
@@ -56,6 +57,20 @@ app by MultiAuth.
 |---|---|---|
 | `list_insights` | read | Cross-portfolio insights feed (filter by `category`/`source`/`project`/`limit`). |
 | `clear_insights` | write (rate-limited) | Delete insights by `source`/`category`/`project`/`older_than_days`. No filters clears all. |
+| `list_schedules` | read | List an agent's recurring schedules (cron config + next fire times). |
+| `preview_cron` | read | Preview the next 3 fire times for a cron+timezone pair, using the same slot math the runner fires on. |
+| `create_schedule` | write (rate-limited) | Create a recurring turn for an agent (`cron` + IANA `timezone` + seed `prompt`). |
+| `update_schedule` | write (rate-limited) | Update a schedule; only the fields passed are changed. |
+| `delete_schedule` | write (rate-limited) | Delete a schedule, retiring any open occurrence it fired first. |
+| `run_schedule_now` | write (rate-limited) | Trigger a schedule off-cycle immediately. |
+
+The six schedule tools call `apps/harness/schedule_services.py`, the same
+request-free service layer the REST `/api/agents/{slug}/schedules/` routes
+call, so the MCP and REST surfaces can't drift. All five writes are
+rate-limited and audited the same way `clear_insights` is; `run_schedule_now`'s
+audit row additionally carries the schedule's `name`, because it's the one
+schedule tool that spawns a real agent turn (tokens) — a runaway is visible
+in `MCPAuditLog` rather than merely inferred.
 
 ## Mount + lifespan (`config/asgi.py`)
 
