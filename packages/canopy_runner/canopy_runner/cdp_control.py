@@ -21,10 +21,42 @@ class CDPError(Exception):
     to create) or "cannot connect" (emdash not launched with the debug port)."""
 
 
+HOST_ID_PATH = Path.home() / ".canopy" / "host-id"
+
+
 def host_id() -> str:
-    """Stable macOS user@hostname for this account — the ownership key that decides
-    whether a live emdash session is reusable (emdash is per-macOS-account)."""
-    return f"{getpass.getuser()}@{socket.gethostname()}"
+    """The ownership key deciding whether a live emdash session is reusable — pinned on
+    first use, because it MUST be stable and macOS's hostname is not.
+
+    `socket.gethostname()` flaps between the Bonjour and DHCP names (observed
+    2026-07-15: Jonathans-MacBook-Pro.local <-> Jonathans-MBP.localdomain, three
+    restarts each way in a day). SessionLink.reusable_by() compares this value by string
+    EQUALITY, so every flap silently orphaned every link recorded under the other name:
+    resolve returned reuse=false, each thread got a fresh cold session, and nothing was
+    logged anywhere. Proved by experiment — one restart flipped the same live link from
+    reuse=true to reuse=false with nothing else changed.
+
+    So pin the FIRST value computed and reuse it forever. Still human-readable in the
+    runner list (unlike a raw UUID), but stable. The pin lives under the account's own
+    home, which is exactly the ownership semantic emdash needs: sessions are
+    per-macOS-account, so two accounts get two ids and one account always gets one.
+
+    Pre-existing links recorded under the other name self-heal: one create each, then
+    stable. An unwritable pin degrades to the live value — flappy, but no worse.
+    """
+    try:
+        pinned = HOST_ID_PATH.read_text().strip()
+        if pinned:
+            return pinned
+    except OSError:
+        pass                    # not pinned yet (or unreadable) — compute and try to pin
+    current = f"{getpass.getuser()}@{socket.gethostname()}"
+    try:
+        HOST_ID_PATH.parent.mkdir(parents=True, exist_ok=True)
+        HOST_ID_PATH.write_text(current + "\n")
+    except OSError:
+        pass                    # unwritable — degrade rather than refuse to heartbeat
+    return current
 
 
 def _run(command: str, args: dict, *, node: str = "node", timeout: int = 90) -> dict:

@@ -51,3 +51,54 @@ def test_node_missing_raises(monkeypatch):
 def test_host_id_has_user_and_host():
     h = cdp_control.host_id()
     assert "@" in h and len(h) > 2
+
+
+# --------------------------------------------------------------------------------------
+# host_id — the reuse OWNERSHIP key; must be stable or session continuity silently dies
+# --------------------------------------------------------------------------------------
+
+def test_host_id_pins_the_first_value_it_computes(monkeypatch, tmp_path):
+    pin = tmp_path / "host-id"
+    monkeypatch.setattr(cdp_control, "HOST_ID_PATH", pin)
+    monkeypatch.setattr(cdp_control.socket, "gethostname", lambda: "Jonathans-MacBook-Pro.local")
+    monkeypatch.setattr(cdp_control.getpass, "getuser", lambda: "jjackson")
+    assert cdp_control.host_id() == "jjackson@Jonathans-MacBook-Pro.local"
+    assert pin.read_text().strip() == "jjackson@Jonathans-MacBook-Pro.local"
+
+
+def test_host_id_survives_a_macos_hostname_flap(monkeypatch, tmp_path):
+    """THE bug (proved live 2026-07-15): macOS flaps gethostname() between the Bonjour
+    and DHCP names. reusable_by() compares this value by EQUALITY, so every flap
+    orphaned every SessionLink recorded under the other name — reuse silently returned
+    false and each thread got a fresh cold session, with no error logged anywhere."""
+    pin = tmp_path / "host-id"
+    monkeypatch.setattr(cdp_control, "HOST_ID_PATH", pin)
+    monkeypatch.setattr(cdp_control.getpass, "getuser", lambda: "jjackson")
+
+    monkeypatch.setattr(cdp_control.socket, "gethostname", lambda: "Jonathans-MacBook-Pro.local")
+    first = cdp_control.host_id()
+    # ...macOS renames the host out from under us (observed 3x each way in one day)
+    monkeypatch.setattr(cdp_control.socket, "gethostname", lambda: "Jonathans-MBP.localdomain")
+    assert cdp_control.host_id() == first      # ownership key unchanged -> reuse survives
+
+
+def test_host_id_degrades_to_the_live_value_when_the_pin_is_unwritable(monkeypatch, tmp_path):
+    """An unwritable pin must not crash the runner — fall back to the flappy live value
+    (no worse than before) rather than refusing to heartbeat."""
+    unwritable = tmp_path / "no-such-dir" / "x" / "host-id"
+    monkeypatch.setattr(cdp_control, "HOST_ID_PATH", unwritable)
+    monkeypatch.setattr(cdp_control.socket, "gethostname", lambda: "H")
+    monkeypatch.setattr(cdp_control.getpass, "getuser", lambda: "u")
+    def boom(*a, **k):
+        raise OSError("read-only fs")
+    monkeypatch.setattr(cdp_control.Path, "mkdir", boom)
+    assert cdp_control.host_id() == "u@H"
+
+
+def test_host_id_ignores_a_blank_pin(monkeypatch, tmp_path):
+    pin = tmp_path / "host-id"
+    pin.write_text("   \n")
+    monkeypatch.setattr(cdp_control, "HOST_ID_PATH", pin)
+    monkeypatch.setattr(cdp_control.socket, "gethostname", lambda: "H2")
+    monkeypatch.setattr(cdp_control.getpass, "getuser", lambda: "u2")
+    assert cdp_control.host_id() == "u2@H2"
