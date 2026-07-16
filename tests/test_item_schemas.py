@@ -14,7 +14,22 @@ def test_turnspec_target_agent_defaults_to_self():
 
 def test_item_requires_a_title_and_key():
     with pytest.raises(ValidationError):
-        ItemIn(kind="review", origin="audit")
+        ItemIn(kind="review", origin="api")
+
+
+def test_item_rejects_an_origin_outside_the_choices():
+    # `origin` maps to a max_length=10 column with a fixed choice set; an out-of-set
+    # value must 422 at the boundary, not reach the DB and 500 (Postgres-only, so
+    # SQLite CI can't catch it).
+    with pytest.raises(ValidationError):
+        ItemIn(title="t", idempotency_key="k", origin="audit")
+
+
+def test_turnspec_rejects_bad_origin_and_routing():
+    with pytest.raises(ValidationError):
+        TurnSpecIn(prompt="/ada:conduct", origin="not-an-origin")
+    with pytest.raises(ValidationError):
+        TurnSpecIn(prompt="/ada:conduct", routing="teleport")
 
 
 def test_item_rejects_a_notify_kind():

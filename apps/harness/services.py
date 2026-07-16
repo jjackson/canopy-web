@@ -630,8 +630,17 @@ def decide_item(item: Item, *, decision: str, comment: str, by: str) -> tuple[It
 
 
 def dismiss_item(item: Item, *, by: str) -> Item:
-    """Retire an item without acting. Never dispatches, whatever `decision` holds —
-    a producer that raised it in error, or a subject that changed under it."""
+    """Retire an OPEN item without acting — a producer that raised it in error, or
+    a subject that changed under it.
+
+    Only an OPEN item may be dismissed. Dismissing an already-DECIDED item would
+    overwrite `decided_by`/`decided_at` — erasing who approved it — while the turns
+    that decision already dispatched keep running: the queue would read "dismissed"
+    for work that is executing, with the approver's identity gone. So dismiss guards
+    on state exactly like decide does; a re-dismiss is likewise a 409, not a
+    silent second write."""
+    if item.state != Item.OPEN:
+        raise AlreadyDecidedError(f"item {item.id} is already {item.state}")
     item.state = Item.DISMISSED
     item.decided_by = by
     item.decided_at = timezone.now()
