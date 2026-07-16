@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from apps.common.ddd import narrative_slug_from_run_id
+from apps.runs.ddd import narrative_slug_from_run_id
 from apps.runs import aggregate
 
 from .factories import make_review, make_user, make_walkthrough
