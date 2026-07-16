@@ -18,6 +18,12 @@ class RunnerIn(Schema):
     workspace: str = ""  # tenant slug; defaults to the pairer's default workspace
 
 
+class RunnerCapabilitiesIn(Schema):
+    # Wholesale replacement, like the skill catalog — the caller sends the full
+    # capabilities it wants (e.g. {"agents": [...], "projects": ["canopy-web"]}).
+    capabilities: dict
+
+
 class RunnerOut(Schema):
     id: uuid.UUID
     name: str

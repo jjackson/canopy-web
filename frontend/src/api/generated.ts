@@ -1607,6 +1607,33 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/harness/runners/{runner_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Update Runner Capabilities
+         * @description Replace a runner's capabilities (owner-gated via _runner_or_404).
+         *
+         *     Capabilities are set at pairing and were otherwise immutable — the only way to
+         *     add `projects` to an existing runner was to re-pair, which mints a NEW runner
+         *     and orphans the old one's SessionLinks. This lets a paired runner opt into
+         *     driving repos (or new agents) in place. capabilities is a routing hint, not a
+         *     security boundary (the workspace gates), so replacing it changes what the
+         *     runner PULLS, never what it may reach.
+         */
+        readonly patch: operations["apps_harness_api_update_runner_capabilities"];
+        readonly trace?: never;
+    };
     readonly "/api/harness/runners/{runner_id}/retire": {
         readonly parameters: {
             readonly query?: never;
@@ -5334,6 +5361,13 @@ export interface components {
              */
             readonly workspace: string;
         };
+        /** RunnerCapabilitiesIn */
+        readonly RunnerCapabilitiesIn: {
+            /** Capabilities */
+            readonly capabilities: {
+                readonly [key: string]: unknown;
+            };
+        };
         /** HeartbeatIn */
         readonly HeartbeatIn: {
             /**
@@ -8482,6 +8516,32 @@ export interface operations {
         readonly responses: {
             /** @description Created */
             readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RunnerOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_update_runner_capabilities: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RunnerCapabilitiesIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

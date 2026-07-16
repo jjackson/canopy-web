@@ -39,8 +39,9 @@ export async function enqueueTurn(input: {
   project?: string
   workspace?: string
   prompt: string
+  threadKey?: string
 }): Promise<TurnOut> {
-  const { agentSlug = '', project = '', workspace = '', prompt } = input
+  const { agentSlug = '', project = '', workspace = '', prompt, threadKey = '' } = input
   const target = agentSlug || project
   // A stable-enough idempotency key: a double-tap of Send within the same second
   // collapses server-side rather than firing twice.
@@ -51,7 +52,10 @@ export async function enqueueTurn(input: {
     origin: 'manual',
     idempotency_key: key,
     prompt,
-    origin_ref: {},
+    // A thread_key makes the runner REUSE one session across dispatches (the
+    // phone owns a persistent thread per target) rather than forking a fresh
+    // emdash task each time. The runner reads origin_ref.thread_key.
+    origin_ref: threadKey ? { thread_key: threadKey } : {},
     routing: 'prefer_local',
   }
   // A repo turn must land in its owning workspace; pin it explicitly.
