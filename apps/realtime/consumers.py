@@ -77,3 +77,36 @@ class TurnConsumer(AsyncJsonWebsocketConsumer):
                 except ValueError:
                     return 0
         return 0
+
+
+class SupervisorConsumer(AsyncJsonWebsocketConsumer):
+    """Live /supervisor: a per-user group receives runner-status and
+    waiting-count deltas; a snapshot is sent on connect. The socket spans all the
+    user's workspaces (the fleet is cross-tenant, like /insights)."""
+
+    async def connect(self):
+        user = self.scope.get("user")
+        if not getattr(user, "is_authenticated", False):
+            await self.close(code=4001)
+            return
+        self.group = groups.supervisor_user_group(user.id)
+        await self.channel_layer.group_add(self.group, self.channel_name)
+        await self.accept()
+        await self.send_json(await self._snapshot(user))
+
+    async def disconnect(self, code):
+        group = getattr(self, "group", None)
+        if group:
+            await self.channel_layer.group_discard(group, self.channel_name)
+
+    async def supervisor_runner(self, message):
+        await self.send_json(message)
+
+    async def supervisor_waiting(self, message):
+        await self.send_json(message)
+
+    @database_sync_to_async
+    def _snapshot(self, user):
+        from .snapshot import supervisor_snapshot
+
+        return supervisor_snapshot(user)
