@@ -72,7 +72,10 @@ class RecordSessionIn(Schema):
 
 
 class TurnIn(Schema):
-    agent_slug: str
+    # Exactly one of agent_slug / project. Enforced in the view (422) rather than
+    # by a validator so the error matches the rest of the harness's shape.
+    agent_slug: str = ""
+    project: str = ""
     origin: str
     idempotency_key: str
     prompt: str = ""

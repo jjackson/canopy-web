@@ -5414,8 +5414,16 @@ export interface components {
         };
         /** TurnIn */
         readonly TurnIn: {
-            /** Agent Slug */
+            /**
+             * Agent Slug
+             * @default
+             */
             readonly agent_slug: string;
+            /**
+             * Project
+             * @default
+             */
+            readonly project: string;
             /** Origin */
             readonly origin: string;
             /** Idempotency Key */

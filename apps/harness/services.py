@@ -37,7 +37,9 @@ DEFAULT_LEASE_SECONDS = 900
 
 def enqueue_turn(
     *,
-    agent,
+    agent=None,
+    project: str = "",
+    workspace=None,
     origin: str,
     idempotency_key: str,
     prompt: str = "",
@@ -45,7 +47,16 @@ def enqueue_turn(
     routing: str = Turn.PREFER_LOCAL,
 ) -> tuple[Turn, bool]:
     """Queued turns stack freely — the executing-turn index never blocks intake
-    (new turns are born `queued`, which the index does not cover)."""
+    (new turns are born `queued`, which the index does not cover).
+
+    Targets an agent XOR a project. A project turn must carry a workspace: it has
+    no agent to derive tenancy from, and claim_next_turn fails it closed without
+    one, so accepting it here would silently queue a turn nothing can ever run.
+    """
+    if bool(agent) == bool(project):
+        raise ValueError("a turn targets an agent XOR a project")
+    if project and workspace is None:
+        raise ValueError("a project turn needs a workspace")
     existing = Turn.objects.filter(idempotency_key=idempotency_key).first()
     if existing is not None:
         return existing, False
@@ -53,6 +64,10 @@ def enqueue_turn(
         with transaction.atomic():
             turn = Turn.objects.create(
                 agent=agent,
+                project=project,
+                # Agent turns derive tenancy via agent.workspace and must not
+                # denormalize a second copy that can drift.
+                workspace=workspace if project else None,
                 origin=origin,
                 idempotency_key=idempotency_key,
                 prompt=prompt,
