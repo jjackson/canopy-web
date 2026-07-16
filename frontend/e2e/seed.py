@@ -76,6 +76,12 @@ AgentWorkProduct.objects.create(
 AgentSkill.objects.create(
     agent=a, name="email-communicator", description="Send and receive email as Echo.",
     url="https://github.com/dimagi-internal/echo/blob/main/skills/email-communicator/SKILL.md")
+# A launchable skill so the phone composer has a human entry point to render; the
+# one above stays non-launchable so the composer's filter has something to drop.
+AgentSkill.objects.create(
+    agent=a, name="story-ideation", description="Generate Connect story ideas.",
+    launchable=True, args_hint="topic (optional)",
+    url="https://github.com/dimagi-internal/echo/blob/main/skills/story-ideation/SKILL.md")
 
 # A fleet-audit findings review — a run-child gate whose run_id is NOT a DDD run id
 # (nothing else in the system references it). It must render standalone: no DDD rail,
