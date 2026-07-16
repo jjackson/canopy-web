@@ -26,10 +26,14 @@ from django.core.asgi import get_asgi_application  # noqa: E402
 # import services/models).
 _django_asgi_app = get_asgi_application()
 
+from channels.routing import ProtocolTypeRouter, URLRouter  # noqa: E402
+from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E402
 from starlette.applications import Starlette  # noqa: E402
 from starlette.routing import Mount  # noqa: E402
 
 from apps.mcp.server import build_http_app  # noqa: E402
+from apps.realtime.channels_auth import RealtimeAuthMiddleware  # noqa: E402
+from apps.realtime.routing import websocket_urlpatterns  # noqa: E402
 
 _MCP_PREFIX = "/api/mcp"
 
@@ -37,11 +41,22 @@ _MCP_PREFIX = "/api/mcp"
 # root, i.e. /api/mcp/.
 _mcp_app = build_http_app()
 
+# The catch-all: HTTP goes to Django as before; WebSocket goes through the
+# realtime handshake auth + URL router (apps/realtime). Same shape ace-web uses.
+_django_with_ws = ProtocolTypeRouter(
+    {
+        "http": _django_asgi_app,
+        "websocket": AllowedHostsOriginValidator(
+            RealtimeAuthMiddleware(URLRouter(websocket_urlpatterns))
+        ),
+    }
+)
+
 application = Starlette(
     routes=[
         Mount(_MCP_PREFIX, app=_mcp_app),
-        # Django handles everything else (mounted last as the catch-all).
-        Mount("/", app=_django_asgi_app),
+        # Django + realtime WS handle everything else (mounted last as catch-all).
+        Mount("/", app=_django_with_ws),
     ],
     # Run the MCP session-manager lifespan for the whole process.
     lifespan=_mcp_app.lifespan,
