@@ -33,6 +33,23 @@ describe('rewriteForWorkspace', () => {
     await expect(rewritten.json()).resolves.toEqual(payload)
   })
 
+  it('rewrites a harness path — the explicit-workspace (header) case is not limited to the implicit prefix list', async () => {
+    // A repo turn is dispatched from /supervisor (not a tenant surface) and pins
+    // its workspace via WORKSPACE_HEADER; the middleware then rewrites via this
+    // function regardless of whether /api/harness is in WS_SCOPED_API_PREFIXES
+    // (it is not — that list is only for the implicit URL-driven case).
+    const original = new Request('http://localhost/api/harness/turns/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'canopy-web', prompt: 'fix the header' }),
+    })
+
+    const rewritten = await rewriteForWorkspace(original, 'dimagi')
+
+    expect(new URL(rewritten.url).pathname).toBe('/api/w/dimagi/harness/turns/')
+    await expect(rewritten.json()).resolves.toEqual({ project: 'canopy-web', prompt: 'fix the header' })
+  })
+
   it('rewrites a bodyless GET without attaching a body', async () => {
     const original = new Request('http://localhost/api/projects/', { method: 'GET' })
 
