@@ -1286,20 +1286,7 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         readonly post?: never;
-        /**
-         * Delete a recurring schedule
-         * @description Deleting a schedule retires its open occurrences FIRST.
-         *
-         *     There is no occurrence table — the Turn IS the occurrence, linked only by
-         *     origin_ref["schedule_id"] — so nothing cascades. An executing occurrence
-         *     holds one_executing_turn_per_agent, and release_stale_occurrence_turns_all()
-         *     resolves schedules by id: delete the row and that turn becomes permanently
-         *     unreleasable (the runner's heartbeat renews its lease, so the lease sweep
-         *     never rescues it either), wedging every subsequent turn for the agent
-         *     forever — with the nag that would surface it gone too. Superseding first also
-         *     retires orphaned QUEUED occurrences, which would otherwise execute a prompt
-         *     for a schedule that no longer exists.
-         */
+        /** Delete a recurring schedule */
         readonly delete: operations["apps_harness_api_schedules_delete_schedule"];
         readonly options?: never;
         readonly head?: never;
