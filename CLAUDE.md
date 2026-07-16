@@ -77,7 +77,7 @@ the active workspace. `/ddd-plans` and `/reviews` now redirect to `/`.
 - `/w/:workspace/walkthroughs` — Sharable demos uploaded from `/canopy:walkthrough`
 - `/w/:workspace/ddd` (+ `/ddd/:narrative`, `/ddd/:narrative/:runId`) — Demo-driven-development (DDD) views: narrative → version → run → package (video + deck + narrative + links)
 - `/w/:workspace/agents` — First-class AI agents list (e.g. "Echo")
-- `/w/:workspace/agents/:slug` — Agent workspace: a full-bleed rail + scrolling main built on `canopy-ui`. Sub-routes (rail): **Needs you** (the default landing — a typed/ranked supervisor inbox), Overview, Tasks (the "who has the ball" board), Turns (packaged units of work + optional transcript), Syncs, Work products, Skills
+- `/w/:workspace/agents/:slug` — Agent workspace: a full-bleed rail + scrolling main built on `canopy-ui`. Sub-routes (rail): **Needs you** (the default landing — a typed/ranked supervisor inbox), Overview, Tasks (the "who has the ball" board), **Items** (things needing a decision; `?batch=<key>` renders one sitting, e.g. a fleet audit), Turns (packaged units of work + optional transcript), Schedules, Syncs, Work products, Skills
 
 **Root / personal / global:**
 - `/system` — Capability catalog + Workflows view (how canopy's plugin capabilities compose; read live from the canopy plugin)
@@ -264,6 +264,18 @@ The agent-execution control plane: paired `Runner`s (laptop emdash daemons, clou
 - `POST /api/harness/schedules/{id}/fire?runner_id=…` — the runner reports a due slot; the server materializes the turn.
 
 > **Operational note — deleting a user bricks their runners' schedules.** `Runner.paired_by` is `on_delete=SET_NULL`, and `_runner_schedule_qs` derives the schedule tenant from it, failing closed when it is NULL: deleting a pairing user's Django `User` orphans their runners, and every schedule route then returns nothing for that runner, forever. The runner must be re-paired (a new row); the orphan can only be retired. This is correct — a runner with no owner has no tenant to derive, and inferring one would be privilege escalation — so prefer deactivating a departing user (`is_active=False`) over deleting them if their runners should keep running.
+
+### Items (`apps/harness`, mounted at `/api/agents/{slug}/items/` + `/api/items/{id}/`)
+An `Item` is **a thing that needs addressing — the dual of `Turn`**: `Turn` is work an agent does, `Item` is work *you* do. They cycle: a turn raises items (`Item.raised_by`) → you decide → an approved item's `dispatch` enqueues turns (`Turn.raised_from`). `TurnSpec.target_agent=""` means **self** (the default); Ada's cross-agent fan-out is that field set — a parameter, not a code path.
+
+The Item **carries its own text** (message semantics, like an email) rather than resolving a subject: `origin_ref` is provenance, not identity, and nothing resolves it to render the row. That is what keeps the model free of a source registry, of drift, and of any framework→product import. Decisions are a **closed set** (`implement | skip | defer`) so a generic inbox can render buttons for an item it has never seen; only `implement` dispatches. `kind ∈ {review, question}` — there is no `notify` item (that is `/timeline`). **decide + dispatch are one transaction**: a bad `target_agent` is a 422 on an item still `open`, never a decided-but-undispatched row that deciding-once (409) would strand forever. See `docs/superpowers/specs/2026-07-15-item-and-turn-design.md`.
+- `GET /api/agents/{slug}/items/` — List an agent's items (`?state=`, `?kind=`, `?batch=`)
+- `POST /api/agents/{slug}/items/` — Raise items (batch; idempotent per `idempotency_key`)
+- `GET /api/items/{id}/` — Get an item
+- `POST /api/items/{id}/decide` — Decide (`implement` dispatches; 409 if already decided; 422 rolls back a bad spec)
+- `POST /api/items/{id}/dismiss` — Dismiss (never dispatches)
+
+**Phases 0+1 shipped.** Still projections, not Items (each gets its own plan): `needs_you`'s bands, `apps/push`'s three per-producer receivers, run gates, #218's schedule nag, and `AgentTask.SUGGESTED`. `gate="product_findings"` + the runner's `reviews.py` stay until Ada's repo posts Items instead — retiring them first would strand her next audit with no decision surface.
 
 ### Sessions (`apps/session_sharing`) — shared Claude Code transcripts
 Token-based session sharing (the `/canopy:share-session` flow); the app was renamed from `sessions` to `session_sharing` to free the `sessions` name for the live-session harness. Routers still mount at `/api/sessions` + `/api/share`. This is a **separate** token model from the visibility gating above (token-gated walkthroughs / tokenless reviews) — shared sessions (and arcs) carry their own rotatable `share_token`.
