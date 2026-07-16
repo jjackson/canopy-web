@@ -7,7 +7,7 @@ always project-generic; only the data model insisted on an agent.
 from __future__ import annotations
 
 import pytest
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 
 from apps.agents.models import Agent
 from apps.harness.models import Turn

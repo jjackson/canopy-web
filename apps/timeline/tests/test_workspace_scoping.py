@@ -90,7 +90,6 @@ def _sub_ids(user, subsystem):
 def test_all_tenant_sources_scoped_to_members_workspace(db):
     """walkthroughs, shareouts, agents, projects each only show the caller's
     workspace's rows — the DDD source proves reviews/runs; this proves the rest."""
-    import datetime as dt
 
     from django.utils import timezone
 

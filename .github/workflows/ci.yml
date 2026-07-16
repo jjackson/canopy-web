@@ -31,6 +31,29 @@ jobs:
       - name: Sync dependencies
         run: uv sync --extra dev
 
+      # Fast, zero-DB gates before the (longer) test run — they reuse the uv env
+      # already synced above, so they add ~seconds, not a new job spin-up.
+
+      # Catch real bugs: unused imports (F401) and undefined names (F821/F811).
+      # Scoped to pyflakes (`--select F`), not the full ruff ruleset — the repo
+      # isn't style-clean yet, and this gate is about correctness, not formatting.
+      # F403/F405 are ignored: the settings modules use `from base import *` by design.
+      - name: Lint (ruff — pyflakes only)
+        run: uv run ruff check . --select F --ignore F403,F405
+
+      # A model change without its migration is a class of bug this fast-moving repo
+      # hits often; catch it before it reaches a deploy. Test settings = SQLite, no
+      # DB server needed.
+      - name: Check migrations are in sync
+        run: uv run python manage.py makemigrations --check --dry-run
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+
+      - name: Django system checks
+        run: uv run python manage.py check
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+
       - name: Run pytest
         run: uv run pytest
 

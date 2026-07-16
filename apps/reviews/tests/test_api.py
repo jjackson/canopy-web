@@ -390,7 +390,7 @@ def test_list_status_filter(auth_client, owner):
 @pytest.mark.django_db
 def test_list_orders_by_last_activity_desc_by_default(auth_client, owner):
     older = _make_review(owner, run_id="older-2026-05-01-001")
-    newer = _make_review(owner, run_id="newer-2026-05-01-001")
+    _make_review(owner, run_id="newer-2026-05-01-001")  # the row matters, not the binding
     # Resolve the older one *now* so its last_activity jumps ahead of newer's.
     older.status = ReviewRequest.STATUS_RESOLVED
     older.resolved_at = timezone.now()

@@ -14,7 +14,6 @@ The fork point is a phase BOUNDARY (the first step of the middle phase) so the
 Drive store's phase-granular folder copy and step-granular statuses agree —
 see the module docstring's interior-fork caveat.
 """
-import datetime as dt
 
 import pytest
 import yaml

@@ -1,7 +1,6 @@
 """Tests for the multi-domain email allowlist helper."""
 from __future__ import annotations
 
-import pytest
 
 from apps.common.auth_domains import allowed_email_domains, email_in_allowlist
 

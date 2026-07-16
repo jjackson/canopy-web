@@ -5,7 +5,6 @@ import pytest
 from allauth.core.exceptions import ImmediateHttpResponse
 from django.contrib.auth import get_user_model
 from django.test import Client, override_settings
-from django.urls import reverse
 
 from apps.common.auth_adapter import CustomSocialAccountAdapter
 

@@ -1,9 +1,10 @@
 name: Contract tests (nightly, exhaustive)
 
-# The per-PR contract job (ci.yml) runs a fast smoke (SCHEMATHESIS_MAX_EXAMPLES
-# defaults to a few per endpoint) so it isn't a ~6-min blocker on every PR. This
-# job runs the EXHAUSTIVE property-based fuzz nightly + on demand, off the PR
-# critical path.
+# Contract tests do NOT run on PRs — ci.yml has no live backend, so the suite
+# skips there (schemathesis.from_uri can't reach a server). This job is the only
+# place they actually execute: the EXHAUSTIVE property-based fuzz against a live
+# server, nightly + on demand, off the PR critical path. (A fast in-process smoke
+# on PRs via schemathesis.from_wsgi is a possible future add.)
 
 on:
   schedule:

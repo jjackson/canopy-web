@@ -17,7 +17,6 @@ from django.utils import timezone
 from apps.workspaces import services as wsvc
 
 from .models import (
-    HEARTBEAT_ONLINE_WINDOW,
     AgentSchedule,
     Item,
     Runner,
@@ -26,13 +25,15 @@ from .models import (
     TurnEvent,
 )
 
+# HEARTBEAT_ONLINE_WINDOW lives on models.py (Runner.live_status uses it too;
+# models.py cannot import services.py, which already imports models.py) and is
+# re-exported here so existing importers of services.HEARTBEAT_ONLINE_WINDOW keep
+# working. Intentional re-export — noqa keeps the F401 gate from deleting it.
+from .models import HEARTBEAT_ONLINE_WINDOW  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_LEASE_SECONDS = 900
-# HEARTBEAT_ONLINE_WINDOW lives on models.py (Runner.live_status uses it too;
-# models.py cannot import services.py, which already imports models.py) and is
-# re-exported here so existing importers of services.HEARTBEAT_ONLINE_WINDOW
-# keep working.
 
 
 def enqueue_turn(

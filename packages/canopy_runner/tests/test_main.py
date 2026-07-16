@@ -2,7 +2,6 @@ import json
 import sqlite3
 import sys
 import time
-import uuid
 from pathlib import Path
 
 import pytest
@@ -345,7 +344,7 @@ def test_completed_run_within_grace_is_left_alone(db, tmp_path):
     assert "completed_seen_at" in state["active"]["t-1"]
 
     result = run_once(cfg, client)  # still well within GRACE_SECONDS
-    assert result != f"failed:t-1"
+    assert result != "failed:t-1"
     assert not client.failed
     state = json.loads(Path(cfg.state_path).read_text())
     assert "t-1" in state["active"]
