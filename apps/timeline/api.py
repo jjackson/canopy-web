@@ -14,6 +14,7 @@ from django.http import HttpRequest
 from ninja import Router
 
 from apps.api.auth import session_auth
+from apps.api.pagination import clamp_limit
 from apps.workspaces import services as wsvc
 
 from . import sources
@@ -59,7 +60,7 @@ def list_timeline(
     - ``before``: opaque cursor from a prior page's ``next_before`` — return only
       events older than it.
     """
-    limit = max(1, min(limit, _MAX_LIMIT))
+    limit = clamp_limit(limit, cap=_MAX_LIMIT)
     sub = sources.valid_subsystem(subsystem)
     cursor = _parse_cursor(before)
     # Scope to the caller's workspaces, mirroring the agents surface: a

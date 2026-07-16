@@ -7,6 +7,8 @@ import datetime as dt
 from django.db import transaction
 from django.utils import timezone
 
+from apps.harness.notify import schedule_nag_items
+
 from .models import (
     Agent,
     AgentSkill,
@@ -416,6 +418,10 @@ def needs_you(agent: Agent, notify_limit: int = 5) -> dict:
     run_review, run_question, run_notify = _run_inbox_items(agent)
     review.extend(run_review)
     question.extend(run_question)
+
+    # Scheduled occurrences you haven't finished. Both apps are framework tier,
+    # so this cross-import is allowed by the boundary test.
+    review.extend(schedule_nag_items(agent))
 
     items: list[dict] = review + question
     waiting_count = len(items)  # review + question are the gated items

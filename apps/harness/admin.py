@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Runner, Turn, TurnEvent
+from .models import AgentSchedule, Runner, Turn, TurnEvent
 
 
 @admin.register(Runner)
@@ -20,3 +20,10 @@ class TurnAdmin(admin.ModelAdmin):
 class TurnEventAdmin(admin.ModelAdmin):
     list_display = ("turn", "seq", "kind", "ts")
     list_filter = ("kind",)
+
+
+@admin.register(AgentSchedule)
+class AgentScheduleAdmin(admin.ModelAdmin):
+    list_display = ("name", "agent", "cron", "timezone", "enabled", "last_slot")
+    list_filter = ("enabled", "agent")
+    search_fields = ("name", "prompt")

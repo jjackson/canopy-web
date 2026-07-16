@@ -7,7 +7,7 @@ from django.http import HttpRequest
 from ninja import Router, Status
 
 from apps.api.auth import session_auth
-from apps.api.pagination import Page, paginate
+from apps.api.pagination import Page, clamp_limit, paginate
 from apps.workspaces import services as wsvc
 
 from . import services
@@ -40,7 +40,7 @@ def list_shareouts(
     Tenant-scoped: on a /w/{ws} request, only that workspace's rows; on the flat
     mount, every workspace the caller is a member of (the PAT resolves to a real
     user, so machine producers see their tenant's rows too)."""
-    limit = min(limit, 500)
+    limit = clamp_limit(limit)
     wsvc.auto_join_workspaces(request.user)
     ws = getattr(request, "workspace_slug", None)
     slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)

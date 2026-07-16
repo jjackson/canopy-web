@@ -1,7 +1,10 @@
 import { lazy, Suspense } from 'react'
+import type { RouteObject } from 'react-router-dom'
 import { createBrowserRouter, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useWorkspace } from './workspace/WorkspaceProvider'
 import { AppLayout } from './components/AppLayout/AppLayout'
+import { RouteErrorBoundary } from './components/RouteErrorBoundary'
+import { ShareRouteErrorBoundary } from './components/ShareRouteErrorBoundary'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
 import { ShareoutsPage } from './pages/ShareoutsPage'
@@ -31,6 +34,12 @@ const AgentTasksSection = lazy(() =>
 )
 const AgentTurnsSection = lazy(() =>
   import('./pages/agents/AgentTurnsSection').then((m) => ({ default: m.AgentTurnsSection })),
+)
+const ItemsSection = lazy(() =>
+  import('./pages/agents/ItemsSection').then((m) => ({ default: m.ItemsSection })),
+)
+const SchedulesSection = lazy(() =>
+  import('./pages/agents/SchedulesSection').then((m) => ({ default: m.SchedulesSection })),
 )
 const AgentSyncsSection = lazy(() =>
   import('./pages/agents/AgentSyncsSection').then((m) => ({ default: m.AgentSyncsSection })),
@@ -89,7 +98,34 @@ function WorkspaceIndex() {
   return <ProjectsPage />
 }
 
-export const router = createBrowserRouter([
+/**
+ * Hang an error boundary off every route, at every depth.
+ *
+ * A render throw anywhere used to take the whole app down: `LazySection` is
+ * Suspense-only (pending states, not throws) and nothing else caught. React
+ * Router's data router walks UP from the throwing route to the nearest
+ * `errorElement`, so a boundary on every route means the throw is always
+ * contained to the smallest surface that can be swapped out — a rail section
+ * fails inside the agent workspace's <Outlet/> with the rail still navigable; a
+ * page fails inside AppLayout's <main> with the header and nav still there. The
+ * boundary on the layout route itself is the last resort (AppLayout's own
+ * throws), NOT the design — a single root boundary catches identically and
+ * blanks everything, which is the bug, not the fix.
+ *
+ * Applied here rather than spelled out per route so a new route can't be added
+ * without one — routes that need a DIFFERENT boundary (see `/share/:token`
+ * below) set their own `errorElement` explicitly; `guarded()` only fills in
+ * the default where one isn't already present, it never overrides one.
+ */
+function guarded(routes: RouteObject[]): RouteObject[] {
+  return routes.map((route) => ({
+    ...route,
+    errorElement: route.errorElement ?? <RouteErrorBoundary />,
+    ...(route.children ? { children: guarded(route.children) } : {}),
+  })) as RouteObject[]
+}
+
+export const router = createBrowserRouter(guarded([
   {
     element: <AppLayout />,
     children: [
@@ -119,6 +155,8 @@ export const router = createBrowserRouter([
           { path: 'overview', element: <LazySection><AgentOverviewSection /></LazySection> },
           { path: 'tasks', element: <LazySection><AgentTasksSection /></LazySection> },
           { path: 'turns', element: <LazySection><AgentTurnsSection /></LazySection> },
+          { path: 'items', element: <LazySection><ItemsSection /></LazySection> },
+          { path: 'schedules', element: <LazySection><SchedulesSection /></LazySection> },
           { path: 'syncs', element: <LazySection><AgentSyncsSection /></LazySection> },
           { path: 'work-products', element: <LazySection><AgentWorkProductsSection /></LazySection> },
           { path: 'skills', element: <LazySection><AgentSkillsSection /></LazySection> },
@@ -140,9 +178,13 @@ export const router = createBrowserRouter([
     ],
   },
   // Public, chrome-less route — mounted OUTSIDE AppLayout so anonymous
-  // visitors aren't bounced to login by the app shell's authed calls.
-  { path: '/share/:token', element: <SessionSharePage /> },
-], {
+  // visitors aren't bounced to login by the app shell's authed calls. Carries
+  // its own light-themed `errorElement` (see `ShareRouteErrorBoundary`) so
+  // `guarded()` below leaves it alone instead of hanging the dark, "back to
+  // Canopy"-linking app boundary off a page anonymous visitors can't log
+  // into.
+  { path: '/share/:token', element: <SessionSharePage />, errorElement: <ShareRouteErrorBoundary /> },
+]), {
   // "/" at root, "/canopy" as a labs tenant — keeps every route + <Link> under
   // the deployment's path prefix (from Vite's import.meta.env.BASE_URL).
   basename: import.meta.env.BASE_URL.replace(/\/$/, '') || '/',

@@ -7,9 +7,16 @@ control-plane-design.md.
 """
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 from django.db import models
+from django.utils import timezone
+
+# Owned here (not services.py) so Runner.live_status can use it without a
+# models -> services import cycle (services already imports models). services.py
+# imports this constant from here rather than declaring a second one.
+HEARTBEAT_ONLINE_WINDOW = dt.timedelta(seconds=90)
 
 
 class Runner(models.Model):
@@ -38,6 +45,26 @@ class Runner(models.Model):
     # so a live session is reusable ONLY by the runner whose host matches the one that
     # created it. Jonathan runs the fleet under two accounts (token-limit failover).
     host = models.CharField(max_length=200, blank=True, default="")
+    # The human who paired this runner. Load-bearing for authz AND for schedule
+    # tenancy: `_runner_visibility_q` requires paired_by to be the caller (or NULL,
+    # the legacy-ungated path it keeps open on purpose), and `_runner_schedule_qs`
+    # derives the schedule tenant from it.
+    #
+    # OPERATIONAL CONSEQUENCE — deleting a pairing user permanently bricks their
+    # runners' SCHEDULES. SET_NULL orphans the row rather than removing it;
+    # `paired_by_id` becomes NULL, and `_runner_schedule_qs` returns none() for a
+    # NULL pairer, so the orphan can never sync or fire a schedule again. It must
+    # be re-paired (a fresh row) and the orphan retired.
+    #
+    # This fail-closed behaviour is CORRECT and must stay: a runner whose owner no
+    # longer exists has no tenant to derive, and inferring one would be a privilege
+    # escalation. Deactivate a departing user (`is_active=False`) rather than
+    # deleting them if their runners should stay operable for a successor.
+    #
+    # `workspace` (below) now exists — it is the boundary `claim_next_turn` and
+    # `_runner_visibility_q` filter on. Narrowing the SCHEDULE derivation from
+    # paired_by to this FK is a deliberate follow-up, not a merge-time change;
+    # see the note on `_runner_schedule_qs` for how the two rules relate today.
     workspace = models.ForeignKey(
         "workspaces.Workspace",
         on_delete=models.PROTECT,
@@ -63,17 +90,36 @@ class Runner(models.Model):
     def agent_slugs(self) -> list[str]:
         return list(self.capabilities.get("agents", []))
 
+    @property
+    def live_status(self) -> str:
+        """What we can OBSERVE, not what the runner last claimed.
+
+        `heartbeat()` writes ONLINE and nothing demotes it — a runner that dies
+        never gets to tell us. So liveness is derived from heartbeat age here,
+        and RunnerOut serves this rather than the raw column. `degraded` is
+        different: the runner self-reports it, so it survives as long as the
+        runner is still fresh enough to be reporting anything at all.
+        """
+        if self.status == self.RETIRED:
+            return self.RETIRED
+        if self.last_heartbeat_at is None:
+            return self.DISCONNECTED
+        if timezone.now() - self.last_heartbeat_at > HEARTBEAT_ONLINE_WINDOW:
+            return self.STALE
+        return self.status
+
 
 class Turn(models.Model):
     """One unit of agent work — the execution envelope around board commands."""
 
     QUEUED, CLAIMED, RUNNING, NEEDS_HUMAN = "queued", "claimed", "running", "needs_human"
-    DONE, FAILED, LOST = "done", "failed", "lost"
+    DONE, FAILED, LOST, MISSED = "done", "failed", "lost", "missed"
     STATUS_CHOICES = [
         (QUEUED, "Queued"), (CLAIMED, "Claimed"), (RUNNING, "Running"),
-        (NEEDS_HUMAN, "Needs human"), (DONE, "Done"), (FAILED, "Failed"), (LOST, "Lost"),
+        (NEEDS_HUMAN, "Needs human"), (DONE, "Done"), (FAILED, "Failed"),
+        (LOST, "Lost"), (MISSED, "Missed"),
     ]
-    TERMINAL = {DONE, FAILED, LOST}
+    TERMINAL = {DONE, FAILED, LOST, MISSED}
     NON_TERMINAL = {QUEUED, CLAIMED, RUNNING, NEEDS_HUMAN}
 
     ORIGIN_BOARD, ORIGIN_API, ORIGIN_SLACK, ORIGIN_CRON, ORIGIN_MANUAL, ORIGIN_EMAIL = (
@@ -91,6 +137,13 @@ class Turn(models.Model):
     # related_name is harness_turns (not "turns"): apps.agents.AgentTurn — the
     # packaged turn *report* — already claims agent.turns.
     agent = models.ForeignKey("agents.Agent", on_delete=models.CASCADE, related_name="harness_turns")
+    # The Item whose approval enqueued this turn — the other half of the cycle
+    # (Item.raised_by points back). Null for turns with no decision behind them:
+    # the phone composer (a human asking directly), cron schedules, inbox polls.
+    raised_from = models.ForeignKey(
+        "Item", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="dispatched_turns",
+    )
     origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES)
     origin_ref = models.JSONField(default=dict, blank=True)
     prompt = models.TextField(blank=True, default="")
@@ -196,7 +249,7 @@ class SessionLink(models.Model):
     def __str__(self) -> str:  # pragma: no cover
         return f"link:{self.agent.slug}:{self.thread_key[:16]}"
 
-    def reusable_by(self, runner: "Runner") -> bool:
+    def reusable_by(self, runner: Runner) -> bool:
         """True if `runner` owns the live session hint (same runner + same macOS host)
         and a concrete emdash task is recorded. The runner STILL must verify the task
         actually exists in its emdash before driving it — this is the server-side gate."""
@@ -206,3 +259,156 @@ class SessionLink(models.Model):
             and self.live_host
             and self.live_host == runner.host
         )
+
+
+def _default_notify() -> list:
+    """Callable default — a mutable literal would be shared across rows."""
+    return ["inbox"]
+
+
+class AgentSchedule(models.Model):
+    """A recurring turn declaration — "Echo's weekly manager report, Fridays 9am ET".
+
+    Config lives here (server-side, so it is visible and editable in the Agent
+    UI); the *firing* is done by the runner, which syncs these rows, evaluates
+    the cron locally, and POSTs back a slot. The server then materializes a
+    normal harness Turn via services.enqueue_turn — the scheduler is a producer
+    of turns, not a second execution engine.
+
+    The Turn IS the occurrence (origin=cron, origin_ref={schedule_id, slot},
+    idempotency_key="sched:<id>:<slot>"); there is deliberately no occurrence
+    table. See docs/superpowers/specs/2026-07-15-agent-scheduled-turns-design.md.
+
+    int pk (not UUID like Runner/Turn): this projects into needs_you, whose
+    NeedsYouItem.ref_id is typed int on a StrictModel.
+
+    No workspace FK: a schedule is agent-owned and derives its tenant via
+    agent.workspace, exactly as Turn does.
+    """
+
+    agent = models.ForeignKey("agents.Agent", on_delete=models.CASCADE, related_name="schedules")
+    name = models.CharField(max_length=200, help_text='e.g. "Weekly manager report"')
+    prompt = models.TextField(help_text="What the turn is seeded with, e.g. /echo:manager-report")
+    cron = models.CharField(max_length=120, help_text="5-field cron expression, e.g. '0 9 * * 5'")
+    timezone = models.CharField(max_length=64, default="UTC", help_text="IANA tz, e.g. America/New_York")
+    enabled = models.BooleanField(default=True, help_text="Pause without deleting.")
+    routing = models.CharField(max_length=15, choices=Turn.ROUTING_CHOICES, default=Turn.PREFER_LOCAL)
+    grace_minutes = models.PositiveIntegerField(
+        default=120,
+        help_text="How long an unattended fired turn may hold the agent before it is "
+        "released as MISSED. Guards one_executing_turn_per_agent: an abandoned "
+        "session would otherwise wedge the agent indefinitely.",
+    )
+    notify = models.JSONField(
+        default=_default_notify, blank=True,
+        help_text='Channel ids resolved through the notify registry, e.g. ["inbox"].',
+    )
+    last_slot = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Newest slot fired. The supersede + no-backfill anchor.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        indexes = [models.Index(fields=["agent", "enabled"])]
+        constraints = [
+            models.UniqueConstraint(fields=["agent", "name"], name="uniq_agent_schedule_name"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"sched:{self.agent.slug}:{self.name}"
+
+    @property
+    def agent_slug(self) -> str:
+        return self.agent.slug
+
+
+class Item(models.Model):
+    """A thing that needs addressing — the dual of Turn.
+
+    Turn is work an agent does; Item is work YOU do. They form a cycle: a turn
+    raises items, you decide them, and an approved item's `dispatch` enqueues
+    turns. Ada's cross-agent fan-out is that same edge with TurnSpec.target_agent
+    set; the default ("") is self-dispatch. A parameter, not a code path.
+
+    The Item carries its OWN text. It is not a mirror of a subject living
+    elsewhere — it is an utterance at a moment, like an email, which never
+    re-reads the thing it describes. `origin_ref` is provenance (evidence, deep
+    links), NOT identity: nothing resolves it to render this row. That is what
+    keeps this model free of a source registry, of drift, and of any
+    framework->product import.
+
+    See docs/superpowers/specs/2026-07-15-item-and-turn-design.md.
+    """
+
+    REVIEW, QUESTION = "review", "question"
+    KIND_CHOICES = [(REVIEW, "Review"), (QUESTION, "Question")]
+
+    OPEN, DECIDED, DISMISSED = "open", "decided", "dismissed"
+    STATE_CHOICES = [(OPEN, "Open"), (DECIDED, "Decided"), (DISMISSED, "Dismissed")]
+
+    # CLOSED set. A generic inbox must be able to render three buttons for an Item
+    # it has never seen; producer-defined verbs would make that impossible.
+    # Only IMPLEMENT dispatches. DEFER decides the item and signals the producer to
+    # raise it again later, on its own schedule.
+    IMPLEMENT, SKIP, DEFER = "implement", "skip", "defer"
+    DECISION_CHOICES = [(IMPLEMENT, "Implement"), (SKIP, "Skip"), (DEFER, "Defer")]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    agent = models.ForeignKey(
+        "agents.Agent", on_delete=models.CASCADE, related_name="items",
+        help_text="Whose queue this belongs to — the agent ASKING, not the "
+                  "dispatch target. Tenancy rides this FK, as Turn's does.",
+    )
+    raised_by = models.ForeignKey(
+        Turn, on_delete=models.SET_NULL, null=True, blank=True, related_name="raised_items",
+        help_text="The turn that produced this item. Null for items raised outside "
+                  "a turn (an email poll, a manual post).",
+    )
+
+    origin = models.CharField(max_length=10, choices=Turn.ORIGIN_CHOICES)
+    origin_ref = models.JSONField(default=dict, blank=True)
+
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default=REVIEW)
+    title = models.CharField(max_length=300)
+    body = models.TextField(blank=True, default="")
+
+    state = models.CharField(max_length=10, choices=STATE_CHOICES, default=OPEN)
+    decision = models.CharField(max_length=10, choices=DECISION_CHOICES, blank=True, default="")
+    comment = models.TextField(
+        blank=True, default="",
+        help_text="kind=review: the reviewer's note (optional). "
+                  "kind=question: the answer (required to decide).",
+    )
+    decided_by = models.CharField(max_length=200, blank=True, default="")
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    dispatch = models.JSONField(
+        default=list, blank=True,
+        help_text='[TurnSpec] — deferred Turn enqueues fired on implement. '
+                  'e.g. [{"target_agent": "hal", "prompt": "/hal:turn", "origin": "email"}]',
+    )
+    dispatched_at = models.DateTimeField(null=True, blank=True)
+
+    batch_key = models.CharField(
+        max_length=120, blank=True, default="", db_index=True,
+        help_text="Groups items reviewed in one sitting (e.g. a fleet audit).",
+    )
+    idempotency_key = models.CharField(max_length=128, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["agent", "state"]),
+            models.Index(fields=["state", "created_at"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"item:{self.agent.slug}:{self.kind}:{self.state}:{self.id.hex[:8]}"
+
+    @property
+    def agent_slug(self) -> str:
+        return self.agent.slug

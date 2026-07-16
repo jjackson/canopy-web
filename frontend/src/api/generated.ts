@@ -1237,6 +1237,162 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/schedules/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List an agent's recurring schedules */
+        readonly get: operations["apps_harness_api_schedules_list_schedules"];
+        readonly put?: never;
+        /** Create a recurring schedule */
+        readonly post: operations["apps_harness_api_schedules_create_schedule"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/schedules/preview": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Preview the next fire times for a cron expression
+         * @description Answer 'when would this actually run?' at edit time. Computed with the same
+         *     next_slots() the firing path uses — the client must never re-implement cron.
+         */
+        readonly post: operations["apps_harness_api_schedules_preview_schedule"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/schedules/{schedule_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Delete a recurring schedule
+         * @description Deleting a schedule retires its open occurrences FIRST.
+         *
+         *     There is no occurrence table — the Turn IS the occurrence, linked only by
+         *     origin_ref["schedule_id"] — so nothing cascades. An executing occurrence
+         *     holds one_executing_turn_per_agent, and release_stale_occurrence_turns_all()
+         *     resolves schedules by id: delete the row and that turn becomes permanently
+         *     unreleasable (the runner's heartbeat renews its lease, so the lease sweep
+         *     never rescues it either), wedging every subsequent turn for the agent
+         *     forever — with the nag that would surface it gone too. Superseding first also
+         *     retires orphaned QUEUED occurrences, which would otherwise execute a prompt
+         *     for a schedule that no longer exists.
+         */
+        readonly delete: operations["apps_harness_api_schedules_delete_schedule"];
+        readonly options?: never;
+        readonly head?: never;
+        /** Update a recurring schedule */
+        readonly patch: operations["apps_harness_api_schedules_update_schedule"];
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/schedules/{schedule_id}/run-now": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Trigger a schedule off-cycle, now */
+        readonly post: operations["apps_harness_api_schedules_run_now"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/{slug}/items/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List an agent's items */
+        readonly get: operations["apps_harness_items_api_list_items"];
+        readonly put?: never;
+        /** Raise items for an agent (batch, idempotent) */
+        readonly post: operations["apps_harness_items_api_create_items"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/items/{item_id}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get an item */
+        readonly get: operations["apps_harness_items_api_get_item"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/items/{item_id}/decide": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Decide an item (implement dispatches its work) */
+        readonly post: operations["apps_harness_items_api_decide_item"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/items/{item_id}/dismiss": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Dismiss an item */
+        readonly post: operations["apps_harness_items_api_dismiss_item"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/workspaces/": {
         readonly parameters: {
             readonly query?: never;
@@ -1464,6 +1620,29 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/harness/runners/{runner_id}/retire": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Retire Runner
+         * @description Retire a runner — permanent, not a liveness state (see Runner.live_status).
+         *     Idempotent by construction: _runner_or_404 already excludes retired runners,
+         *     so retiring an already-retired runner 404s at lookup rather than no-opping
+         *     here.
+         */
+        readonly post: operations["apps_harness_api_retire_runner"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/harness/runners/{runner_id}/heartbeat": {
         readonly parameters: {
             readonly query?: never;
@@ -1628,6 +1807,51 @@ export interface paths {
         readonly put?: never;
         /** Finish Turn */
         readonly post: operations["apps_harness_api_finish_turn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/schedules/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Schedules this runner may fire (tenant-scoped)
+         * @description The runner's schedule sync. It caches these locally, evaluates the cron
+         *     itself, and POSTs /fire when a slot comes due.
+         *
+         *     Deliberately NOT gated on Runner.ONLINE, unlike claim_next_turn: ONLINE gates
+         *     claiming because claiming ASSIGNS work and takes the one_executing_turn_per_agent
+         *     lock, so an offline claimer would wedge the agent. Sync is a read, and fire only
+         *     produces a QUEUED turn (which stacks freely and is executed by whichever ONLINE
+         *     runner in the tenant claims it). Gating here would impose a boot-order dependency
+         *     — a fresh daemon would have to sync before its first heartbeat.
+         */
+        readonly get: operations["apps_harness_api_sync_schedules"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/schedules/{schedule_id}/fire": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Report a due slot; the server materializes the turn */
+        readonly post: operations["apps_harness_api_fire_schedule_route"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -3476,7 +3700,7 @@ export interface components {
              * Ref Kind
              * @enum {string}
              */
-            readonly ref_kind: "task" | "sync" | "work_product" | "run";
+            readonly ref_kind: "task" | "sync" | "work_product" | "run" | "schedule";
             /** Ref Id */
             readonly ref_id: number;
             /** Title */
@@ -4495,6 +4719,277 @@ export interface components {
                 readonly [key: string]: unknown;
             };
         };
+        /** Page[ScheduleOut] */
+        readonly Page_ScheduleOut_: {
+            /** Items */
+            readonly items: readonly components["schemas"]["ScheduleOut"][];
+            /** Total */
+            readonly total: number;
+            /** Offset */
+            readonly offset: number;
+            /** Limit */
+            readonly limit: number;
+        };
+        /** ScheduleOut */
+        readonly ScheduleOut: {
+            /** Id */
+            readonly id: number;
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Name */
+            readonly name: string;
+            /** Prompt */
+            readonly prompt: string;
+            /** Cron */
+            readonly cron: string;
+            /** Timezone */
+            readonly timezone: string;
+            /** Enabled */
+            readonly enabled: boolean;
+            /** Routing */
+            readonly routing: string;
+            /** Grace Minutes */
+            readonly grace_minutes: number;
+            /** Notify */
+            readonly notify: readonly string[];
+            /** Last Slot */
+            readonly last_slot?: string | null;
+            /**
+             * Fire After
+             * Format: date-time
+             */
+            readonly fire_after: string;
+            /**
+             * Next Runs
+             * @default []
+             */
+            readonly next_runs: readonly string[];
+            /**
+             * Last Status
+             * @default
+             */
+            readonly last_status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /**
+         * ScheduleIn
+         * @description Create payload. Cron + tz validate here so a bad expression 422s as
+         *     problem+json at edit time — a typo that silently never fires is the worst
+         *     failure mode a scheduler has.
+         */
+        readonly ScheduleIn: {
+            /** Name */
+            readonly name: string;
+            /** Prompt */
+            readonly prompt: string;
+            /** Cron */
+            readonly cron: string;
+            /**
+             * Timezone
+             * @default UTC
+             */
+            readonly timezone: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            readonly enabled: boolean;
+            /**
+             * Routing
+             * @default prefer_local
+             */
+            readonly routing: string;
+            /**
+             * Grace Minutes
+             * @default 120
+             */
+            readonly grace_minutes: number;
+            /**
+             * Notify
+             * @default [
+             *       "inbox"
+             *     ]
+             */
+            readonly notify: readonly string[];
+        };
+        /** SchedulePreviewOut */
+        readonly SchedulePreviewOut: {
+            /** Next Runs */
+            readonly next_runs: readonly string[];
+        };
+        /**
+         * SchedulePreviewIn
+         * @description Preview a cron the user is still typing — no row exists yet.
+         */
+        readonly SchedulePreviewIn: {
+            /** Cron */
+            readonly cron: string;
+            /**
+             * Timezone
+             * @default UTC
+             */
+            readonly timezone: string;
+        };
+        /**
+         * SchedulePatch
+         * @description Partial update. Every field optional; the same validators apply to any
+         *     field actually supplied.
+         */
+        readonly SchedulePatch: {
+            /** Name */
+            readonly name?: string | null;
+            /** Prompt */
+            readonly prompt?: string | null;
+            /** Cron */
+            readonly cron?: string | null;
+            /** Timezone */
+            readonly timezone?: string | null;
+            /** Enabled */
+            readonly enabled?: boolean | null;
+            /** Routing */
+            readonly routing?: string | null;
+            /** Grace Minutes */
+            readonly grace_minutes?: number | null;
+            /** Notify */
+            readonly notify?: readonly string[] | null;
+        };
+        /** ItemOut */
+        readonly ItemOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Agent Slug */
+            readonly agent_slug: string;
+            /** Idempotency Key */
+            readonly idempotency_key: string;
+            /** Kind */
+            readonly kind: string;
+            /** Title */
+            readonly title: string;
+            /** Body */
+            readonly body: string;
+            /** Origin */
+            readonly origin: string;
+            /** Origin Ref */
+            readonly origin_ref: {
+                readonly [key: string]: unknown;
+            };
+            /** State */
+            readonly state: string;
+            /** Decision */
+            readonly decision: string;
+            /** Comment */
+            readonly comment: string;
+            /** Decided By */
+            readonly decided_by: string;
+            /** Decided At */
+            readonly decided_at?: string | null;
+            /** Dispatch */
+            readonly dispatch: readonly {
+                readonly [key: string]: unknown;
+            }[];
+            /** Dispatched At */
+            readonly dispatched_at?: string | null;
+            /** Batch Key */
+            readonly batch_key: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** ItemIn */
+        readonly ItemIn: {
+            /**
+             * Kind
+             * @default review
+             * @enum {string}
+             */
+            readonly kind: "review" | "question";
+            /** Title */
+            readonly title: string;
+            /**
+             * Body
+             * @default
+             */
+            readonly body: string;
+            /**
+             * Origin
+             * @default api
+             */
+            readonly origin: string;
+            /** Origin Ref */
+            readonly origin_ref?: {
+                readonly [key: string]: unknown;
+            };
+            /** Dispatch */
+            readonly dispatch?: readonly components["schemas"]["TurnSpecIn"][];
+            /**
+             * Batch Key
+             * @default
+             */
+            readonly batch_key: string;
+            /** Idempotency Key */
+            readonly idempotency_key: string;
+            /** Raised By */
+            readonly raised_by?: string | null;
+        };
+        /**
+         * TurnSpecIn
+         * @description One deferred Turn enqueue. `target_agent=""` means the item's own agent —
+         *     self-dispatch is the default; Ada's fan-out is this field set.
+         */
+        readonly TurnSpecIn: {
+            /**
+             * Prompt
+             * @default
+             */
+            readonly prompt: string;
+            /**
+             * Target Agent
+             * @default
+             */
+            readonly target_agent: string;
+            /**
+             * Origin
+             * @default api
+             */
+            readonly origin: string;
+            /** Origin Ref */
+            readonly origin_ref?: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Routing
+             * @default prefer_local
+             */
+            readonly routing: string;
+        };
+        /** ItemDecideIn */
+        readonly ItemDecideIn: {
+            /**
+             * Decision
+             * @default
+             * @enum {string}
+             */
+            readonly decision: "implement" | "skip" | "defer" | "";
+            /**
+             * Comment
+             * @default
+             */
+            readonly comment: string;
+        };
         /** WorkspaceOut */
         readonly WorkspaceOut: {
             /** Slug */
@@ -4985,6 +5480,19 @@ export interface components {
              * @default
              */
             readonly result_note: string;
+        };
+        /**
+         * ScheduleFireIn
+         * @description The runner's report that a slot came due. The server re-derives nothing —
+         *     but the slot is only honored as an idempotency anchor, never as a claim of
+         *     authority: tenant scoping gates the route.
+         */
+        readonly ScheduleFireIn: {
+            /**
+             * Slot
+             * Format: date-time
+             */
+            readonly slot: string;
         };
         /** VapidKeyOut */
         readonly VapidKeyOut: {
@@ -7294,6 +7802,275 @@ export interface operations {
             };
         };
     };
+    readonly apps_harness_api_schedules_list_schedules: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Page_ScheduleOut_"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_schedules_create_schedule: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ScheduleIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_schedules_preview_schedule: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SchedulePreviewIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SchedulePreviewOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_schedules_delete_schedule: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly schedule_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly apps_harness_api_schedules_update_schedule: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly schedule_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SchedulePatch"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_schedules_run_now: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly schedule_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Accepted */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_list_items: {
+        readonly parameters: {
+            readonly query?: {
+                readonly state?: string;
+                readonly kind?: string;
+                readonly batch?: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ItemOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_create_items: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": readonly components["schemas"]["ItemIn"][];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ItemOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_get_item: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly item_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_decide_item: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly item_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ItemDecideIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_dismiss_item: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly item_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ItemOut"];
+                };
+            };
+        };
+    };
     readonly apps_workspaces_api_list_workspaces: {
         readonly parameters: {
             readonly query?: never;
@@ -7627,6 +8404,26 @@ export interface operations {
             };
         };
     };
+    readonly apps_harness_api_retire_runner: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly apps_harness_api_runner_heartbeat: {
         readonly parameters: {
             readonly query?: never;
@@ -7907,6 +8704,57 @@ export interface operations {
         readonly responses: {
             /** @description OK */
             readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["TurnOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_sync_schedules: {
+        readonly parameters: {
+            readonly query: {
+                readonly runner_id: string;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Page_ScheduleOut_"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_fire_schedule_route: {
+        readonly parameters: {
+            readonly query: {
+                readonly runner_id: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly schedule_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ScheduleFireIn"];
+            };
+        };
+        readonly responses: {
+            /** @description Created */
+            readonly 201: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

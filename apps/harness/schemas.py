@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from typing import Any, Literal
 
 from ninja import Schema
+from pydantic import Field, field_validator
+
+from .cron import validate_cron, validate_timezone
 
 
 class RunnerIn(Schema):
@@ -29,6 +33,13 @@ class RunnerOut(Schema):
     @staticmethod
     def resolve_workspace(obj) -> str | None:
         return obj.workspace_id
+
+    @staticmethod
+    def resolve_status(obj) -> str:
+        # Serve the derived value, not the stored column: heartbeat() writes
+        # ONLINE and nothing ever demotes it, so the raw status lies once a
+        # runner goes quiet. See Runner.live_status.
+        return obj.live_status
 
 
 class HeartbeatIn(Schema):
@@ -127,3 +138,170 @@ class TurnStartIn(Schema):
 class TurnFinishIn(Schema):
     status: str  # done|failed
     result_note: str = ""
+
+
+class ScheduleIn(Schema):
+    """Create payload. Cron + tz validate here so a bad expression 422s as
+    problem+json at edit time — a typo that silently never fires is the worst
+    failure mode a scheduler has."""
+
+    name: str
+    prompt: str
+    cron: str
+    timezone: str = "UTC"
+    enabled: bool = True
+    routing: str = "prefer_local"
+    grace_minutes: int = 120
+    notify: list[str] = ["inbox"]
+
+    @field_validator("cron")
+    @classmethod
+    def _check_cron(cls, v: str) -> str:
+        return validate_cron(v)
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str) -> str:
+        return validate_timezone(v)
+
+    @field_validator("name", "prompt")
+    @classmethod
+    def _non_blank(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError("must not be blank")
+        return v.strip()
+
+
+class SchedulePatch(Schema):
+    """Partial update. Every field optional; the same validators apply to any
+    field actually supplied."""
+
+    name: str | None = None
+    prompt: str | None = None
+    cron: str | None = None
+    timezone: str | None = None
+    enabled: bool | None = None
+    routing: str | None = None
+    grace_minutes: int | None = None
+    notify: list[str] | None = None
+
+    @field_validator("cron")
+    @classmethod
+    def _check_cron(cls, v: str | None) -> str | None:
+        return validate_cron(v) if v is not None else v
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str | None) -> str | None:
+        return validate_timezone(v) if v is not None else v
+
+
+class ScheduleOut(Schema):
+    id: int
+    agent_slug: str
+    name: str
+    prompt: str
+    cron: str
+    timezone: str
+    enabled: bool
+    routing: str
+    grace_minutes: int
+    notify: list[str]
+    last_slot: dt.datetime | None = None
+    # The anchor the runner MUST pass as due_slot(after=...). Server-computed as
+    # `last_slot or created_at` so the runner cannot get the fallback wrong.
+    # Without it a fresh schedule (last_slot=None) fires once for the slot BEFORE
+    # it existed — a schedule created Wednesday would immediately owe last
+    # Friday's report. See the runner-side section.
+    fire_after: dt.datetime
+    next_runs: list[dt.datetime] = []
+    last_status: str = ""
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class SchedulePreviewIn(Schema):
+    """Preview a cron the user is still typing — no row exists yet."""
+
+    cron: str
+    timezone: str = "UTC"
+
+    @field_validator("cron")
+    @classmethod
+    def _check_cron(cls, v: str) -> str:
+        return validate_cron(v)
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_tz(cls, v: str) -> str:
+        return validate_timezone(v)
+
+
+class SchedulePreviewOut(Schema):
+    next_runs: list[dt.datetime]
+
+
+class ScheduleFireIn(Schema):
+    """The runner's report that a slot came due. The server re-derives nothing —
+    but the slot is only honored as an idempotency anchor, never as a claim of
+    authority: tenant scoping gates the route."""
+
+    slot: dt.datetime
+
+
+# ---------------------------------------------------------------------------
+# Items — the supervisor's queue (the dual of Turn)
+# ---------------------------------------------------------------------------
+
+
+class TurnSpecIn(Schema):
+    """One deferred Turn enqueue. `target_agent=""` means the item's own agent —
+    self-dispatch is the default; Ada's fan-out is this field set."""
+
+    prompt: str = ""
+    target_agent: str = ""
+    origin: str = "api"
+    origin_ref: dict[str, Any] = Field(default_factory=dict)
+    routing: str = "prefer_local"
+
+
+class ItemIn(Schema):
+    # No `notify` kind: an FYI asks nothing of you, and that is the timeline.
+    kind: Literal["review", "question"] = "review"
+    title: str = Field(min_length=1, max_length=300)
+    body: str = ""
+    origin: str = "api"
+    origin_ref: dict[str, Any] = Field(default_factory=dict)
+    dispatch: list[TurnSpecIn] = Field(default_factory=list)
+    batch_key: str = ""
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    raised_by: uuid.UUID | None = None
+
+
+class ItemOut(Schema):
+    id: uuid.UUID
+    agent_slug: str
+    # Echoed back so a producer can reconcile its batch against what landed, and so
+    # the UI has a stable, human-readable key for test ids.
+    idempotency_key: str
+    kind: str
+    title: str
+    body: str
+    origin: str
+    origin_ref: dict[str, Any]
+    state: str
+    decision: str
+    comment: str
+    decided_by: str
+    decided_at: dt.datetime | None = None
+    dispatch: list[dict[str, Any]]
+    dispatched_at: dt.datetime | None = None
+    batch_key: str
+    created_at: dt.datetime
+
+
+class ItemDecideIn(Schema):
+    # CLOSED set — a generic inbox must render buttons for an item it has never
+    # seen. "" is valid for a question, whose answer is the comment.
+    decision: Literal["implement", "skip", "defer", ""] = ""
+    comment: str = ""

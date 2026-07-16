@@ -294,3 +294,14 @@ def test_pinned_matching_workspace_runner_is_listed_and_actionable(owner_client,
     )
     assert hb.status_code == 200
     assert Runner.objects.get(pk=runner.id).last_heartbeat_at is not None
+
+
+def test_stranger_cannot_retire_someone_elses_runner(owner_client, stranger_client, workspace):
+    rid = owner_client.post(
+        "/api/harness/runners/",
+        {"name": "jj-mbp", "kind": "emdash", "capabilities": {"agents": ["echo"]}},
+        content_type="application/json",
+    ).json()["id"]
+    resp = stranger_client.post(f"/api/harness/runners/{rid}/retire")
+    assert resp.status_code == 404
+    assert Runner.objects.get(pk=rid).status != Runner.RETIRED  # untouched
