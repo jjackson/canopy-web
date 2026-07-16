@@ -1,10 +1,19 @@
-"""Emdash adapter: trigger a visible emdash session by inserting a queued
-automation run. Unsupported-surface rules:
+"""Emdash sqlite adapter — two very different halves. Keep them straight:
+
+**Writes (legacy injection, `executor="inject"`).** Trigger a visible emdash session
+by inserting a queued automation run. Superseded by the CDP executor, which drives
+emdash's real UI instead. Unsupported-surface rules:
 
 - NEVER write when the Drizzle migration id differs from the vetted pin.
 - Only two writes exist: INSERT into automation_runs, UPDATE tasks.type.
 - Everything else (task creation, worktree, session spawn) is emdash's own
   runtime reacting to the queued row — verified by live experiment 2026-07-05.
+
+**Reads (`task_state`, used by the CDP executor).** The CDP rewrite dropped DB
+*writes* for good reasons above — but took reads down with it, and reads were never
+the risk. A read cannot corrupt emdash, so it is NOT behind the vetted pin and stays
+correct across emdash upgrades. The CDP path asks sqlite "does this task exist?"
+because the DOM cannot answer it (see `task_state`).
 """
 from __future__ import annotations
 
@@ -13,6 +22,7 @@ import json
 import sqlite3
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator
 
 VETTED_TABLES = ["automations", "automation_runs", "tasks"]
@@ -131,6 +141,39 @@ def run_status(db_path: str, run_id: str) -> str | None:
     with _db(db_path) as conn:
         row = conn.execute("SELECT status FROM automation_runs WHERE id=?", (run_id,)).fetchone()
     return row["status"] if row else None
+
+
+def task_state(db_path: str, name: str) -> str:
+    """READ-ONLY: is the emdash task `name` live, archived, or absent in THIS account's
+    emdash? Returns "live" | "archived" | "absent" | "unknown".
+
+    This is the source of truth for the session-reuse decision, because the DOM is not:
+    emdash VIRTUALIZES the sidebar, so a task scrolled out of view isn't in the page at
+    all — indistinguishable, to a DOM query, from a task that never existed. That false
+    negative made the runner spawn a duplicate session and orphan the live one's context
+    (observed 2026-07-15: eva's org-research thread, task provably present and
+    un-archived, reported TASK_NOT_FOUND). sqlite always knows, in one query.
+
+    "unknown" (missing/unreadable/drifted DB) is deliberately distinct from "absent": a
+    read failure must never be mistaken for "gone", or we're back to duplicating live
+    sessions. Callers degrade to the CDP verdict on "unknown" — see execute.execute_turn.
+
+    Names aren't unique in emdash's schema, so the newest row wins: an old archived
+    namesake must not report a live task as gone.
+    """
+    if not Path(db_path).exists():          # don't let sqlite3.connect() create one
+        return "unknown"
+    try:
+        with _db(db_path) as conn:
+            row = conn.execute(
+                "SELECT archived_at FROM tasks WHERE name=? ORDER BY created_at DESC LIMIT 1",
+                (name,),
+            ).fetchone()
+    except sqlite3.Error:
+        return "unknown"
+    if row is None:
+        return "absent"
+    return "archived" if row["archived_at"] else "live"
 
 
 def find_task(db_path: str, automation_run_id: str) -> dict | None:

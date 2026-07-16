@@ -34,20 +34,27 @@ jobs:
       - name: Run pytest
         run: uv run pytest
 
-      # The root suite sets `addopts = --ignore=packages`, so the in-repo
-      # Django-free packages need their own step or their tests never run in CI.
-      # canopy_cron's DST cases are the reason the cron math is shared at all —
-      # they must actually execute somewhere.
-      - name: Run canopy_cron tests (plain pytest, no Django)
+      # The root suite sets --ignore=packages, so each standalone in-repo package
+      # needs its own invocation from its own dir — otherwise its tests never run
+      # on a PR. Running from the package dir (rather than --project ../..) also
+      # resolves each package's OWN declared deps, so the dependency wiring is
+      # exercised rather than masked by the root env.
+      #
+      # canopy_cron holds the cron/DST slot math that the server's preview and the
+      # runner's firing SHARE — one implementation precisely so the UI can't say
+      # "Fridays" while the runner fires Thursdays. Its DST cases are the reason
+      # the extraction exists; they must actually execute somewhere.
+      - name: Run canopy_cron tests
         working-directory: packages/canopy_cron
-        run: uv run --project ../.. pytest -q
+        run: uv run --with pytest pytest -q
 
-      # Same deal for the runner: it decides WHICH slot is due and fires it, so its
-      # suite is the only thing standing between a cron typo and a fleet that
-      # silently never fires (or fires a slot that predates its schedule).
-      - name: Run canopy_runner tests (plain pytest, no Django)
+      # The runner decides WHICH slot is due and fires it, so its suite is the only
+      # thing standing between a scheduling bug and a fleet that silently never
+      # fires (or fires a slot predating its schedule). Also covers the
+      # session-reuse regressions.
+      - name: Run canopy_runner tests
         working-directory: packages/canopy_runner
-        run: uv run --project ../.. pytest -q
+        run: uv run --with pytest pytest
 
   test-frontend:
     name: Frontend build

@@ -5,9 +5,16 @@ emdash over CDP to either REUSE an existing session (continuity) or CREATE a fre
 one (rehydrating context from the durable SessionLink). The WORK then happens in
 the visible, intervenable emdash session.
 
-Session reuse is verify-before-reuse: the control plane only proposes reuse when
-THIS runner's macOS host owns the live session; if the emdash task turns out to be
-gone (archived, or belongs to the other account), we fall back to create+rehydrate.
+Session reuse is verify-before-reuse, in two steps with two different authorities:
+
+1. The control plane proposes reuse only when THIS runner's macOS host owns the live
+   session (emdash is per-macOS-account; see SessionLink).
+2. emdash's OWN sqlite decides whether that session still exists — `emdash.task_state`,
+   a pure read. The DOM cannot answer this: the sidebar is virtualized, so an off-screen
+   task looks identical to a deleted one, and believing that duplicated live sessions.
+
+Genuinely gone (archived/absent) → create + rehydrate. Present but undriveable → FAIL
+the turn; a duplicate is worse than a retry, because it orphans the live context.
 """
 from __future__ import annotations
 
@@ -15,7 +22,7 @@ import datetime as dt
 import logging
 import re
 
-from . import cdp_control
+from . import cdp_control, emdash
 
 logger = logging.getLogger("canopy_runner.execute")
 
@@ -56,36 +63,62 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
 
     plan = client.resolve_session(runner_id, agent, thread_key)
     client.start(turn_id)
+    # Log the plan: "why did it create a new session?" must be answerable from the log
+    # alone. Without this the reuse decision was invisible and every diagnosis started
+    # by guessing (see the 2026-07-15 eva org-research investigation).
+    logger.info("resolve turn=%s agent=%s thread=%s -> reuse=%s task=%r link=%s",
+                turn_id, agent, thread_key, plan.get("reuse"),
+                plan.get("emdash_task_id") or "", plan.get("link_id"))
 
     # --- reuse the existing session, if the control plane says this runner owns it ---
     if plan.get("reuse") and plan.get("emdash_task_id"):
         task = plan["emdash_task_id"]
-        try:
-            cdp_control.open_and_send(task, work_prompt, port=cfg.cdp_port)
-        except cdp_control.CDPError as exc:
-            if "TASK_NOT_FOUND" not in str(exc):
-                # The task EXISTS but the send glitched (transient). Creating a fresh
-                # session here would DUPLICATE the live one and orphan its context —
-                # the exact bug that spawned two Hal sessions. Fail the turn instead
-                # (it can be retried); never duplicate.
-                logger.error("reuse send FAILED on existing '%s' (agent=%s): %s — NOT creating "
-                             "a duplicate; failing the turn for retry", task, agent, str(exc)[:200])
-                client.post_events(turn_id, [{"kind": "error",
-                    "payload": {"status": "reuse_send_failed", "task": task, "detail": str(exc)[:300]}}])
-                client.fail_turn(turn_id, f"reuse send failed on existing session '{task}' — "
-                                          f"not spawning a duplicate; retry")
-                return f"failed:{turn_id}"
-            logger.warning("reuse: task '%s' is gone (agent=%s) — creating fresh + rehydrating", task, agent)
+        # sqlite — NOT the DOM — decides whether the session still exists. emdash
+        # virtualizes its sidebar, so "not in the page" never meant "not real"; believing
+        # it duplicated live sessions. See emdash.task_state. "unknown" = no truth
+        # available, so we defer to CDP rather than wedge every turn.
+        state = emdash.task_state(cfg.emdash_db, task)
+        if state in ("absent", "archived"):
+            logger.warning("reuse: task '%s' is %s per emdash's DB (agent=%s) — creating "
+                           "fresh + rehydrating", task, state, agent)
             client.post_events(turn_id, [{"kind": "status",
-                "payload": {"status": "reuse_task_gone", "task": task}}])
+                "payload": {"status": "reuse_task_gone", "task": task, "task_state": state}}])
         else:
-            logger.info("REUSE  turn=%s agent=%s thread=%s -> existing session '%s' (no new claude session)",
-                        turn_id, agent, thread_key, task)
-            client.post_events(turn_id, [{"kind": "status",
-                "payload": {"status": "reused_session", "task": task, "thread_key": thread_key}}])
-            client.record_session(runner_id, agent, thread_key, emdash_task_id=task)
-            client.finish(turn_id, note=f"delivered to existing session '{task}'")
-            return f"reused:{turn_id}"
+            try:
+                cdp_control.open_and_send(task, work_prompt, port=cfg.cdp_port)
+            except cdp_control.CDPError as exc:
+                if state == "unknown" and "TASK_NOT_FOUND" in str(exc):
+                    # Degraded: emdash's DB was unreadable, so CDP's verdict is all we
+                    # have. Loud, because reuse is running blind until the db path is fixed.
+                    logger.warning("reuse: emdash DB unreadable at %r — trusting CDP's "
+                                   "TASK_NOT_FOUND for '%s' (agent=%s); fix the db path to "
+                                   "make reuse deterministic", cfg.emdash_db, task, agent)
+                    client.post_events(turn_id, [{"kind": "status",
+                        "payload": {"status": "reuse_task_gone", "task": task, "task_state": state}}])
+                else:
+                    # The task EXISTS (sqlite says so) but we couldn't drive it. Creating
+                    # a fresh session here would DUPLICATE the live one and orphan its
+                    # context — the bug that spawned two Hal sessions, and that split
+                    # eva's org-research thread across three cold sessions. Fail the turn
+                    # instead (it retries); never duplicate.
+                    logger.error("reuse FAILED on '%s' which emdash's DB says is %s (agent=%s): "
+                                 "%s — NOT creating a duplicate; failing the turn for retry",
+                                 task, state, agent, str(exc)[:200])
+                    client.post_events(turn_id, [{"kind": "error",
+                        "payload": {"status": "reuse_send_failed", "task": task,
+                                    "task_state": state, "detail": str(exc)[:300]}}])
+                    client.fail_turn(turn_id, f"reuse failed on existing session '{task}' "
+                                              f"({state} per emdash's DB) — not spawning a "
+                                              f"duplicate; retry")
+                    return f"failed:{turn_id}"
+            else:
+                logger.info("REUSE  turn=%s agent=%s thread=%s -> existing session '%s' (no new claude session)",
+                            turn_id, agent, thread_key, task)
+                client.post_events(turn_id, [{"kind": "status",
+                    "payload": {"status": "reused_session", "task": task, "thread_key": thread_key}}])
+                client.record_session(runner_id, agent, thread_key, emdash_task_id=task)
+                client.finish(turn_id, note=f"delivered to existing session '{task}'")
+                return f"reused:{turn_id}"
 
     # --- create a fresh session, rehydrating durable context when we have it ---
     prompt = work_prompt
