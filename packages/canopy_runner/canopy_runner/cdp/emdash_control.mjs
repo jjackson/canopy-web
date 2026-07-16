@@ -26,6 +26,41 @@ try {
 const page = browser.contexts()[0]?.pages()[0];
 if (!page) fail('no emdash renderer page found over CDP');
 
+// The sidebar VIRTUALIZES rows — anything scrolled out of view is not in the DOM at
+// all, so a one-shot querySelector can't tell "absent" from "off-screen". Scan the
+// scroller (.overflow-y-auto) top→bottom, letting rows render, until `label` appears.
+// Both create ("New task for X") and open-send ("Open task X") need this; open-send
+// not having it is what made live sessions look deleted and get duplicated.
+const scrollToFind = async (label) => {
+  const scrollBy = (val) => page.evaluate((v) => {
+    const sc = [...document.querySelectorAll('.overflow-y-auto')].sort((a, b) => b.scrollHeight - a.scrollHeight)[0];
+    if (!sc) return 0;
+    if (v === 'top') sc.scrollTop = 0; else sc.scrollTop += v;
+    return sc.scrollTop;
+  }, val);
+  const find = () => page.evaluate((l) => {
+    const btn = [...document.querySelectorAll('button')].find(x => x.getAttribute('aria-label') === l);
+    if (btn) { btn.scrollIntoView({ block: 'center' }); return true; }
+    return false;
+  }, label);
+  await scrollBy('top');
+  await page.waitForTimeout(200);
+  let lastTop = -1;
+  for (let i = 0; i < 40; i++) {
+    if (await find()) return true;
+    const top = await scrollBy(280);          // step down
+    await page.waitForTimeout(160);
+    if (top === lastTop) break;               // reached the bottom
+    lastTop = top;
+  }
+  return await find();
+};
+
+const clickLabel = (label) => page.evaluate((l) => {
+  const btn = [...document.querySelectorAll('button')].find(x => x.getAttribute('aria-label') === l);
+  if (!btn) return false; btn.click(); return true;
+}, label);
+
 try {
   if (command === 'list') {
     const data = await page.evaluate(() => {
@@ -42,35 +77,10 @@ try {
     const taskNames = () => page.evaluate(() =>
       [...document.querySelectorAll('button')].map(b => b.getAttribute('aria-label') || '')
         .filter(t => t.startsWith('Open task ')).map(t => t.slice('Open task '.length)));
-    // The project sidebar VIRTUALIZES rows — a project scrolled out of view isn't in
-    // the DOM at all. Scan the sidebar scroller (.overflow-y-auto) top→bottom, letting
-    // rows render, until the target project's "New task for X" button appears.
-    const sidebarScrollTop = (v) => page.evaluate((val) => {
-      const sc = [...document.querySelectorAll('.overflow-y-auto')].sort((a, b) => b.scrollHeight - a.scrollHeight)[0];
-      if (!sc) return 0;
-      if (val === 'top') sc.scrollTop = 0; else sc.scrollTop += val;
-      return sc.scrollTop;
-    });
-    let haveBtn = false;
-    await sidebarScrollTop('top');
-    await page.waitForTimeout(200);
-    let lastTop = -1;
-    for (let i = 0; i < 40 && !haveBtn; i++) {
-      haveBtn = await page.evaluate((p) => {
-        const btn = [...document.querySelectorAll('button')].find(x => x.getAttribute('aria-label') === `New task for ${p}`);
-        if (btn) { btn.scrollIntoView({ block: 'center' }); return true; }
-        return false;
-      }, project);
-      if (haveBtn) break;
-      const top = await sidebarScrollTop(280);   // step down
-      await page.waitForTimeout(160);
-      if (top === lastTop) break;                 // reached the bottom
-      lastTop = top;
+    if (!await scrollToFind(`New task for ${project}`)) {
+      fail(`no "New task for ${project}" control — project "${project}" not found in the emdash sidebar`);
     }
-    if (!haveBtn) fail(`no "New task for ${project}" control — project "${project}" not found in the emdash sidebar`);
-    await page.evaluate((p) => {
-      [...document.querySelectorAll('button')].find(x => x.getAttribute('aria-label') === `New task for ${p}`)?.click();
-    }, project);
+    await clickLabel(`New task for ${project}`);
     await page.waitForTimeout(1000);
     // Set a deterministic task NAME so we don't have to detect it afterward (the
     // list-diff is unreliable under sidebar virtualization). The name input is the
@@ -112,19 +122,21 @@ try {
     out({ ok: true, action: 'created', task: finalName });
 
   } else if (command === 'open-send') {
-    // REUSE: open an EXISTING task and send text into its live terminal. Fails if the
-    // task isn't present (e.g. it belongs to another macOS account's emdash) so the
-    // caller can fall back to create+rehydrate.
+    // REUSE: open an EXISTING task and send text into its live terminal. Scroll the
+    // virtualized sidebar to reach it — a one-shot query only sees the ~visible rows,
+    // so with dozens of tasks the target is usually absent from the DOM despite being
+    // live (observed 2026-07-15: eva's org-research session, present in emdash's DB,
+    // reported TASK_NOT_FOUND and duplicated).
     const { task, text } = args;
-    const opened = await page.evaluate((t) => {
-      const b = [...document.querySelectorAll('button')].find(x => x.getAttribute('aria-label') === `Open task ${t}`);
-      if (!b) return false; b.click(); return true;
-    }, task);
-    // TASK_NOT_FOUND is the ONLY condition under which the caller should create a
-    // fresh session — a genuinely-absent task (archived, or another macOS account's).
-    // Any later failure means the task EXISTS but the interaction glitched: the caller
-    // must NOT create a duplicate.
-    if (!opened) fail(`TASK_NOT_FOUND: no task "${task}" in this emdash (archived, or another macOS account)`);
+    const found = await scrollToFind(`Open task ${task}`);
+    // TASK_NOT_FOUND is a claim about the WHOLE sidebar, only trustworthy now that we
+    // scan all of it. Even so the caller cross-checks it against emdash's sqlite before
+    // creating anything, and any LATER failure here means the task exists but the
+    // interaction glitched — the caller must NOT create a duplicate.
+    if (!found) fail(`TASK_NOT_FOUND: no task "${task}" in this emdash (archived, or another macOS account)`);
+    if (!await clickLabel(`Open task ${task}`)) {
+      fail(`could not click task "${task}" after locating it in the sidebar`);
+    }
     await page.waitForTimeout(1200);
     // Focus the ACTIVE terminal's input, then type. xterm's real input is an
     // off-screen `.xterm-helper-textarea`, so a Playwright .click() fails its

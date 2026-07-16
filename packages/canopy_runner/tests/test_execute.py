@@ -3,11 +3,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from canopy_runner import cdp_control, execute
+from canopy_runner import cdp_control, emdash, execute
 
 
 def _cfg():
-    return SimpleNamespace(cdp_port=9222, runner_id="r-1")
+    return SimpleNamespace(cdp_port=9222, runner_id="r-1", emdash_db="/fake/emdash4.db")
+
+
+@pytest.fixture(autouse=True)
+def _db_says_live(monkeypatch):
+    """Default: sqlite reports the linked task present. Tests that care override it."""
+    monkeypatch.setattr(emdash, "task_state", lambda db, name: "live")
 
 
 class FakeClient:
@@ -60,18 +66,51 @@ def test_reuse_sends_into_existing_session(monkeypatch):
     assert client.started == ["t-1"] and client.finished and "existing session" in client.finished[0][1]
 
 
-def test_reuse_falls_back_to_create_only_when_task_not_found(monkeypatch):
-    def gone(task, text, port=9222):
-        raise cdp_control.CDPError('TASK_NOT_FOUND: no task "archived-one"')
+@pytest.mark.parametrize("state", ["archived", "absent"])
+def test_db_says_gone_creates_fresh_without_asking_the_dom(monkeypatch, state):
+    """sqlite is the truth for existence. A genuinely-gone task creates + rehydrates —
+    and never pays for a CDP round trip to learn what one query already answered."""
+    monkeypatch.setattr(emdash, "task_state", lambda db, name: state)
+    monkeypatch.setattr(cdp_control, "open_and_send",
+                        lambda *a, **k: pytest.fail("must not touch the DOM once sqlite says gone"))
     created = {}
-    monkeypatch.setattr(cdp_control, "open_and_send", gone)
     monkeypatch.setattr(cdp_control, "create_task",
                         lambda project, prompt, task_name="", port=9222: created.update(project=project, prompt=prompt) or {"task": "new-task-x"})
-    client = FakeClient({"reuse": True, "emdash_task_id": "archived-one", "summary": "prior ctx"})
+    client = FakeClient({"reuse": True, "emdash_task_id": "gone-one", "summary": "prior ctx"})
     result = execute.execute_turn(_cfg(), client, "r-1", _turn(origin_ref={"thread_id": "thr-1"}))
     assert result.startswith("created:t-1:new-task-x")
     assert created["project"] == "hal"
     assert "prior ctx" in created["prompt"]      # rehydrated on fallback
+
+
+def test_dom_not_found_never_duplicates_a_task_sqlite_says_is_live(monkeypatch):
+    """THE eva org-research bug (2026-07-15). The sidebar virtualizes, so a live task
+    scrolled out of view reports TASK_NOT_FOUND. Trusting that spawned a cold duplicate
+    and orphaned the real session's context. sqlite outranks the DOM: fail, don't fork."""
+    def not_found(task, text, port=9222):
+        raise cdp_control.CDPError('TASK_NOT_FOUND: no task "eva-org-research-790c-0715-1352"')
+    monkeypatch.setattr(cdp_control, "open_and_send", not_found)
+    monkeypatch.setattr(cdp_control, "create_task",
+                        lambda *a, **k: pytest.fail("must NOT duplicate a live session"))
+    client = FakeClient({"reuse": True, "emdash_task_id": "eva-org-research-790c-0715-1352",
+                         "summary": "ctx"})
+    result = execute.execute_turn(_cfg(), client, "r-1", _turn(origin_ref={"thread_id": "thr-1"}))
+    assert result == "failed:t-1"
+    assert client.recorded == []      # link still points at the original session
+
+
+def test_unreadable_db_degrades_to_the_dom_verdict(monkeypatch):
+    """No truth available (db missing/misconfigured) — don't wedge every turn; fall back
+    to the legacy CDP verdict, which is no worse than the pre-sqlite behaviour."""
+    monkeypatch.setattr(emdash, "task_state", lambda db, name: "unknown")
+    def not_found(task, text, port=9222):
+        raise cdp_control.CDPError('TASK_NOT_FOUND: no task "x"')
+    monkeypatch.setattr(cdp_control, "open_and_send", not_found)
+    monkeypatch.setattr(cdp_control, "create_task",
+                        lambda project, prompt, task_name="", port=9222: {"task": "new-x"})
+    client = FakeClient({"reuse": True, "emdash_task_id": "x", "summary": ""})
+    result = execute.execute_turn(_cfg(), client, "r-1", _turn(origin_ref={"thread_id": "thr-1"}))
+    assert result.startswith("created:t-1:new-x")
 
 
 def test_transient_reuse_send_failure_never_duplicates(monkeypatch):

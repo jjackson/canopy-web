@@ -11,3 +11,12 @@ canopy-runner = "canopy_runner.main:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+# The runner's tests run with PLAIN pytest — no pytest-django, no DB (the package is
+# stdlib-only). Without this block pytest walks up to the repo-root pyproject and
+# applies its DJANGO_SETTINGS_MODULE, which fails to import here. Same convention as
+# packages/canopy_agent_runs; the root suite skips this dir via `addopts = --ignore=packages`.
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

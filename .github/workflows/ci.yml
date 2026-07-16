@@ -34,6 +34,13 @@ jobs:
       - name: Run pytest
         run: uv run pytest
 
+      # The root suite sets --ignore=packages, so the standalone runner package (plain
+      # pytest, stdlib-only, no Django/DB) needs its own invocation from its own dir —
+      # otherwise its tests, incl. the session-reuse regressions, never run on a PR.
+      - name: Run canopy_runner tests
+        working-directory: packages/canopy_runner
+        run: uv run --with pytest pytest
+
   test-frontend:
     name: Frontend build
     runs-on: ubuntu-latest
