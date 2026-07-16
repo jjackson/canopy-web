@@ -370,6 +370,31 @@ def finish_turn(request: HttpRequest, turn_id: uuid.UUID, payload: TurnFinishIn)
     return result
 
 
+@router.post("/turns/{turn_id}/cancel", response=TurnOut)
+def cancel_turn(request: HttpRequest, turn_id: uuid.UUID):
+    """Cancel a QUEUED turn that has not started — the misfire case the phone
+    composer needs (dispatch the wrong command, take it back before a runner
+    claims it). Records it FAILED with a cancelled note; there is no separate
+    CANCELLED status because nothing downstream distinguishes the two, and adding
+    one would touch the TERMINAL set every sweep and projection depends on.
+
+    QUEUED only. A claimed/running turn is already executing in an emdash session;
+    stopping that is a racy, different operation (the runner owns the lease) and
+    is deliberately out of scope — cancel is 'un-queue', not 'kill'.
+    """
+    turn = _turn_or_404(request, turn_id)
+    if turn.status in Turn.TERMINAL:
+        return turn  # idempotent
+    if turn.status != Turn.QUEUED:
+        raise ProblemError(
+            409, "Turn not cancelable",
+            detail=f"status={turn.status}; only a queued turn can be cancelled",
+        )
+    return services.finish_turn(
+        turn, status=Turn.FAILED, result_note="cancelled by supervisor", allow_queued=True
+    )
+
+
 # --------------------------------------------------------------------------------------
 # AgentSchedule — the runner-facing half. The supervisor's CRUD lives in api_schedules.py;
 # these two routes are what the laptop daemon actually calls: sync, then report a due slot.
