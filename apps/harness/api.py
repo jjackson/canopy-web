@@ -17,6 +17,7 @@ from apps.workspaces import services as wsvc
 
 from . import services
 from .models import AgentSchedule, Runner, Turn
+from .schedule_services import serialize_schedule
 from .schemas import (
     HeartbeatIn,
     RecordSessionIn,
@@ -419,8 +420,6 @@ def sync_schedules(request: HttpRequest, runner_id: uuid.UUID, limit: int = 200)
     runner in the tenant claims it). Gating here would impose a boot-order dependency
     — a fresh daemon would have to sync before its first heartbeat.
     """
-    from .schedule_services import serialize_schedule
-
     runner = _runner_or_404(request, runner_id)
     items = [ScheduleOut(**serialize_schedule(s)) for s in _runner_schedule_qs(runner)]
     return paginate(items, offset=0, limit=clamp_limit(limit))
