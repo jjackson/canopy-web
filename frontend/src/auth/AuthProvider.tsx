@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { bootstrapCsrf } from '@/api/csrf'
+import { noteAuthSucceeded } from '@/api/client.v2'
 import { getMe, type MeOut as MeResponse } from '@/api/me'
 
 type AuthState =
@@ -41,8 +42,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await bootstrapCsrf()
         const me = await getMe()
         if (cancelled) return
-        if (me) setState({ status: 'authenticated', user: me })
-        else setState({ status: 'anonymous', user: null })
+        if (me) {
+          // Reset the login-loop guard: this session took, so a genuine later
+          // expiry gets its own clean single bounce (see client.v2 redirectToLogin).
+          noteAuthSucceeded()
+          setState({ status: 'authenticated', user: me })
+        } else setState({ status: 'anonymous', user: null })
       } catch {
         if (!cancelled) setState({ status: 'anonymous', user: null })
       }
