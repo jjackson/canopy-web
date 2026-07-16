@@ -5,24 +5,13 @@ requires-python = ">=3.11"
 [[package]]
 name = "canopy-cron"
 version = "0.1.0"
-source = { editable = "../canopy_cron" }
+source = { editable = "." }
 dependencies = [
     { name = "croniter" },
 ]
 
 [package.metadata]
 requires-dist = [{ name = "croniter", specifier = ">=6.0,<7.0" }]
-
-[[package]]
-name = "canopy-runner"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "canopy-cron" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "canopy-cron", editable = "../canopy_cron" }]
 
 [[package]]
 name = "croniter"

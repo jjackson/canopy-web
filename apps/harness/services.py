@@ -14,6 +14,8 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
 from django.utils import timezone
 
+from apps.workspaces import services as wsvc
+
 from .models import (
     HEARTBEAT_ONLINE_WINDOW,
     AgentSchedule,
@@ -133,20 +135,38 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
         # Phase 0 has no cloud runners, so keep the simple rule: cloud never
         # takes local_only.
     busy_agents = Turn.objects.filter(status__in=EXECUTING).values("agent_id")
-    # Tenant boundary: capabilities is a caller-supplied routing hint, not a
-    # security boundary (a caller can declare whatever agent slugs it likes at
-    # pairing). The workspace is the actual gate, applied as an intersection
-    # with the capabilities filter above, not an alternative to it. A tenanted
-    # runner may only claim turns whose agent is in that same workspace, or
-    # whose agent predates tenancy (null workspace — the legacy-ungated path).
-    # An untenanted runner may only claim turns whose agent is ALSO untenanted
-    # — this null<->null rule is what keeps the pre-tenancy test suite (runner
-    # + agent both created with no workspace) working without opening a hole.
-    # Mirrors the same Q-based tenant filter in api.py::list_turns.
-    if runner.workspace_id:
-        tenant_q = Q(agent__workspace_id=runner.workspace_id) | Q(agent__workspace_id__isnull=True)
-    else:
-        tenant_q = Q(agent__workspace_id__isnull=True)
+    # Tenant boundary. capabilities is a caller-supplied routing hint declared at
+    # pairing and never validated (b4f5ead, Critical); the workspace is the actual
+    # gate, and the two INTERSECT — one never substitutes for the other.
+    #
+    # The tenant derives from `paired_by` — the human who paired the runner — NOT
+    # from the Runner.workspace FK. A runner.workspace is ONE workspace, while the
+    # agent fleet deliberately spans several ("link each agent to its OWN
+    # workspace (fleet spans workspaces)") behind a single laptop runner. Scoping
+    # by the FK took production down: the sole runner was backfilled onto `dimagi`
+    # while ace/ada/echo/hal live in `connect`, so 4 of 5 agents could not execute
+    # any turn and their turns sat QUEUED indefinitely. This also makes the rule
+    # agree with _runner_schedule_qs, which already derives tenancy this way.
+    #
+    # Still a real boundary, and the b4f5ead exploit stays closed: paired_by is
+    # server-assigned from request.user at pairing, so unlike capabilities it is
+    # not attacker-controlled. An outsider pairing a runner that declares a
+    # victim's agent slug gets only THEIR OWN workspaces, so the victim's agent
+    # stays unclaimable. Conversely a runner paired by someone who is a member of
+    # a workspace may claim its agents' turns — that human can already drive those
+    # agents through the UI, so there is no escalation.
+    #
+    # NULL paired_by fails closed for anything tenanted: no pairer means no
+    # identity to derive a tenant from, so the slug set is empty and `__in=set()`
+    # matches nothing (inferring a tenant from the FK would be an escalation — an
+    # orphaned runner would keep claiming for a workspace whose owner is gone).
+    #
+    # The null-workspace leg stays: agents predating tenancy are ungated here
+    # exactly as in list_turns / _runner_schedule_qs, and it is what the
+    # pre-tenancy suite (runner + agent both null) runs on. Not a production hole
+    # — agents/0007 backfilled every live agent onto a workspace.
+    ws_slugs = wsvc.user_workspace_slugs(runner.paired_by) if runner.paired_by_id else set()
+    tenant_q = Q(agent__workspace_id__in=ws_slugs) | Q(agent__workspace_id__isnull=True)
     candidates = (
         Turn.objects.filter(status=Turn.QUEUED, agent__slug__in=slugs)
         .exclude(agent_id__in=busy_agents)

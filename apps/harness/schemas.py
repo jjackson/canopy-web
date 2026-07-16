@@ -5,10 +5,9 @@ import datetime as dt
 import uuid
 from typing import Any, Literal
 
+from canopy_cron import validate_cron, validate_timezone
 from ninja import Schema
 from pydantic import Field, field_validator
-
-from .cron import validate_cron, validate_timezone
 
 
 class RunnerIn(Schema):

@@ -323,13 +323,24 @@ requires-dist = [
 provides-extras = ["drive"]
 
 [[package]]
+name = "canopy-cron"
+version = "0.1.0"
+source = { editable = "packages/canopy_cron" }
+dependencies = [
+    { name = "croniter" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "croniter", specifier = ">=6.0,<7.0" }]
+
+[[package]]
 name = "canopy-web"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "canopy-agent-runs" },
-    { name = "croniter" },
+    { name = "canopy-cron" },
     { name = "django" },
     { name = "django-allauth", extra = ["socialaccount"] },
     { name = "django-cors-headers" },
@@ -362,7 +373,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40,<1.0" },
     { name = "canopy-agent-runs", editable = "packages/canopy_agent_runs" },
-    { name = "croniter", specifier = ">=6.0,<7.0" },
+    { name = "canopy-cron", editable = "packages/canopy_cron" },
     { name = "django", specifier = ">=5.0,<6.0" },
     { name = "django-allauth", extras = ["socialaccount"], specifier = ">=0.61,<1.0" },
     { name = "django-cors-headers", specifier = ">=4.3,<5.0" },

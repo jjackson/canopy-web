@@ -5,8 +5,7 @@ import datetime as dt
 from zoneinfo import ZoneInfo
 
 import pytest
-
-from apps.harness.cron import due_slot, next_slots, validate_cron, validate_timezone
+from canopy_cron import due_slot, next_slots, validate_cron, validate_timezone
 
 FRIDAYS_9AM = "0 9 * * 5"
 NY = "America/New_York"
