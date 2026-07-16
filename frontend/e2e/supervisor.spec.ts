@@ -101,6 +101,12 @@ test.describe('/supervisor', () => {
     await expect(page.getByTestId('composer-sent')).toBeVisible()
     expect(url).toContain('/api/w/dimagi/harness/turns/')
     expect(posted).toMatchObject({ project: 'canopy-web', prompt: 'fix the header spacing' })
+    // A stable per-(user,repo) thread_key so the NEXT dispatch continues this
+    // session rather than forking a fresh emdash task — "drive the repo" is
+    // iterative. The e2e user is e2e@dimagi.com.
+    expect((posted as { origin_ref?: { thread_key?: string } }).origin_ref?.thread_key).toBe(
+      'phone:e2e@dimagi.com:canopy-web',
+    )
     // The pin header is consumed by the rewrite and must NOT reach the wire — it
     // is a client-side routing signal, not something the server should ever see.
     expect(headers['x-canopy-workspace']).toBeUndefined()

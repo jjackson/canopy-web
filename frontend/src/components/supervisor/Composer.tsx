@@ -2,7 +2,8 @@ import { useEffect, useState, type JSX } from 'react'
 import { listAgentSkills, type AgentOut, type AgentSkillOut } from '@/api/agents'
 import { enqueueTurn } from '@/api/harness'
 import { listWorkspaces, type WorkspaceOut } from '@/api/workspaces'
-import { buildDispatchPrompt, canDispatch } from '@/lib/dispatchPrompt'
+import { useAuth } from '@/auth/AuthProvider'
+import { buildDispatchPrompt, canDispatch, phoneThreadKey } from '@/lib/dispatchPrompt'
 
 // The phone composer: dispatch a turn without opening a laptop. Two targets.
 //
@@ -24,6 +25,7 @@ type Sent = { kind: 'ok'; label: string } | { kind: 'err'; message: string }
 type Mode = 'agent' | 'repo'
 
 export function Composer({ agents }: { agents: AgentOut[] }): JSX.Element {
+  const { user } = useAuth()
   const [mode, setMode] = useState<Mode>('agent')
 
   // Agent mode
@@ -89,7 +91,11 @@ export function Composer({ agents }: { agents: AgentOut[] }): JSX.Element {
         await enqueueTurn({ agentSlug: slug, prompt })
         setSent({ kind: 'ok', label: skillName ? `/${slug}:${skillName}` : slug })
       } else {
-        await enqueueTurn({ project: target, workspace, prompt })
+        // A stable per-(user,repo) thread so successive dispatches CONTINUE one
+        // session — the phone drives a persistent canopy-web thread rather than
+        // spawning a fresh emdash task per message.
+        const threadKey = user ? phoneThreadKey(user.email, target) : undefined
+        await enqueueTurn({ project: target, workspace, prompt, threadKey })
         setSent({ kind: 'ok', label: `${target} · ${workspace}` })
       }
       setArgs('')

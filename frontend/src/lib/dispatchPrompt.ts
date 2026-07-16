@@ -12,3 +12,11 @@ export function buildDispatchPrompt(slug: string, skillName: string, args: strin
 export function canDispatch(slug: string, prompt: string): boolean {
   return slug.trim() !== '' && prompt.trim() !== ''
 }
+
+// The phone owns ONE persistent thread per (user, target), so repeated dispatches
+// CONTINUE a single emdash session rather than forking a fresh one each time —
+// this is what makes "drive a repo from my phone" iterative. Stable for a given
+// user+target; the runner records/reuses a SessionLink under it.
+export function phoneThreadKey(userEmail: string, target: string): string {
+  return `phone:${userEmail}:${target}`
+}

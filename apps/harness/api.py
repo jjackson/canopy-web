@@ -25,6 +25,7 @@ from .schemas import (
     ResolveSessionIn,
     ResolveSessionOut,
     RunnerIn,
+    RunnerCapabilitiesIn,
     RunnerOut,
     ScheduleFireIn,
     ScheduleOut,
@@ -189,6 +190,23 @@ def list_runners(request: HttpRequest):
         .order_by(models.F("last_heartbeat_at").desc(nulls_last=True))
     )
     return list(qs[:50])
+
+
+@router.patch("/runners/{runner_id}", response=RunnerOut)
+def update_runner_capabilities(request: HttpRequest, runner_id: uuid.UUID, payload: RunnerCapabilitiesIn):
+    """Replace a runner's capabilities (owner-gated via _runner_or_404).
+
+    Capabilities are set at pairing and were otherwise immutable — the only way to
+    add `projects` to an existing runner was to re-pair, which mints a NEW runner
+    and orphans the old one's SessionLinks. This lets a paired runner opt into
+    driving repos (or new agents) in place. capabilities is a routing hint, not a
+    security boundary (the workspace gates), so replacing it changes what the
+    runner PULLS, never what it may reach.
+    """
+    runner = _runner_or_404(request, runner_id)
+    runner.capabilities = payload.capabilities
+    runner.save(update_fields=["capabilities"])
+    return runner
 
 
 @router.post("/runners/{runner_id}/retire", response={204: None})
