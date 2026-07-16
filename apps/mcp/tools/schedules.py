@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 
 from apps.harness import schedule_services as ss
 from apps.mcp.audit import current_user_id, write_audit
-from apps.mcp.rate_limit import check_write_limit
+from apps.mcp.rate_limit import RateLimitError, check_write_limit
 from apps.mcp.server import mcp
 
 User = get_user_model()
@@ -77,7 +77,14 @@ async def create_schedule(
     """Create a recurring turn for an agent. `cron` is a 5-field expression;
     `timezone` an IANA name. `prompt` is what the turn is seeded with."""
     user_id = current_user_id()
-    check_write_limit(user_id)
+    summary = f"agent={agent_slug} name={name!r}"
+    if user_id is not None:
+        try:
+            check_write_limit(user_id)
+        except RateLimitError as exc:
+            await write_audit(user_id=user_id, tool="create_schedule",
+                              args_summary=summary, ok=False, error=str(exc))
+            raise
     try:
         row = await sync_to_async(_create_sync, thread_sensitive=True)(
             user_id, agent_slug, name, prompt, cron, timezone, enabled, routing,
@@ -85,10 +92,10 @@ async def create_schedule(
         )
     except Exception as exc:  # noqa: BLE001
         await write_audit(user_id=user_id, tool="create_schedule",
-                          args_summary=f"agent={agent_slug} name={name!r}", ok=False, error=str(exc))
+                          args_summary=summary, ok=False, error=str(exc))
         raise
     await write_audit(user_id=user_id, tool="create_schedule",
-                      args_summary=f"agent={agent_slug} name={name!r}", ok=True)
+                      args_summary=summary, ok=True)
     return row
 
 
@@ -109,7 +116,14 @@ async def update_schedule(
 ) -> dict:
     """Update a schedule. Only the fields you pass are changed."""
     user_id = current_user_id()
-    check_write_limit(user_id)
+    summary = f"agent={agent_slug} id={schedule_id}"
+    if user_id is not None:
+        try:
+            check_write_limit(user_id)
+        except RateLimitError as exc:
+            await write_audit(user_id=user_id, tool="update_schedule",
+                              args_summary=summary, ok=False, error=str(exc))
+            raise
     raw = dict(name=name, prompt=prompt, cron=cron, timezone=timezone, enabled=enabled,
                routing=routing, grace_minutes=grace_minutes, notify=notify)
     fields = {k: v for k, v in raw.items() if v is not None}
@@ -117,10 +131,10 @@ async def update_schedule(
         row = await sync_to_async(_update_sync, thread_sensitive=True)(user_id, agent_slug, schedule_id, fields)
     except Exception as exc:  # noqa: BLE001
         await write_audit(user_id=user_id, tool="update_schedule",
-                          args_summary=f"agent={agent_slug} id={schedule_id}", ok=False, error=str(exc))
+                          args_summary=summary, ok=False, error=str(exc))
         raise
     await write_audit(user_id=user_id, tool="update_schedule",
-                      args_summary=f"agent={agent_slug} id={schedule_id} fields={sorted(fields)}", ok=True)
+                      args_summary=f"{summary} fields={sorted(fields)}", ok=True)
     return row
 
 
@@ -137,15 +151,22 @@ def _update_sync(user_id, agent_slug, schedule_id, fields):
 async def delete_schedule(agent_slug: str, schedule_id: int) -> dict:
     """Delete a schedule. Any open occurrences it fired are retired first."""
     user_id = current_user_id()
-    check_write_limit(user_id)
+    summary = f"agent={agent_slug} id={schedule_id}"
+    if user_id is not None:
+        try:
+            check_write_limit(user_id)
+        except RateLimitError as exc:
+            await write_audit(user_id=user_id, tool="delete_schedule",
+                              args_summary=summary, ok=False, error=str(exc))
+            raise
     try:
         await sync_to_async(_delete_sync, thread_sensitive=True)(user_id, agent_slug, schedule_id)
     except Exception as exc:  # noqa: BLE001
         await write_audit(user_id=user_id, tool="delete_schedule",
-                          args_summary=f"agent={agent_slug} id={schedule_id}", ok=False, error=str(exc))
+                          args_summary=summary, ok=False, error=str(exc))
         raise
     await write_audit(user_id=user_id, tool="delete_schedule",
-                      args_summary=f"agent={agent_slug} id={schedule_id}", ok=True)
+                      args_summary=summary, ok=True)
     return {"deleted": schedule_id}
 
 
@@ -157,12 +178,22 @@ def _delete_sync(user_id, agent_slug, schedule_id):
 async def run_schedule_now(agent_slug: str, schedule_id: int) -> dict:
     """Trigger a schedule off-cycle NOW. Spawns a real agent turn (tokens)."""
     user_id = current_user_id()
-    check_write_limit(user_id)
+    summary = f"agent={agent_slug} id={schedule_id}"
+    if user_id is not None:
+        # A rate-limited call here is the abuse signature we most need a trail
+        # for: this is the one tool that burns tokens, so an AI looping on it
+        # is exactly what trips the limit.
+        try:
+            check_write_limit(user_id)
+        except RateLimitError as exc:
+            await write_audit(user_id=user_id, tool="run_schedule_now",
+                              args_summary=summary, ok=False, error=str(exc))
+            raise
     try:
         row, name = await sync_to_async(_run_now_sync, thread_sensitive=True)(user_id, agent_slug, schedule_id)
     except Exception as exc:  # noqa: BLE001
         await write_audit(user_id=user_id, tool="run_schedule_now",
-                          args_summary=f"agent={agent_slug} id={schedule_id}", ok=False, error=str(exc))
+                          args_summary=summary, ok=False, error=str(exc))
         raise
     # The name is in the summary on purpose: run_now is the one tool that burns
     # tokens, so a runaway must be visible in MCPAuditLog rather than inferred.
