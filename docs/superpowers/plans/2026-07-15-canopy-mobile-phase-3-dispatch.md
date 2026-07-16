@@ -147,3 +147,30 @@ capability; the backend landing first changes no existing behaviour.
    by guessing `thread_key`. The spec (§3) never addressed project-link tenancy. Options: add a
    `workspace` FK to `SessionLink` (mirrors Turn), or gate the resolve/record endpoints on the
    runner's own tenant. Decide before the runner drives project sessions (Task 6/8).
+
+## Status (shipped)
+
+- **Task 1** — `launchable` + `args_hint` — #232 (live)
+- **Task 2** — `Turn` agent XOR repo — #232 (live)
+- **Task 3** — `SessionLink` repo targets — #232, tenancy added in #236 (live)
+- **Task 4** — claim widening + cross-tenant fix — #232 (live)
+- **Task 5** — enqueue + API — #232; multi-workspace 422 fix in #233 (live)
+- **Task 6** — runner `target = agent_slug or project` + SessionLink tenancy — #236 (live)
+- **Task 7** — the composer (AGENT dispatch) — #237 (live)
+- Cancel endpoint (blocker 2) — #233 (live); UI control ships with repo dispatch
+- Probe turn (blocker 1) — cancelled via the new endpoint
+
+### Remaining
+
+- **Task 8 — session input.** The backend reuse path is done and tested (a stable
+  thread_key resolves to `open_and_send`). What's left is the composer setting
+  `origin_ref.thread_key = phone:{user}:{target}` so a second message REUSES the
+  first's session rather than launching a fresh turn — a distinct mode from the
+  launch-a-command composer that shipped, and it wants its own UX (which session,
+  and a visible "continue vs new" affordance).
+- **Repo (project) dispatch.** Two coupled unknowns: (a) a repo like canopy-web is
+  not owned by one workspace, so the composer must decide which tenant a repo turn
+  belongs to; (b) the flat enqueue 422s a multi-workspace user, so it must route to
+  `/api/w/{ws}/…` — but `/supervisor` is not under `/w/:ws/`, so the URL-driven
+  rewrite in client.v2 does not fire. Needs an explicit-workspace path, not a
+  browser-URL one. `cancelTurn` is already in the client for the take-it-back UX.
