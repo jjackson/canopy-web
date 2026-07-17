@@ -117,6 +117,21 @@ def test_create_returns_id_and_url(auth_client):
     assert body["id"] in body["url"]
 
 
+@pytest.mark.django_db
+def test_create_rejects_overlong_fields_with_422_not_500(auth_client):
+    # run_id/gate/narrative_slug come from the unbounded request_json but map to
+    # fixed-width columns; an over-length value must 422 at the boundary, not reach
+    # Postgres and 500 (SQLite CI wouldn't catch the 500).
+    over = {**SAMPLE_REQUEST_JSON, "run_id": "r" * 300}  # column is max_length=255
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={"request_json": over, "visibility": "link"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 422, resp.content
+    assert "run_id" in resp.content.decode()
+
+
 # ---------------------------------------------------------------------------
 # 2. GET by owner returns full record
 # ---------------------------------------------------------------------------

@@ -1,11 +1,11 @@
 """The canopy tree — pure geometry, no AppKit/PyObjC imports.
 
-This is the single source of truth for the "bare-branch tree" mark: the macOS
-menu-bar icon (`menubar.py::_tree_image`, which imports `tree_segments` /
-`ink_bounds` from here and adds AppKit drawing + status tint) and the PWA app
-icons (`render_tree_svg.py`, which renders these same segments to SVG and
-rasterizes to PNG) both render from these constants. One definition, two
-consumers — they can't drift into different trees.
+This is the single source of truth for the "bare-branch tree" mark. Every image the
+product ships is rendered from these constants by `assets/brand/generate.py` (the app
+icon + .icns, the monochrome menu-bar tree, the web favicon, the PWA icons) — see
+`render_tree_svg.py` for the SVG path. The outputs are COMMITTED under `assets/brand/`;
+consumers (the native Swift menu-bar app, the web) read those files, never re-render.
+One definition, one generator — the images can't drift into different trees.
 """
 from __future__ import annotations
 

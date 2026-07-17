@@ -216,17 +216,26 @@ export function AppLayout() {
 
 function AppShell() {
   const location = useLocation()
+  const auth = useAuth()
   const { active } = useWorkspace()
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Anonymous visitors only ever reach the app shell on a public link route
+  // (/walkthrough/:id, /review/:id — see AuthProvider). Every nav destination
+  // is behind the login gate, so the whole nav (inline + mobile hamburger)
+  // would be dead links that bounce to sign-in. Show just the wordmark instead.
+  const isAuthed = auth.status === 'authenticated'
 
   // Tenant nav items resolve to /w/:active/<path>; personal/global items keep
   // their absolute path. Tenant items are hidden until the active workspace is
   // known (avoids linking to a broken /w//… path on first paint).
-  const navItems = NAV_ITEMS.flatMap((item) => {
-    if (!item.tenant) return [{ path: item.path, label: item.label }]
-    if (!active) return []
-    return [{ path: `/w/${active}${item.path ? `/${item.path}` : ''}`, label: item.label }]
-  })
+  const navItems = isAuthed
+    ? NAV_ITEMS.flatMap((item) => {
+        if (!item.tenant) return [{ path: item.path, label: item.label }]
+        if (!active) return []
+        return [{ path: `/w/${active}${item.path ? `/${item.path}` : ''}`, label: item.label }]
+      })
+    : []
 
   // Collapse the mobile menu whenever the route changes (e.g. tapping a link).
   useEffect(() => {
@@ -253,7 +262,11 @@ function AppShell() {
     <div className="min-h-screen bg-background text-foreground-secondary">
       <header className="border-b border-border bg-background relative">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
-          <Link to="/" className="text-lg font-semibold text-foreground shrink-0">Canopy<span className="text-primary">.</span></Link>
+          {isAuthed ? (
+            <Link to="/" className="text-lg font-semibold text-foreground shrink-0">Canopy<span className="text-primary">.</span></Link>
+          ) : (
+            <span className="text-lg font-semibold text-foreground shrink-0">Canopy<span className="text-primary">.</span></span>
+          )}
           <div className="flex items-center gap-3 xl:gap-6">
             {/* Full inline nav only once all items fit (~xl); below that it
                 overflows the viewport, so we collapse it into the menu below. */}
@@ -266,6 +279,7 @@ function AppShell() {
             </nav>
             <WorkspaceSwitcher />
             <UserMenu />
+            {isAuthed && (
             <button
               type="button"
               onClick={() => setMobileOpen((o) => !o)}
@@ -288,6 +302,7 @@ function AppShell() {
                 )}
               </svg>
             </button>
+            )}
           </div>
         </div>
         {mobileOpen && (

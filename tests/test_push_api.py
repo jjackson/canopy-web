@@ -63,6 +63,17 @@ def test_subscribe_503s_when_push_is_not_configured(client, settings):
     assert not PushSubscription.objects.filter(endpoint=SUB["endpoint"]).exists()
 
 
+def test_subscribe_rejects_overlong_crypto_keys_with_422_not_500(client):
+    # p256dh/auth map to fixed-width columns (200/100); an over-length value must be
+    # a 422 at the schema boundary, not a Postgres-only 500 on the write.
+    resp = client.post(
+        "/api/push/subscribe",
+        {**SUB, "p256dh": "B" * 300},
+        content_type="application/json",
+    )
+    assert resp.status_code == 422, resp.content
+
+
 def test_subscribe_stores_the_browser(client, user):
     resp = client.post("/api/push/subscribe", SUB, content_type="application/json")
     assert resp.status_code == 201

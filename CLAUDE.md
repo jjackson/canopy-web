@@ -13,7 +13,7 @@ first-class AI agents, demo-driven development (DDD), walkthroughs, and shareout
 - **Frontend:** React 19 + Vite + Tailwind CSS 4 + shadcn/ui
 - **AI:** Anthropic Claude API via SSE streaming. Dual backend — direct API key (`AI_BACKEND=api`) or Claude Code CLI subscription (`AI_BACKEND=cli`), switchable at runtime via `/api/ai/switch/`.
 - **MCP server:** `apps/mcp/` is a FastMCP 3.x Streamable-HTTP server mounted into the ASGI app at `/api/mcp/` (wired in `config/asgi.py`). Tools run **as the authenticated user** via per-user PAT (`CanopyPATVerifier`) and reuse the same service functions as the REST views, so the two surfaces can't drift. See `docs/architecture/mcp-surface.md`.
-- **Deployment:** AWS ECS Fargate on the shared labs platform (account `858923557655`, `us-east-1`), served at `https://labs.connect.dimagi.com/canopy/` behind the shared ALB. One container (Django serves the built SPA + API + MCP). Deploys run from GitHub via the **Deploy to Labs (AWS)** workflow (`.github/workflows/deploy-labs.yml`): build → push to ECR (`labs-jj-canopy-web`) → register task-def revision → optional migrate → roll the ECS service. Infra is provisioned by `deploy/aws/canopy-web.cfn.yaml` (CloudFormation). Runtime settings in `config/settings/connectlabs.py` (extends `production.py`; `FORCE_SCRIPT_NAME=/canopy`, shared RDS `canopy_web` DB).
+- **Deployment:** AWS ECS Fargate on the shared labs platform (account `858923557655`, `us-east-1`), served at `https://labs.connect.dimagi.com/canopy/` behind the shared ALB. One container (Django serves the built SPA + API + MCP). Deploys run from GitHub via the **Deploy to Labs (AWS)** workflow (`.github/workflows/deploy-labs.yml`): build → push to ECR (`labs-jj-canopy-web`) → register task-def revision → auto-migrate (idempotent; skippable only via `skip_migrations`) → roll the ECS service. Infra is provisioned by `deploy/aws/canopy-web.cfn.yaml` (CloudFormation). Runtime settings in `config/settings/connectlabs.py` (extends `production.py`; `FORCE_SCRIPT_NAME=/canopy`, shared RDS `canopy_web` DB).
 - **Framework/product boundary (the one invariant):** apps split into **framework** (generic, agent-agnostic substrate — `agents`, `agent_runs`, `workspaces`, `api`, `common`, `timeline`, `tokens`, `session_sharing`, `issues`, `mcp`, `system`) and **product** (canopy's own features — `projects`, `walkthroughs`, `reviews`, `shareouts`, `runs`). **Framework code must never import product code; product freely imports framework.** This keeps the blend cuttable (the framework apps could lift onto a standalone host without dragging canopy's product). It's a *direction, not a wall* — we don't move apps into `framework/`/`product/` folders. Enforced by `tests/test_architecture_boundary.py` (fails CI on a framework→product import, or on a new app left untiered). Full rationale, the per-app tier table, and the accepted carve-outs (the `api` composition root, the `mcp` insights tool): **`ARCHITECTURE.md`**. The framework apps are being harvested as the generic layer out of ACE — see `docs/superpowers/specs/2026-06-24-canopy-framework-harvest-design.md`.
 
 ## Development
@@ -40,12 +40,13 @@ docker compose up
 # Deploy to AWS labs (https://labs.connect.dimagi.com/canopy/). Deploys run from
 # GitHub only — trigger the "Deploy to Labs (AWS)" workflow from the Actions tab
 # (workflow_dispatch), or:
-gh workflow run "Deploy to Labs (AWS)" --ref main -f run_migrations=false
-gh workflow run "Deploy to Labs (AWS)" --ref main -f run_migrations=true   # when the change has a migration
+gh workflow run "Deploy to Labs (AWS)" --ref main                          # migrations run automatically
+gh workflow run "Deploy to Labs (AWS)" --ref main -f skip_migrations=true  # EMERGENCY ONLY: skip migrations
 # Production ships from `main` ONLY — the workflow hard-fails on any other ref.
 # It builds+pushes the image to ECR, registers a task-def revision (image swap
-# only), optionally migrates on a one-off Fargate task, then rolls the ECS
-# service. See .github/workflows/deploy-labs.yml + deploy/aws/canopy-web.cfn.yaml.
+# only), ALWAYS migrates on a one-off Fargate task before cutover (migrate --noinput
+# is idempotent — a no-op when nothing is pending, so it can't be forgotten), then
+# rolls the ECS service. See .github/workflows/deploy-labs.yml + deploy/aws/canopy-web.cfn.yaml.
 ```
 
 When `AI_BACKEND=cli`, the `claude` binary must be on PATH and authenticated. In Docker, use the headless auth flow at `/settings` (drives `claude setup-token` via PTY; token persists in `CLAUDE_CODE_OAUTH_TOKEN`).
