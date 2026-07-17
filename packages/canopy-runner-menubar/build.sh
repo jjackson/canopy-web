@@ -39,7 +39,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>CanopyRunner</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>LSUIElement</key><true/>
+  <key>LSUIElement</key><false/>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
 </dict>
