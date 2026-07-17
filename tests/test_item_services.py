@@ -28,7 +28,7 @@ def _item(ada, **kw):
 def test_implement_decides_and_dispatches(ada):
     item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}])
 
-    item, turns = services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com")
+    item, turns = services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     assert item.state == Item.DECIDED
     assert item.decision == Item.IMPLEMENT
@@ -41,7 +41,7 @@ def test_implement_decides_and_dispatches(ada):
 def test_skip_decides_and_dispatches_nothing(ada):
     item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}])
 
-    item, turns = services.decide_item(item, decision=Item.SKIP, comment="", by="jj@dimagi.com")
+    item, turns = services.decide_item(item, decision=Item.SKIP, comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     assert item.state == Item.DECIDED
     assert turns == []
@@ -52,7 +52,7 @@ def test_skip_decides_and_dispatches_nothing(ada):
 def test_defer_decides_and_dispatches_nothing(ada):
     item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}])
 
-    item, turns = services.decide_item(item, decision=Item.DEFER, comment="", by="jj@dimagi.com")
+    item, turns = services.decide_item(item, decision=Item.DEFER, comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     assert item.decision == Item.DEFER
     assert Turn.objects.count() == 0
@@ -60,10 +60,10 @@ def test_defer_decides_and_dispatches_nothing(ada):
 
 def test_deciding_twice_raises_rather_than_dispatching_again(ada):
     item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}])
-    services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com")
+    services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     with pytest.raises(services.AlreadyDecidedError):
-        services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com")
+        services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     assert Turn.objects.count() == 1
 
@@ -72,9 +72,9 @@ def test_a_question_requires_an_answer(ada):
     item = _item(ada, kind=Item.QUESTION, title="which repo?")
 
     with pytest.raises(ValueError, match="answer"):
-        services.decide_item(item, decision="", comment="", by="jj@dimagi.com")
+        services.decide_item(item, decision="", comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
-    item, _ = services.decide_item(item, decision="", comment="canopy-web", by="jj@dimagi.com")
+    item, _ = services.decide_item(item, decision="", comment="canopy-web", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
     assert item.state == Item.DECIDED
     assert item.comment == "canopy-web"
 
@@ -83,7 +83,7 @@ def test_a_review_rejects_a_decision_outside_the_closed_set(ada):
     item = _item(ada)
 
     with pytest.raises(ValueError, match="decision"):
-        services.decide_item(item, decision="yolo", comment="", by="jj@dimagi.com")
+        services.decide_item(item, decision="yolo", comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
 
 def test_a_failing_dispatch_rolls_the_decision_back(ada):
@@ -93,7 +93,7 @@ def test_a_failing_dispatch_rolls_the_decision_back(ada):
     item = _item(ada, dispatch=[{"target_agent": "ghost", "prompt": "/ghost:turn"}])
 
     with pytest.raises(ValueError, match="ghost"):
-        services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com")
+        services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     item.refresh_from_db()
     assert item.state == Item.OPEN
@@ -109,7 +109,7 @@ def test_a_partly_bad_dispatch_enqueues_nothing(ada):
     ])
 
     with pytest.raises(ValueError):
-        services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com")
+        services.decide_item(item, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     item.refresh_from_db()
     assert item.state == Item.OPEN
@@ -130,7 +130,7 @@ def test_dismiss_refuses_an_already_decided_item(ada):
     # turns keep running. Dismiss guards on state exactly like decide does.
     item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}])
     item, _turns = services.decide_item(
-        item, decision=Item.IMPLEMENT, comment="", by="approver@dimagi.com"
+        item, decision=Item.IMPLEMENT, comment="", by="approver@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG}
     )
     assert item.state == Item.DECIDED
 

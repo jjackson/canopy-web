@@ -43,15 +43,22 @@ class TurnSpec:
         )
 
 
-def dispatch(item: Item) -> list[Turn]:
+def dispatch(item: Item, *, actor_workspace_slugs: set[str]) -> list[Turn]:
     """Enqueue an approved Item's work. Idempotent per (item, index).
 
-    Raises ValueError for an unknown target_agent rather than skipping it: an
-    approved item whose work silently never happens is the worst outcome here.
-    The caller (services.decide_item) runs this inside the same transaction as
-    the decision, so a raise rolls the decision back and leaves the item OPEN and
-    retryable — rather than stranding it decided-but-undispatched, which deciding
-    once (409) would make permanent.
+    `actor_workspace_slugs` is the deciding human's workspace memberships. A
+    cross-agent dispatch (`target_agent` set) is authorized ONLY if the target's
+    workspace is one of them — the hard tenant boundary. This preserves the fleet
+    manager (Ada dispatching hal→eva across workspaces works when the human driving
+    it is a member of both), while blocking a single-workspace user from landing a
+    prompt on another tenant's agent.
+
+    Raises ValueError for an unknown OR cross-tenant target_agent rather than
+    skipping it: an approved item whose work silently never happens is the worst
+    outcome here. The caller (services.decide_item) runs this inside the same
+    transaction as the decision, so a raise rolls the decision back and leaves the
+    item OPEN and retryable — rather than stranding it decided-but-undispatched,
+    which deciding once (409) would make permanent.
     """
     turns: list[Turn] = []
     for i, raw in enumerate(item.dispatch or []):
@@ -61,6 +68,15 @@ def dispatch(item: Item) -> list[Turn]:
             if target is None:
                 raise ValueError(
                     f"item {item.id} dispatch[{i}]: unknown target_agent {spec.target_agent!r}"
+                )
+            # Cross-agent dispatch is a cross-tenant action unless the actor is a
+            # member of the target's workspace. Self-dispatch (below) is already
+            # authorized — the actor could decide the item, which required its
+            # agent's workspace. Legacy null-workspace targets fall through.
+            if target.workspace_id is not None and target.workspace_id not in actor_workspace_slugs:
+                raise ValueError(
+                    f"item {item.id} dispatch[{i}]: not a member of target_agent "
+                    f"{spec.target_agent!r}'s workspace"
                 )
         else:
             target = item.agent

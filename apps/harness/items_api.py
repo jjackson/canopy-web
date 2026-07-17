@@ -20,6 +20,7 @@ from ninja.errors import HttpError
 
 from apps.agents.api import _get_agent_or_404, _visible_agent_workspace_ids
 from apps.api.auth import session_auth
+from apps.workspaces import services as wsvc
 
 from . import services
 from .models import Item
@@ -106,6 +107,7 @@ def decide_item(request: HttpRequest, item_id: uuid.UUID, payload: ItemDecideIn)
         item, _turns = services.decide_item(
             item, decision=payload.decision, comment=payload.comment,
             by=request.user.email or request.user.get_username(),
+            actor_workspace_slugs=wsvc.request_workspace_slugs(request),
         )
     except services.AlreadyDecidedError as exc:
         raise HttpError(409, str(exc)) from exc
