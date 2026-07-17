@@ -4,6 +4,13 @@ Cache-backed (LocMem in dev/test, the connectlabs Redis in prod) with a TTL
 heartbeat, mirroring ace-web's Redis HASH but through Django's cache abstraction so
 it's testable without standalone Redis. The durable membership authority is
 SessionParticipant; this is only the live "who's here" set.
+
+KNOWN LOSSINESS (follow-up, tied to the prod Redis cutover): touch/leave do a
+non-atomic get→mutate→set, so on the Redis-backed prod path concurrent updates to
+one session can drop an entry (last writer wins the whole hash). Presence is
+advisory — a lost entry only flickers a user absent until their next heartbeat (and
+can briefly free the derived draft lock) — but the durable path should move to
+native Redis HASH field atomics (hset/hdel + per-field expiry) as ace-web did.
 """
 from __future__ import annotations
 

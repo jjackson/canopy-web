@@ -10,13 +10,17 @@ import uuid
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.db import IntegrityError
 
+from apps.harness.models import Turn
 from apps.realtime.groups import session_group
 
 from . import drafts, participants, presence
 from . import services as chat_services
 from .executor import execute_turn_stub
-from .models import Session
+from .models import Session, SessionParticipant
+
+_EDIT_ROLES = {SessionParticipant.OWNER, SessionParticipant.EDITOR}
 
 
 class SessionConsumer(AsyncJsonWebsocketConsumer):
@@ -35,6 +39,9 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
             return
         self.session = session
         self.user = user
+        # can_access auto-joins a workspace member as editor, so a role always
+        # exists by now; default to editor defensively.
+        self.role = await database_sync_to_async(participants.role_for)(session, user) or SessionParticipant.EDITOR
         self.group = session_group(session.id)
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.accept()
@@ -55,7 +62,12 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         data = content.get("data") or {}
         if action == "presence.heartbeat":
             await database_sync_to_async(presence.touch)(self.session.id, self.user.id)
-        elif action == "draft.update":
+            return
+        if action in ("draft.update", "draft.take_over", "draft.commit"):
+            if self.role not in _EDIT_ROLES:
+                await self.send_json({"event": "error", "data": {"code": "forbidden"}})
+                return
+        if action == "draft.update":
             await self._draft_update(data)
         elif action == "draft.take_over":
             await self._draft_take_over()
@@ -91,17 +103,27 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         await self._broadcast_draft(draft)
 
     async def _draft_commit(self):
+        # commit deliberately ignores lock/version (spec: any editor can commit the
+        # shared draft). Broadcast the cleared draft FIRST so co-editors' UI always
+        # resets, even if execution below is a no-op / races a concurrent turn.
         text = await database_sync_to_async(drafts.commit_active_draft)(self.session)
+        draft = await database_sync_to_async(drafts.active_draft)(self.session)
+        await self._broadcast_draft(draft)
         if not text.strip():
             return
         await database_sync_to_async(self._send_and_execute)(text)
-        draft = await database_sync_to_async(drafts.active_draft)(self.session)
-        await self._broadcast_draft(draft)  # cleared draft
         # turn events fan out to the session group automatically (realtime signal).
 
     def _send_and_execute(self, text):
         _msg, turn = chat_services.send_message(session=self.session, text=text, user=self.user)
-        execute_turn_stub(turn)
+        # Mirror the REST send guard: only drive a queued turn, and survive the
+        # one_executing_turn_per_session race (a concurrent send) rather than
+        # tearing down the socket. SP2b's async runner replaces this inline call.
+        if turn is not None and turn.status == Turn.QUEUED:
+            try:
+                execute_turn_stub(turn)
+            except IntegrityError:
+                pass
 
     # -- group frame handlers (dots -> underscores) --
     async def chat_turn_event(self, message):

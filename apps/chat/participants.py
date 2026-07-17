@@ -17,6 +17,12 @@ def ensure_participant(session: Session, user, role: str = SessionParticipant.ED
 def can_access(session: Session, user) -> bool:
     if not getattr(user, "is_authenticated", False):
         return False
+    # A durable participant keeps access even if later removed from the workspace:
+    # session membership is an explicit, standalone grant (you were added to THIS
+    # conversation), not a projection of workspace membership. Off-boarding a user
+    # from the workspace does not auto-revoke sessions they already joined — remove
+    # the SessionParticipant row to revoke. (The REST surface re-checks tenant each
+    # request; this socket-side gate intentionally honors the durable grant.)
     if SessionParticipant.objects.filter(session=session, user=user).exists():
         return True
     # A workspace member is granted access and auto-joined as an editor.

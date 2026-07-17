@@ -13,6 +13,8 @@ from django.contrib.auth.models import AnonymousUser, User
 from apps.agents.models import Agent
 from apps.chat import services as chat
 from apps.chat.consumers import SessionConsumer
+from apps.chat.models import SessionParticipant
+from apps.harness.models import Turn
 from apps.workspaces.models import Workspace, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -109,4 +111,42 @@ async def test_commit_sends_and_streams_assistant_to_all():
     )()
     assert roles == ["user", "assistant"]
     await a.disconnect()
+    await b.disconnect()
+
+
+async def test_commit_survives_concurrent_running_turn():
+    # A turn already executing on this session holds one_executing_turn_per_session.
+    # A commit must NOT crash the socket, and the cleared-draft frame must arrive.
+    owner, _t, session = await database_sync_to_async(_seed)()
+    await database_sync_to_async(
+        lambda: Turn.objects.create(
+            chat_session=session, origin=Turn.ORIGIN_API, idempotency_key="pre", status=Turn.RUNNING
+        )
+    )()
+    a = await _connect(session, owner)
+    assert (await a.connect())[0]
+    await a.send_json_to({"action": "draft.update", "data": {"expected_version": 0, "body": "hi"}})
+    await _recv_match(a, lambda f: f.get("event") == "draft.updated")
+    await a.send_json_to({"action": "draft.commit"})
+    # cleared-draft frame arrives (socket did not tear down on the IntegrityError)
+    cleared = await _recv_match(a, lambda f: f.get("event") == "draft.updated" and f["data"]["body"] == "")
+    assert cleared["data"]["body"] == ""
+    # socket is still responsive
+    await a.send_json_to({"action": "presence.heartbeat"})
+    await a.disconnect()
+
+
+async def test_viewer_cannot_edit():
+    owner, teammate, session = await database_sync_to_async(_seed)()
+    await database_sync_to_async(
+        lambda: SessionParticipant.objects.update_or_create(
+            session=session, user=teammate, defaults={"role": SessionParticipant.VIEWER}
+        )
+    )()
+    b = await _connect(session, teammate)
+    assert (await b.connect())[0]
+    await _recv_match(b, lambda f: f.get("event") == "session.state")
+    await b.send_json_to({"action": "draft.update", "data": {"expected_version": 0, "body": "nope"}})
+    err = await _recv_match(b, lambda f: f.get("event") == "error")
+    assert err["data"]["code"] == "forbidden"
     await b.disconnect()
