@@ -83,6 +83,19 @@ AgentSkill.objects.create(
     launchable=True, args_hint="topic (optional)",
     url="https://github.com/dimagi-internal/echo/blob/main/skills/story-ideation/SKILL.md")
 
+# An open emdash session the runner reported — drives /supervisor's Open sessions
+# section. status ONLINE + a fresh heartbeat so GET /api/harness/sessions includes it.
+from apps.harness.models import Runner, EmdashSession
+from django.utils import timezone as _tz
+_runner = Runner.objects.create(
+    name="e2e-mbp", kind=Runner.EMDASH, host="e2e-host", paired_by=user, workspace=ws,
+    status=Runner.ONLINE, last_heartbeat_at=_tz.now(), capabilities={"projects": ["canopy-web"]},
+)
+EmdashSession.objects.create(
+    runner=_runner, workspace=ws, emdash_task="cloud-runner", project="canopy-web",
+    status="in_progress", last_interacted_at=_tz.now(),
+)
+
 # A fleet-audit findings review — a run-child gate whose run_id is NOT a DDD run id
 # (nothing else in the system references it). It must render standalone: no DDD rail,
 # and no narrative conjured out of its run_id. Mirrors what Ada posts.

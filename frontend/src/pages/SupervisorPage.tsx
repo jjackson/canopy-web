@@ -5,6 +5,7 @@ import { RunnerStatus } from '@/components/supervisor/RunnerStatus'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
 import { WaitingOnYou } from '@/components/supervisor/WaitingOnYou'
 import { Composer } from '@/components/supervisor/Composer'
+import { OpenSessions } from '@/components/supervisor/OpenSessions'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
 import { PushToggle } from '@/pwa/PushToggle'
 import { setBadge } from '@/pwa/usePush'
@@ -73,6 +74,13 @@ export default function SupervisorPage(): JSX.Element {
           <Composer agents={agents} />
         </section>
       )}
+
+      <section>
+        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Open sessions
+        </h2>
+        <OpenSessions />
+      </section>
 
       <section>
         <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
