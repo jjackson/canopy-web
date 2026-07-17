@@ -2164,6 +2164,8 @@ export interface components {
              * @default 0
              */
             readonly walkthrough_count: number;
+            /** Created By Email */
+            readonly created_by_email?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2238,6 +2240,8 @@ export interface components {
              * @default 0
              */
             readonly walkthrough_count: number;
+            /** Created By Email */
+            readonly created_by_email?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -5545,6 +5549,8 @@ export interface components {
             };
             /** Claimed By Name */
             readonly claimed_by_name: string | null;
+            /** Enqueued By Email */
+            readonly enqueued_by_email: string | null;
             /** Session Id */
             readonly session_id: string;
             /** Result Note */
