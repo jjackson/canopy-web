@@ -54,4 +54,39 @@ codesign --force --sign - "$APP" 2>/dev/null || echo "  (codesign skipped)"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
   -f "$APP" 2>/dev/null || true
 
+# Auto-start on login (the durable fix for "the menu-bar icon disappeared"). A user
+# LaunchAgent that `open`s the app at login — `open` is idempotent, so it activates an
+# already-running instance rather than spawning a duplicate, and the app respects Quit
+# (no KeepAlive). Bootstrapping it also launches the app NOW, in the Aqua session.
+# Opt out with CANOPY_MENUBAR_AUTOSTART=0.
+AGENT="$HOME/Library/LaunchAgents/com.canopy.runner.menubar.plist"
+if [ "${CANOPY_MENUBAR_AUTOSTART:-1}" = "1" ]; then
+  echo "==> auto-start on login (LaunchAgent)"
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cat > "$AGENT" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.canopy.runner.menubar</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/open</string>
+    <string>$APP</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Interactive</string>
+</dict>
+</plist>
+PLIST
+  # Reload so it's active now and at every login (bootout is harmless if not loaded).
+  launchctl bootout "gui/$(id -u)/com.canopy.runner.menubar" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$AGENT" 2>/dev/null \
+    || echo "    (could not bootstrap now — it will still load at next login)"
+  echo "    launches at login. Remove with:"
+  echo "      launchctl bootout gui/\$(id -u)/com.canopy.runner.menubar; rm \"$AGENT\""
+else
+  echo "==> auto-start skipped (CANOPY_MENUBAR_AUTOSTART=0)"
+fi
+
 echo "==> done. Launch from Spotlight: 'Canopy Runner'  (or: open \"$APP\")"

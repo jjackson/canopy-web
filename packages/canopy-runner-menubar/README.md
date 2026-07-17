@@ -41,3 +41,17 @@ Compiles `Sources/main.swift`, assembles `~/Applications/Canopy Runner.app` (ico
 copied from the committed `assets/brand/`), ad-hoc signs it, and registers it with
 Launch Services. Launch from Spotlight: **Canopy Runner**. Re-run after editing the
 source. Requires the Xcode command-line tools (`swiftc`).
+
+## Auto-start on login
+
+The build also installs a user LaunchAgent (`~/Library/LaunchAgents/com.canopy.runner.menubar.plist`)
+that `open`s the app at login — the durable fix for "the menu-bar icon disappeared."
+`open` is idempotent (it activates a running instance instead of duplicating), and
+the app respects Quit (no KeepAlive). It launches the app immediately on install too.
+
+Opt out: `CANOPY_MENUBAR_AUTOSTART=0 bash build.sh`. Remove an installed agent:
+
+```bash
+launchctl bootout gui/$(id -u)/com.canopy.runner.menubar
+rm ~/Library/LaunchAgents/com.canopy.runner.menubar.plist
+```
