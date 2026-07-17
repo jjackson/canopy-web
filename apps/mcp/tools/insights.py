@@ -17,6 +17,7 @@ from apps.mcp.audit import current_user_id, write_audit
 from apps.mcp.rate_limit import RateLimitError, check_write_limit
 from apps.mcp.server import mcp
 from apps.projects import services
+from apps.workspaces import services as wsvc
 
 
 @mcp.tool
@@ -35,9 +36,10 @@ async def list_insights(
       - limit: max rows (clamped to 100; default 20)
     """
     user_id = current_user_id()
+    slugs = await sync_to_async(wsvc.workspace_slugs_for_user_id, thread_sensitive=True)(user_id)
     try:
         rows = await sync_to_async(services.list_insights, thread_sensitive=True)(
-            category=category, source=source, project=project, limit=limit
+            workspace_slugs=slugs, category=category, source=source, project=project, limit=limit
         )
     except Exception as exc:  # noqa: BLE001
         await write_audit(
@@ -84,9 +86,11 @@ async def clear_insights(
             )
             raise
 
+    slugs = await sync_to_async(wsvc.workspace_slugs_for_user_id, thread_sensitive=True)(user_id)
     try:
         cleared = await sync_to_async(services.clear_insights, thread_sensitive=True)(
-            source=source, category=category, project=project, older_than_days=older_than_days
+            workspace_slugs=slugs, source=source, category=category,
+            project=project, older_than_days=older_than_days,
         )
     except Exception as exc:  # noqa: BLE001
         await write_audit(

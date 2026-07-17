@@ -91,13 +91,14 @@ def clear_shareouts(
     request: HttpRequest,
     payload: ShareoutsClearIn,
 ) -> ShareoutsClearOut:
-    """Delete shareouts matching the filters. An empty body clears all — but on a
-    /w/{ws} request the clear is confined to that workspace's rows."""
+    """Delete shareouts matching the filters, scoped to the caller's workspaces.
+    An empty body clears all of THE CALLER'S shareouts (the pinned /w/{ws} one, or
+    the union of their memberships) — never another tenant's."""
     count = services.clear_shareouts(
+        workspace_slugs=wsvc.request_workspace_slugs(request),
         source=payload.source,
         project=payload.project,
         date_from=payload.date_from,
         date_to=payload.date_to,
-        workspace_slug=getattr(request, "workspace_slug", None),
     )
     return ShareoutsClearOut(cleared=count)

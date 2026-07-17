@@ -600,7 +600,8 @@ def list_insights(
     """Bearer-readable xfail (Phase 5.4)."""
     limit = clamp_limit(limit, cap=100)
     rows = services.list_insights(
-        category=category, source=source, project=project, limit=limit
+        workspace_slugs=wsvc.request_workspace_slugs(request),
+        category=category, source=source, project=project, limit=limit,
     )
     items = [InsightOut.model_validate(row) for row in rows]
     return paginate(items, offset=0, limit=limit)
@@ -627,6 +628,7 @@ def clear_insights(
     A body with no filters ({}) clears ALL insights — this is intended.
     """
     count = services.clear_insights(
+        workspace_slugs=wsvc.request_workspace_slugs(request),
         source=payload.source,
         category=payload.category,
         project=payload.project,
@@ -637,9 +639,15 @@ def clear_insights(
 
 @insights_router.delete("/{pk}/", response=InsightDismissOut, summary="Dismiss insight")
 def dismiss_insight(request: HttpRequest, pk: int) -> InsightDismissOut:
-    try:
-        insight = ProjectContext.objects.get(pk=pk, context_type="insight")
-    except ProjectContext.DoesNotExist:
+    # Scope by the caller's workspaces (via the insight's project) so a member of
+    # one workspace can't delete another's insight by enumerating pks. A row outside
+    # scope is indistinguishable from a missing one → 404, no existence leak.
+    insight = (
+        services.insights_queryset(workspace_slugs=wsvc.request_workspace_slugs(request))
+        .filter(pk=pk)
+        .first()
+    )
+    if insight is None:
         raise ProblemError(
             404,
             "Insight not found",
