@@ -474,3 +474,73 @@ def test_unpaused_loop_fires_schedules_every_poll(tmp_path, monkeypatch):
         main_mod.main()
 
     assert calls == ["r-1"]  # synced on the poll — the poll IS the tick
+
+
+# --------------------------------------------------------------------------------------
+# drain_one — the "take a single turn" primitive (CDP executor)
+# --------------------------------------------------------------------------------------
+
+def _cdp_cfg(tmp_path):
+    return Config(
+        base_url="http://x", token="t", runner_id="r-1",
+        emdash_db=str(tmp_path / "e.db"), automation_ids={},
+        expected_migration_id=19,  # executor defaults to "cdp"
+    )
+
+
+class _CdpClient:
+    def __init__(self, turn):
+        self._turn = turn
+        self.beats = 0
+        self.claims = 0
+
+    def heartbeat(self, runner_id, active, host="", **kw):
+        self.beats += 1
+
+    def claim(self, runner_id, paused_agents=None):
+        self.claims += 1
+        return self._turn
+
+
+def test_drain_one_runs_exactly_one_turn_without_polling(monkeypatch, tmp_path):
+    """The single-turn primitive: heartbeat → claim ONE → execute, and NEVER poll the
+    inbox or fire schedules — those side effects are exactly what --once has and
+    --drain-one deliberately avoids, so a single turn can't spawn work you didn't ask for."""
+    monkeypatch.setattr("canopy_runner.cdp_control.host_id", lambda: "u@h")
+    monkeypatch.setattr(main_mod, "_paused_agents", lambda c: set())
+    monkeypatch.setattr(main_mod, "_maybe_check_inboxes",
+                        lambda *a, **k: pytest.fail("drain_one must NOT poll the inbox"))
+    monkeypatch.setattr(main_mod, "_fire_due_schedules",
+                        lambda *a, **k: pytest.fail("drain_one must NOT fire schedules"))
+    seen = {}
+    monkeypatch.setattr("canopy_runner.execute.execute_turn",
+                        lambda cfg, client, rid, turn: seen.update(turn=turn) or f"reused:{turn['id']}")
+
+    client = _CdpClient({"id": "t-9", "agent_slug": "eva"})
+    assert main_mod.drain_one(_cdp_cfg(tmp_path), client) == "reused:t-9"
+    assert seen["turn"]["id"] == "t-9"
+    assert client.beats == 1 and client.claims == 1
+
+
+def test_drain_one_idle_when_nothing_queued(monkeypatch, tmp_path):
+    monkeypatch.setattr("canopy_runner.cdp_control.host_id", lambda: "u@h")
+    monkeypatch.setattr(main_mod, "_paused_agents", lambda c: set())
+    monkeypatch.setattr("canopy_runner.execute.execute_turn",
+                        lambda *a, **k: pytest.fail("nothing queued — must not execute"))
+    assert main_mod.drain_one(_cdp_cfg(tmp_path), _CdpClient(None)) == "idle"
+
+
+def test_drain_one_honours_per_agent_pause_via_claim(monkeypatch, tmp_path):
+    """Per-agent pauses ARE respected — the paused set is passed to claim, which the
+    server uses to exclude that agent's turns."""
+    monkeypatch.setattr("canopy_runner.cdp_control.host_id", lambda: "u@h")
+    monkeypatch.setattr(main_mod, "_paused_agents", lambda c: {"eva"})
+    passed = {}
+
+    class C(_CdpClient):
+        def claim(self, runner_id, paused_agents=None):
+            passed["paused"] = paused_agents
+            return None
+
+    main_mod.drain_one(_cdp_cfg(tmp_path), C(None))
+    assert passed["paused"] == ["eva"]
