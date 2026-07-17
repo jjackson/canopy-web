@@ -162,6 +162,7 @@ class TurnOut(Schema):
     prompt: str
     origin_ref: dict
     claimed_by_name: str | None
+    enqueued_by_email: str | None
     session_id: str
     result_note: str
     created_at: dt.datetime
@@ -184,6 +185,10 @@ class TurnOut(Schema):
     @staticmethod
     def resolve_claimed_by_name(obj) -> str | None:
         return obj.claimed_by.name if obj.claimed_by else None
+
+    @staticmethod
+    def resolve_enqueued_by_email(obj) -> str | None:
+        return obj.enqueued_by.email if obj.enqueued_by_id else None
 
 
 class TurnEventIn(Schema):

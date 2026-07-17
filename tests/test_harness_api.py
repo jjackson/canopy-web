@@ -341,3 +341,15 @@ def test_retiring_an_already_retired_runner_404s(client, agent):
     rid = _pair(client)
     assert client.post(f"/api/harness/runners/{rid}/retire").status_code == 204
     assert client.post(f"/api/harness/runners/{rid}/retire").status_code == 404
+
+
+def test_enqueue_records_the_human_who_launched_the_turn(client, agent):
+    enq = client.post(
+        "/api/harness/turns/",
+        {"agent_slug": "echo", "origin": "manual", "idempotency_key": "who"},
+        content_type="application/json",
+    )
+    assert enq.status_code == 201
+    assert enq.json()["enqueued_by_email"] == "jj@dimagi.com"
+    from apps.harness.models import Turn
+    assert Turn.objects.get(idempotency_key="who").enqueued_by.email == "jj@dimagi.com"

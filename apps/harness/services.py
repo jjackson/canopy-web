@@ -47,6 +47,7 @@ def enqueue_turn(
     prompt: str = "",
     origin_ref: dict | None = None,
     routing: str = Turn.PREFER_LOCAL,
+    enqueued_by=None,
 ) -> tuple[Turn, bool]:
     """Queued turns stack freely — the executing-turn index never blocks intake
     (new turns are born `queued`, which the index does not cover).
@@ -78,6 +79,7 @@ def enqueue_turn(
                 prompt=prompt,
                 origin_ref=origin_ref or {},
                 routing=routing,
+                enqueued_by=enqueued_by if getattr(enqueued_by, "is_authenticated", False) else None,
             )
     except IntegrityError:
         # Only possible race: same idempotency key inserted concurrently.

@@ -689,3 +689,15 @@ def test_dismiss_insight_404():
     assert resp.status_code == 404
     body = resp.json()
     assert body["status"] == 404
+
+
+@pytest.mark.django_db
+def test_create_records_and_serializes_the_creator():
+    user = _make_user("bob", "bob@dimagi.com")
+    c = _auth_client(user)
+    resp = _post_json(c, "/api/projects/", {"name": "New", "slug": "new-proj"})
+    assert resp.status_code == 201, resp.content
+    assert Project.objects.get(slug="new-proj").created_by == user
+    listing = c.get("/api/projects/").json()
+    row = next(r for r in listing["items"] if r["slug"] == "new-proj")
+    assert row["created_by_email"] == "bob@dimagi.com"
