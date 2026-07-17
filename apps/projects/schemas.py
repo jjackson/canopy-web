@@ -92,6 +92,7 @@ class ProjectListOut(StrictModel):
     latest_actions: dict[str, ProjectActionLatestOut]
     insight_count: int = Field(ge=0)
     walkthrough_count: int = Field(ge=0, default=0)  # added by PR #41
+    created_by_email: str | None = None  # who registered it (null for pre-attribution rows)
     created_at: dt.datetime
     updated_at: dt.datetime
 

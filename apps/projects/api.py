@@ -46,7 +46,7 @@ def _build_project_list_data(qs):
     rest_framework dependency. Produces the same dict shape so that
     ProjectListOut.model_validate() works unchanged.
     """
-    qs = qs.prefetch_related(
+    qs = qs.select_related("created_by").prefetch_related(
         Prefetch(
             "contexts",
             queryset=ProjectContext.objects.order_by("-created_at"),
@@ -103,6 +103,7 @@ def _build_project_list_data(qs):
             "latest_actions": latest_actions,
             "insight_count": insight_count,
             "walkthrough_count": walkthrough_count,
+            "created_by_email": p.created_by.email if p.created_by_id else None,
             "created_at": p.created_at.isoformat(),
             "updated_at": p.updated_at.isoformat(),
         })
@@ -230,6 +231,7 @@ def _project_to_detail_out(project: Project) -> ProjectDetailOut:
         latest_actions=latest_actions,
         insight_count=insight_count,
         walkthrough_count=walkthrough_count,
+        created_by_email=project.created_by.email if project.created_by_id else None,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -274,6 +276,7 @@ def create_project(
                 status=payload.status,
                 skills=[s.model_dump() for s in payload.skills],
                 workspace=ws,
+                created_by=request.user if request.user.is_authenticated else None,
             )
     except IntegrityError:
         raise ProblemError(

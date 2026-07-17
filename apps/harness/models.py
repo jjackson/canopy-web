@@ -205,6 +205,13 @@ class Turn(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True)
     session_id = models.CharField(max_length=64, blank=True, default="")
     result_note = models.TextField(blank=True, default="")
+    # The human who launched this turn, when a person did (a manual / phone-composer
+    # enqueue). Null for cron / email / system origins and for dispatched turns.
+    # Lets you filter "turns I launched" and notify the launcher when theirs fails.
+    enqueued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="turns_enqueued",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

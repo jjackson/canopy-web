@@ -377,6 +377,7 @@ def enqueue_turn(request: HttpRequest, payload: TurnIn):
         prompt=payload.prompt,
         origin_ref=payload.origin_ref,
         routing=payload.routing,
+        enqueued_by=request.user,  # the human launching a manual / composer turn
     )
     return Status(201 if created else 200, turn)
 

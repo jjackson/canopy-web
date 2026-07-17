@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -19,6 +20,11 @@ class Project(models.Model):
     visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default="public")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="active")
     skills = models.JSONField(default=list, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="projects_created",
+        help_text="Who registered this project (null for pre-attribution rows).",
+    )
     workspace = models.ForeignKey(
         "workspaces.Workspace",
         on_delete=models.PROTECT,
