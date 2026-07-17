@@ -65,9 +65,11 @@ if _REDIS_URL:
             "LOCATION": _REDIS_URL,
         }
     }
-    # W4: the Channels layer lands here now that `channels` is a dependency. A
-    # dedicated prefix keeps channel-layer pub/sub from colliding with the Django
-    # cache on the same shared ElastiCache instance.
+    # W4: the Channels layer lands here now that `channels` is a dependency. The
+    # prefix namespaces channel-layer keys so they don't COLLIDE with the Django
+    # cache on the same shared ElastiCache DB index. (It does not protect against
+    # a cache FLUSHDB, which ignores prefixes — but cache.clear() is never on a
+    # prod path here, and clients rebuild from durable DB state on reconnect.)
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",

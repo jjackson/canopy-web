@@ -15,8 +15,9 @@ from importlib import import_module
 
 from channels.db import database_sync_to_async
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import HASH_SESSION_KEY, SESSION_KEY, get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.utils.crypto import constant_time_compare
 
 
 def _header(scope, name: bytes) -> bytes | None:
@@ -38,11 +39,20 @@ def _user_from_session(scope):
         return None
     engine = import_module(settings.SESSION_ENGINE)
     session = engine.SessionStore(morsel.value)
-    uid = session.get("_auth_user_id")
+    uid = session.get(SESSION_KEY)
     if not uid:
         return None
     User = get_user_model()
-    return User.objects.filter(pk=uid, is_active=True).first()
+    user = User.objects.filter(pk=uid, is_active=True).first()
+    if user is None:
+        return None
+    # Verify the session auth hash, exactly as django.contrib.auth.get_user does,
+    # so a session a password change SHOULD have invalidated cannot authenticate
+    # over WS until it happens to expire.
+    session_hash = session.get(HASH_SESSION_KEY)
+    if not (session_hash and constant_time_compare(session_hash, user.get_session_auth_hash())):
+        return None
+    return user
 
 
 @database_sync_to_async

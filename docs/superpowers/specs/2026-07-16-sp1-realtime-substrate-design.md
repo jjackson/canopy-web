@@ -68,14 +68,18 @@ It imports only framework apps (`harness`, `agents`, `workspaces`, `tokens`,
 | Surface | WS route | Channels group | Membership gate |
 |---|---|---|---|
 | Turn tail | `ws/turns/{turn_id}/` | `turn.{turn_id}` | turn → agent/project → workspace → caller is a member |
-| Supervisor | `ws/supervisor/` | `w.{slug}.supervisor` (one per workspace the caller belongs to) | caller's workspace memberships |
+| Supervisor | `ws/supervisor/` | `supervisor.user.{user_id}` | the caller's own group; snapshot + deltas scoped to their visible agents/runners |
 
-`/supervisor` is deliberately cross-workspace (like `/insights`), so a single
-`ws/supervisor/` socket joins the caller to **each** `w.{slug}.supervisor` group for
-the workspaces they belong to; the client sends nothing to choose scope. Group-name
-construction and the membership checks live in `groups.py` as pure functions
-(`turn_group(turn_id)`, `supervisor_group(slug)`, `user_can_read_turn(user, turn)`,
-`user_workspace_slugs(user)` — the last already exists in `workspaces` services).
+**As built:** the supervisor socket joins **one per-user group** (`supervisor.user.{id}`),
+not a per-workspace group. `/supervisor` is cross-workspace (like `/insights`), and its
+visibility is *not* pure workspace membership — runners are `paired_by`-scoped and
+agents span the caller's workspaces (+ unhomed). A single per-user group with fan-out
+that resolves recipients (a runner delta → its `paired_by` user; a waiting delta → the
+agent's workspace members) is simpler and a tighter isolation boundary than N
+per-workspace subscriptions. Group-name construction + the turn gate live in `groups.py`
+as pure functions (`turn_group`, `supervisor_user_group`, `user_can_read_turn`); the
+snapshot's visibility mirrors the REST `_visible_agent_workspace_ids` /
+`_runner_visibility_q` unpinned branch (`apps/realtime/snapshot.py`).
 
 ---
 
@@ -90,11 +94,11 @@ coupled to Channels and stays synchronous/testable.
   Because `append_events` assigns `seq` under a `select_for_update` row lock and can
   write a batch, the receiver coalesces a batch into one `group_send` carrying the
   contiguous new events (ordered by `seq`).
-- **Supervisor** — two triggers:
-  1. **Runner status** — `post_save` on `Runner` (heartbeat renews `last_heartbeat_at`; pair/retire change `status`) → `group_send(supervisor_group(runner.workspace.slug), {"type": "supervisor.runner", ...})`.
+- **Supervisor** — two triggers (each resolves recipients to **per-user** groups):
+  1. **Runner status** — `post_save` on `Runner` (heartbeat renews `last_heartbeat_at`; pair/retire change `status`) → `group_send(supervisor_user_group(runner.paired_by_id), {"type": "supervisor.runner", ...})`.
   2. **Waiting counts** — hook the point where `apps/push` already recomputes an
      agent's `waiting_count` (`services.refresh_agent_waiting` / `AgentWaitingSnapshot`):
-     when the snapshot changes, also `group_send(supervisor_group(agent.workspace.slug), {"type": "supervisor.waiting", "agent": slug, "waiting_count": n})`. This reuses the existing coalesced recompute — no new counting logic.
+     when the snapshot changes, fan out to each member of the agent's workspace — `group_send(supervisor_user_group(uid), {"type": "supervisor.waiting", "agent": slug, "waiting_count": n})` for `uid in workspace_member_ids(agent.workspace)`. Reuses the existing coalesced recompute — no new counting logic.
 
 All `group_send` calls go through a tiny `groups.publish(...)` helper wrapping
 `get_channel_layer()` + `async_to_sync`, so a null/misconfigured layer degrades to a
@@ -148,9 +152,12 @@ will need it; SP1's primary consumer is the browser SPA on the cookie path.
   `{events, connected, lastError}`. The turn detail view swaps its REST poll for this
   hook; the REST `GET …/events` stays as the manual/fallback fetch.
 - **`useLiveSupervisor()`** — one `WebSocket` to `ws/supervisor/`, applies the snapshot
-  then runner/waiting deltas into the existing supervisor view-model. `SupervisorPage`,
-  `RunnerStatus`, `WaitingOnYou`, `AgentKpiCard` read from it instead of a mount-time
-  fetch.
+  then runner/waiting deltas (pure `applyFrame` reducer). `SupervisorPage` overlays the
+  live view-model on its mount fetch: the "Waiting on you" **header total**, the runner
+  band status, the `AgentKpiCard` counts, and the app badge go live. **As built (SP1
+  scope):** the `WaitingOnYou` *item list* stays on the mount fetch — the snapshot/deltas
+  carry waiting *counts*, not the itemized needs-you rows; making that list live means
+  streaming the items themselves, deferred to a later slice.
 - **`lib/wsUrl.ts`** — a ws/wss URL builder that respects `import.meta.env.BASE_URL`
   (the `/canopy` prefix), ported from ace-web.
 - **Types** — hand-written WS frame types in `frontend/src/api/types.ws.ts`

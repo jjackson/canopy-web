@@ -31,9 +31,13 @@ async def _run_mw(scope):
 
 
 def _make_session(user) -> str:
+    from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
+
     engine = import_module(settings.SESSION_ENGINE)
     session = engine.SessionStore()
-    session["_auth_user_id"] = str(user.pk)
+    session[SESSION_KEY] = str(user.pk)
+    session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+    session[BACKEND_SESSION_KEY] = "django.contrib.auth.backends.ModelBackend"
     session.save()
     return session.session_key
 
@@ -59,6 +63,26 @@ async def test_resolves_from_session_cookie():
     user = await _run_mw({"type": "websocket", "headers": [(b"cookie", cookie)]})
     assert user.is_authenticated
     assert user.pk == u.pk
+
+
+async def test_session_without_auth_hash_is_anonymous():
+    # A session missing the auth hash (e.g. one a password change invalidated)
+    # must not authenticate over WS, matching django.contrib.auth.get_user.
+    u = await database_sync_to_async(User.objects.create_user)("jj", "jj@dimagi.com", "pw")
+
+    def mk():
+        from django.contrib.auth import SESSION_KEY
+
+        engine = import_module(settings.SESSION_ENGINE)
+        session = engine.SessionStore()
+        session[SESSION_KEY] = str(u.pk)  # deliberately no HASH_SESSION_KEY
+        session.save()
+        return session.session_key
+
+    key = await database_sync_to_async(mk)()
+    cookie = f"{settings.SESSION_COOKIE_NAME}={key}".encode()
+    user = await _run_mw({"type": "websocket", "headers": [(b"cookie", cookie)]})
+    assert user.is_authenticated is False
 
 
 async def test_bad_bearer_is_anonymous():

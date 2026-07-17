@@ -145,6 +145,9 @@ if _CHANNELS_REDIS_URL:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
+            # prefix namespaces channel keys away from the Django cache on the
+            # same Redis DB (it does not survive a FLUSHDB, but cache.clear() is
+            # not on a prod path).
             "CONFIG": {"hosts": [_CHANNELS_REDIS_URL], "prefix": "canopy:realtime:"},
         }
     }

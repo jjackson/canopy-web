@@ -81,6 +81,24 @@ async def test_member_gets_replay_then_live_tail():
     await comm.disconnect()
 
 
+async def test_replay_pages_beyond_500_events():
+    # A turn with more than one replay page (500) must deliver ALL unseen events
+    # on connect — no silent truncation (the SP2 chat path routinely exceeds it).
+    user, turn = await database_sync_to_async(_member_turn)()
+    await database_sync_to_async(services.append_events)(
+        turn, [{"kind": "assistant", "payload": {"i": i}} for i in range(600)]
+    )
+    comm = await _connect(turn, user)
+    connected, _ = await comm.connect()
+    assert connected is True
+    seqs = []
+    for _ in range(600):
+        frame = await comm.receive_json_from(timeout=3)
+        seqs.append(frame["event"]["seq"])
+    assert seqs == list(range(1, 601))  # every event, in order, no gap
+    await comm.disconnect()
+
+
 async def test_cursor_replay_skips_seen_events():
     user, turn = await database_sync_to_async(_member_turn)()
     await database_sync_to_async(services.append_events)(

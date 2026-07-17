@@ -19,6 +19,8 @@ from . import groups
 
 
 class TurnConsumer(AsyncJsonWebsocketConsumer):
+    REPLAY_PAGE = 500
+
     async def connect(self):
         user = self.scope.get("user")
         if not getattr(user, "is_authenticated", False):
@@ -36,10 +38,21 @@ class TurnConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.accept()
         # Cursor replay: send everything after the client's last-seen seq, then
-        # live-tail via turn_event group messages.
+        # live-tail via turn_event group messages. Paged to exhaustion — a turn
+        # with more than REPLAY_PAGE unseen events (routine on the SP2 chat path,
+        # where a turn streams token-level events) must not be silently truncated:
+        # those rows predate the group join, so the live tail would never re-emit
+        # them, leaving a hole between the replayed page and new appends.
         after = self._after_from_query()
-        for event in await self._replay(turn, after):
-            await self.send_json({"event": event})
+        while True:
+            batch = await self._replay_batch(turn, after)
+            if not batch:
+                break
+            for event in batch:
+                await self.send_json({"event": event})
+            after = batch[-1]["seq"]
+            if len(batch) < self.REPLAY_PAGE:
+                break
 
     async def disconnect(self, code):
         group = getattr(self, "group", None)
@@ -64,8 +77,8 @@ class TurnConsumer(AsyncJsonWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def _replay(self, turn, after: int):
-        rows = turn.events.filter(seq__gt=after).order_by("seq")[:500]
+    def _replay_batch(self, turn, after: int):
+        rows = turn.events.filter(seq__gt=after).order_by("seq")[: self.REPLAY_PAGE]
         return [groups.serialize_turn_event(row) for row in rows]
 
     def _after_from_query(self) -> int:

@@ -34,9 +34,13 @@ def _ws_app():
 
 
 def _make_session(user) -> str:
+    from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
+
     engine = import_module(settings.SESSION_ENGINE)
     session = engine.SessionStore()
-    session["_auth_user_id"] = str(user.pk)
+    session[SESSION_KEY] = str(user.pk)
+    session[HASH_SESSION_KEY] = user.get_session_auth_hash()
+    session[BACKEND_SESSION_KEY] = "django.contrib.auth.backends.ModelBackend"
     session.save()
     return session.session_key
 
