@@ -389,6 +389,7 @@ class ItemOut(Schema):
     decision: str
     comment: str
     decided_by: str
+    decided_by_email: str | None = None  # resolved from the User FK, string fallback
     decided_at: dt.datetime | None = None
     dispatch: list[dict[str, Any]]
     dispatched_at: dt.datetime | None = None
