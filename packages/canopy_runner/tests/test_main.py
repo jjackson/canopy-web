@@ -544,3 +544,27 @@ def test_drain_one_honours_per_agent_pause_via_claim(monkeypatch, tmp_path):
 
     main_mod.drain_one(_cdp_cfg(tmp_path), C(None))
     assert passed["paused"] == ["eva"]
+
+
+def test_broken_scheduling_does_not_crash_the_tick(db, tmp_path, monkeypatch, caplog):
+    """A scheduling dependency failure — e.g. canopy_cron not installed in the
+    laptop daemon's env — must disable ONLY scheduling. Claiming and the inbox
+    keep running. The `from . import schedules` lives INSIDE _fire_due_schedules'
+    guard for exactly this reason: the import is the likeliest failure, and it
+    must not escape and take down the whole run_once cycle.
+
+    Regression for the outage where a missing canopy_cron crash-looped the runner
+    (no claim, no inbox) instead of gracefully skipping scheduling.
+    """
+    import sys
+
+    # Make `from . import schedules` raise ImportError, exactly as a missing
+    # canopy_cron did (schedules.py imports canopy_cron at module top, so its
+    # own import fails). setitem(..., None) is Python's "this import is halted".
+    monkeypatch.setitem(sys.modules, "canopy_runner.schedules", None)
+    caplog.set_level("WARNING")
+
+    # Must NOT raise — before the fix this propagated out of run_once.
+    _fire_due_schedules(_cfg(db, tmp_path), FakeClient(), paused=set())
+
+    assert "scheduling unavailable" in caplog.text.lower()
