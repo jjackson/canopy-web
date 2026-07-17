@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.db import IntegrityError
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from ninja import Router
@@ -15,6 +16,7 @@ from ninja.errors import HttpError
 
 from apps.agents import services as agent_services
 from apps.api.auth import session_auth
+from apps.harness.models import Turn
 from apps.workspaces import services as wsvc
 
 from . import services
@@ -69,8 +71,14 @@ def create_session(request: HttpRequest, payload: SessionCreateIn):
 
 @router.get("/", response=list[SessionOut], summary="List my chat sessions")
 def list_sessions(request: HttpRequest):
+    # "My" sessions — scoped to the caller (session sharing across a workspace is
+    # SP3 multiplayer). Still tenant-bounded so a stale membership can't leak.
     slugs = _visible_slugs(request)
-    rows = Session.objects.select_related("agent").filter(workspace_id__in=slugs)
+    rows = (
+        Session.objects.select_related("agent")
+        .filter(workspace_id__in=slugs, created_by=request.user)
+        .order_by("-created_at")
+    )
     return [_out(s) for s in rows]
 
 
@@ -89,7 +97,16 @@ def send(request: HttpRequest, session_id: uuid.UUID, payload: SendIn):
     session = _session_or_404(request, session_id)
     if not payload.text.strip():
         raise HttpError(422, "message text is required")
-    message, turn = services.send_message(session=session, text=payload.text, user=request.user)
+    message, turn = services.send_message(
+        session=session, text=payload.text, user=request.user, client_id=payload.client_id,
+    )
     # SP2a: run the stub inline. SP2b: the cloud runner claims the queued turn.
-    execute_turn_stub(turn)
-    return {"turn_id": turn.id, "message": MessageOut.from_orm(message)}
+    # Guard against the one_executing_turn_per_session race (a truly concurrent
+    # send to the same session): leave the turn queued rather than 500 the
+    # already-committed user message. Moot once SP2b makes execution async.
+    if turn is not None and turn.status == Turn.QUEUED:
+        try:
+            execute_turn_stub(turn)
+        except IntegrityError:
+            pass
+    return {"turn_id": turn.id if turn else None, "message": MessageOut.from_orm(message)}

@@ -15,6 +15,8 @@ class SessionCreateIn(Schema):
 
 class SendIn(Schema):
     text: str
+    # Optional client-generated nonce for idempotent (double-submit-safe) sends.
+    client_id: str = ""
 
 
 class MessageOut(Schema):
@@ -39,5 +41,5 @@ class SessionDetailOut(SessionOut):
 
 
 class SendOut(Schema):
-    turn_id: uuid.UUID
+    turn_id: uuid.UUID | None
     message: MessageOut

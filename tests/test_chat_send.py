@@ -33,12 +33,22 @@ def test_send_creates_user_message_and_queued_turn():
     assert turn.prompt == "hello"
 
 
-def test_send_is_idempotent_per_index():
+def test_distinct_sends_make_distinct_turns():
     user, _ws, _agent, session = _ctx()
     _m, turn1 = chat.send_message(session=session, text="hi", user=user)
-    # A second send is a NEW index -> a new turn (not a dup of the first).
+    # A second, genuinely different send is a NEW index -> a new turn.
     _m2, turn2 = chat.send_message(session=session, text="again", user=user)
     assert turn1.id != turn2.id
+
+
+def test_send_with_client_nonce_is_idempotent():
+    user, _ws, _agent, session = _ctx()
+    m1, turn1 = chat.send_message(session=session, text="hi", user=user, client_id="nonce-1")
+    # A retry with the SAME nonce collapses onto the same Message + Turn.
+    m2, turn2 = chat.send_message(session=session, text="hi", user=user, client_id="nonce-1")
+    assert m1.id == m2.id
+    assert turn1.id == turn2.id
+    assert session.messages.filter(role="user").count() == 1
 
 
 def test_projection_materializes_assistant_events():

@@ -71,7 +71,7 @@ class TurnConsumer(AsyncJsonWebsocketConsumer):
         except (ValueError, TypeError):
             return None
         return (
-            Turn.objects.select_related("agent")
+            Turn.objects.select_related("agent", "chat_session")
             .filter(pk=turn_id)
             .first()
         )

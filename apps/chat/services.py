@@ -38,21 +38,36 @@ def _next_index(session: Session) -> int:
     return 0 if current is None else current + 1
 
 
-def send_message(*, session: Session, text: str, user) -> tuple[Message, Turn]:
+def send_message(*, session: Session, text: str, user, client_id: str = "") -> tuple[Message, Turn]:
     """Record the human's message and enqueue the session Turn that answers it.
-    Idempotency-keyed by the user message's session index, so a retried send
-    reuses the same Turn rather than doubling it."""
+
+    Idempotency: pass a stable `client_id` (a client-generated nonce) to make a
+    retried/double-submitted send collapse onto the SAME user Message + Turn.
+    Without one, the key falls back to the message's session index — best-effort
+    only (a genuine retry after the first commit would compute a new index), so a
+    nonce is required for true double-submit safety.
+    """
     with transaction.atomic():
         Session.objects.select_for_update().get(pk=session.pk)
+        if client_id:
+            existing = Message.objects.filter(
+                session=session, role=Message.USER, content__client_id=client_id
+            ).first()
+            if existing is not None:
+                key = f"chat:{session.id.hex}:{client_id}"
+                turn = Turn.objects.filter(idempotency_key=key).first()
+                return existing, turn
         index = _next_index(session)
+        content = {"text": text}
+        if client_id:
+            content["client_id"] = client_id
         message = Message.objects.create(
-            session=session, turn_index=index, role=Message.USER,
-            plaintext=text, content={"text": text},
+            session=session, turn_index=index, role=Message.USER, plaintext=text, content=content,
         )
         turn, _created = harness_services.enqueue_turn(
             session=session,
             origin=Turn.ORIGIN_API,
-            idempotency_key=f"chat:{session.id.hex}:{index}",
+            idempotency_key=f"chat:{session.id.hex}:{client_id or index}",
             prompt=text,
         )
     return message, turn
