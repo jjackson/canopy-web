@@ -14,7 +14,6 @@ from django.contrib.auth.models import AnonymousUser, User
 from apps.agents.models import Agent
 from apps.harness import services
 from apps.harness.models import Turn
-from apps.realtime import groups
 from apps.realtime.consumers import TurnConsumer
 from apps.workspaces.models import Workspace, WorkspaceMembership
 
