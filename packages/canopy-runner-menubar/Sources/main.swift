@@ -91,13 +91,14 @@ final class Controller: NSObject, NSApplicationDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     var baseTree: NSImage?
     var timer: Timer?
-    let popover = NSPopover()
+    var window: NSWindow?
     var web: WKWebView!
     var authed = false  // have we minted + injected the session cookie this launch?
 
     func applicationDidFinishLaunching(_ n: Notification) {
         baseTree = loadTree()
-        buildPopover()
+        buildWindow()
+        buildMainMenu()
         // Left-click opens the shared web fleet UI; right-click shows local controls.
         if let btn = statusItem.button {
             btn.target = self
@@ -110,19 +111,53 @@ final class Controller: NSObject, NSApplicationDelegate {
         }
     }
 
+    // A Dock-icon click (and any re-open when no window is visible) routes here — open the
+    // SAME shared window the menu-bar icon opens.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showWindow()
+        return true
+    }
+
+    // Closing the window must NOT quit: this is still the background runner controller
+    // (menu-bar tree, status poll, daemon control). Quit is explicit (right-click menu /
+    // Cmd-Q).
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    // A .regular app needs a main menu for a sane focused experience (Cmd-Q, the app menu).
+    // Minimal: an app menu with Show + Quit.
+    func buildMainMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        main.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Show Canopy Runner", action: #selector(showWindow), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit Canopy Runner", action: #selector(quit), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        NSApp.mainMenu = main
+    }
+
     // The fleet UI is the DEPLOYED /supervisor React surface — the SAME app the phone PWA
     // and desktop browser load (CLAUDE.md: "loaded by three consumers"). Hosting it in a
     // WKWebView keeps the menu bar DRY with web + mobile: zero duplicated components, and
     // a persistent data store so the Google login persists across opens.
-    func buildPopover() {
+    func buildWindow() {
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .default()
         web = WKWebView(frame: NSRect(x: 0, y: 0, width: 420, height: 640), configuration: cfg)
-        let vc = NSViewController()
-        vc.view = web
-        popover.contentSize = NSSize(width: 420, height: 640)
-        popover.behavior = .transient
-        popover.contentViewController = vc
+        let win = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 640),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false)
+        win.title = "Canopy Runner"
+        win.contentView = web
+        // Reused across opens: closing HIDES it (see applicationShouldTerminateAfterLastWindowClosed),
+        // so it must not be deallocated on close or the next open dereferences a freed window.
+        win.isReleasedWhenClosed = false
+        win.center()
+        window = win
     }
 
     @objc func statusClicked() {
@@ -133,19 +168,17 @@ final class Controller: NSObject, NSApplicationDelegate {
             statusItem.button?.performClick(nil)
             DispatchQueue.main.async { self.statusItem.menu = nil }
         } else {
-            togglePopover()
+            showWindow()
         }
     }
 
-    func togglePopover() {
-        if popover.isShown { popover.performClose(nil); return }
+    @objc func showWindow() {
         // ALWAYS open on the supervisor home, never wherever the last session navigated
         // to. First open mints + injects the session cookie; after that the cookie is set,
         // so we just reload /supervisor (cheap, no re-mint).
         if authed { loadSupervisor() } else { authenticateThenLoad() }
-        guard let btn = statusItem.button else { return }
         NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
+        window?.makeKeyAndOrderFront(nil)
     }
 
     // SHARED AUTH: the panel is authenticated with the SAME PAT the daemon uses (both read
@@ -338,7 +371,10 @@ final class Controller: NSObject, NSApplicationDelegate {
 }
 
 let app = NSApplication.shared
-app.setActivationPolicy(.accessory)  // menu-bar only, no dock icon
+app.setActivationPolicy(.regular)  // Dock icon = always-visible "it's running" signal;
+                                   // the notch clips the menu-bar tree, so the Dock icon
+                                   // is the reliable running signal. Standard app: Dock +
+                                   // Cmd-Tab + an app menu when focused.
 let controller = Controller()
 app.delegate = controller
 app.run()
