@@ -18,6 +18,18 @@ class OriginIssue(models.Model):
     title = models.CharField(max_length=300)
     source = models.CharField(max_length=100, default="hal-architect")
     agent = models.CharField(max_length=100, default="hal")
+    # Tenant that owns this record — the authoring agent's workspace (an origin
+    # record is agent-authored provenance, so it derives its tenant via the agent
+    # exactly as AgentSchedule does). Nullable for legacy rows; scoping treats null
+    # as visible to any authenticated user. `agent` above stays as the string
+    # attribution of WHO authored it, distinct from this tenancy FK.
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="origin_issues",
+    )
     skill = models.CharField(max_length=100, default="architect")
     initiative = models.CharField(max_length=200, default="")
     ledger = models.CharField(max_length=500, blank=True, default="")
