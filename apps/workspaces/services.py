@@ -103,6 +103,22 @@ def request_workspace_slugs(request) -> set[str]:
     return user_workspace_slugs(user)
 
 
+def workspace_slugs_for_user_id(user_id) -> set[str]:
+    """The workspace slugs a user (by pk) may act within — the MCP-side counterpart
+    of `request_workspace_slugs`, for tools that carry a token subject rather than a
+    request. Empty set for an unresolvable user, so a scoped query fails CLOSED
+    (sees/clears nothing) instead of falling back to global."""
+    if user_id is None:
+        return set()
+    from django.contrib.auth import get_user_model
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        return set()
+    auto_join_workspaces(user)
+    return user_workspace_slugs(user)
+
+
 def user_default_workspace(user) -> Workspace | None:
     """The user's workspace when unambiguous — their sole membership, else None
     (0 or 2+ memberships). Used to resolve a default for headless PAT callers."""

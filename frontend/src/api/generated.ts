@@ -753,8 +753,9 @@ export interface paths {
         readonly put?: never;
         /**
          * Clear shareouts by source / project / date (AND-combined)
-         * @description Delete shareouts matching the filters. An empty body clears all — but on a
-         *     /w/{ws} request the clear is confined to that workspace's rows.
+         * @description Delete shareouts matching the filters, scoped to the caller's workspaces.
+         *     An empty body clears all of THE CALLER'S shareouts (the pinned /w/{ws} one, or
+         *     the union of their memberships) — never another tenant's.
          */
         readonly post: operations["apps_shareouts_api_clear_shareouts"];
         readonly delete?: never;

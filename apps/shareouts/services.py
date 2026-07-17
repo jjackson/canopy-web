@@ -97,26 +97,23 @@ def upsert_shareouts(items: list, *, workspace=None) -> dict:
 
 def clear_shareouts(
     *,
+    workspace_slugs: set[str],
     source: str | None = None,
     project: str | None = None,
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
-    workspace_slug: str | None = None,
 ) -> int:
     """Delete shareouts matching the filters (AND-combined); return the count.
 
-    - source:         exact source match (e.g. a prior run's source tag)
-    - project:        project slug exact match
-    - date_from:      period_end date >= date_from
-    - date_to:        period_start date <= date_to
-    - workspace_slug: when set (a /w/{ws} request), only clears that tenant's rows
-
-    A call with no filters (and no workspace) deletes ALL shareouts — intended
-    (matches the insights clear contract).
+    - workspace_slugs: REQUIRED tenant boundary — only rows in these workspaces are
+                       ever deleted. A no-filter clear wipes the caller's own
+                       workspaces, never all tenants.
+    - source:          exact source match (e.g. a prior run's source tag)
+    - project:         project slug exact match
+    - date_from:       period_end date >= date_from
+    - date_to:         period_start date <= date_to
     """
-    qs = Shareout.objects.all()
-    if workspace_slug:
-        qs = qs.filter(workspace_id=workspace_slug)
+    qs = Shareout.objects.filter(workspace_id__in=workspace_slugs)
     if source:
         qs = qs.filter(source=source)
     if project:

@@ -94,3 +94,32 @@ def test_prefixed_workspace_route_works_for_member():
     assert resp.status_code == 200
     items = resp.json()["items"]
     assert any(i["title"] == "Weekly briefing" for i in items)
+
+
+def _workspace(slug):
+    from apps.workspaces.models import Workspace
+    owner = _user(f"owner-{slug}@{slug}.example")
+    ws, _ = Workspace.objects.get_or_create(
+        slug=slug, defaults={"display_name": slug, "created_by": owner, "auto_join_domains": []}
+    )
+    return ws
+
+
+def _shareout_in(ws):
+    return Shareout.objects.create(
+        project=None, workspace=ws,
+        period_start="2026-06-03T09:00:00Z", period_end="2026-06-03T17:30:00Z",
+        title="Other tenant's briefing", content="secret", source="s",
+    )
+
+
+def test_clear_with_no_filters_never_deletes_another_workspaces_shareouts():
+    # A dimagi-only user clearing "everything" must not wipe connect's shareouts —
+    # the empty-body clear is scoped to the caller's own workspaces.
+    connect_row = _shareout_in(_workspace("connect"))
+    jj = _user("jj@dimagi.com", is_superuser=True)
+    resp = _client(jj).post(
+        "/api/shareouts/clear/", data=json.dumps({}), content_type="application/json"
+    )
+    assert resp.status_code == 200
+    assert Shareout.objects.filter(pk=connect_row.pk).exists()  # survived the cross-tenant clear
