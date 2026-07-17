@@ -70,21 +70,39 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
 
 export function OpenSessions(): JSX.Element {
   const [sessions, setSessions] = useState<EmdashSessionOut[] | null>(null)
+  // Distinct from `sessions === []` (genuinely zero) — a flaky fetch must not
+  // collapse into "No open sessions." with no error signal. Mirrors
+  // SupervisorPage's per-band `errs` convention (BandError).
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
     listOpenSessions()
       .then((s) => { if (!cancelled) setSessions(s) })
-      .catch(() => { if (!cancelled) setSessions([]) })
+      .catch((e) => {
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : 'Failed to load sessions')
+        setSessions([])
+      })
     return () => { cancelled = true }
   }, [])
 
   if (sessions === null) return <p className="text-[12px] text-muted-foreground">Loading sessions…</p>
+  if (error) {
+    return (
+      <p
+        className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-[13px] text-destructive"
+        data-testid="sessions-error"
+      >
+        {error}
+      </p>
+    )
+  }
   if (sessions.length === 0) {
     return <p className="text-[12px] text-muted-foreground" data-testid="sessions-empty">No open sessions.</p>
   }
   return (
     <div className="flex flex-col gap-2" data-testid="open-sessions">
-      {sessions.map((s) => <SessionRow key={`${s.emdash_task}`} session={s} />)}
+      {sessions.map((s) => <SessionRow key={s.id} session={s} />)}
     </div>
   )
 }
