@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { listAgents, getFleetNeedsYou, type AgentOut, type FleetNeedsYouOut } from '@/api/agents'
 import { listRunners, type RunnerOut } from '@/api/harness'
 import { useLiveSupervisor } from '@/hooks/useLiveSupervisor'
@@ -10,7 +11,7 @@ import { OpenSessions } from '@/components/supervisor/OpenSessions'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
 import { PushToggle } from '@/pwa/PushToggle'
 import { setBadge } from '@/pwa/usePush'
-import { Skeleton } from 'canopy-ui'
+import { Skeleton, Tabs, TabsList, TabsTrigger, TabsContent } from 'canopy-ui'
 
 function BandError({ message }: { message: string }): JSX.Element {
   return (
@@ -80,73 +81,87 @@ export default function SupervisorPage(): JSX.Element {
     if (live.hasSnapshot || fleet) setBadge(totalWaiting)
   }, [live.hasSnapshot, fleet, totalWaiting])
 
+  const [searchParams, setSearchParams] = useSearchParams()
+  const raw = searchParams.get('tab')
+  // Unknown / absent value falls back to Inbox — never a blank tab, and no param
+  // means Inbox (what push targets).
+  const tab = raw === 'sessions' || raw === 'agents' ? raw : 'inbox'
+  const onTab = (value: string) =>
+    // Push history (not replace) so the phone back button steps through tabs.
+    // Inbox is the bare URL; the others carry ?tab=.
+    setSearchParams(value === 'inbox' ? {} : { tab: value })
+
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-5 p-4" data-testid="supervisor-page">
+    <div className="mx-auto flex max-w-2xl flex-col gap-4 p-4" data-testid="supervisor-page">
       <header>
         <h1 className="text-lg font-semibold text-foreground">Supervisor</h1>
         <p className="mt-0.5 text-[12px] text-muted-foreground">Your fleet, and what it needs from you.</p>
       </header>
 
-      <InstallPrompt />
-      <PushToggle />
+      <Tabs value={tab} onValueChange={onTab} className="gap-4">
+        <TabsList className="w-full">
+          <TabsTrigger value="inbox" data-testid="tab-inbox">
+            Inbox
+            {totalWaiting > 0 && (
+              <span className="ml-1 rounded bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                {totalWaiting}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="sessions" data-testid="tab-sessions">
+            Sessions
+          </TabsTrigger>
+          <TabsTrigger value="agents" data-testid="tab-agents">
+            Agents
+          </TabsTrigger>
+        </TabsList>
 
-      {agents && agents.length > 0 && (
-        <section>
-          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Dispatch
-          </h2>
-          <Composer agents={agents} />
-        </section>
-      )}
+        {/* Inbox — the fleet's "waiting on you" queue (the act-now surface). */}
+        <TabsContent value="inbox" className="flex flex-col gap-3">
+          {errs.fleet ? (
+            <BandError message={errs.fleet} />
+          ) : fleet === null ? (
+            <Skeleton className="h-24 w-full" />
+          ) : (
+            <WaitingOnYou fleet={fleet} />
+          )}
+        </TabsContent>
 
-      <section>
-        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Open sessions
-        </h2>
-        <OpenSessions />
-      </section>
+        {/* Sessions — dispatch, then the open emdash sessions you can continue. */}
+        <TabsContent value="sessions" className="flex flex-col gap-4">
+          {agents && agents.length > 0 && <Composer agents={agents} />}
+          <OpenSessions />
+        </TabsContent>
 
-      <section>
-        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Waiting on you {totalWaiting > 0 ? `· ${totalWaiting}` : ''}
-        </h2>
-        {errs.fleet ? (
-          <BandError message={errs.fleet} />
-        ) : fleet === null ? (
-          <Skeleton className="h-24 w-full" />
-        ) : (
-          <WaitingOnYou fleet={fleet} />
-        )}
-      </section>
+        {/* Agents — fleet KPIs + runner status + the one-time setup prompts. */}
+        <TabsContent value="agents" className="flex flex-col gap-4">
+          {errs.runners ? (
+            <BandError message={errs.runners} />
+          ) : renderRunners === null ? (
+            <Skeleton className="h-12 w-full" />
+          ) : (
+            <RunnerStatus runners={renderRunners} />
+          )}
 
-      <section>
-        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Runners</h2>
-        {errs.runners ? (
-          <BandError message={errs.runners} />
-        ) : renderRunners === null ? (
-          <Skeleton className="h-12 w-full" />
-        ) : (
-          <RunnerStatus runners={renderRunners} />
-        )}
-      </section>
+          {errs.agents ? (
+            <BandError message={errs.agents} />
+          ) : agents === null ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {agents.map((a) => (
+                <AgentKpiCard key={a.slug} agent={a} waiting={waitingFor(a.slug)} />
+              ))}
+            </div>
+          )}
 
-      <section>
-        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Agents</h2>
-        {errs.agents ? (
-          <BandError message={errs.agents} />
-        ) : agents === null ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {agents.map((a) => (
-              <AgentKpiCard key={a.slug} agent={a} waiting={waitingFor(a.slug)} />
-            ))}
-          </div>
-        )}
-      </section>
+          <InstallPrompt />
+          <PushToggle />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

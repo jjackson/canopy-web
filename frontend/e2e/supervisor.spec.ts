@@ -1,18 +1,33 @@
 import { test, expect } from '@playwright/test'
 
+// Reach a tab's content. Inbox is the default landing; Sessions/Agents need a click.
+async function openTab(page: import('@playwright/test').Page, tab: 'inbox' | 'sessions' | 'agents') {
+  if (tab !== 'inbox') await page.getByTestId(`tab-${tab}`).click()
+}
+
 test.describe('/supervisor', () => {
-  test('renders the fleet at phone width without horizontal scroll', async ({ page }) => {
+  test('renders without horizontal scroll on every tab', async ({ page }) => {
     await page.goto('/supervisor')
     await expect(page.getByTestId('supervisor-page')).toBeVisible()
-    await expect(page.getByTestId('runner-status').or(page.getByText('No runner paired'))).toBeVisible()
-    await expect(page.getByTestId('waiting-on-you').or(page.getByTestId('waiting-empty'))).toBeVisible()
+    for (const tab of ['inbox', 'sessions', 'agents'] as const) {
+      await openTab(page, tab)
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(overflow, `tab ${tab} overflows`).toBeLessThanOrEqual(0)
+    }
+  })
 
-    // The body must never scroll sideways. Wide content scrolls in its OWN
-    // container; a page-level overflow means a component broke the contract.
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    )
-    expect(overflow).toBeLessThanOrEqual(0)
+  test('defaults to Inbox and deep-links via ?tab=', async ({ page }) => {
+    // Default landing (what push drops you into) is Inbox: the waiting queue is
+    // visible and the other tabs' content is not.
+    await page.goto('/supervisor')
+    await expect(page.getByTestId('waiting-on-you').or(page.getByTestId('waiting-empty'))).toBeVisible()
+    await expect(page.getByTestId('open-sessions').or(page.getByTestId('sessions-empty'))).toBeHidden()
+
+    // Deep-link straight to Agents.
+    await page.goto('/supervisor?tab=agents')
+    await expect(page.getByTestId('runner-status').or(page.getByText('No runner paired'))).toBeVisible()
   })
 
   test('waiting-on-you is above the fold', async ({ page }) => {
@@ -22,17 +37,17 @@ test.describe('/supervisor', () => {
   })
 
   test('one failed call does not blank the page', async ({ page }) => {
-    // The whole point of allSettled: on cellular a single flaky call is common,
-    // and Promise.all would take the other two bands down with it.
     await page.route('**/api/agents/needs-you', (r) => r.abort())
     await page.goto('/supervisor')
     await expect(page.getByTestId('supervisor-page')).toBeVisible()
-    // Runners still rendered despite needs-you failing.
+    // Runners (Agents tab) still render despite the Inbox fetch failing.
+    await openTab(page, 'agents')
     await expect(page.getByTestId('runner-status').or(page.getByText('No runner paired'))).toBeVisible()
   })
 
   test('the composer dispatches a launchable command', async ({ page }) => {
     await page.goto('/supervisor')
+    await openTab(page, 'sessions')
     const composer = page.getByTestId('composer')
     await expect(composer).toBeVisible()
 
@@ -71,6 +86,7 @@ test.describe('/supervisor', () => {
 
   test('a repo dispatch pins its workspace and routes to the tenant endpoint', async ({ page }) => {
     await page.goto('/supervisor')
+    await openTab(page, 'sessions')
     await page.getByTestId('composer-mode-repo').click()
 
     // A repo turn's tenant is first-class and defaults to dimagi (the e2e
@@ -114,6 +130,7 @@ test.describe('/supervisor', () => {
 
   test('open sessions list and continue dispatches into that exact task', async ({ page }) => {
     await page.goto('/supervisor')
+    await openTab(page, 'sessions')
     await expect(page.getByTestId('open-sessions')).toBeVisible()
     await expect(page.getByTestId('session-cloud-runner')).toBeVisible()
 
