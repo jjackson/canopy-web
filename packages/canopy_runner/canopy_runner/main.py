@@ -181,6 +181,12 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
     from .cdp_control import host_id
 
     client.heartbeat(cfg.runner_id, [], host=host_id())
+    # Report the open emdash sessions the phone can continue. Best-effort: a read or
+    # POST failure must never stop the tick from claiming work.
+    try:
+        client.report_sessions(cfg.runner_id, emdash.list_open_sessions(cfg.emdash_db))
+    except Exception:  # noqa: BLE001
+        logger.debug("session report failed (non-fatal)", exc_info=True)
     paused = _paused_agents(cfg)
     _maybe_check_inboxes(cfg, client, paused=paused)
     # Fleet-audit review ingestion was removed when Ada moved to Items: approving

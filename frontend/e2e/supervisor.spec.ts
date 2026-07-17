@@ -111,4 +111,29 @@ test.describe('/supervisor', () => {
     // is a client-side routing signal, not something the server should ever see.
     expect(headers['x-canopy-workspace']).toBeUndefined()
   })
+
+  test('open sessions list and continue dispatches into that exact task', async ({ page }) => {
+    await page.goto('/supervisor')
+    await expect(page.getByTestId('open-sessions')).toBeVisible()
+    await expect(page.getByTestId('session-cloud-runner')).toBeVisible()
+
+    let posted: Record<string, unknown> | null = null
+    let url: string | null = null
+    await page.route('**/api/w/*/harness/turns/', async (route) => {
+      url = route.request().url()
+      posted = route.request().postDataJSON()
+      await route.fulfill({
+        status: 201, contentType: 'application/json',
+        body: JSON.stringify({ id: 't-9', agent_slug: null, project: 'canopy-web', target: 'canopy-web', status: 'queued' }),
+      })
+    })
+
+    await page.getByTestId('session-input-cloud-runner').fill('rerun the failing test')
+    await page.getByTestId('session-send-cloud-runner').click()
+
+    await expect(page.getByTestId('session-sent-cloud-runner')).toBeVisible()
+    expect(url).toContain('/api/w/dimagi/harness/turns/')  // tenant-pinned
+    expect(posted).toMatchObject({ project: 'canopy-web', prompt: 'rerun the failing test' })
+    expect((posted as { origin_ref?: { thread_key?: string } }).origin_ref?.thread_key).toBe('emdash:cloud-runner')
+  })
 })

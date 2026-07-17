@@ -77,6 +77,10 @@ class Client:
         )
         return payload or {}
 
+    def report_sessions(self, runner_id: str, sessions: list[dict]) -> None:
+        """Report the open emdash sessions this runner can see (wholesale)."""
+        self._call("POST", f"/runners/{runner_id}/sessions", {"sessions": sessions})
+
     def claim(self, runner_id: str, paused_agents: list[str] | None = None) -> dict | None:
         # paused_agents (per-agent pause) → server skips those agents' queued turns.
         path = f"/runners/{runner_id}/claim"

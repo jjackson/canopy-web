@@ -20,8 +20,10 @@ from . import services
 from .models import AgentSchedule, Runner, Turn
 from .schedule_services import serialize_schedule
 from .schemas import (
+    EmdashSessionOut,
     HeartbeatIn,
     RecordSessionIn,
+    ReportSessionsIn,
     ResolveSessionIn,
     ResolveSessionOut,
     RunnerIn,
@@ -29,6 +31,7 @@ from .schemas import (
     RunnerOut,
     ScheduleFireIn,
     ScheduleOut,
+    SessionReportOut,
     TurnEventCountOut,
     TurnEventsIn,
     TurnEventsOut,
@@ -309,6 +312,20 @@ def record_session(request: HttpRequest, runner_id: uuid.UUID, payload: RecordSe
     return services.resolve_session(agent, payload.thread_key, runner)
 
 
+@router.post("/runners/{runner_id}/sessions", response=SessionReportOut)
+def report_sessions(request: HttpRequest, runner_id: uuid.UUID, payload: ReportSessionsIn):
+    """The runner reports the open emdash sessions it can see. Wholesale per runner.
+    Owner-gated via _runner_or_404 (404, not 403). Sessions are tenant-owned; they
+    default to the runner's workspace (dimagi in practice), which the pairer is a
+    member of by construction."""
+    runner = _runner_or_404(request, runner_id)
+    ws = runner.workspace
+    if ws is None:
+        raise HttpError(404, "runner has no workspace")
+    count = services.replace_reported_sessions(runner, ws, payload.sessions)
+    return SessionReportOut(count=count)
+
+
 @router.post("/turns/", response={200: TurnOut, 201: TurnOut})
 def enqueue_turn(request: HttpRequest, payload: TurnIn):
     if bool(payload.agent_slug) == bool(payload.project):
@@ -378,6 +395,13 @@ def list_turns(request: HttpRequest, agent: str | None = None, status: str | Non
     # visible (ungated, per the migration-safety rule).
     qs = qs.filter(Q(agent__workspace_id__in=slugs) | Q(agent__workspace_id__isnull=True))
     return list(qs[:100])  # filter BEFORE slicing — a sliced queryset cannot be filtered
+
+
+@router.get("/sessions", response=list[EmdashSessionOut])
+def list_sessions(request: HttpRequest):
+    """Open emdash sessions the caller can see — across their workspaces, live runners
+    only, newest-first. Drives the phone's Open Sessions list."""
+    return services.list_visible_sessions(request.user)
 
 
 @router.get("/turns/{turn_id}", response=TurnOut)

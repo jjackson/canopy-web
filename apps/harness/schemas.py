@@ -90,6 +90,48 @@ class RecordSessionIn(Schema):
     summary: str | None = None
 
 
+class ReportedSessionIn(Schema):
+    emdash_task: str  # the emdash task NAME
+    project: str = ""
+    status: str = ""
+    last_interacted_at: dt.datetime | None = None
+    recent_messages: list = []  # Phase B populates this; ignored/empty in Phase A
+
+
+class ReportSessionsIn(Schema):
+    sessions: list[ReportedSessionIn] = []
+
+
+class EmdashSessionOut(Schema):
+    id: uuid.UUID
+    emdash_task: str
+    project: str
+    status: str
+    last_interacted_at: dt.datetime | None
+    recent_messages: list
+    workspace: str
+    runner_name: str
+
+    @staticmethod
+    def resolve_workspace(obj) -> str:
+        return obj.workspace_id
+
+    @staticmethod
+    def resolve_runner_name(obj) -> str:
+        return obj.runner.name
+
+
+class SessionReportOut(Schema):
+    """Result of a runner's wholesale session report (POST /runners/{id}/sessions).
+
+    Named distinctly from apps.agents.schemas.CountOut ({created, replaced, count}) —
+    Django Ninja keys OpenAPI components by class title, so two Pydantic models both
+    named CountOut collapse into one component and one silently wins, dropping fields
+    from the other's advertised schema."""
+
+    count: int
+
+
 class TurnIn(Schema):
     # Exactly one of agent_slug / project. Enforced in the view (422) rather than
     # by a validator so the error matches the rest of the harness's shape.

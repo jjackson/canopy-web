@@ -175,6 +175,36 @@ def task_state(db_path: str, name: str) -> str:
     return "archived" if row["archived_at"] else "live"
 
 
+def list_open_sessions(db_path: str, limit: int = 30) -> list[dict]:
+    """READ-ONLY: the un-archived emdash tasks, newest-first, capped. Returns
+    [{emdash_task, project, status, last_interacted_at}]. Like task_state this is a
+    pure read — NOT behind the write-vet pin — and it must NEVER raise: a missing DB,
+    a renamed column, or an emdash schema change degrades to [] so the runner loop
+    survives. The task NAME is the identity open_and_send targets; project is joined
+    from `projects` for display + the continue turn's target."""
+    if not Path(db_path).exists():
+        return []
+    try:
+        with _db(db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT t.name AS emdash_task,
+                       COALESCE(p.name, '') AS project,
+                       COALESCE(t.status, '') AS status,
+                       t.last_interacted_at AS last_interacted_at
+                FROM tasks t
+                LEFT JOIN projects p ON p.id = t.project_id
+                WHERE t.archived_at IS NULL
+                ORDER BY t.last_interacted_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.Error:
+        return []
+
+
 def find_task(db_path: str, automation_run_id: str) -> dict | None:
     with _db(db_path) as conn:
         row = conn.execute(
