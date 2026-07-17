@@ -85,3 +85,56 @@ class Message(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"msg:{self.session_id.hex[:8]}:{self.turn_index}:{self.role}"
+
+
+class SessionParticipant(models.Model):
+    """Durable membership + role in a session (SP3 multiplayer). Presence — who is
+    here *right now* — is ephemeral and lives in the cache (apps/chat/presence.py);
+    this row is the authority for access and role."""
+
+    OWNER, EDITOR, VIEWER = "owner", "editor", "viewer"
+    ROLE_CHOICES = [(OWNER, "Owner"), (EDITOR, "Editor"), (VIEWER, "Viewer")]
+
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name="participants")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=EDITOR)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "user"], name="one_participant_per_session_user"
+            )
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"participant:{self.session_id.hex[:8]}:{self.user_id}:{self.role}"
+
+
+class Draft(models.Model):
+    """The shared, co-edited outgoing message (SP3 multiplayer). One OPEN draft
+    (slot='next') per session; an optimistic `version` guards concurrent edits, and
+    the soft-lock holder is derived (last_editor + updated_at + presence), not stored."""
+
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name="drafts")
+    slot = models.CharField(max_length=16, default="next")
+    body = models.TextField(blank=True, default="")
+    version = models.PositiveIntegerField(default=0)
+    last_editor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session"],
+                condition=models.Q(slot="next"),
+                name="one_open_draft_per_session",
+            )
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"draft:{self.session_id.hex[:8]}:v{self.version}"

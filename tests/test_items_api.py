@@ -149,3 +149,18 @@ def test_dismiss_never_dispatches(client_member, ada):
     assert resp.status_code == 200
     assert resp.json()["state"] == "dismissed"
     assert Turn.objects.count() == 0
+
+
+def test_deciding_records_the_deciding_user(client_member, member, ada):
+    # A review item so decide (skip) doesn't dispatch; the decider is recorded as a
+    # real User FK, and the resolved email is serialized.
+    _post_batch(client_member)
+    item_id = Item.objects.first().id
+    resp = client_member.post(
+        f"/api/items/{item_id}/decide",
+        data={"decision": "skip", "comment": ""},
+        content_type="application/json",
+    )
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["decided_by_email"] == "jj@dimagi.com"
+    assert Item.objects.get(id=item_id).decided_by_user == member

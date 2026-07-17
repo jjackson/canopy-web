@@ -673,7 +673,8 @@ def create_items(*, agent, payloads: list[dict]) -> list[Item]:
 
 
 def decide_item(
-    item: Item, *, decision: str, comment: str, by: str, actor_workspace_slugs: set[str]
+    item: Item, *, decision: str, comment: str, by: str, actor_workspace_slugs: set[str],
+    decided_by_user=None,
 ) -> tuple[Item, list[Turn]]:
     """Resolve an open item. Only IMPLEMENT dispatches.
 
@@ -710,6 +711,7 @@ def decide_item(
         item.decision = decision
         item.comment = comment or ""
         item.decided_by = by
+        item.decided_by_user = decided_by_user if getattr(decided_by_user, "is_authenticated", False) else None
         item.decided_at = timezone.now()
 
         turns: list[Turn] = []
@@ -718,12 +720,13 @@ def decide_item(
             item.dispatched_at = timezone.now()
 
         item.save(update_fields=[
-            "state", "decision", "comment", "decided_by", "decided_at", "dispatched_at",
+            "state", "decision", "comment", "decided_by", "decided_by_user",
+            "decided_at", "dispatched_at",
         ])
     return item, turns
 
 
-def dismiss_item(item: Item, *, by: str) -> Item:
+def dismiss_item(item: Item, *, by: str, decided_by_user=None) -> Item:
     """Retire an OPEN item without acting — a producer that raised it in error, or
     a subject that changed under it.
 
@@ -737,6 +740,7 @@ def dismiss_item(item: Item, *, by: str) -> Item:
         raise AlreadyDecidedError(f"item {item.id} is already {item.state}")
     item.state = Item.DISMISSED
     item.decided_by = by
+    item.decided_by_user = decided_by_user if getattr(decided_by_user, "is_authenticated", False) else None
     item.decided_at = timezone.now()
-    item.save(update_fields=["state", "decided_by", "decided_at"])
+    item.save(update_fields=["state", "decided_by", "decided_by_user", "decided_at"])
     return item

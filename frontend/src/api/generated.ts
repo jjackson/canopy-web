@@ -5093,6 +5093,8 @@ export interface components {
             readonly comment: string;
             /** Decided By */
             readonly decided_by: string;
+            /** Decided By Email */
+            readonly decided_by_email?: string | null;
             /** Decided At */
             readonly decided_at?: string | null;
             /** Dispatch */

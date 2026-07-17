@@ -32,6 +32,13 @@ def supervisor_user_group(user_id: int) -> str:
     return f"supervisor.user.{user_id}"
 
 
+def session_group(session_id) -> str:
+    """Per-session multiplayer group (SP3). A pure string helper so realtime's
+    fan-out can target it without importing the chat app."""
+    hexid = session_id.hex if hasattr(session_id, "hex") else str(session_id).replace("-", "")
+    return f"chat.{hexid}"
+
+
 def turn_workspace_slug(turn: Turn) -> str | None:
     """The turn's tenant slug: from the agent (agent turns), the session (chat
     turns), or the turn's own workspace FK (project turns). None when unset."""

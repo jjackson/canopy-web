@@ -582,7 +582,15 @@ class Item(models.Model):
         help_text="kind=review: the reviewer's note (optional). "
                   "kind=question: the answer (required to decide).",
     )
+    # decided_by is the human decision's attribution. The string is kept as a
+    # display fallback (and for historical rows), but decided_by_user is the real
+    # relationship — a member decides an item via a live request, so unlike the
+    # ingest/caller-supplied deciders elsewhere, request.user IS the decider.
     decided_by = models.CharField(max_length=200, blank=True, default="")
+    decided_by_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="items_decided",
+    )
     decided_at = models.DateTimeField(null=True, blank=True)
 
     dispatch = models.JSONField(
