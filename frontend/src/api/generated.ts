@@ -5886,17 +5886,19 @@ export interface components {
         };
         /** SendOut */
         readonly SendOut: {
-            /**
-             * Turn Id
-             * Format: uuid
-             */
-            readonly turn_id: string;
+            /** Turn Id */
+            readonly turn_id: string | null;
             readonly message: components["schemas"]["MessageOut"];
         };
         /** SendIn */
         readonly SendIn: {
             /** Text */
             readonly text: string;
+            /**
+             * Client Id
+             * @default
+             */
+            readonly client_id: string;
         };
     };
     responses: never;
