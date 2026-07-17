@@ -79,3 +79,28 @@ def test_list_filters_by_initiative():
            content_type="application/json")
     body = c.get("/api/issues/?initiative=ddd").json()
     assert body["total"] == 1 and body["items"][0]["initiative"] == "ddd"
+
+
+@pytest.mark.django_db
+def test_a_non_member_cannot_see_get_delete_or_overwrite_another_workspaces_issue():
+    from apps.workspaces.models import Workspace
+
+    # An origin record owned by "connect" (created by a connect member).
+    connect_owner = User.objects.create_user(username="c", email="c@connect.example", password="pw")
+    connect = Workspace.objects.create(
+        slug="connect", display_name="Connect", created_by=connect_owner, auto_join_domains=[]
+    )
+    OriginIssue.objects.create(repo="jjackson/canopy", number=42, title="secret", workspace=connect)
+
+    # alice is dimagi-only — not a member of connect.
+    c = _client()
+    assert all(o["repo"] != "jjackson/canopy" for o in c.get("/api/issues/").json()["items"])  # not listed
+    assert c.get("/api/issues/jjackson__canopy/42/").status_code == 404
+    assert c.delete("/api/issues/jjackson__canopy/42/").status_code == 404
+    assert OriginIssue.objects.filter(number=42).exists()  # not deleted
+
+    # Upsert of the same (repo, number) must NOT overwrite connect's record.
+    r = c.post("/api/issues/", data=json.dumps({**REC, "title": "hijacked"}),
+               content_type="application/json")
+    assert r.status_code == 404
+    assert OriginIssue.objects.get(number=42).title == "secret"  # untouched
