@@ -78,6 +78,47 @@ def is_member(user, slug: str) -> bool:
     return WorkspaceMembership.objects.filter(user=user, workspace_id=slug).exists()
 
 
+def request_workspace_slugs(request) -> set[str]:
+    """The workspace slugs THIS request may act within — the single place a flat
+    (`/api/…`) handler gets its tenant scope, so scoping can't drift per endpoint.
+
+    A pinned `/api/w/{ws}/…` request was already membership-checked by
+    WorkspaceResolveMiddleware, so trust that one slug. Otherwise it's the UNION of
+    the authenticated user's memberships (so a human in dimagi+connect+family sees
+    all three), and the empty set for anonymous callers.
+
+    Filter list querysets by `workspace_id__in=request_workspace_slugs(request)`,
+    and gate a by-id read/mutation with `obj.workspace_id in` it. This is the hard
+    tenant boundary: data outside the caller's workspaces is unreachable."""
+    pinned = getattr(request, "workspace_slug", None)
+    if pinned:
+        return {pinned}
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated:
+        return set()
+    # Domain teammates join their org's workspaces on first touch of any scoped
+    # endpoint — the same "join on first touch" this repo already does per-handler,
+    # centralized here so by-id gates and lists agree on who's a member.
+    auto_join_workspaces(user)
+    return user_workspace_slugs(user)
+
+
+def workspace_slugs_for_user_id(user_id) -> set[str]:
+    """The workspace slugs a user (by pk) may act within — the MCP-side counterpart
+    of `request_workspace_slugs`, for tools that carry a token subject rather than a
+    request. Empty set for an unresolvable user, so a scoped query fails CLOSED
+    (sees/clears nothing) instead of falling back to global."""
+    if user_id is None:
+        return set()
+    from django.contrib.auth import get_user_model
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        return set()
+    auto_join_workspaces(user)
+    return user_workspace_slugs(user)
+
+
 def user_default_workspace(user) -> Workspace | None:
     """The user's workspace when unambiguous — their sole membership, else None
     (0 or 2+ memberships). Used to resolve a default for headless PAT callers."""

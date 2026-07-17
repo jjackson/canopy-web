@@ -6,6 +6,18 @@ so a hand-typed cron is trustworthy, and the runner decides what is due
 """
 from __future__ import annotations
 
-from canopy_cron.slots import due_slot, next_slots, validate_cron, validate_timezone
+from canopy_cron.slots import (
+    due_slot,
+    next_slots,
+    slots_between,
+    validate_cron,
+    validate_timezone,
+)
 
-__all__ = ["due_slot", "next_slots", "validate_cron", "validate_timezone"]
+__all__ = [
+    "due_slot",
+    "next_slots",
+    "slots_between",
+    "validate_cron",
+    "validate_timezone",
+]

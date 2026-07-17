@@ -141,3 +141,68 @@ def test_mcp_shape_no_workspace_pin_still_gated(agent):
     outsider = User.objects.create_user("m", "m@evil.com", "pw")
     with pytest.raises(ss.ScheduleNotFound):
         ss.list_schedules(outsider, "eva")
+
+
+def test_week_schedules_gathers_enabled_with_fires(owner, agent, ws):
+    ss.create_schedule(owner, "eva", _fields(name="Daily", cron="0 9 * * *", timezone="UTC"))
+    ss.create_schedule(owner, "eva", _fields(name="Paused", cron="0 9 * * *", timezone="UTC", enabled=False))
+    start = dt.datetime(2026, 7, 13, 0, 0, tzinfo=dt.UTC)
+
+    rows = ss.week_schedules({ws.slug}, start)
+
+    assert len(rows) == 1  # the disabled one is excluded
+    row = rows[0]
+    assert row["schedule"]["name"] == "Daily"
+    assert row["workspace_slug"] == ws.slug
+    assert len(row["fires"]) == 8  # daily; window over-fetches 8 days (client trims to 7)
+
+
+def test_week_schedules_includes_final_local_hour_on_fallback_week(owner, agent, ws):
+    """DST fall-back regression: the grid renders 7 LOCAL calendar days, which is
+    169h on a fall-back week (a 25h local day), but `start` is a fixed UTC instant.
+    A schedule firing in the final local hour of Sunday lands in the Sunday column
+    yet past a fixed 7*24h=168h window — dropped from the response. week_schedules
+    over-fetches (8 days) so no local-day fire is ever missed.
+
+    America/New_York, week of Mon 2026-10-26 (fall-back Sun 2026-11-01), daily
+    23:30 local: all 7 fires must be returned, not 6 (the last one, Sun 23:30,
+    is what a 168h window drops)."""
+    ss.create_schedule(
+        owner, "eva",
+        _fields(name="Late daily", cron="30 23 * * *", timezone="America/New_York"),
+    )
+    # Local-Monday-midnight as the fixed UTC instant the client sends: in late
+    # October NY is EDT (UTC-4), so Mon 2026-10-26 00:00 local = 04:00 UTC.
+    start = dt.datetime(2026, 10, 26, 4, 0, tzinfo=dt.UTC)
+
+    rows = ss.week_schedules({ws.slug}, start)
+
+    row = next(r for r in rows if r["schedule"]["name"] == "Late daily")
+    assert len(row["fires"]) == 7  # not 6 — the fall-back-Sunday fire is included
+
+
+def test_week_schedules_scoped_to_given_workspaces(owner, agent, ws):
+    # A schedule in a workspace NOT in the set must not appear.
+    ss.create_schedule(owner, "eva", _fields(cron="0 9 * * *"))
+    rows = ss.week_schedules({"some-other-ws"}, dt.datetime(2026, 7, 13, tzinfo=dt.UTC))
+    assert rows == []
+
+
+def test_week_schedules_none_in_set_includes_unhomed_agents():
+    """`None` in workspace_ids means 'legacy unhomed agents' (workspace_id IS
+    NULL). Django's `__in={None, ...}` silently drops None — SQL IN never
+    matches NULL — so week_schedules adds an explicit isnull=True branch.
+    Pin it both ways: present when None is in the set, absent when it isn't."""
+    orphan = Agent.objects.create(slug="orphan", name="Orphan")  # no workspace
+    AgentSchedule.objects.create(
+        agent=orphan, name="Orphan sched", prompt="p", cron="0 9 * * *", timezone="UTC"
+    )
+    start = dt.datetime(2026, 7, 13, 0, 0, tzinfo=dt.UTC)
+
+    included = ss.week_schedules({None}, start)
+    assert len(included) == 1
+    assert included[0]["schedule"]["name"] == "Orphan sched"
+    assert included[0]["workspace_slug"] is None
+
+    excluded = ss.week_schedules({"somews"}, start)
+    assert excluded == []

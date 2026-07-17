@@ -81,18 +81,30 @@ def _is_owner(request: HttpRequest, review: ReviewRequest) -> bool:
     )
 
 
+def _in_caller_workspaces(request: HttpRequest, review: ReviewRequest) -> bool:
+    """The hard tenant boundary: a workspace-assigned review is reachable only by a
+    member of that workspace. Legacy null-workspace rows (pre-FK migration) fall
+    back to any authenticated user — there is no workspace to check, and the API
+    has assigned one on every create since the migration, so this shrinks to zero."""
+    if review.workspace_id is None:
+        return request.user.is_authenticated
+    return review.workspace_id in wsvc.request_workspace_slugs(request)
+
+
 def _can_read(request: HttpRequest, review: ReviewRequest) -> bool:
-    """Authenticated users see all reviews; public (link) reviews are readable by anyone."""
-    return (
-        request.user.is_authenticated
-        or review.visibility == ReviewRequest.VISIBILITY_LINK
-    )
+    """A member of the review's workspace can read it; a public (link) review is
+    readable by anyone with the URL. NOT every authenticated user — that was a
+    cross-workspace read leak."""
+    if review.visibility == ReviewRequest.VISIBILITY_LINK:
+        return True
+    return request.user.is_authenticated and _in_caller_workspaces(request, review)
 
 
 def _can_write(request: HttpRequest, review: ReviewRequest) -> bool:
-    """Submitting a decision (approve/redraft) requires a Dimagi login —
-    public-readable does NOT grant anonymous write."""
-    return request.user.is_authenticated
+    """Submitting a decision resolves the gate — a member-of-the-workspace action.
+    Public-readable does NOT grant write, and neither does membership of some OTHER
+    workspace."""
+    return request.user.is_authenticated and _in_caller_workspaces(request, review)
 
 
 def _detail_payload(review: ReviewRequest, *, is_owner: bool) -> dict:
@@ -409,11 +421,15 @@ def delete_review(request: HttpRequest, rid: UUID):
     """
     Delete a review request.
 
-    Team-internal cleanup: any authenticated user (session or PAT) may delete —
-    reviews are owned by whichever identity posted them (often the orchestrator's
-    PAT, not the human browsing), so restricting to owner would make the human
-    unable to tidy up. The router's session_auth already blocks anonymous callers.
+    Workspace-internal cleanup: any MEMBER of the review's workspace (session or
+    PAT) may delete — reviews are owned by whichever identity posted them (often the
+    orchestrator's PAT, not the human browsing), so restricting to owner would make
+    the human unable to tidy up. Membership (not ownership) is the right gate, and
+    it's the tenant boundary: a non-member gets a 404, not the ability to delete
+    another workspace's review.
     """
     review = _get_or_404(rid)
+    if not _in_caller_workspaces(request, review):
+        raise ProblemError(404, "Review request not found", type_=TYPE_NOT_FOUND)
     review.delete()
     return Status(204, None)

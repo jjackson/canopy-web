@@ -63,13 +63,11 @@ def walkthrough_content(request, wid):
     if w is None:
         raise Http404("walkthrough not found")
 
-    # Token-gated public access (spec 2026-07-13): anonymous read requires
-    # visibility=link AND a matching ?t=<share_token>. Bare-UUID anonymous
-    # access 404s exactly like private, so existence never leaks.
-    if not (
-        request.user.is_authenticated
-        or w.token_matches(request.GET.get("t"))
-    ):
+    # Readable by a MEMBER of the walkthrough's workspace, or by anyone with a
+    # matching ?t=<share_token> (visibility=link). A non-member (even authenticated)
+    # 404s exactly like private, so existence never leaks — and can't stream another
+    # workspace's file bytes.
+    if not w.readable_by(request):
         raise Http404("walkthrough not found")
 
     range_hdr = request.META.get("HTTP_RANGE", "")

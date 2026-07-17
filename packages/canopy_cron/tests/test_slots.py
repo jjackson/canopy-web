@@ -5,7 +5,13 @@ import datetime as dt
 from zoneinfo import ZoneInfo
 
 import pytest
-from canopy_cron import due_slot, next_slots, validate_cron, validate_timezone
+from canopy_cron import (
+    due_slot,
+    next_slots,
+    slots_between,
+    validate_cron,
+    validate_timezone,
+)
 
 FRIDAYS_9AM = "0 9 * * 5"
 NY = "America/New_York"
@@ -131,3 +137,46 @@ def test_next_slots_are_always_9am_local_whatever_the_offset():
     assert {t.strftime("%A") for t in local} == {"Friday"}
     # the window genuinely straddles the shift, else this proves nothing
     assert {t.tzname() for t in local} == {"EDT", "EST"}
+
+
+def test_slots_between_daily_yields_seven_in_a_week():
+    # A daily 9am UTC cron over a 7-day UTC window → exactly 7 fires.
+    start = dt.datetime(2026, 7, 13, 0, 0, tzinfo=dt.UTC)   # Mon 00:00
+    end = start + dt.timedelta(days=7)
+    fires = slots_between("0 9 * * *", "UTC", start=start, end=end)
+    assert len(fires) == 7
+    assert fires[0] == dt.datetime(2026, 7, 13, 9, 0, tzinfo=dt.UTC)
+    assert fires[-1] == dt.datetime(2026, 7, 19, 9, 0, tzinfo=dt.UTC)
+
+
+def test_slots_between_empty_window():
+    # A weekly Friday cron over a Mon–Thu window → no fires.
+    start = dt.datetime(2026, 7, 13, 0, 0, tzinfo=dt.UTC)   # Mon
+    end = dt.datetime(2026, 7, 17, 0, 0, tzinfo=dt.UTC)     # Fri 00:00 (before 9am Fri)
+    assert slots_between("0 9 * * 5", "UTC", start=start, end=end) == []
+
+
+def test_slots_between_is_half_open_inclusive_start_exclusive_end():
+    # A fire EXACTLY at start is included; a fire EXACTLY at end is not.
+    start = dt.datetime(2026, 7, 13, 9, 0, tzinfo=dt.UTC)   # a fire lands here
+    end = dt.datetime(2026, 7, 14, 9, 0, tzinfo=dt.UTC)     # and here
+    fires = slots_between("0 9 * * *", "UTC", start=start, end=end)
+    assert fires == [dt.datetime(2026, 7, 13, 9, 0, tzinfo=dt.UTC)]  # start in, end out
+
+
+def test_slots_between_dst_holds_local_9am_across_the_shift():
+    # US Eastern falls back 2026-11-01. A daily 9am-ET cron stays 9am LOCAL:
+    # 13:00Z before the shift (EDT, UTC-4), 14:00Z after (EST, UTC-5).
+    start = dt.datetime(2026, 10, 30, 0, 0, tzinfo=dt.UTC)
+    end = start + dt.timedelta(days=7)
+    fires = slots_between("0 9 * * *", "America/New_York", start=start, end=end)
+    # Convert each to the ET wall clock and assert it reads 09:00 every day.
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    assert all(f.astimezone(et).hour == 9 and f.astimezone(et).minute == 0 for f in fires)
+    # And the offset genuinely changed mid-window (proves it isn't fixed-offset).
+    # NOTE: the brief's original assertion used 2026-11-06 14:00Z, but that instant
+    # is >= end (Nov 6 00:00Z) so it is (correctly) excluded by the half-open window.
+    # Nov 2 is an in-window post-shift EST fire, which is what proves the offset moved.
+    assert dt.datetime(2026, 10, 30, 13, 0, tzinfo=dt.UTC) in fires   # EDT (UTC-4)
+    assert dt.datetime(2026, 11, 2, 14, 0, tzinfo=dt.UTC) in fires    # EST (UTC-5)

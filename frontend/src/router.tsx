@@ -20,6 +20,7 @@ import { AgentsPage } from './pages/AgentsPage'
 import { AgentWorkspacePage } from './pages/AgentWorkspacePage'
 import SessionSharePage from './pages/SessionSharePage'
 import SupervisorPage from '@/pages/SupervisorPage'
+import SchedulesPage from './pages/SchedulesPage'
 
 // Agent Workspace sections are lazy-loaded — each owns its data fetch and only
 // the active section's bundle is pulled in.
@@ -134,6 +135,7 @@ export const router = createBrowserRouter(guarded([
       { path: '/insights', element: <InsightsPage /> },
       { path: '/sessions', element: <SessionsPage /> },
       { path: '/supervisor', element: <SupervisorPage /> },
+      { path: '/schedules', element: <SchedulesPage /> },
       { path: '/settings', element: <SettingsPage /> },
       // --- Public viewers (root; self-enforce visibility) ---
       { path: '/walkthrough/:id', element: <WalkthroughViewerPage /> },
@@ -146,6 +148,7 @@ export const router = createBrowserRouter(guarded([
       { path: '/w/:workspace/shareouts/:period', element: <ShareoutsPage /> },
       { path: '/w/:workspace/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:workspace/agents', element: <AgentsPage /> },
+      { path: '/w/:workspace/schedules', element: <SchedulesPage /> },
       {
         path: '/w/:workspace/agents/:slug',
         element: <AgentWorkspacePage />,

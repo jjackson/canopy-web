@@ -586,10 +586,12 @@ export interface paths {
          * Delete a review request (dashboard cleanup)
          * @description Delete a review request.
          *
-         *     Team-internal cleanup: any authenticated user (session or PAT) may delete —
-         *     reviews are owned by whichever identity posted them (often the orchestrator's
-         *     PAT, not the human browsing), so restricting to owner would make the human
-         *     unable to tidy up. The router's session_auth already blocks anonymous callers.
+         *     Workspace-internal cleanup: any MEMBER of the review's workspace (session or
+         *     PAT) may delete — reviews are owned by whichever identity posted them (often the
+         *     orchestrator's PAT, not the human browsing), so restricting to owner would make
+         *     the human unable to tidy up. Membership (not ownership) is the right gate, and
+         *     it's the tenant boundary: a non-member gets a 404, not the ability to delete
+         *     another workspace's review.
          */
         readonly delete: operations["apps_reviews_api_delete_review"];
         readonly options?: never;
@@ -751,8 +753,9 @@ export interface paths {
         readonly put?: never;
         /**
          * Clear shareouts by source / project / date (AND-combined)
-         * @description Delete shareouts matching the filters. An empty body clears all — but on a
-         *     /w/{ws} request the clear is confined to that workspace's rows.
+         * @description Delete shareouts matching the filters, scoped to the caller's workspaces.
+         *     An empty body clears all of THE CALLER'S shareouts (the pinned /w/{ws} one, or
+         *     the union of their memberships) — never another tenant's.
          */
         readonly post: operations["apps_shareouts_api_clear_shareouts"];
         readonly delete?: never;
@@ -1231,6 +1234,28 @@ export interface paths {
         readonly put?: never;
         /** Fork a run */
         readonly post: operations["apps_agent_runs_api_fork_run"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/agents/schedules/week": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * A week of scheduled fires across the visible fleet
+         * @description Every enabled schedule the caller can see, each with its fires in
+         *     [start, start+7d). Scope is the URL: flat → all my workspaces; /w/{ws}/ →
+         *     that one (WorkspaceResolveMiddleware sets request.workspace_slug).
+         */
+        readonly get: operations["apps_harness_api_schedules_schedule_week"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -4837,17 +4862,6 @@ export interface components {
                 readonly [key: string]: unknown;
             };
         };
-        /** Page[ScheduleOut] */
-        readonly Page_ScheduleOut_: {
-            /** Items */
-            readonly items: readonly components["schemas"]["ScheduleOut"][];
-            /** Total */
-            readonly total: number;
-            /** Offset */
-            readonly offset: number;
-            /** Limit */
-            readonly limit: number;
-        };
         /** ScheduleOut */
         readonly ScheduleOut: {
             /** Id */
@@ -4897,6 +4911,35 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
+        };
+        /** ScheduleWeekOut */
+        readonly ScheduleWeekOut: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            readonly start: string;
+            /** Items */
+            readonly items: readonly components["schemas"]["ScheduledFireOut"][];
+        };
+        /** ScheduledFireOut */
+        readonly ScheduledFireOut: {
+            readonly schedule: components["schemas"]["ScheduleOut"];
+            /** Workspace Slug */
+            readonly workspace_slug?: string | null;
+            /** Fires */
+            readonly fires: readonly string[];
+        };
+        /** Page[ScheduleOut] */
+        readonly Page_ScheduleOut_: {
+            /** Items */
+            readonly items: readonly components["schemas"]["ScheduleOut"][];
+            /** Total */
+            readonly total: number;
+            /** Offset */
+            readonly offset: number;
+            /** Limit */
+            readonly limit: number;
         };
         /**
          * ScheduleIn
@@ -8035,6 +8078,28 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["RunSummary"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_schedules_schedule_week: {
+        readonly parameters: {
+            readonly query: {
+                readonly start: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ScheduleWeekOut"];
                 };
             };
         };
