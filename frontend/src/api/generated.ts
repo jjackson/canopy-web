@@ -586,10 +586,12 @@ export interface paths {
          * Delete a review request (dashboard cleanup)
          * @description Delete a review request.
          *
-         *     Team-internal cleanup: any authenticated user (session or PAT) may delete —
-         *     reviews are owned by whichever identity posted them (often the orchestrator's
-         *     PAT, not the human browsing), so restricting to owner would make the human
-         *     unable to tidy up. The router's session_auth already blocks anonymous callers.
+         *     Workspace-internal cleanup: any MEMBER of the review's workspace (session or
+         *     PAT) may delete — reviews are owned by whichever identity posted them (often the
+         *     orchestrator's PAT, not the human browsing), so restricting to owner would make
+         *     the human unable to tidy up. Membership (not ownership) is the right gate, and
+         *     it's the tenant boundary: a non-member gets a 404, not the ability to delete
+         *     another workspace's review.
          */
         readonly delete: operations["apps_reviews_api_delete_review"];
         readonly options?: never;
