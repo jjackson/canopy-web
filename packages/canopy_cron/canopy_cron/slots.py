@@ -63,3 +63,27 @@ def next_slots(cron: str, tz: str, *, now: dt.datetime, count: int = 3) -> list[
     zone = ZoneInfo(validate_timezone(tz))
     itr = croniter(validate_cron(cron), now.astimezone(zone))
     return [itr.get_next(dt.datetime).astimezone(dt.UTC) for _ in range(count)]
+
+
+def slots_between(
+    cron: str, tz: str, *, start: dt.datetime, end: dt.datetime
+) -> list[dt.datetime]:
+    """Every fire time in the half-open window [start, end) — inclusive start,
+    exclusive end, so adjacent weeks tile without double-counting a boundary
+    fire. Returns ordered tz-aware UTC instants; the cron is evaluated in `tz`.
+
+    Seeded one microsecond before `start` because croniter.get_next() is
+    strictly-after its seed — this makes a fire landing exactly on `start`
+    inclusive. Cron granularity is minutes, so the microsecond can never catch a
+    different fire.
+    """
+    zone = ZoneInfo(validate_timezone(tz))
+    seed = (start - dt.timedelta(microseconds=1)).astimezone(zone)
+    itr = croniter(validate_cron(cron), seed)
+    out: list[dt.datetime] = []
+    while True:
+        nxt = itr.get_next(dt.datetime).astimezone(dt.UTC)
+        if nxt >= end:
+            break
+        out.append(nxt)
+    return out

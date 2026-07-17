@@ -1237,6 +1237,28 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/schedules/week": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * A week of scheduled fires across the visible fleet
+         * @description Every enabled schedule the caller can see, each with its fires in
+         *     [start, start+7d). Scope is the URL: flat → all my workspaces; /w/{ws}/ →
+         *     that one (WorkspaceResolveMiddleware sets request.workspace_slug).
+         */
+        readonly get: operations["apps_harness_api_schedules_schedule_week"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/agents/{slug}/schedules/": {
         readonly parameters: {
             readonly query?: never;
@@ -4793,17 +4815,6 @@ export interface components {
                 readonly [key: string]: unknown;
             };
         };
-        /** Page[ScheduleOut] */
-        readonly Page_ScheduleOut_: {
-            /** Items */
-            readonly items: readonly components["schemas"]["ScheduleOut"][];
-            /** Total */
-            readonly total: number;
-            /** Offset */
-            readonly offset: number;
-            /** Limit */
-            readonly limit: number;
-        };
         /** ScheduleOut */
         readonly ScheduleOut: {
             /** Id */
@@ -4853,6 +4864,35 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at: string;
+        };
+        /** ScheduleWeekOut */
+        readonly ScheduleWeekOut: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            readonly start: string;
+            /** Items */
+            readonly items: readonly components["schemas"]["ScheduledFireOut"][];
+        };
+        /** ScheduledFireOut */
+        readonly ScheduledFireOut: {
+            readonly schedule: components["schemas"]["ScheduleOut"];
+            /** Workspace Slug */
+            readonly workspace_slug?: string | null;
+            /** Fires */
+            readonly fires: readonly string[];
+        };
+        /** Page[ScheduleOut] */
+        readonly Page_ScheduleOut_: {
+            /** Items */
+            readonly items: readonly components["schemas"]["ScheduleOut"][];
+            /** Total */
+            readonly total: number;
+            /** Offset */
+            readonly offset: number;
+            /** Limit */
+            readonly limit: number;
         };
         /**
          * ScheduleIn
@@ -7926,6 +7966,28 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["RunSummary"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_schedules_schedule_week: {
+        readonly parameters: {
+            readonly query: {
+                readonly start: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ScheduleWeekOut"];
                 };
             };
         };

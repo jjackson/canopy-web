@@ -90,3 +90,17 @@ export async function previewCron(
   if (error) throw new Error(problemMessage(error, "Failed to preview schedule"));
   return data.next_runs as string[];
 }
+
+export type ScheduleWeekItem = components["schemas"]["ScheduledFireOut"];
+
+/** A week of scheduled fires across every schedule the caller can see. Scope is
+ * the CURRENT ROUTE: on /schedules (root) this hits the flat path and spans all
+ * your workspaces; under /w/:ws/… the client middleware rewrites it to the
+ * tenant path and the server pins that workspace. No ws param needed. */
+export async function getScheduleWeek(start: string): Promise<ScheduleWeekItem[]> {
+  const { data, error } = await apiV2.GET("/api/agents/schedules/week", {
+    params: { query: { start } },
+  });
+  if (error) throw new Error(problemMessage(error, "Failed to load the schedule"));
+  return data.items as ScheduleWeekItem[];
+}

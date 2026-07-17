@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import datetime as dt
 
-from canopy_cron import next_slots
+from canopy_cron import next_slots, slots_between
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.agents.models import Agent
@@ -145,6 +146,38 @@ def run_schedule_now(
     schedule = _resolve_schedule(user, agent_slug, schedule_id, workspace_slug=workspace_slug)
     services.run_schedule_now(schedule)
     return schedule
+
+
+def week_schedules(workspace_ids: set, start: dt.datetime) -> list[dict]:
+    """Every ENABLED schedule in `workspace_ids`, each with its fires in the
+    week [start, start+8d). `workspace_ids` is the caller's already-resolved
+    visible-workspace set (the route computes it from apps.workspaces.services),
+    so this stays request-free. A None in the set means 'legacy unhomed agents'
+    — matched explicitly, since SQL IN never matches NULL."""
+    # 8 days, not 7, because `start` is a fixed UTC instant (local-Monday-
+    # midnight) but the grid renders 7 LOCAL calendar days — which is up to 169h
+    # on a fall-back week (a 25h local day) and only 167h on spring-forward. A
+    # fixed 7*24h window would drop a fire in the final local hour of Sunday on a
+    # fall-back week (it lands in the Sunday column but past the 168h cutoff). One
+    # extra day of slack absorbs the ±1h DST wobble with margin; the client's own
+    # `dayIdx < 7` guard (bucketByDay) trims any fire that overflows into day 7,
+    # so widening the window never double-counts or shows next week's fires.
+    end = start + dt.timedelta(days=8)
+    non_null = {w for w in workspace_ids if w is not None}
+    q = Q(agent__workspace_id__in=non_null)
+    if None in workspace_ids:
+        q |= Q(agent__workspace_id__isnull=True)
+    schedules = (
+        AgentSchedule.objects.filter(enabled=True).filter(q).select_related("agent")
+    )
+    rows = []
+    for s in schedules:
+        rows.append({
+            "schedule": serialize_schedule(s),
+            "workspace_slug": s.agent.workspace_id,
+            "fires": slots_between(s.cron, s.timezone, start=start, end=end),
+        })
+    return rows
 
 
 def preview_cron(

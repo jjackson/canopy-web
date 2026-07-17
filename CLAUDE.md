@@ -79,11 +79,13 @@ the active workspace. `/ddd-plans` and `/reviews` now redirect to `/`.
 - `/w/:workspace/ddd` (+ `/ddd/:narrative`, `/ddd/:narrative/:runId`) — Demo-driven-development (DDD) views: narrative → version → run → package (video + deck + narrative + links)
 - `/w/:workspace/agents` — First-class AI agents list (e.g. "Echo")
 - `/w/:workspace/agents/:slug` — Agent workspace: a full-bleed rail + scrolling main built on `canopy-ui`. Sub-routes (rail): **Needs you** (the default landing — a typed/ranked supervisor inbox), Overview, Tasks (the "who has the ball" board), **Items** (things needing a decision; `?batch=<key>` renders one sitting, e.g. a fleet audit), Turns (packaged units of work + optional transcript), Schedules, Syncs, Work products, Skills
+- `/w/:workspace/schedules` — Weekly calendar of that workspace's recurring schedules
 
 **Root / personal / global:**
 - `/system` — Capability catalog + Workflows view (how canopy's plugin capabilities compose; read live from the canopy plugin)
 - `/insights` — Cross-portfolio AI insights feed (user-scoped; deliberately not tenant-scoped)
 - `/supervisor` — Cross-fleet "waiting on you" inbox, agent KPI cards, and runner status. Loaded by three consumers (phone PWA, the menubar's WKWebView, desktop browser); deliberately root, not `/w/:workspace/` — the fleet spans workspaces, like `/insights`. Installable as an Android PWA (manifest + service worker) and pushes a notification when any owned agent's `waiting_count` increases — see Push below
+- `/schedules` — Personal weekly calendar of every recurring schedule across all workspaces you belong to (client-filterable by workspace/agent); the per-workspace view is `/w/:workspace/schedules`. Same component (`ScheduleCalendar`) mounts both routes and reuses the per-agent rail's `ScheduleEditor` for edits
 - `/sessions` — My shared Claude Code sessions (transcripts uploaded via `/canopy:share-session`)
 - `/settings` — AI backend status, switch backends, headless Claude CLI auth, theme toggle, and debug-session minting (consolidated under the user menu)
 - `/walkthrough/:id` — Single walkthrough viewer (HTML iframe or video player). Reclaimed from `/w/:id` when `/w/` became the tenant prefix; a legacy `/w/<uuid>/content` link 302-redirects here
@@ -234,6 +236,7 @@ An `Agent` (e.g. "Echo") is a first-class entity — distinct from a code Projec
 - `PATCH|DELETE /api/agents/{slug}/schedules/{id}` — edit / remove
 - `POST /api/agents/{slug}/schedules/{id}/run-now` — trigger off-cycle (`origin=manual`; supersedes an open occurrence, but never advances `last_slot` — the cadence is unaffected)
 - `POST /api/agents/{slug}/schedules/preview` — preview the next 3 fire times for a cron+tz pair, computed with the same `next_slots()` the firing path uses (so the client never re-implements cron)
+- `GET /api/agents/schedules/week?start=<iso>` — a week of scheduled fires across the visible fleet, driving `/schedules` + `/w/:workspace/schedules`. Scope follows the URL (flat = all your workspaces, `/w/{ws}/` = that one); fires computed via `canopy_cron.slots_between`
 
 ### Agent runs (`apps/agent_runs`, mounted under `/api/agents`)
 The unified agent **run lifecycle** (run → step → artifact → verdict/QA → decision → gate → fork) as a storage-agnostic read model behind a `RunStore` Protocol (DB adapter persists rows; Drive adapter reads ACE's YAML). The keystone of the framework harvest — see `docs/superpowers/specs/2026-06-29-unified-agent-run-lifecycle-design.md`. Backed by the installable Django-free `canopy_agent_runs` library (`packages/canopy_agent_runs`).
