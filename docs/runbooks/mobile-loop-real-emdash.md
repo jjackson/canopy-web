@@ -1,0 +1,68 @@
+# Runbook: prove a phone Continue lands in a real emdash session
+
+The final link of the mobile loop types into real emdash, so it is human-gated — not a CI
+test. This proves it with a **single** turn, **without** restarting the fleet daemon.
+
+The automated layers cover everything up to this point:
+- `tests/test_mobile_loop_e2e.py` (L1) proves the dispatch → claim → execute software chain
+  with a recording fake emdash.
+- `scripts/qa/smoke_mobile_loop.py` (L2) proves the live server loop (report → list →
+  dispatch → resolve-to-reuse) end to end over the API.
+
+This runbook (L3) closes the one remaining gap: the physical CDP drive into a real session.
+
+## Preconditions
+
+- **Daemon code is current.** The daemon runs `canopy_runner` from `~/emdash-projects/canopy-web`.
+  Update it (it is typically on a detached HEAD):
+  ```
+  git -C ~/emdash-projects/canopy-web checkout main && git -C ~/emdash-projects/canopy-web pull
+  ```
+- **emdash is running with the CDP port open** (`--remote-debugging-port=9222`, the runner's
+  `cdp_port`).
+- **The runner declares the target project.** Add it in place — no re-pair, which would
+  orphan the runner's SessionLinks:
+  ```
+  CANOPY_PAT=<raw> CANOPY_URL=https://labs.connect.dimagi.com/canopy \
+    curl -s -X PATCH "$CANOPY_URL/api/harness/runners/<runner-id>" \
+      -H "Authorization: Bearer $CANOPY_PAT" -H "Content-Type: application/json" \
+      -d '{"capabilities": {"agents": ["ace","ada","echo","eva","hal"], "projects": ["canopy-web"]}}'
+  ```
+  (Keep the existing agents list; you are only adding `projects`.)
+- **Use a SCRATCH emdash task**, not a real work session, for the first run. Note its exact
+  task name (what shows in the emdash sidebar). The `thread_key` is `emdash:<that-name>`.
+
+## Steps
+
+1. **The session shows on the phone.** Once the updated daemon ticks it reports its open
+   sessions automatically; they appear on Supervisor → **Sessions**. (Or report on demand
+   by letting the daemon take one tick.)
+
+2. **Dispatch ONE Continue** into the scratch session — from the phone (Sessions → type a
+   prompt → Continue), or with the helper:
+   ```
+   CANOPY_PAT=<raw> CANOPY_URL=https://labs.connect.dimagi.com/canopy \
+     uv run python scripts/qa/dispatch_one_continue.py \
+       --project canopy-web --workspace dimagi \
+       --thread emdash:<scratch-task-name> --prompt "QA: add a one-line comment to the top of README"
+   ```
+   It prints the turn id and the exact `--drain-one` command to run next.
+
+3. **Take exactly that one turn.** The global pause sentinel does NOT block `--drain-one`,
+   so the rest of the fleet stays off:
+   ```
+   python -m canopy_runner.main --drain-one --config ~/.canopy/runner.json
+   ```
+   Expected output: `reused:<turn-id>` (the runner opened the existing session and sent the
+   prompt). `created:<turn-id>:<task>` means it spawned a fresh session instead — check that
+   the `thread_key` matched a reported session.
+
+4. **Confirm** the prompt appears in the scratch emdash session and the model acts on it.
+   That is the whole loop, proven physically.
+
+## Rollback
+
+- The turn is one-shot; nothing recurring was started. If you dispatched but decide not to
+  run it: `POST /api/harness/turns/<id>/cancel`.
+- To stop the runner claiming repo turns again until you're ready, remove `projects` from
+  its capabilities (`PATCH .../runners/<id>` with `{"capabilities": {"agents": [...]}}`).
