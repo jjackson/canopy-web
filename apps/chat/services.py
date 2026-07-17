@@ -27,10 +27,16 @@ _ROLE_FOR_KIND = {
 
 
 def create_session(*, workspace, created_by, agent=None, title: str = "", metadata: dict | None = None) -> Session:
-    return Session.objects.create(
+    session = Session.objects.create(
         workspace=workspace, agent=agent, created_by=created_by,
         title=title, metadata=metadata or {},
     )
+    # The creator is the owner (SP3 multiplayer). Local import avoids a cycle.
+    from .models import SessionParticipant
+    from .participants import ensure_participant
+
+    ensure_participant(session, created_by, SessionParticipant.OWNER)
+    return session
 
 
 def _next_index(session: Session) -> int:
