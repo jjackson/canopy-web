@@ -670,12 +670,18 @@ def create_items(*, agent, payloads: list[dict]) -> list[Item]:
     return out
 
 
-def decide_item(item: Item, *, decision: str, comment: str, by: str) -> tuple[Item, list[Turn]]:
+def decide_item(
+    item: Item, *, decision: str, comment: str, by: str, actor_workspace_slugs: set[str]
+) -> tuple[Item, list[Turn]]:
     """Resolve an open item. Only IMPLEMENT dispatches.
 
     A review needs a decision from the closed set; a question needs a non-empty
     answer (its `decision` stays blank). Deciding twice raises AlreadyDecidedError —
     the guard that stops a double-click becoming a second dispatch.
+
+    `actor_workspace_slugs` is the set of workspaces the DECIDING human belongs to;
+    it's the authorization for a cross-agent dispatch — you may only dispatch a
+    turn onto an agent in a workspace you're a member of (the hard tenant boundary).
     """
     from .dispatch import dispatch as dispatch_item  # local: dispatch imports services
 
@@ -706,7 +712,7 @@ def decide_item(item: Item, *, decision: str, comment: str, by: str) -> tuple[It
 
         turns: list[Turn] = []
         if decision == Item.IMPLEMENT:
-            turns = dispatch_item(item)
+            turns = dispatch_item(item, actor_workspace_slugs=actor_workspace_slugs)
             item.dispatched_at = timezone.now()
 
         item.save(update_fields=[

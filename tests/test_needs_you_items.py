@@ -59,7 +59,7 @@ def test_an_open_question_item_lands_in_the_question_band(ada):
 def test_a_decided_item_is_gone_from_the_inbox(ada):
     item = _item(ada, title="done with this")
     services_h = __import__("apps.harness.services", fromlist=["x"])
-    services_h.decide_item(item, decision=Item.SKIP, comment="", by="jj@dimagi.com")
+    services_h.decide_item(item, decision=Item.SKIP, comment="", by="jj@dimagi.com", actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     out = services.needs_you(ada)
 

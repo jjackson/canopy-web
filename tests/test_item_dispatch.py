@@ -37,7 +37,7 @@ def _item(agent, **kw):
 def test_empty_target_agent_dispatches_to_the_items_own_agent(ada):
     item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}])
 
-    turns = dispatch(item)
+    turns = dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     assert [t.agent for t in turns] == [ada]
     assert turns[0].prompt == "/ada:conduct"
@@ -47,7 +47,7 @@ def test_empty_target_agent_dispatches_to_the_items_own_agent(ada):
 def test_named_target_agent_dispatches_to_that_agent(ada, hal):
     item = _item(ada, dispatch=[{"target_agent": "hal", "prompt": "/hal:turn", "origin": "email"}])
 
-    turns = dispatch(item)
+    turns = dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     assert [t.agent for t in turns] == [hal]
     assert turns[0].origin == "email"
@@ -56,8 +56,8 @@ def test_named_target_agent_dispatches_to_that_agent(ada, hal):
 def test_dispatch_is_idempotent_per_entry(ada):
     item = _item(ada, dispatch=[{"prompt": "/ada:conduct"}])
 
-    first = dispatch(item)
-    second = dispatch(item)
+    first = dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
+    second = dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     assert [t.id for t in first] == [t.id for t in second]
     assert Turn.objects.count() == 1
@@ -66,7 +66,7 @@ def test_dispatch_is_idempotent_per_entry(ada):
 def test_an_item_with_no_dispatch_enqueues_nothing(ada):
     item = _item(ada, dispatch=[])
 
-    assert dispatch(item) == []
+    assert dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG}) == []
     assert Turn.objects.count() == 0
 
 
@@ -74,7 +74,7 @@ def test_an_unknown_target_agent_raises_rather_than_silently_dropping(ada):
     item = _item(ada, dispatch=[{"target_agent": "ghost", "prompt": "/ghost:turn"}])
 
     with pytest.raises(ValueError, match="ghost"):
-        dispatch(item)
+        dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
 
 def test_each_entry_gets_its_own_turn(ada, hal):
@@ -83,7 +83,7 @@ def test_each_entry_gets_its_own_turn(ada, hal):
         {"prompt": "/ada:conduct"},
     ])
 
-    turns = dispatch(item)
+    turns = dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     assert [t.agent for t in turns] == [hal, ada]
 
@@ -91,10 +91,33 @@ def test_each_entry_gets_its_own_turn(ada, hal):
 def test_a_spec_with_no_prompt_falls_back_to_the_targets_turn(ada, hal):
     item = _item(ada, dispatch=[{"target_agent": "hal"}])
 
-    turns = dispatch(item)
+    turns = dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
 
     assert turns[0].prompt == "/hal:turn"
 
 
 def test_turnspec_defaults_target_self():
     assert TurnSpec(prompt="/x").target_agent == ""
+
+
+def test_cross_workspace_dispatch_is_refused_for_a_non_member(ada):
+    # hal lives in "connect"; an actor who is NOT a member of connect must not be
+    # able to land a prompt on hal by dispatching from an item on their own agent.
+    from django.contrib.auth import get_user_model
+    from apps.workspaces.models import Workspace
+
+    owner = get_user_model().objects.create(username="o@connect.example", email="o@connect.example")
+    connect = Workspace.objects.create(
+        slug="connect", display_name="Connect", created_by=owner, auto_join_domains=[]
+    )
+    hal_connect = Agent.objects.create(slug="hal", name="Hal", workspace=connect)
+    item = _item(ada, dispatch=[{"target_agent": "hal", "prompt": "/hal:turn"}])
+
+    # Actor in "dimagi" only → cross-tenant dispatch to hal (connect) is refused.
+    with pytest.raises(ValueError, match="not a member"):
+        dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG})
+    assert Turn.objects.count() == 0  # nothing landed on hal
+
+    # An actor who IS a member of connect (e.g. Jonathan, in both) can dispatch.
+    turns = dispatch(item, actor_workspace_slugs={wsvc.DEFAULT_WORKSPACE_SLUG, "connect"})
+    assert [t.agent for t in turns] == [hal_connect]
