@@ -59,9 +59,11 @@ Message projection (assistant/tool rows)          realtime turn.{id} live tail (
 GET /api/chat/{id}  → session + projected transcript
 ```
 
-- **`sessions` app (framework tier, label `sessions` — the reserved name).** Router
-  mounts at **`/api/chat/`** (the `/api/sessions` route is still owned by
-  `session_sharing`; only the *app label* was freed). Models: `Session`, `Message`.
+- **`chat` app (framework tier, label `chat`).** Router mounts at **`/api/chat/`**.
+  (Note: the app is `chat`, not `sessions` — Django's built-in
+  `django.contrib.sessions` already owns the `sessions` app label, and
+  `session_sharing` still owns the `/api/sessions` route. `chat` sidesteps both
+  collisions and names the surface honestly.) Models: `Session`, `Message`.
 - **`Session`** — `id` (uuid), `agent` FK (nullable — you chat *with* an agent, or an
   agent-agnostic session), `workspace` FK (tenant), `title`, `status`
   (`active`/`archived`), `created_by`, `cli_session_id` (continuity for SP2b),
