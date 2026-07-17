@@ -589,13 +589,22 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
 def list_visible_sessions(user) -> list:
     """Open sessions in the caller's workspaces whose runner is LIVE. Runner liveness
     (not deletion) is what suppresses a briefly-offline runner's stale rows — see
-    Runner.live_status. Newest-first."""
+    Runner.live_status. Newest-first.
+
+    auto_join_workspaces runs first, mirroring list_turns: this is a flat-path
+    handler (GET /api/harness/sessions), so WorkspaceResolveMiddleware's
+    tenant-prefix auto-join never fires for it. Without this call, a
+    domain-matching teammate who hasn't hit any other endpoint yet has no
+    WorkspaceMembership row and user_workspace_slugs(user) returns empty,
+    silently hiding their workspace's sessions instead of listing them.
+    """
     from .models import EmdashSession
 
+    wsvc.auto_join_workspaces(user)
     ws_slugs = wsvc.user_workspace_slugs(user)
     rows = (
         EmdashSession.objects.filter(workspace_id__in=ws_slugs)
-        .select_related("runner", "workspace")
+        .select_related("runner")
         .order_by("-last_interacted_at")
     )
     return [s for s in rows if s.runner.live_status == Runner.ONLINE]

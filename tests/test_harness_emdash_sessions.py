@@ -125,3 +125,54 @@ def test_list_is_tenant_scoped_and_hides_offline_runners():
     mc = Client()
     mc.force_login(mallory)
     assert mc.get("/api/harness/sessions").json() == []
+
+
+def test_list_auto_joins_a_domain_matching_user_with_no_membership_row():
+    """A @dimagi.com user who has never hit any other endpoint has NO explicit
+    WorkspaceMembership row yet. The flat GET /api/harness/sessions path is
+    never touched by WorkspaceResolveMiddleware's tenant-prefix auto-join (that
+    only fires for /api/w/{ws}/... paths), so list_visible_sessions must call
+    wsvc.auto_join_workspaces itself — mirroring list_turns — or a fresh
+    domain-matching teammate gets an empty list instead of their workspace's
+    sessions."""
+    from django.test import Client
+
+    owner = _user("owner")
+    ws = _ws("dimagi", owner)
+    ws.auto_join_domains = ["dimagi.com"]
+    ws.save(update_fields=["auto_join_domains"])
+    runner = _runner(owner, ws)
+    EmdashSession.objects.create(runner=runner, workspace=ws, emdash_task="cloud-runner",
+                                 project="canopy-web", status="in_progress")
+
+    newcomer = _user("newcomer")  # newcomer@dimagi.com, no WorkspaceMembership row
+    assert not WorkspaceMembership.objects.filter(user=newcomer).exists()
+
+    c = Client()
+    c.force_login(newcomer)
+    rows = c.get("/api/harness/sessions").json()
+    tasks = {r["emdash_task"] for r in rows}
+    assert tasks == {"cloud-runner"}
+
+
+def test_list_is_newest_first_by_last_interacted_at():
+    from datetime import timedelta
+    from django.test import Client
+
+    jj = _user("jj")
+    ws = _ws("dimagi", jj)
+    runner = _runner(jj, ws)
+    EmdashSession.objects.create(
+        runner=runner, workspace=ws, emdash_task="older", project="canopy-web",
+        status="in_progress", last_interacted_at=timezone.now() - timedelta(hours=1),
+    )
+    EmdashSession.objects.create(
+        runner=runner, workspace=ws, emdash_task="newer", project="canopy-web",
+        status="in_progress", last_interacted_at=timezone.now(),
+    )
+
+    c = Client()
+    c.force_login(jj)
+    rows = c.get("/api/harness/sessions").json()
+    tasks = [r["emdash_task"] for r in rows]
+    assert tasks == ["newer", "older"]
