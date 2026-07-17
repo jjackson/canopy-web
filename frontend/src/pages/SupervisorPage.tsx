@@ -1,6 +1,7 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useEffect, useMemo, useState, type JSX } from 'react'
 import { listAgents, getFleetNeedsYou, type AgentOut, type FleetNeedsYouOut } from '@/api/agents'
 import { listRunners, type RunnerOut } from '@/api/harness'
+import { useLiveSupervisor } from '@/hooks/useLiveSupervisor'
 import { RunnerStatus } from '@/components/supervisor/RunnerStatus'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
 import { WaitingOnYou } from '@/components/supervisor/WaitingOnYou'
@@ -51,10 +52,33 @@ export default function SupervisorPage(): JSX.Element {
     }
   }, [])
 
+  // Live overlay: snapshot + runner/waiting deltas over WS. Falls back silently
+  // to the mount fetch above until the socket delivers a snapshot.
+  const live = useLiveSupervisor()
+  const liveById = useMemo(
+    () => Object.fromEntries(live.runners.map((r) => [r.id, r] as const)),
+    [live.runners],
+  )
+  // Runner rows with live status/heartbeat patched in when the socket knows them.
+  const renderRunners: RunnerOut[] | null =
+    runners?.map((r) => {
+      const lr = liveById[r.id]
+      return lr ? { ...r, status: lr.status, last_heartbeat_at: lr.last_heartbeat_at } : r
+    }) ?? null
+  // Waiting count per agent + total: prefer the live value once a snapshot lands.
+  const waitingFor = (slug: string): number =>
+    live.hasSnapshot && slug in live.waiting
+      ? live.waiting[slug]
+      : fleet
+        ? ((fleet.agents ?? []).find((b) => b.agent_slug === slug)?.waiting_count ?? 0)
+        : 0
+  const liveTotalWaiting = Object.values(live.waiting).reduce((a, b) => a + b, 0)
+  const totalWaiting = live.hasSnapshot ? liveTotalWaiting : (fleet?.total_waiting ?? 0)
+
   // The app-icon count. Android honours this; elsewhere it no-ops.
   useEffect(() => {
-    if (fleet) setBadge(fleet.total_waiting)
-  }, [fleet])
+    if (live.hasSnapshot || fleet) setBadge(totalWaiting)
+  }, [live.hasSnapshot, fleet, totalWaiting])
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 p-4" data-testid="supervisor-page">
@@ -84,7 +108,7 @@ export default function SupervisorPage(): JSX.Element {
 
       <section>
         <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Waiting on you {fleet && fleet.total_waiting > 0 ? `· ${fleet.total_waiting}` : ''}
+          Waiting on you {totalWaiting > 0 ? `· ${totalWaiting}` : ''}
         </h2>
         {errs.fleet ? (
           <BandError message={errs.fleet} />
@@ -99,10 +123,10 @@ export default function SupervisorPage(): JSX.Element {
         <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Runners</h2>
         {errs.runners ? (
           <BandError message={errs.runners} />
-        ) : runners === null ? (
+        ) : renderRunners === null ? (
           <Skeleton className="h-12 w-full" />
         ) : (
-          <RunnerStatus runners={runners} />
+          <RunnerStatus runners={renderRunners} />
         )}
       </section>
 
@@ -118,11 +142,7 @@ export default function SupervisorPage(): JSX.Element {
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {agents.map((a) => (
-              <AgentKpiCard
-                key={a.slug}
-                agent={a}
-                waiting={fleet ? ((fleet.agents ?? []).find((b) => b.agent_slug === a.slug)?.waiting_count ?? 0) : 0}
-              />
+              <AgentKpiCard key={a.slug} agent={a} waiting={waitingFor(a.slug)} />
             ))}
           </div>
         )}

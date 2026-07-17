@@ -1,0 +1,66 @@
+"""Group names, the turn membership gate, event serialization, and a null-safe
+publish helper.
+
+Pure functions (no socket, no async) so they unit-test without Channels. The one
+impure helper, publish(), degrades to a no-op when no channel layer is configured
+or a send fails — realtime is an enhancement, never a hard dependency of a write.
+
+Note: the Workspace PK *is* the slug (workspaces.services.user_workspace_slugs
+compares `workspace_id`), so a turn's tenant is read straight off `workspace_id`
+without dereferencing the Workspace row.
+"""
+from __future__ import annotations
+
+import logging
+import uuid
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+from apps.harness.models import Turn, TurnEvent
+from apps.workspaces.services import user_workspace_slugs
+
+log = logging.getLogger(__name__)
+
+
+def turn_group(turn_id: uuid.UUID | str) -> str:
+    hexid = turn_id.hex if isinstance(turn_id, uuid.UUID) else uuid.UUID(str(turn_id)).hex
+    return f"turn.{hexid}"
+
+
+def supervisor_user_group(user_id: int) -> str:
+    return f"supervisor.user.{user_id}"
+
+
+def turn_workspace_slug(turn: Turn) -> str | None:
+    """The turn's tenant slug: derived from the agent for agent turns, or the
+    turn's own workspace FK for project turns. None when neither is set."""
+    if turn.agent_id:
+        return turn.agent.workspace_id  # workspace PK == slug
+    return turn.workspace_id
+
+
+def user_can_read_turn(user, turn: Turn) -> bool:
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser:
+        return True
+    slug = turn_workspace_slug(turn)
+    return bool(slug) and slug in user_workspace_slugs(user)
+
+
+def serialize_turn_event(te: TurnEvent) -> dict:
+    return {"seq": te.seq, "kind": te.kind, "payload": te.payload, "ts": te.ts.isoformat()}
+
+
+def publish(group: str, message: dict) -> None:
+    """Fan a message out to a channel-layer group. Never raises: a missing layer
+    or a send failure is logged and swallowed so a realtime hiccup can't break
+    the write that triggered it."""
+    try:
+        layer = get_channel_layer()
+        if layer is None:
+            return
+        async_to_sync(layer.group_send)(group, message)
+    except Exception:  # pragma: no cover - realtime must never break a write
+        log.exception("realtime publish to %s failed", group)

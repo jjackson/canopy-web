@@ -248,6 +248,17 @@ def append_events(turn: Turn, events: list[dict]) -> int:
             for i, e in enumerate(events)
         ]
         TurnEvent.objects.bulk_create(rows)
+
+    # Fire AFTER commit so subscribers (apps/realtime) fan out durable rows and
+    # never race the DB. Local import + on_commit avoids an import-time cycle and
+    # a fan-out on a transaction that ultimately rolls back. bulk_create emits no
+    # post_save, so this signal is the only hook a live tail can ride.
+    def _fire_appended():
+        from apps.harness.signals import turn_events_appended
+
+        turn_events_appended.send(sender=Turn, turn=turn, rows=rows)
+
+    transaction.on_commit(_fire_appended)
     return len(rows)
 
 

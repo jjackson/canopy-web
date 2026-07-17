@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Third-party
+    "channels",
     "corsheaders",
     "allauth",
     "allauth.account",
@@ -96,6 +97,7 @@ INSTALLED_APPS = [
     "apps.timeline",
     "apps.system",
     "apps.harness",
+    "apps.realtime",
 ]
 
 MIDDLEWARE = [
@@ -133,6 +135,24 @@ TEMPLATES = [
 ]
 
 ASGI_APPLICATION = "config.asgi.application"
+
+# --- Channels realtime layer (apps/realtime) -------------------------
+# In-memory by default so a fresh checkout / single-process runserver works with
+# zero infra. When REDIS_URL is set (docker-compose, prod) use the Redis layer so
+# fan-out crosses processes/containers. Tests keep the in-memory layer.
+_CHANNELS_REDIS_URL = env("REDIS_URL", default="")
+if _CHANNELS_REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            # prefix namespaces channel keys away from the Django cache on the
+            # same Redis DB (it does not survive a FLUSHDB, but cache.clear() is
+            # not on a prod path).
+            "CONFIG": {"hosts": [_CHANNELS_REDIS_URL], "prefix": "canopy:realtime:"},
+        }
+    }
+else:
+    CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
 # Database
 DATABASES = {

@@ -119,6 +119,12 @@ def workspace_slugs_for_user_id(user_id) -> set[str]:
     return user_workspace_slugs(user)
 
 
+def workspace_member_ids(ws) -> list[int]:
+    """User ids of every member of a workspace. Used to fan a supervisor update
+    out to each member's live socket."""
+    return list(ws.memberships.values_list("user_id", flat=True))
+
+
 def user_default_workspace(user) -> Workspace | None:
     """The user's workspace when unambiguous — their sole membership, else None
     (0 or 2+ memberships). Used to resolve a default for headless PAT callers."""

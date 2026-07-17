@@ -19,6 +19,8 @@ dependencies = [
     "google-api-python-client>=2.120,<3.0",
     "google-auth>=2.29,<3.0",
     "fastmcp>=3.3,<4.0",
+    "channels>=4.1,<5.0",
+    "channels-redis>=4.2,<5.0",
     # The Django-free run-lifecycle core (read model + RunStore Protocol + Drive
     # adapter). Lives in-repo at packages/canopy_agent_runs; resolved as an editable
     # path dep via [tool.uv.sources] below. Django's DbRunStore (apps/agent_runs)
@@ -40,6 +42,9 @@ dev = [
     "pytest-asyncio>=0.23,<1.0",
     "ruff>=0.4,<1.0",
     "schemathesis>=3.30,<4.0",
+    # dev-only: channels.testing.WebsocketCommunicator imports daphne's live
+    # test harness at package import time. Prod serves WS via uvicorn, not daphne.
+    "daphne>=4.1,<5.0",
 ]
 
 [build-system]
