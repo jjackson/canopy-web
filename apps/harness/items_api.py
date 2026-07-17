@@ -44,6 +44,7 @@ def _payload(item: Item) -> dict:
         "decision": item.decision,
         "comment": item.comment,
         "decided_by": item.decided_by,
+        "decided_by_email": item.decided_by_user.email if item.decided_by_user_id else (item.decided_by or None),
         "decided_at": item.decided_at,
         "dispatch": item.dispatch,
         "dispatched_at": item.dispatched_at,
@@ -108,6 +109,7 @@ def decide_item(request: HttpRequest, item_id: uuid.UUID, payload: ItemDecideIn)
             item, decision=payload.decision, comment=payload.comment,
             by=request.user.email or request.user.get_username(),
             actor_workspace_slugs=wsvc.request_workspace_slugs(request),
+            decided_by_user=request.user,
         )
     except services.AlreadyDecidedError as exc:
         raise HttpError(409, str(exc)) from exc
@@ -124,6 +126,7 @@ def dismiss_item(request: HttpRequest, item_id: uuid.UUID) -> dict:
     try:
         item = services.dismiss_item(
             item, by=request.user.email or request.user.get_username(),
+            decided_by_user=request.user,
         )
     except services.AlreadyDecidedError as exc:
         # Already decided or dismissed — mirror decide's 409 so a double-click or a
