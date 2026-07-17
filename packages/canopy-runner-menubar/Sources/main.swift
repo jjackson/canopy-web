@@ -261,6 +261,9 @@ final class Controller: NSObject, NSApplicationDelegate {
         } else {
             add(menu, "Stop daemon", #selector(stopDaemon))
         }
+        // Take exactly ONE queued turn without running the whole daemon — works even
+        // while paused. Dispatch a turn (composer / a session Continue), then tap this.
+        add(menu, "Take one turn", #selector(takeOneTurn))
         menu.addItem(.separator())
 
         add(menu, "Open Supervisor in browser…", #selector(openSupervisor))
@@ -296,6 +299,31 @@ final class Controller: NSObject, NSApplicationDelegate {
     @objc func stopDaemon() {
         run(["launchctl", "bootout", "gui/\(getuid())/\(launchLabel)"])
         rebuild()
+    }
+
+    // Run the runner CLI ONCE with --drain-one: claim + execute a single queued turn,
+    // then exit. We reuse the daemon's OWN launchd plist (same interpreter, PYTHONPATH,
+    // config) so this can't drift from how the daemon runs — just with --drain-one and no
+    // KeepAlive loop. Fire-and-forget on a background queue so the menu stays responsive.
+    @objc func takeOneTurn() {
+        guard let data = try? Data(contentsOf: plistPath),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil)
+                  as? [String: Any],
+              let argv = plist["ProgramArguments"] as? [String], !argv.isEmpty else {
+            return
+        }
+        let extraEnv = plist["EnvironmentVariables"] as? [String: String] ?? [:]
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: argv[0])
+        proc.arguments = Array(argv.dropFirst()) + ["--drain-one"]
+        var env = ProcessInfo.processInfo.environment
+        for (k, v) in extraEnv { env[k] = v }
+        proc.environment = env
+        DispatchQueue.global(qos: .userInitiated).async {
+            try? proc.run()
+            proc.waitUntilExit()
+            DispatchQueue.main.async { self.rebuild() }
+        }
     }
     @objc func openSupervisor() {
         if let url = URL(string: baseURL() + "/supervisor") { NSWorkspace.shared.open(url) }

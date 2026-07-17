@@ -172,28 +172,12 @@ def _fire_due_schedules(cfg: Config, client: Client, paused: set[str] | None = N
         logger.warning("schedule sync failed: %s", exc)
 
 
-def _run_once_cdp(cfg: Config, client: Client) -> str:
-    """CDP executor: heartbeat (with macOS host, for reuse ownership) → claim one
-    turn → route it to an emdash session (reuse or create). Turns finish synchronously
-    (the runner owns the routing lifecycle; work continues in the visible session), so
-    there is no injection state to track or schema to guard."""
+def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
+    """Claim at most one eligible turn and route it to an emdash session. The shared
+    core of both the loop's iteration and the single-turn primitive, so they can't
+    drift. Returns reused:/created:/failed:<id> or "idle" when nothing is queued."""
     from . import execute
-    from .cdp_control import host_id
 
-    client.heartbeat(cfg.runner_id, [], host=host_id())
-    # Report the open emdash sessions the phone can continue. Best-effort: a read or
-    # POST failure must never stop the tick from claiming work.
-    try:
-        client.report_sessions(cfg.runner_id, emdash.list_open_sessions(cfg.emdash_db))
-    except Exception:  # noqa: BLE001
-        logger.debug("session report failed (non-fatal)", exc_info=True)
-    paused = _paused_agents(cfg)
-    _maybe_check_inboxes(cfg, client, paused=paused)
-    # Fleet-audit review ingestion was removed when Ada moved to Items: approving
-    # an Item dispatches its work server-side (in the decide transaction), so there
-    # is no resolved review for the runner to poll. DDD findings reviews are applied
-    # by the DDD orchestrator, never here.
-    _fire_due_schedules(cfg, client, paused=paused)
     try:
         turn = client.claim(cfg.runner_id, paused_agents=sorted(paused))
     except ClientError as exc:
@@ -210,6 +194,47 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
         except ClientError:
             pass
         return f"failed:{turn.get('id')}"
+
+
+def _run_once_cdp(cfg: Config, client: Client) -> str:
+    """CDP executor: heartbeat (with macOS host, for reuse ownership) → claim one
+    turn → route it to an emdash session (reuse or create). Turns finish synchronously
+    (the runner owns the routing lifecycle; work continues in the visible session), so
+    there is no injection state to track or schema to guard."""
+    from .cdp_control import host_id
+
+    client.heartbeat(cfg.runner_id, [], host=host_id())
+    # Report the open emdash sessions the phone can continue. Best-effort: a read or
+    # POST failure must never stop the tick from claiming work.
+    try:
+        client.report_sessions(cfg.runner_id, emdash.list_open_sessions(cfg.emdash_db))
+    except Exception:  # noqa: BLE001
+        logger.debug("session report failed (non-fatal)", exc_info=True)
+    paused = _paused_agents(cfg)
+    _maybe_check_inboxes(cfg, client, paused=paused)
+    # Fleet-audit review ingestion was removed when Ada moved to Items: approving
+    # an Item dispatches its work server-side (in the decide transaction), so there
+    # is no resolved review for the runner to poll. DDD findings reviews are applied
+    # by the DDD orchestrator, never here.
+    _fire_due_schedules(cfg, client, paused=paused)
+    return _claim_and_execute(cfg, client, paused)
+
+
+def drain_one(cfg: Config, client: Client) -> str:
+    """Take exactly ONE queued turn, then exit — the "take a single turn" primitive.
+
+    Unlike --once (a full loop iteration), this does NOT poll the inbox or fire
+    schedules, so it can only run a turn that is ALREADY queued (dispatch one from the
+    composer/API first); it never enqueues or spawns work you didn't ask for. It also
+    runs while the daemon is paused — the global PAUSED sentinel gates main()'s loop, not
+    this — so you can take one turn with the fleet otherwise off. Per-agent pauses ARE
+    honoured (the claim skips a paused agent's turns)."""
+    from .cdp_control import host_id
+
+    if cfg.executor != "cdp":
+        return run_once(cfg, client)  # legacy inject path has no targeted primitive
+    client.heartbeat(cfg.runner_id, [], host=host_id())
+    return _claim_and_execute(cfg, client, _paused_agents(cfg))
 
 
 def run_once(cfg: Config, client: Client) -> str:
@@ -469,12 +494,17 @@ def _build_parser() -> argparse.ArgumentParser:
     # subcommand, and that must keep behaving like `run`.
     parser.add_argument("--config", help="path to runner.json")
     parser.add_argument("--once", action="store_true", help="single iteration (for cron/tests)")
+    parser.add_argument("--drain-one", action="store_true",
+                        help="claim + run exactly ONE queued turn, then exit (no inbox poll, "
+                             "no schedules; runs even while paused)")
 
     subparsers = parser.add_subparsers(dest="command")
 
     run_parser = subparsers.add_parser("run", help="run the main loop (default)")
     run_parser.add_argument("--config", required=True)
     run_parser.add_argument("--once", action="store_true", help="single iteration (for cron/tests)")
+    run_parser.add_argument("--drain-one", action="store_true",
+                            help="claim + run exactly ONE queued turn, then exit")
 
     vet_parser = subparsers.add_parser(
         "vet", help="re-vet the emdash schema pin after an emdash update"
@@ -502,6 +532,9 @@ def main() -> None:
         parser.error("--config is required")
     cfg = Config.load(Path(args.config))
     client = Client(cfg.base_url, cfg.token)
+    if getattr(args, "drain_one", False):
+        print(drain_one(cfg, client))
+        return
     if args.once:
         print(run_once(cfg, client))
         return
