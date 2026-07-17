@@ -90,6 +90,7 @@ def serialize_schedule(schedule: AgentSchedule) -> dict:
         "fire_after": schedule.last_slot or schedule.created_at,
         "next_runs": next_slots(schedule.cron, schedule.timezone, now=timezone.now(), count=3),
         "last_status": latest.status if latest else "",
+        "created_by_email": schedule.created_by.email if schedule.created_by_id else None,
         "created_at": schedule.created_at,
         "updated_at": schedule.updated_at,
     }
@@ -104,12 +105,15 @@ def create_schedule(
     user, agent_slug: str, fields: dict, *, workspace_slug: str | None = None
 ) -> AgentSchedule:
     agent = _resolve_agent(user, agent_slug, workspace_slug=workspace_slug)
+    creator = user if getattr(user, "is_authenticated", False) else None
     try:
         # Own savepoint: an IntegrityError from uniq_agent_schedule_name must not
         # poison the request transaction (SESSION_SAVE_EVERY_REQUEST would then
         # 400 instead of surfacing the 409). Mirrors apps/projects/api.py.
         with transaction.atomic():
-            return AgentSchedule.objects.create(agent=agent, **fields)
+            return AgentSchedule.objects.create(
+                agent=agent, created_by=creator, updated_by=creator, **fields
+            )
     except IntegrityError:
         raise DuplicateScheduleName(fields["name"]) from None
 
@@ -121,6 +125,7 @@ def update_schedule(
     for key, value in fields.items():
         setattr(schedule, key, value)
     if fields:
+        schedule.updated_by = user if getattr(user, "is_authenticated", False) else None
         try:
             with transaction.atomic():  # savepoint — see create_schedule
                 schedule.save()
@@ -148,12 +153,16 @@ def run_schedule_now(
     return schedule
 
 
-def week_schedules(workspace_ids: set, start: dt.datetime) -> list[dict]:
+def week_schedules(workspace_ids: set, start: dt.datetime, *, created_by=None) -> list[dict]:
     """Every ENABLED schedule in `workspace_ids`, each with its fires in the
     week [start, start+8d). `workspace_ids` is the caller's already-resolved
     visible-workspace set (the route computes it from apps.workspaces.services),
     so this stays request-free. A None in the set means 'legacy unhomed agents'
-    — matched explicitly, since SQL IN never matches NULL."""
+    — matched explicitly, since SQL IN never matches NULL.
+
+    `created_by` (a User) narrows to schedules that person set up — this is what
+    makes 'my calendar' actually personal, rather than 'every schedule in my
+    workspaces'."""
     # 8 days, not 7, because `start` is a fixed UTC instant (local-Monday-
     # midnight) but the grid renders 7 LOCAL calendar days — which is up to 169h
     # on a fall-back week (a 25h local day) and only 167h on spring-forward. A
@@ -170,6 +179,8 @@ def week_schedules(workspace_ids: set, start: dt.datetime) -> list[dict]:
     schedules = (
         AgentSchedule.objects.filter(enabled=True).filter(q).select_related("agent")
     )
+    if created_by is not None:
+        schedules = schedules.filter(created_by=created_by)
     rows = []
     for s in schedules:
         rows.append({

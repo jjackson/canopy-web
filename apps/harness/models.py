@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -466,6 +467,19 @@ class AgentSchedule(models.Model):
     """
 
     agent = models.ForeignKey("agents.Agent", on_delete=models.CASCADE, related_name="schedules")
+    # WHO set this up / last changed it. Distinct from `agent` (which agent it fires)
+    # and from tenancy (agent.workspace): a schedule is a person's standing request,
+    # so the calendar can show "my schedules" and a MISSED occurrence can notify the
+    # human who created it. Nullable — SET_NULL so a departed user doesn't cascade the
+    # schedule away, and null for pre-attribution rows.
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="schedules_created",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="schedules_updated",
+    )
     name = models.CharField(max_length=200, help_text='e.g. "Weekly manager report"')
     prompt = models.TextField(help_text="What the turn is seeded with, e.g. /echo:manager-report")
     cron = models.CharField(max_length=120, help_text="5-field cron expression, e.g. '0 9 * * 5'")

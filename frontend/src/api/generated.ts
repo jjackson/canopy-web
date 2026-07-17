@@ -1252,6 +1252,9 @@ export interface paths {
          * @description Every enabled schedule the caller can see, each with its fires in
          *     [start, start+7d). Scope is the URL: flat → all my workspaces; /w/{ws}/ →
          *     that one (WorkspaceResolveMiddleware sets request.workspace_slug).
+         *
+         *     `mine=true` narrows to schedules the CALLER created — the actually-personal
+         *     calendar, vs. the default 'everything in my workspaces'.
          */
         readonly get: operations["apps_harness_api_schedules_schedule_week"];
         readonly put?: never;
@@ -4931,6 +4934,8 @@ export interface components {
              * @default
              */
             readonly last_status: string;
+            /** Created By Email */
+            readonly created_by_email?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -8188,6 +8193,7 @@ export interface operations {
         readonly parameters: {
             readonly query: {
                 readonly start: string;
+                readonly mine?: boolean;
             };
             readonly header?: never;
             readonly path?: never;

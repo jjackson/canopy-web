@@ -81,11 +81,15 @@ def _visible_workspace_ids(request: HttpRequest) -> set:
 @router.get("/schedules/week", response=ScheduleWeekOut,
             summary="A week of scheduled fires across the visible fleet",
             openapi_extra={"x-mcp-expose": True})
-def schedule_week(request: HttpRequest, start: dt.datetime) -> ScheduleWeekOut:
+def schedule_week(request: HttpRequest, start: dt.datetime, mine: bool = False) -> ScheduleWeekOut:
     """Every enabled schedule the caller can see, each with its fires in
     [start, start+7d). Scope is the URL: flat → all my workspaces; /w/{ws}/ →
-    that one (WorkspaceResolveMiddleware sets request.workspace_slug)."""
-    rows = ss.week_schedules(_visible_workspace_ids(request), start)
+    that one (WorkspaceResolveMiddleware sets request.workspace_slug).
+
+    `mine=true` narrows to schedules the CALLER created — the actually-personal
+    calendar, vs. the default 'everything in my workspaces'."""
+    creator = request.user if (mine and request.user.is_authenticated) else None
+    rows = ss.week_schedules(_visible_workspace_ids(request), start, created_by=creator)
     return ScheduleWeekOut(start=start, items=[ScheduledFireOut(**r) for r in rows])
 
 
