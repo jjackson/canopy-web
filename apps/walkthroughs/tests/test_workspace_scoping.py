@@ -2,10 +2,11 @@
 token-gated public (visibility=link) detail reads survive scoping.
 
 The authenticated LIST is workspace-scoped (a member sees their workspace's
-walkthroughs; an outsider does not). The single-object public detail GET resolves
-by UUID and self-enforces visibility — it must keep serving `visibility=link`
-walkthroughs to anonymous callers presenting the matching ?t=<share_token>, with
-NO workspace filter.
+walkthroughs; an outsider does not). The single-object detail GET and the content
+stream are now ALSO member-scoped for private walkthroughs — a non-member 404s
+rather than reading another workspace's metadata or file bytes — while a
+`visibility=link` walkthrough stays readable by anyone presenting the matching
+?t=<share_token> (the public path must survive scoping).
 """
 from __future__ import annotations
 
@@ -106,3 +107,20 @@ def test_anonymous_can_still_get_link_visibility_detail_after_scoping():
     resp = Client().get(f"/api/walkthroughs/{w.id}/?t={token}")
     assert resp.status_code == 200
     assert resp.json()["id"] == str(w.id)
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_non_member_cannot_get_private_detail_or_stream_content():
+    # A private walkthrough in "connect" must 404 for a dimagi-only user on both the
+    # detail read and the content stream — no cross-workspace metadata or file bytes.
+    connect_owner = _user("owner@connect.example")
+    connect = _workspace("connect", connect_owner, auto_join=())  # no dimagi auto-join
+    w = _make(connect_owner, connect, title="Secret")  # default (private) visibility
+
+    jj = _user("jj@dimagi.com", is_superuser=True)  # member of dimagi only
+    assert _client(jj).get(f"/api/walkthroughs/{w.id}/").status_code == 404
+    assert _client(jj).get(f"/walkthrough/{w.id}/content").status_code == 404
+
+    # The connect owner (a member) reads the detail fine — proves it's the boundary,
+    # not a total lock. (Content 200 would hit Drive, so detail is the member proof.)
+    assert _client(connect_owner).get(f"/api/walkthroughs/{w.id}/").status_code == 200

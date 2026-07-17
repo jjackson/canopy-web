@@ -380,7 +380,7 @@ def list_walkthroughs(
 def get_walkthrough(request: HttpRequest, wid: UUID, t: str = "") -> WalkthroughDetailOut:
     _require_enabled()
     w = _get_or_404(wid)
-    if not (request.user.is_authenticated or w.token_matches(t)):
+    if not w.readable_by(request):  # member of its workspace, or a matching ?t token
         raise Http404("walkthrough not found")  # don't leak private existence
     is_owner = request.user.is_authenticated and w.owner_id == request.user.id
     return WalkthroughDetailOut.model_validate(
