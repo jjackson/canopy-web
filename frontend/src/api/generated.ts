@@ -952,7 +952,7 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** What the human needs to act on — typed (review/question/notify) + ranked */
+        /** What the human needs to act on — typed (review/question), ranked, action-only */
         readonly get: operations["apps_agents_api_needs_you"];
         readonly put?: never;
         readonly post?: never;
@@ -3843,7 +3843,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            readonly type: "review" | "question" | "notify";
+            readonly type: "review" | "question";
             /**
              * Ref Kind
              * @enum {string}

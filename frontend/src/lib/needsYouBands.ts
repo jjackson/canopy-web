@@ -16,10 +16,9 @@ import type { NeedsYouType } from '@/api/agents'
  */
 
 /** Rank order, matching the server's own (apps/agents/services.py::needs_you). */
-export const NEEDS_YOU_RANK: NeedsYouType[] = ['review', 'question', 'notify']
+export const NEEDS_YOU_RANK: NeedsYouType[] = ['review', 'question']
 
 export const NEEDS_YOU_BAND: Record<NeedsYouType, { label: string; dot: string }> = {
   review: { label: 'Review', dot: 'bg-muted-foreground' },
   question: { label: 'Question', dot: 'bg-warning' },
-  notify: { label: 'Notify', dot: 'bg-primary/50' },
 }

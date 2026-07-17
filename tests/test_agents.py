@@ -164,7 +164,7 @@ def test_needs_you_types_ranks_and_excludes_echo():
                                       owner="Matt", assigned="Echo", position=2))
     # excluded: a done task is no longer actionable
     services.create_task(agent, _task(ext_id="d1", title="Shipped", status="done", position=3))
-    # notify: a recent FYI sync (no gate)
+    # FYI: a recent sync — action-only inbox must NOT surface it (it lives on the Syncs tab)
     services.upsert_sync(agent, SimpleNamespace(
         period_start=dt.datetime(2026, 6, 3, tzinfo=dt.timezone.utc),
         period_end=dt.datetime(2026, 6, 17, tzinfo=dt.timezone.utc),
@@ -174,19 +174,21 @@ def test_needs_you_types_ranks_and_excludes_echo():
     pairs = [(i["type"], i["title"]) for i in res["items"]]
     assert pairs[0] == ("review", "Polio story")        # review band leads
     assert ("question", "Cholera story") in pairs
-    assert ("notify", "Sync 1") in pairs
     titles = [t for _, t in pairs]
+    assert "Sync 1" not in titles                        # FYI sync is NOT a needs-you item
+    assert not any(t == "notify" for t, _ in pairs)      # no notify band at all
     assert "Backlog upkeep" not in titles               # nothing Echo is working
     assert "Shipped" not in titles                       # nothing done
-    rank = {"review": 0, "question": 1, "notify": 2}
+    rank = {"review": 0, "question": 1}
     order = [rank[i["type"]] for i in res["items"]]
     assert order == sorted(order)                        # typed bands, ranked
-    assert res["waiting_count"] == 2                      # gated (review+question) only
+    assert res["waiting_count"] == 2                      # every item is gated
+    assert res["waiting_count"] == len(res["items"])      # action-only: count == items
 
 
 def test_needs_you_projects_run_state():
-    """Run lifecycle surfaces on /needs-you reusing review/question/notify
-    (spec §5): open gate → review, failed step → question, completed → notify."""
+    """Run lifecycle surfaces on /needs-you (spec §5): open gate → review, failed
+    step → question. A COMPLETED run is FYI and is intentionally NOT surfaced."""
     agent = _agent()
     # Run A: an OPEN gate awaiting a human decision → review (gated/waiting).
     run_a = AgentRun.objects.create(agent=agent, label="Render demo", current_step="render")
@@ -195,7 +197,7 @@ def test_needs_you_projects_run_state():
     # Run B: a FAILED step → question (gated/waiting).
     run_b = AgentRun.objects.create(agent=agent, label="Build app", current_step="build")
     AgentRunStep.objects.create(run=run_b, key="build", ordinal=0, status=AgentRunStep.FAILED, error="boom")
-    # Run C: all steps terminal → completed run → notify (NOT waiting).
+    # Run C: all steps terminal → completed run. FYI only — must NOT appear.
     run_c = AgentRun.objects.create(agent=agent, label="Shipped run")
     AgentRunStep.objects.create(run=run_c, key="done", ordinal=0, status=AgentRunStep.COMPLETE)
 
@@ -203,14 +205,15 @@ def test_needs_you_projects_run_state():
     triples = [(i["type"], i["ref_kind"], i["title"]) for i in res["items"]]
     assert ("review", "run", "Render demo") in triples          # open gate
     assert ("question", "run", "Build app") in triples           # failed step
-    assert ("notify", "run", "Shipped run") in triples           # completed run
-    # open gate + failed step are gated → bump the "waiting on you" badge
-    assert res["waiting_count"] >= 2
+    assert "Shipped run" not in [t for _, _, t in triples]       # completed run is NOT surfaced
+    assert not any(ty == "notify" for ty, _, _ in triples)       # no notify band
+    # every surfaced item is gated → waiting_count == item count
+    assert res["waiting_count"] == len(res["items"]) >= 2
     # the review item's subtitle carries the gate's step
     review_run = next(i for i in res["items"] if i["ref_kind"] == "run" and i["type"] == "review")
     assert "render" in review_run["subtitle"]
     # ranking preserved across the merged task + run bands
-    rank = {"review": 0, "question": 1, "notify": 2}
+    rank = {"review": 0, "question": 1}
     order = [rank[i["type"]] for i in res["items"]]
     assert order == sorted(order)
 

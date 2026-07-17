@@ -141,7 +141,7 @@ def get_agent(request: HttpRequest, slug: str) -> AgentDetailOut:
 
 
 @router.get("/{slug}/needs-you", response=NeedsYouOut,
-            summary="What the human needs to act on — typed (review/question/notify) + ranked",
+            summary="What the human needs to act on — typed (review/question), ranked, action-only",
             openapi_extra={"x-mcp-expose": True})
 def needs_you(request: HttpRequest, slug: str) -> NeedsYouOut:
     agent = _get_agent_or_404(request, slug)

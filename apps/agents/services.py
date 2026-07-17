@@ -443,18 +443,21 @@ def _run_inbox_items(agent: Agent) -> tuple[list[dict], list[dict], list[dict]]:
     return review, question, notify
 
 
-def needs_you(agent: Agent, notify_limit: int = 5) -> dict:
+def needs_you(agent: Agent) -> dict:
     """The supervisor's "what does the agent need from me right now?" view.
 
-    Aggregates human-actionable items across the board AND the run lifecycle,
-    typed and ranked:
+    ACTION-ONLY, by rule: an item is here ONLY when a human must decide or
+    unblock something. Two bands, ranked Review → Question:
       - review:   Suggested tasks awaiting validate/decline; runs with an OPEN
                   gate awaiting a human decision.
-      - question: In-progress tasks blocked on a human; runs with a FAILED step.
-      - notify:   Recent FYI with no gate (a sync posted, a work product shipped,
-                  a run completed).
-    Ranked Review → Question → Notify. `waiting_count` counts only the gated
-    (review + question) items — the "N waiting on you" badge."""
+      - question: In-progress tasks blocked on a named human; runs with a FAILED
+                  step.
+    There is deliberately NO "notify"/FYI band: a posted sync, a shipped work
+    product, or a completed run needs nothing from the human, and it already
+    lives in its own tab (Syncs / Work Products / Turns). Pushing that activity
+    into the action queue only manufactures a false "N waiting / stale" signal.
+    Activity is PULLED (open a tab), never PUSHED here. `waiting_count` == the
+    number of items, since every item is gated."""
     review: list[dict] = []
     question: list[dict] = []
 
@@ -468,8 +471,8 @@ def needs_you(agent: Agent, notify_limit: int = 5) -> dict:
             question.append(_task_item("question", t))
 
     # Run-state projection (spec §5): open gates → review, failed steps →
-    # question, completed runs → notify.
-    run_review, run_question, run_notify = _run_inbox_items(agent)
+    # question. Completed runs are FYI — intentionally dropped (no notify band).
+    run_review, run_question, _run_notify = _run_inbox_items(agent)
     review.extend(run_review)
     question.extend(run_question)
 
@@ -487,27 +490,7 @@ def needs_you(agent: Agent, notify_limit: int = 5) -> dict:
     question.extend(item_question)
 
     items: list[dict] = review + question
-    waiting_count = len(items)  # review + question are the gated items
-
-    # Notify — recent FYI, newest first, capped. Merge syncs + work products +
-    # completed runs.
-    notify: list[dict] = list(run_notify)
-    for s in agent.syncs.all()[:notify_limit]:
-        notify.append({
-            "type": "notify", "ref_kind": "sync", "ref_id": s.id,
-            "title": s.title, "subtitle": "Sync posted", "url": s.doc_url,
-            "created_at": s.created_at,
-        })
-    for w in agent.work_products.all()[:notify_limit]:
-        notify.append({
-            "type": "notify", "ref_kind": "work_product", "ref_id": w.id,
-            "title": w.title, "subtitle": w.kind or "Work product", "url": w.url,
-            "created_at": w.created_at,
-        })
-    notify.sort(key=lambda i: i["created_at"], reverse=True)
-    items.extend(notify[:notify_limit])
-
-    return {"agent_slug": agent.slug, "waiting_count": waiting_count, "items": items}
+    return {"agent_slug": agent.slug, "waiting_count": len(items), "items": items}
 
 
 def apply_command(cmd: AgentTaskCommand, result_note: str = "") -> AgentTaskCommand:

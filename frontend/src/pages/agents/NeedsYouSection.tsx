@@ -26,7 +26,6 @@ import { WorkbenchSubHeader, WorkbenchSkeleton } from 'canopy-ui'
 const BLURBS: Record<NeedsYouType, string> = {
   review: 'Suggestions awaiting your validate / decline',
   question: 'Echo is blocked and needs a decision',
-  notify: 'Recent work — no action needed',
 }
 
 const BANDS: { type: NeedsYouType; label: string; blurb: string; dot: string }[] =
