@@ -2019,6 +2019,58 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/chat/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List my chat sessions */
+        readonly get: operations["apps_chat_api_list_sessions"];
+        readonly put?: never;
+        /** Create a chat session */
+        readonly post: operations["apps_chat_api_create_session"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/chat/{session_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get a session + transcript */
+        readonly get: operations["apps_chat_api_get_session"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/chat/{session_id}/send": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Send a message */
+        readonly post: operations["apps_chat_api_send"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3643,48 +3695,26 @@ export interface components {
         };
         /** SessionDetailOut */
         readonly SessionDetailOut: {
-            /** Slug */
-            readonly slug: string;
             /**
-             * Title
-             * @default
+             * Id
+             * Format: uuid
              */
+            readonly id: string;
+            /** Agent Slug */
+            readonly agent_slug: string | null;
+            /** Workspace */
+            readonly workspace: string;
+            /** Title */
             readonly title: string;
-            /** Project Slug */
-            readonly project_slug?: string | null;
-            /**
-             * Visibility
-             * @enum {string}
-             */
-            readonly visibility: "private" | "link";
-            /**
-             * Owner Email
-             * Format: email
-             */
-            readonly owner_email: string;
-            /** Message Count */
-            readonly message_count: number;
-            /** Redaction Count */
-            readonly redaction_count: number;
-            /** Share Token */
-            readonly share_token?: string | null;
-            /** Is Owner */
-            readonly is_owner: boolean;
+            /** Status */
+            readonly status: string;
             /**
              * Created At
              * Format: date-time
              */
             readonly created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            readonly updated_at: string;
-            /**
-             * Messages
-             * @default []
-             */
-            readonly messages: readonly components["schemas"]["SessionMessageOut"][];
+            /** Messages */
+            readonly messages: readonly components["schemas"]["MessageOut"][];
         };
         /** SessionMessageOut */
         readonly SessionMessageOut: {
@@ -5797,6 +5827,76 @@ export interface components {
         readonly PushUnsubscribeIn: {
             /** Endpoint */
             readonly endpoint: string;
+        };
+        /** SessionOut */
+        readonly SessionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Agent Slug */
+            readonly agent_slug: string | null;
+            /** Workspace */
+            readonly workspace: string;
+            /** Title */
+            readonly title: string;
+            /** Status */
+            readonly status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** SessionCreateIn */
+        readonly SessionCreateIn: {
+            /** Agent Slug */
+            readonly agent_slug?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            readonly title: string;
+            /**
+             * Metadata
+             * @default {}
+             */
+            readonly metadata: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** MessageOut */
+        readonly MessageOut: {
+            /** Turn Index */
+            readonly turn_index: number;
+            /** Role */
+            readonly role: string;
+            /** Plaintext */
+            readonly plaintext: string;
+            /** Content */
+            readonly content: {
+                readonly [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+        };
+        /** SendOut */
+        readonly SendOut: {
+            /**
+             * Turn Id
+             * Format: uuid
+             */
+            readonly turn_id: string;
+            readonly message: components["schemas"]["MessageOut"];
+        };
+        /** SendIn */
+        readonly SendIn: {
+            /** Text */
+            readonly text: string;
         };
     };
     responses: never;
@@ -9221,6 +9321,98 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly apps_chat_api_list_sessions: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["SessionOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_chat_api_create_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SessionCreateIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+        };
+    };
+    readonly apps_chat_api_get_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly session_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionDetailOut"];
+                };
+            };
+        };
+    };
+    readonly apps_chat_api_send: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly session_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SendIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SendOut"];
+                };
             };
         };
     };
