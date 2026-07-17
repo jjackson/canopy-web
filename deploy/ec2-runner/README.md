@@ -1,68 +1,72 @@
-# Canopy cloud runner on EC2 (ephemeral)
+# Canopy cloud runner on EC2 (CloudFormation)
 
-Stand up a throwaway EC2 box that runs a **`kind=cloud`** canopy runner: it pairs
-with canopy-web, claims harness `Turn`s whose target is in its `RUNNER_CAPS`, runs
-`claude -p` on the turn's prompt, streams the assistant/tool output into the
-`TurnEvent` ledger, and finishes the turn. Spin it **up**, **set it up**, use it,
-then **spin it down**.
+Infrastructure-as-code for an ephemeral EC2 box that runs a **`kind=cloud`** canopy
+runner: it pairs with canopy-web, claims harness `Turn`s whose target is in its
+capabilities, runs `claude -p` on the turn's prompt, streams the assistant/tool
+output into the `TurnEvent` ledger, and finishes the turn. This is the first real
+**canopy cloud runner** (Wave 4 SP2b) — the deployed counterpart to the in-process
+stub executor.
 
-This is the first real **canopy cloud runner** (Wave 4 SP2b) — the deployed
-counterpart to the in-process stub executor. It executes agent/project turns; wiring
-chat-`Session` turns to cloud runners (harness `claim_next_turn` routing) is the
-follow-on.
+Everything is declared in **`runner.cfn.yaml`** (CloudFormation, matching
+`deploy/aws/canopy-web.cfn.yaml`): the instance, security group, IAM role, and a
+CFN-managed key pair. The box configures itself via **cloud-init** (no imperative
+SSH provisioning), and reads its two secrets from **Secrets Manager** using the
+instance role at boot — secrets are never baked into the template or copied over the
+wire.
 
 ## Files
-- `up.sh` — launch the instance (Ubuntu 24.04, t3.medium, us-east-1, labs account). Writes `.state.json`.
-- `runner.env.example` → copy to `runner.env` and fill in the two secrets.
-- `setup.sh` — install the claude CLI on the box, drop the runner, start it as a systemd service (with a claude auth smoke test).
-- `down.sh` — terminate the instance + delete the SG/key, remove local state.
-- `cloud_runner.py` — the self-contained (stdlib-only) headless runner that runs on the box.
+- `runner.cfn.yaml` — the whole stack (instance + SG + IAM role + key pair + cloud-init).
+- `cloud_runner.py` — the self-contained (stdlib-only) runner. `up.sh` splices it into the template as base64 at deploy time (single source of truth).
+- `secrets.sh` — put/update the two secrets in Secrets Manager (values read from a file/stdin, never shell history).
+- `up.sh` — validate + render + `cloudformation deploy`; pulls the private key from SSM for SSH.
+- `down.sh` — `delete-stack` (add `--purge-secrets` to also remove the secrets).
 
-`.state.json`, `runner.env`, and `*.pem` are gitignored — they hold instance ids and secrets.
+`*.pem` and the rendered template are gitignored.
 
-## Prerequisites
-- AWS access to the labs account. **You must log in interactively first** (SSO):
-  ```
-  aws sso login --profile labs
-  ```
-- Two secrets for `runner.env`:
-  1. **`CANOPY_TOKEN`** — a canopy-web PAT (mint with `/canopy:canopy-web-pat-mint`, or `manage.py create_token`).
-  2. **`CLAUDE_CODE_OAUTH_TOKEN`** — copy ace-web's current value, or mint a fresh `ace@dimagi-ai.com` token (`claude setup-token`) and paste it.
+## Secrets (in Secrets Manager, under `canopy/cloud-runner/`)
+- `canopy/cloud-runner/canopy-pat` — a canopy-web PAT (the runner pairs + claims as this user).
+- `canopy/cloud-runner/claude-oauth-token` — the OAuth token `claude` authenticates with. **Must be valid** — mint via `claude setup-token` as `ace@dimagi-ai.com`, or copy a live one. (ace-web's stored Secrets-Manager value is stale — it 401s.)
 
 ## Run
 ```bash
 cd deploy/ec2-runner
-aws sso login --profile labs          # you, once
-./up.sh                               # launch (~2 min for status-ok)
-cp runner.env.example runner.env      # then edit: set CANOPY_TOKEN + CLAUDE_CODE_OAUTH_TOKEN
-./setup.sh                            # provision + start; prints a claude smoke-test result
+aws sso login --profile labs                         # you, once
+./secrets.sh canopy ~/pat.txt                        # canopy-web PAT  (once)
+./secrets.sh claude ~/claude-token.txt               # valid claude token (once)
+./up.sh                                              # deploy the stack (~3 min to fully boot)
 ```
-Watch it work:
+Watch it come up / work:
 ```bash
 ssh -i canopy-cloud-runner-key.pem ubuntu@<ip> 'journalctl -u canopy-runner -f'
+# cloud-init progress: ... 'sudo cat /var/log/cloud-init-output.log'
 ```
 
 ## Prove it end to end
-With the runner online, enqueue a turn it can claim (target must be in `RUNNER_CAPS`;
-the default caps are `{"projects":["canopy-web"]}`):
+Enqueue a turn the runner can claim (target must be in its caps — default
+`RunnerProjects=canopy-web`):
 ```bash
-curl -sS -X POST "$CANOPY_BASE_URL/api/harness/turns/" \
-  -H "Authorization: Bearer $CANOPY_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"project":"canopy-web","workspace":"<your-ws>","origin":"api","prompt":"Reply with a one-line hello.","idempotency_key":"ec2-smoke-1"}'
+curl -sS -X POST "https://labs.connect.dimagi.com/canopy/api/harness/turns/" \
+  -H "Authorization: Bearer <canopy-pat>" -H 'Content-Type: application/json' \
+  -d '{"project":"canopy-web","workspace":"dimagi","origin":"api","prompt":"Reply with a one-line hello.","idempotency_key":"ec2-smoke-1"}'
 ```
-The runner claims it, runs claude, and the turn's events + result land at
+The runner claims it, runs claude, and events + result land at
 `GET /api/harness/turns/<id>` and stream live over the SP1 realtime `turn.{id}` socket.
 
-## Tear down (do this when done — it's billed hourly)
+## Tear down (it's billed hourly)
 ```bash
-./down.sh
+./down.sh                    # delete the stack (keeps the secrets for next time)
+./down.sh --purge-secrets    # also delete the secrets
 ```
 
+## Config (CloudFormation parameters)
+Override with `EXTRA_PARAMS='Key=Val Key=Val' ./up.sh`:
+`InstanceType` (t3.medium), `CanopyBaseUrl`, `RunnerProjects`, `RunnerAgents`,
+`RunnerWorkspace` (dimagi), `RunnerName`. `SshCidr` is set to your IP automatically.
+
 ## Notes
-- **Cost/security:** ephemeral by design. The box holds the claude token in
-  `/etc/canopy-runner.env` (chmod 600); terminating it (`./down.sh`) is the cleanest
-  revocation. SSH is locked to your IP at launch.
-- **Runner identity:** on first `setup.sh` the runner pairs and caches its id in
-  `~/.canopy-cloud-runner.json` on the box, so a restart reuses the same runner row.
-- **Deleting the pairing user bricks the runner's tenant** (see the harness docs) —
-  this runner is paired by whoever owns `CANOPY_TOKEN`.
+- **Ephemeral by design.** The claude token lives only in Secrets Manager + in
+  `/opt/canopy-runner/runner.env` (chmod 600) on the box; `down.sh` removes the box.
+  The env is re-fetched from Secrets Manager on every `systemctl restart`, so a
+  rotated token is picked up without a redeploy.
+- **Runner identity:** the runner pairs on first boot and caches its id in
+  `~/.canopy-cloud-runner.json`; a restart reuses the same runner row.

@@ -10,7 +10,8 @@ Config comes from the environment (see deploy/ec2-runner/README.md):
   CANOPY_BASE_URL   e.g. https://labs.connect.dimagi.com/canopy
   CANOPY_TOKEN      a canopy-web Personal Access Token (Bearer)
   RUNNER_NAME       display name (default: this hostname)
-  RUNNER_CAPS       JSON, e.g. {"projects":["canopy-web"]} or {"agents":["echo"]}
+  RUNNER_PROJECTS   comma-separated repo names this runner may drive (e.g. canopy-web)
+  RUNNER_AGENTS     comma-separated agent slugs this runner may drive (e.g. echo,ada)
   RUNNER_WORKSPACE  optional workspace slug (defaults to the token's default)
   CLAUDE_BIN        path to the claude binary (default: claude)
   WORK_DIR          where claude runs (default: /tmp/canopy-runner-work)
@@ -34,7 +35,19 @@ import urllib.request
 BASE_URL = os.environ.get("CANOPY_BASE_URL", "").rstrip("/")
 TOKEN = os.environ.get("CANOPY_TOKEN", "")
 RUNNER_NAME = os.environ.get("RUNNER_NAME") or f"cloud-{socket.gethostname()}"
-RUNNER_CAPS = json.loads(os.environ.get("RUNNER_CAPS") or "{}")
+
+
+def _csv(name: str) -> list[str]:
+    return [x.strip() for x in (os.environ.get(name, "") or "").split(",") if x.strip()]
+
+
+# Capabilities as plain comma-separated env vars — no JSON in the env file, which
+# bash `source` and systemd EnvironmentFile both mangle (they strip the quotes).
+RUNNER_CAPS: dict[str, list[str]] = {}
+if _csv("RUNNER_PROJECTS"):
+    RUNNER_CAPS["projects"] = _csv("RUNNER_PROJECTS")
+if _csv("RUNNER_AGENTS"):
+    RUNNER_CAPS["agents"] = _csv("RUNNER_AGENTS")
 RUNNER_WORKSPACE = os.environ.get("RUNNER_WORKSPACE", "")
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 WORK_DIR = os.environ.get("WORK_DIR", "/tmp/canopy-runner-work")

@@ -1,70 +1,67 @@
 #!/usr/bin/env bash
-# Spin UP a canopy cloud-runner EC2 instance (ephemeral). Writes deploy/ec2-runner/
-# .state.json with everything down.sh needs to tear it back down.
+# Spin UP the canopy cloud runner via CloudFormation. Idempotent (create or update).
+# Secrets must already be in Secrets Manager — see ./secrets.sh.
 #
-#   aws sso login --profile labs      # once, interactively (you run this)
-#   ./up.sh                           # launch
-#   ./setup.sh                        # provision + start the runner
-#   ./down.sh                         # terminate + clean up
+#   aws sso login --profile labs
+#   ./secrets.sh canopy <pat-file>     # once
+#   ./secrets.sh claude <token-file>   # once (a VALID claude OAuth token)
+#   ./up.sh                            # deploy the stack
+#   ./down.sh                          # delete the stack
 set -euo pipefail
 cd "$(dirname "$0")"
 
 PROFILE="${AWS_PROFILE:-labs}"
 REGION="${AWS_REGION:-us-east-1}"
-INSTANCE_TYPE="${INSTANCE_TYPE:-t3.medium}"
-NAME="${NAME:-canopy-cloud-runner}"
-STATE=".state.json"
+STACK="${STACK:-canopy-cloud-runner}"
 AWS=(aws --profile "$PROFILE" --region "$REGION")
 
-if [[ -f "$STATE" ]]; then
-  echo "!! $STATE already exists — an instance may be up. Run ./down.sh first, or rm $STATE." >&2
-  exit 1
-fi
+echo ">> account"; "${AWS[@]}" sts get-caller-identity --query Account --output text
 
-echo ">> account check"; "${AWS[@]}" sts get-caller-identity --query Account --output text
-
-# Ubuntu 24.04 LTS (canonical SSM public parameter — no hardcoded AMI to rot).
-AMI=$("${AWS[@]}" ssm get-parameters \
-  --names /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
-  --query 'Parameters[0].Value' --output text)
-echo ">> AMI: $AMI"
+# Secrets must exist first (the instance role reads them at boot).
+for s in canopy/cloud-runner/canopy-pat canopy/cloud-runner/claude-oauth-token; do
+  if ! "${AWS[@]}" secretsmanager describe-secret --secret-id "$s" >/dev/null 2>&1; then
+    echo "!! missing secret '$s' — run ./secrets.sh first" >&2; exit 1
+  fi
+done
 
 MYIP=$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
-echo ">> your IP (SSH allow): $MYIP/32"
+echo ">> SSH allowed from ${MYIP}/32"
 
-KEY="${NAME}-key"
-KEYFILE="./${KEY}.pem"
-echo ">> creating key pair $KEY"
-"${AWS[@]}" ec2 create-key-pair --key-name "$KEY" \
-  --query 'KeyMaterial' --output text > "$KEYFILE"
+# Render: splice cloud_runner.py (base64) into the template. cloud_runner.py stays
+# the single source of truth; the rendered template is a build artifact.
+RENDERED=".runner.cfn.rendered.yaml"
+B64=$(python3 -c "import base64;print(base64.b64encode(open('cloud_runner.py','rb').read()).decode())")
+python3 - "$B64" > "$RENDERED" <<'PY'
+import sys, pathlib
+b64 = sys.argv[1]
+tpl = pathlib.Path("runner.cfn.yaml").read_text()
+sys.stdout.write(tpl.replace("CLOUD_RUNNER_PY_B64_PLACEHOLDER", b64))
+PY
+
+echo ">> validating template"
+"${AWS[@]}" cloudformation validate-template --template-body "file://$RENDERED" >/dev/null
+
+echo ">> deploying stack $STACK"
+"${AWS[@]}" cloudformation deploy \
+  --stack-name "$STACK" --template-file "$RENDERED" \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides "SshCidr=${MYIP}/32" \
+  ${EXTRA_PARAMS:-}
+
+echo ">> outputs"
+OUT=$("${AWS[@]}" cloudformation describe-stacks --stack-name "$STACK" \
+  --query 'Stacks[0].Outputs' --output json)
+IP=$(echo "$OUT" | python3 -c "import sys,json;print(next(o['OutputValue'] for o in json.load(sys.stdin) if o['OutputKey']=='PublicIp'))")
+KID=$(echo "$OUT" | python3 -c "import sys,json;print(next(o['OutputValue'] for o in json.load(sys.stdin) if o['OutputKey']=='KeyPairId'))")
+
+# Pull the CFN-managed private key out of SSM for SSH access.
+KEYFILE="./${STACK}-key.pem"
+"${AWS[@]}" ssm get-parameter --name "/ec2/keypair/${KID}" --with-decryption \
+  --query 'Parameter.Value' --output text > "$KEYFILE"
 chmod 600 "$KEYFILE"
 
-echo ">> creating security group"
-VPC=$("${AWS[@]}" ec2 describe-vpcs --filters Name=isDefault,Values=true \
-  --query 'Vpcs[0].VpcId' --output text)
-SG=$("${AWS[@]}" ec2 create-security-group --group-name "${NAME}-sg" \
-  --description "canopy cloud runner (ephemeral)" --vpc-id "$VPC" \
-  --query 'GroupId' --output text)
-"${AWS[@]}" ec2 authorize-security-group-ingress --group-id "$SG" \
-  --protocol tcp --port 22 --cidr "${MYIP}/32" >/dev/null
-
-echo ">> launching $INSTANCE_TYPE"
-IID=$("${AWS[@]}" ec2 run-instances --image-id "$AMI" --instance-type "$INSTANCE_TYPE" \
-  --key-name "$KEY" --security-group-ids "$SG" \
-  --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=20,VolumeType=gp3}' \
-  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME},{Key=purpose,Value=canopy-cloud-runner}]" \
-  --query 'Instances[0].InstanceId' --output text)
-echo ">> instance $IID — waiting for running + status ok"
-"${AWS[@]}" ec2 wait instance-status-ok --instance-ids "$IID"
-
-IP=$("${AWS[@]}" ec2 describe-instances --instance-ids "$IID" \
-  --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
-
-cat > "$STATE" <<JSON
-{"profile":"$PROFILE","region":"$REGION","instance_id":"$IID","public_ip":"$IP","security_group":"$SG","key_name":"$KEY","key_file":"$KEYFILE","ssh_user":"ubuntu"}
-JSON
-
 echo ""
-echo "==> UP. instance=$IID ip=$IP"
-echo "    ssh: ssh -i $KEYFILE ubuntu@$IP"
-echo "    next: fill runner.env, then ./setup.sh"
+echo "==> UP. ip=$IP"
+echo "    ssh:  ssh -i $KEYFILE ubuntu@$IP"
+echo "    logs: ssh -i $KEYFILE ubuntu@$IP 'journalctl -u canopy-runner -f'"
+echo "    cloud-init boots the runner automatically (give it ~3 min for node+claude)."

@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
-# Spin DOWN: terminate the instance, delete the security group + key pair, and
-# remove local state. Safe to run repeatedly.
+# Spin DOWN: delete the CloudFormation stack (instance, SG, role, key pair). Secrets
+# in Secrets Manager are left in place for reuse; pass --purge-secrets to delete them.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-[[ -f .state.json ]] || { echo "no .state.json — nothing to tear down"; exit 0; }
-read -r PROFILE REGION IID SG KEY KEYFILE <<<"$(python3 -c '
-import json; s=json.load(open(".state.json"))
-print(s["profile"], s["region"], s["instance_id"], s["security_group"], s["key_name"], s["key_file"])')"
+PROFILE="${AWS_PROFILE:-labs}"
+REGION="${AWS_REGION:-us-east-1}"
+STACK="${STACK:-canopy-cloud-runner}"
 AWS=(aws --profile "$PROFILE" --region "$REGION")
 
-echo ">> terminating $IID"
-"${AWS[@]}" ec2 terminate-instances --instance-ids "$IID" >/dev/null
-"${AWS[@]}" ec2 wait instance-terminated --instance-ids "$IID"
+echo ">> deleting stack $STACK"
+"${AWS[@]}" cloudformation delete-stack --stack-name "$STACK"
+"${AWS[@]}" cloudformation wait stack-delete-complete --stack-name "$STACK"
+rm -f "./${STACK}-key.pem"
+echo "==> stack deleted."
 
-echo ">> deleting security group $SG"
-# ENIs can linger briefly after termination; retry a few times.
-for i in 1 2 3 4 5; do
-  if "${AWS[@]}" ec2 delete-security-group --group-id "$SG" 2>/dev/null; then break; fi
-  echo "   (SG still in use — retry $i)"; sleep 10
-done
-
-echo ">> deleting key pair $KEY"
-"${AWS[@]}" ec2 delete-key-pair --key-name "$KEY" || true
-rm -f "$KEYFILE" .state.json
-echo "==> DOWN + cleaned up."
+if [[ "${1:-}" == "--purge-secrets" ]]; then
+  for s in canopy/cloud-runner/canopy-pat canopy/cloud-runner/claude-oauth-token; do
+    echo ">> deleting secret $s"
+    "${AWS[@]}" secretsmanager delete-secret --secret-id "$s" --force-delete-without-recovery || true
+  done
+fi
