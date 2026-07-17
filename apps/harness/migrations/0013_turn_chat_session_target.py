@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('agents', '0010_agenttask_review_agenttask_score'),
         ('chat', '0001_initial'),
-        ('harness', '0011_remove_sessionlink_sessionlink_unique_per_project_thread_and_more'),
+        ('harness', '0012_emdashsession'),
         ('workspaces', '0001_initial'),
     ]
 

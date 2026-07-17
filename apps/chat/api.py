@@ -21,7 +21,7 @@ from apps.workspaces import services as wsvc
 
 from . import services
 from .executor import execute_turn_stub
-from .models import Message, Session
+from .models import Session
 from .schemas import MessageOut, SendIn, SendOut, SessionCreateIn, SessionDetailOut, SessionOut
 
 router = Router(auth=session_auth, tags=["chat"])
