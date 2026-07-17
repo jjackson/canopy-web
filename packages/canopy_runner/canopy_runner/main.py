@@ -164,12 +164,16 @@ def _fire_due_schedules(cfg: Config, client: Client, paused: set[str] | None = N
     run_once, so a paused runner never fires (which would queue turns that all execute
     the instant it resumes). Per-agent pause is honored inside check_schedules.
     """
-    from . import schedules as schedules_mod
     now = dt.datetime.now(dt.UTC)
     try:
+        # Import INSIDE the guard, not above it: canopy_cron is scheduling's ONLY
+        # dependency, and a missing/broken one (an un-synced laptop env, a bad
+        # install) must disable scheduling alone — not crash claiming and the inbox
+        # with it. The import is the most likely failure, so it has to be caught too.
+        from . import schedules as schedules_mod
         schedules_mod.check_schedules(client, cfg.runner_id, now=now, paused=frozenset(paused or ()))
     except Exception as exc:  # noqa: BLE001 — scheduling never kills claiming or the inbox
-        logger.warning("schedule sync failed: %s", exc)
+        logger.warning("scheduling unavailable this tick (claiming + inbox continue): %s", exc)
 
 
 def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
