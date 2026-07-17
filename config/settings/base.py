@@ -98,6 +98,7 @@ INSTALLED_APPS = [
     "apps.system",
     "apps.harness",
     "apps.realtime",
+    "apps.chat",
 ]
 
 MIDDLEWARE = [
