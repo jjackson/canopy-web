@@ -3843,7 +3843,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            readonly type: "review" | "question" | "notify";
+            readonly type: "review" | "question";
             /**
              * Ref Kind
              * @enum {string}
