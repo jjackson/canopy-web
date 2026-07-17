@@ -579,6 +579,9 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     ])
     for s in sessions:
         if s.project:
+            # live_session_id intentionally left blank here — a session report has
+            # no session_id to give; reuse keys on live_emdash_task_id +
+            # live_runner + live_host instead.
             record_session(
                 None, f"emdash:{s.emdash_task}", runner=runner, project=s.project,
                 workspace=workspace, emdash_task_id=s.emdash_task,

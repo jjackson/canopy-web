@@ -121,7 +121,14 @@ class EmdashSessionOut(Schema):
         return obj.runner.name
 
 
-class CountOut(Schema):
+class SessionReportOut(Schema):
+    """Result of a runner's wholesale session report (POST /runners/{id}/sessions).
+
+    Named distinctly from apps.agents.schemas.CountOut ({created, replaced, count}) —
+    Django Ninja keys OpenAPI components by class title, so two Pydantic models both
+    named CountOut collapse into one component and one silently wins, dropping fields
+    from the other's advertised schema."""
+
     count: int
 
 

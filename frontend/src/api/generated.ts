@@ -4062,7 +4062,20 @@ export interface components {
         };
         /** CountOut */
         readonly CountOut: {
-            /** Count */
+            /**
+             * Created
+             * @default 0
+             */
+            readonly created: number;
+            /**
+             * Replaced
+             * @default 0
+             */
+            readonly replaced: number;
+            /**
+             * Count
+             * @default 0
+             */
             readonly count: number;
         };
         /** AgentWorkProductBatchIn */
@@ -5540,6 +5553,19 @@ export interface components {
             readonly agent_task_ext_id?: string | null;
             /** Summary */
             readonly summary?: string | null;
+        };
+        /**
+         * SessionReportOut
+         * @description Result of a runner's wholesale session report (POST /runners/{id}/sessions).
+         *
+         *     Named distinctly from apps.agents.schemas.CountOut ({created, replaced, count}) —
+         *     Django Ninja keys OpenAPI components by class title, so two Pydantic models both
+         *     named CountOut collapse into one component and one silently wins, dropping fields
+         *     from the other's advertised schema.
+         */
+        readonly SessionReportOut: {
+            /** Count */
+            readonly count: number;
         };
         /** ReportSessionsIn */
         readonly ReportSessionsIn: {
@@ -8791,7 +8817,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["CountOut"];
+                    readonly "application/json": components["schemas"]["SessionReportOut"];
                 };
             };
         };
