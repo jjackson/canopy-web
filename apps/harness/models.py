@@ -163,9 +163,20 @@ class Turn(models.Model):
     # repo work is *meant* to parallelize) and give every repo KPIs, a needs-you
     # inbox, and a skills catalog it has no meaning for.
     project = models.CharField(max_length=100, blank=True, default="")
-    # Tenancy is DERIVED for agent turns (turn.agent.workspace) — denormalized
-    # tenancy drifts. A project turn has no agent to derive from, so it is the one
-    # accepted exception: it carries its own FK, read ONLY when agent is null.
+    # The chat case: a session turn (the interactive front-door). Its tenancy
+    # derives from chat_session.workspace, and it serializes per SESSION (not per
+    # agent) so two conversations with the same agent don't block each other.
+    # Named chat_session (not session) — Turn already has a session_id CharField
+    # (the emdash/claude live-session hint). String ref avoids an import cycle
+    # (chat.services imports harness.services).
+    chat_session = models.ForeignKey(
+        "chat.Session", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="turns",
+    )
+    # Tenancy is DERIVED for agent turns (turn.agent.workspace) and session turns
+    # (turn.chat_session.workspace) — denormalized tenancy drifts. A project turn has
+    # no agent/session to derive from, so it is the one accepted exception: it
+    # carries its own FK, read ONLY when agent and chat_session are both null.
     workspace = models.ForeignKey(
         "workspaces.Workspace", on_delete=models.PROTECT, null=True, blank=True,
         related_name="project_turns",
@@ -217,20 +228,41 @@ class Turn(models.Model):
                 condition=models.Q(status__in=["claimed", "running", "needs_human"]),
                 name="one_executing_turn_per_agent",
             ),
+            # A session serializes its own execution — one running turn per
+            # conversation. Session turns have agent=NULL so they do not
+            # participate in one_executing_turn_per_agent; NULLs never compare
+            # equal, so agent/project turns do not participate here.
+            models.UniqueConstraint(
+                fields=["chat_session"],
+                condition=models.Q(status__in=["claimed", "running", "needs_human"]),
+                name="one_executing_turn_per_session",
+            ),
             models.CheckConstraint(
+                # Exactly one target: agent XOR project XOR chat_session.
                 condition=(
-                    models.Q(agent__isnull=False, project="")
-                    | models.Q(agent__isnull=True) & ~models.Q(project="")
+                    models.Q(agent__isnull=False, project="", chat_session__isnull=True)
+                    | models.Q(agent__isnull=True, chat_session__isnull=True) & ~models.Q(project="")
+                    | models.Q(agent__isnull=True, project="", chat_session__isnull=False)
                 ),
-                name="turn_targets_agent_xor_project",
+                name="turn_targets_agent_xor_project_xor_session",
             ),
         ]
 
     @property
     def target(self) -> str:
         """The emdash project to drive — an agent's slug or a repo's name. The CDP
-        layer underneath takes a project name either way."""
-        return self.agent.slug if self.agent_id else self.project
+        layer underneath takes a project name either way. A session turn drives its
+        session's agent when it has one, else a session marker (the cloud runner,
+        SP2b, resolves the session directly)."""
+        if self.agent_id:
+            return self.agent.slug
+        if self.chat_session_id:
+            return (
+                self.chat_session.agent.slug
+                if self.chat_session.agent_id
+                else f"session:{self.chat_session_id.hex[:8]}"
+            )
+        return self.project
 
     def __str__(self) -> str:  # pragma: no cover
         return f"turn:{self.target}:{self.status}:{self.id.hex[:8]}"

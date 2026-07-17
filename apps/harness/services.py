@@ -40,6 +40,7 @@ def enqueue_turn(
     *,
     agent=None,
     project: str = "",
+    session=None,
     workspace=None,
     origin: str,
     idempotency_key: str,
@@ -50,12 +51,13 @@ def enqueue_turn(
     """Queued turns stack freely — the executing-turn index never blocks intake
     (new turns are born `queued`, which the index does not cover).
 
-    Targets an agent XOR a project. A project turn must carry a workspace: it has
-    no agent to derive tenancy from, and claim_next_turn fails it closed without
-    one, so accepting it here would silently queue a turn nothing can ever run.
+    Targets exactly one of agent / project / session. A project turn must carry a
+    workspace: it has no agent/session to derive tenancy from, and claim_next_turn
+    fails it closed without one, so accepting it here would silently queue a turn
+    nothing can ever run. Session turns derive tenancy from session.workspace.
     """
-    if bool(agent) == bool(project):
-        raise ValueError("a turn targets an agent XOR a project")
+    if sum([bool(agent), bool(project), bool(session)]) != 1:
+        raise ValueError("a turn targets exactly one of agent / project / session")
     if project and workspace is None:
         raise ValueError("a project turn needs a workspace")
     existing = Turn.objects.filter(idempotency_key=idempotency_key).first()
@@ -66,8 +68,10 @@ def enqueue_turn(
             turn = Turn.objects.create(
                 agent=agent,
                 project=project,
-                # Agent turns derive tenancy via agent.workspace and must not
-                # denormalize a second copy that can drift.
+                chat_session=session,
+                # Agent + session turns derive tenancy (agent.workspace /
+                # chat_session.workspace) and must not denormalize a second copy
+                # that can drift; only a project turn carries its own workspace FK.
                 workspace=workspace if project else None,
                 origin=origin,
                 idempotency_key=idempotency_key,
