@@ -295,6 +295,7 @@ class ScheduleOut(Schema):
     fire_after: dt.datetime
     next_runs: list[dt.datetime] = []
     last_status: str = ""
+    created_by_email: str | None = None  # who set it up (null for pre-attribution rows)
     created_at: dt.datetime
     updated_at: dt.datetime
 

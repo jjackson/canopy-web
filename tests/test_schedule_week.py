@@ -68,3 +68,31 @@ def test_fires_present_in_the_week(setup):
     # DST week (the client's dayIdx<7 guard trims the surplus back to 7 columns).
     assert len(item["fires"]) == 8
     assert item["workspace_slug"] == "alpha"
+
+
+def test_mine_narrows_to_schedules_the_caller_created(setup):
+    # setup's A/B were created by jj. Add a teammate (member of alpha) who creates
+    # their own schedule; jj?mine=true must NOT see it, and the teammate?mine=true
+    # sees ONLY theirs — the actually-personal calendar.
+    teammate = User.objects.create_user("t", "t@dimagi.com", "pw")
+    from apps.workspaces.models import Workspace, WorkspaceMembership
+    wsvc.ensure_member(Workspace.objects.get(slug="alpha"), teammate, WorkspaceMembership.EDITOR)
+    ss.create_schedule(teammate, "eva", dict(name="T", prompt="p", cron="0 9 * * *", timezone="UTC",
+                                             enabled=True, routing="prefer_local", grace_minutes=120, notify=["inbox"]))
+
+    # jj's default (all my workspaces) sees everyone's; mine=true sees only jj's.
+    all_names = {i["schedule"]["name"] for i in setup.get(f"/api/agents/schedules/week?start={START}").json()["items"]}
+    assert {"A", "B", "T"} <= all_names
+    mine = {i["schedule"]["name"] for i in setup.get(f"/api/agents/schedules/week?start={START}&mine=true").json()["items"]}
+    assert mine == {"A", "B"}  # not T
+
+    tc = Client(); tc.force_login(teammate)
+    tmine = {i["schedule"]["name"] for i in tc.get(f"/api/agents/schedules/week?start={START}&mine=true").json()["items"]}
+    assert tmine == {"T"}
+
+
+def test_created_by_is_recorded_and_serialized(setup):
+    # The schedule 'A' was created by jj via the service — its creator is recorded.
+    row = next(i for i in setup.get(f"/api/agents/schedules/week?start={START}").json()["items"]
+               if i["schedule"]["name"] == "A")
+    assert row["schedule"]["created_by_email"] == "jj@dimagi.com"
