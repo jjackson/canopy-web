@@ -4,6 +4,7 @@ import { listAgents, getFleetNeedsYou, type AgentOut, type FleetNeedsYouOut } fr
 import { listRunners, type RunnerOut } from '@/api/harness'
 import { useLiveSupervisor } from '@/hooks/useLiveSupervisor'
 import { RunnerStatus } from '@/components/supervisor/RunnerStatus'
+import { RunnerDetail } from '@/components/supervisor/RunnerDetail'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
 import { WaitingOnYou } from '@/components/supervisor/WaitingOnYou'
 import { Composer } from '@/components/supervisor/Composer'
@@ -28,6 +29,7 @@ export default function SupervisorPage(): JSX.Element {
   const [agents, setAgents] = useState<AgentOut[] | null>(null)
   const [runners, setRunners] = useState<RunnerOut[] | null>(null)
   const [fleet, setFleet] = useState<FleetNeedsYouOut | null>(null)
+  const [selectedRunner, setSelectedRunner] = useState<RunnerOut | null>(null)
   // Per-band errors, not one page-level error: on cellular a single flaky call
   // is the common case, and Promise.all would blank all three bands for it.
   const [errs, setErrs] = useState<{ agents?: string; runners?: string; fleet?: string }>({})
@@ -135,12 +137,14 @@ export default function SupervisorPage(): JSX.Element {
 
         {/* Agents — fleet KPIs + runner status + the one-time setup prompts. */}
         <TabsContent value="agents" className="flex flex-col gap-4">
-          {errs.runners ? (
+          {selectedRunner ? (
+            <RunnerDetail runner={selectedRunner} onBack={() => setSelectedRunner(null)} />
+          ) : errs.runners ? (
             <BandError message={errs.runners} />
           ) : renderRunners === null ? (
             <Skeleton className="h-12 w-full" />
           ) : (
-            <RunnerStatus runners={renderRunners} />
+            <RunnerStatus runners={renderRunners} onSelect={setSelectedRunner} />
           )}
 
           {errs.agents ? (

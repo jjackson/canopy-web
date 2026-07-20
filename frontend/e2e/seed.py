@@ -90,6 +90,7 @@ from django.utils import timezone as _tz
 _runner = Runner.objects.create(
     name="e2e-mbp", kind=Runner.EMDASH, host="e2e-host", paired_by=user, workspace=ws,
     status=Runner.ONLINE, last_heartbeat_at=_tz.now(), capabilities={"projects": ["canopy-web"]},
+    ready=False, ready_note="emdash CDP unreachable",
 )
 EmdashSession.objects.create(
     runner=_runner, workspace=ws, emdash_task="cloud-runner", project="canopy-web",

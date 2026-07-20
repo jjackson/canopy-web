@@ -91,13 +91,16 @@ def enqueue_turn(
 
 
 def heartbeat(
-    runner: Runner, *, active_turn_ids: list[str], degraded: bool = False, note: str = ""
+    runner: Runner, *, active_turn_ids: list[str], degraded: bool = False, note: str = "",
+    ready: bool = True, ready_note: str = "",
 ) -> Runner:
     now = timezone.now()
     runner.last_heartbeat_at = now
     runner.status = Runner.DEGRADED if degraded else Runner.ONLINE
     runner.status_note = note
-    runner.save(update_fields=["last_heartbeat_at", "status", "status_note"])
+    runner.ready = ready
+    runner.ready_note = ready_note
+    runner.save(update_fields=["last_heartbeat_at", "status", "status_note", "ready", "ready_note"])
     if active_turn_ids:
         Turn.objects.filter(
             pk__in=active_turn_ids,

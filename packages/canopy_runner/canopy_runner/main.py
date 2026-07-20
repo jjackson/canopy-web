@@ -197,7 +197,7 @@ def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
     """Claim at most one eligible turn and route it to an emdash session. The shared
     core of both the loop's iteration and the single-turn primitive, so they can't
     drift. Returns reused:/created:/failed:<id> or "idle" when nothing is queued."""
-    from . import execute
+    from . import execute, readiness
 
     try:
         turn = client.claim(cfg.runner_id, paused_agents=sorted(paused))
@@ -210,8 +210,10 @@ def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
         return execute.execute_turn(cfg, client, cfg.runner_id, turn)
     except Exception as exc:  # noqa: BLE001 — one turn must never kill the loop
         logger.exception("execute_turn crashed for %s", turn.get("id"))
+        note = f"runner execute crashed: {exc}"
+        readiness.mark_failed(cfg, note)
         try:
-            client.fail_turn(turn["id"], f"runner execute crashed: {exc}")
+            client.fail_turn(turn["id"], note)
         except ClientError:
             pass
         return f"failed:{turn.get('id')}"
@@ -230,6 +232,7 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
     2026-07-17: 11 turns). So we PREFLIGHT: an unhealthy CDP skips the claim for this tick,
     leaving queued turns queued to auto-drain when emdash returns. Inbox + schedule polling
     still run (inbound work keeps ENQUEUING); only the claim is gated."""
+    from . import readiness
     from .cdp_control import cdp_healthy, host_id
 
     global _cdp_down_ticks, _cdp_down_signalled
@@ -240,7 +243,8 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
             logger.info("emdash CDP healthy again on :%s — resuming claims after %d down tick(s)",
                         cfg.cdp_port, _cdp_down_ticks)
         _reset_cdp_health_state()
-        client.heartbeat(cfg.runner_id, [], host=host)
+        _ready, _rnote = readiness.compute(cfg)
+        client.heartbeat(cfg.runner_id, [], host=host, ready=_ready, ready_note=_rnote)
     else:
         _cdp_down_ticks += 1
         # Degraded heartbeat EVERY unhealthy tick — the machine-readable surface signal the
@@ -248,7 +252,8 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
         # overwritten each tick, so it is not spam.
         client.heartbeat(cfg.runner_id, [], degraded=True,
                          note=f"emdash CDP unreachable on :{cfg.cdp_port} — not claiming",
-                         host=host)
+                         host=host, ready=False,
+                         ready_note=f"emdash CDP unreachable on :{cfg.cdp_port}")
         # ...and ONE loud WARNING after sustained downtime (not per tick), for the human log.
         if _cdp_down_ticks >= CDP_DOWN_SIGNAL_TICKS and not _cdp_down_signalled:
             logger.warning(
@@ -288,6 +293,7 @@ def drain_one(cfg: Config, client: Client) -> str:
     runs while the daemon is paused — the global PAUSED sentinel gates main()'s loop, not
     this — so you can take one turn with the fleet otherwise off. Per-agent pauses ARE
     honoured (the claim skips a paused agent's turns)."""
+    from . import readiness
     from .cdp_control import cdp_healthy, host_id
 
     if cfg.executor != "cdp":
@@ -299,9 +305,11 @@ def drain_one(cfg: Config, client: Client) -> str:
                        "immediately fail). Launch emdash with --remote-debugging-port=%s.",
                        cfg.cdp_port, cfg.cdp_port)
         client.heartbeat(cfg.runner_id, [], degraded=True,
-                         note=f"emdash CDP unreachable on :{cfg.cdp_port}", host=host_id())
+                         note=f"emdash CDP unreachable on :{cfg.cdp_port}", host=host_id(),
+                         ready=False, ready_note=f"emdash CDP unreachable on :{cfg.cdp_port}")
         return "cdp_down"
-    client.heartbeat(cfg.runner_id, [], host=host_id())
+    _ready, _rnote = readiness.compute(cfg)
+    client.heartbeat(cfg.runner_id, [], host=host_id(), ready=_ready, ready_note=_rnote)
     return _claim_and_execute(cfg, client, _paused_agents(cfg))
 
 
