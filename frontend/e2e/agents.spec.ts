@@ -29,8 +29,9 @@ test('needs-you is the default landing with typed, ranked actionable items', asy
   await expect(page.getByTestId('needsyou-band-review')).toContainText('ZEGCAWIS polio AFP story')
   // question band: the in-progress task blocked on a human
   await expect(page.getByTestId('needsyou-band-question')).toContainText('PRIDE cholera story')
-  // notify band: a recent FYI (the sync)
-  await expect(page.getByTestId('needsyou-band-notify')).toContainText('Manager sync 1')
+  // needs-you is action-only (#273 dropped the FYI 'notify' band — syncs like
+  // "Manager sync 1" no longer surface here). Only review + question bands remain.
+  await expect(page.getByTestId('needsyou-band-notify')).toHaveCount(0)
   // nothing Echo is actively working appears in the inbox
   await expect(page.getByText('Ideas backlog upkeep')).toHaveCount(0)
   // the badge counts the gated items only (t1 + t2 suggested, t3 waiting = 3)
