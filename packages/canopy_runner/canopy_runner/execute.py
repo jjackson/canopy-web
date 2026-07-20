@@ -22,7 +22,7 @@ import datetime as dt
 import logging
 import re
 
-from . import cdp_control, emdash
+from . import cdp_control, emdash, readiness
 
 logger = logging.getLogger("canopy_runner.execute")
 
@@ -124,9 +124,11 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
                     client.post_events(turn_id, [{"kind": "error",
                         "payload": {"status": "reuse_send_failed", "task": task,
                                     "task_state": state, "detail": str(exc)[:300]}}])
-                    client.fail_turn(turn_id, f"reuse failed on existing session '{task}' "
-                                              f"({state} per emdash's DB) — not spawning a "
-                                              f"duplicate; retry")
+                    _note = (f"reuse failed on existing session '{task}' "
+                             f"({state} per emdash's DB) — not spawning a "
+                             f"duplicate; retry")
+                    readiness.mark_failed(cfg, _note)
+                    client.fail_turn(turn_id, _note)
                     return f"failed:{turn_id}"
             else:
                 logger.info("REUSE  turn=%s agent=%s thread=%s -> existing session '%s' (no new claude session)",
@@ -135,6 +137,7 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
                     "payload": {"status": "reused_session", "task": task, "thread_key": thread_key}}])
                 client.record_session(runner_id, agent_slug, thread_key,
                                       project=project, workspace=workspace, emdash_task_id=task)
+                readiness.mark_ok(cfg)
                 client.finish(turn_id, note=f"delivered to existing session '{task}'")
                 return f"reused:{turn_id}"
 
@@ -153,7 +156,9 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
         res = cdp_control.create_task(agent, prompt, task_name=_task_name(agent, turn), port=cfg.cdp_port)
     except cdp_control.CDPError as exc:
         logger.error("CREATE failed turn=%s agent=%s: %s", turn_id, agent, exc)
-        client.fail_turn(turn_id, f"emdash create failed: {exc}")
+        _note = f"emdash create failed: {exc}"
+        readiness.mark_failed(cfg, _note)
+        client.fail_turn(turn_id, _note)
         return f"failed:{turn_id}"
 
     task = res.get("task") or ""
@@ -168,5 +173,6 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
         agent_task_ext_id=ref.get("agent_task_ext_id"),
         summary=summary or None,
     )
+    readiness.mark_ok(cfg)
     client.finish(turn_id, note=f"created session '{task}'" + (" (rehydrated)" if summary else ""))
     return f"created:{turn_id}:{task}"

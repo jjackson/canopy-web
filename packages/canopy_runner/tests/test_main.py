@@ -610,8 +610,10 @@ class _CdpLoopClient:
         self.claims = 0
         self.heartbeats = []
 
-    def heartbeat(self, runner_id, active, degraded=False, note="", host=""):
-        self.heartbeats.append({"degraded": degraded, "note": note})
+    def heartbeat(self, runner_id, active, degraded=False, note="", host="",
+                  ready=True, ready_note=""):
+        self.heartbeats.append({"degraded": degraded, "note": note,
+                                "ready": ready, "ready_note": ready_note})
 
     def report_sessions(self, runner_id, sessions):
         pass

@@ -1,4 +1,6 @@
 """CDP executor — resolve → reuse-or-create, runner owns the routing lifecycle."""
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -7,7 +9,13 @@ from canopy_runner import cdp_control, emdash, execute
 
 
 def _cfg():
-    return SimpleNamespace(cdp_port=9222, runner_id="r-1", emdash_db="/fake/emdash4.db")
+    # A real (but throwaway) state_path — execute_turn's fail/finish paths now write a
+    # readiness marker next to it (see readiness.py); without one, readiness would fall
+    # back to the real ~/.canopy and pollute the developer's machine during a test run.
+    # Fresh tmp dir per call keeps every test's marker isolated from the others.
+    tmp = Path(tempfile.mkdtemp(prefix="canopy-runner-test-"))
+    return SimpleNamespace(cdp_port=9222, runner_id="r-1", emdash_db="/fake/emdash4.db",
+                           state_path=str(tmp / "runner-state.json"))
 
 
 @pytest.fixture(autouse=True)

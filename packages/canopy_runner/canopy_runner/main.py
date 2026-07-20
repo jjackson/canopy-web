@@ -230,6 +230,7 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
     2026-07-17: 11 turns). So we PREFLIGHT: an unhealthy CDP skips the claim for this tick,
     leaving queued turns queued to auto-drain when emdash returns. Inbox + schedule polling
     still run (inbound work keeps ENQUEUING); only the claim is gated."""
+    from . import readiness
     from .cdp_control import cdp_healthy, host_id
 
     global _cdp_down_ticks, _cdp_down_signalled
@@ -240,7 +241,8 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
             logger.info("emdash CDP healthy again on :%s — resuming claims after %d down tick(s)",
                         cfg.cdp_port, _cdp_down_ticks)
         _reset_cdp_health_state()
-        client.heartbeat(cfg.runner_id, [], host=host)
+        _ready, _rnote = readiness.compute(cfg)
+        client.heartbeat(cfg.runner_id, [], host=host, ready=_ready, ready_note=_rnote)
     else:
         _cdp_down_ticks += 1
         # Degraded heartbeat EVERY unhealthy tick — the machine-readable surface signal the
@@ -288,6 +290,7 @@ def drain_one(cfg: Config, client: Client) -> str:
     runs while the daemon is paused — the global PAUSED sentinel gates main()'s loop, not
     this — so you can take one turn with the fleet otherwise off. Per-agent pauses ARE
     honoured (the claim skips a paused agent's turns)."""
+    from . import readiness
     from .cdp_control import cdp_healthy, host_id
 
     if cfg.executor != "cdp":
@@ -301,7 +304,8 @@ def drain_one(cfg: Config, client: Client) -> str:
         client.heartbeat(cfg.runner_id, [], degraded=True,
                          note=f"emdash CDP unreachable on :{cfg.cdp_port}", host=host_id())
         return "cdp_down"
-    client.heartbeat(cfg.runner_id, [], host=host_id())
+    _ready, _rnote = readiness.compute(cfg)
+    client.heartbeat(cfg.runner_id, [], host=host_id(), ready=_ready, ready_note=_rnote)
     return _claim_and_execute(cfg, client, _paused_agents(cfg))
 
 

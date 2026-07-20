@@ -41,11 +41,11 @@ class Client:
         return status, json.loads(raw)
 
     def heartbeat(self, runner_id: str, active_turn_ids: list[str], degraded: bool = False,
-                  note: str = "", host: str = "") -> dict:
+                  note: str = "", host: str = "", ready: bool = True, ready_note: str = "") -> dict:
         _, payload = self._call(
-            "POST",
-            f"/runners/{runner_id}/heartbeat",
-            {"active_turn_ids": active_turn_ids, "degraded": degraded, "note": note, "host": host},
+            "POST", f"/runners/{runner_id}/heartbeat",
+            {"active_turn_ids": active_turn_ids, "degraded": degraded, "note": note,
+             "host": host, "ready": ready, "ready_note": ready_note},
         )
         return payload or {}
 
