@@ -178,3 +178,53 @@ def test_attach_recent_tail_missing_transcript_sets_empty(tmp_path):
     sessions = [{"emdash_task": "nope", "project": "canopy-web"}]
     transcript.attach_recent_tail(sessions, home=tmp_path, claude_home=tmp_path)
     assert sessions[0]["recent_messages"] == []
+
+
+def _write_at(claude_home: Path, worktree: Path, lines: list[dict]) -> Path:
+    """Write a transcript at an ARBITRARY worktree path (helper for layout tests)."""
+    proj = claude_home / transcript.encode_project_dir(worktree)
+    proj.mkdir(parents=True)
+    f = proj / "sess.jsonl"
+    f.write_text("\n".join(json.dumps(x) for x in lines), "utf-8")
+    return f
+
+
+def test_resolve_transcript_matches_random_dedupe_suffix(tmp_path):
+    # emdash's real dir carries a random suffix ("-cysov"); the DB task name does not.
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    worktree = home / "emdash" / "worktrees" / "ace" / "emdash" / "ace-demo-1352-cysov"
+    _write_at(claude_home, worktree, [{"type": "user", "message": {"content": "hi"}}])
+    msgs, reason = transcript.session_tail(
+        "ace", "ace-demo-1352", limit=8, home=home, claude_home=claude_home
+    )
+    assert reason == ""
+    assert msgs == [{"role": "user", "text": "hi"}]
+
+
+def test_resolve_transcript_matches_layout_without_emdash_segment(tmp_path):
+    # Some worktrees (e.g. echo's) sit at <repo>/<task> with no `emdash` segment.
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    worktree = home / "emdash" / "worktrees" / "echo" / "spotty-cities-mix"
+    _write_at(claude_home, worktree, [{"type": "user", "message": {"content": "yo"}}])
+    msgs, reason = transcript.session_tail(
+        "echo", "spotty-cities-mix", limit=8, home=home, claude_home=claude_home
+    )
+    assert reason == ""
+    assert msgs == [{"role": "user", "text": "yo"}]
+
+
+def test_resolve_transcript_does_not_grab_a_sibling_task_prefix(tmp_path):
+    # Anti-collision: task "mobile" must not resolve to sibling "alt-mobile"'s dir.
+    # The prefix is anchored at the parent segment (...-emdash-mobile), so a dir
+    # whose leaf is "alt-mobile" (…-emdash-alt-mobile) can't match.
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    sibling = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / "alt-mobile"
+    _write_at(claude_home, sibling, [{"type": "user", "message": {"content": "sibling"}}])
+    msgs, reason = transcript.session_tail(
+        "canopy-web", "mobile", limit=8, home=home, claude_home=claude_home
+    )
+    assert msgs == []
+    assert reason == "no-transcript"
