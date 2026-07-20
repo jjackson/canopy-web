@@ -158,6 +158,26 @@ def test_list_filter_by_agent_and_status(client, agent):
     assert empty.status_code == 200 and empty.json() == []
 
 
+def test_list_respects_limit_and_clamps(client, agent):
+    # enqueue 3 turns for the same agent (idempotency_key must differ per row)
+    for i in range(3):
+        r = client.post(
+            "/api/harness/turns/",
+            {"agent_slug": "echo", "origin": "manual", "idempotency_key": f"k{i}"},
+            content_type="application/json",
+        )
+        assert r.status_code == 201, r.content
+
+    # limit caps the row count
+    assert len(client.get("/api/harness/turns/?limit=2").json()) == 2
+    # limit below 1 clamps up to 1 (never returns 0 / everything)
+    assert len(client.get("/api/harness/turns/?limit=0").json()) == 1
+    # limit above 200 clamps down to 200 (here just <= the 3 we have)
+    assert len(client.get("/api/harness/turns/?limit=9999").json()) == 3
+    # omitted -> default 100 (existing callers unchanged): returns all 3
+    assert len(client.get("/api/harness/turns/").json()) == 3
+
+
 def test_anonymous_is_401(agent):
     c = Client()
     resp = c.get("/api/harness/turns/")
