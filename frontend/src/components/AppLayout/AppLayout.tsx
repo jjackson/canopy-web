@@ -268,10 +268,10 @@ function AppShell() {
           ) : (
             <span className="text-lg font-semibold text-foreground shrink-0">Canopy<span className="text-primary">.</span></span>
           )}
-          <div className="flex items-center gap-3 xl:gap-6">
+          <div className="flex min-w-0 items-center gap-2 xl:gap-3">
             {/* Full inline nav only once all items fit (~xl); below that it
                 overflows the viewport, so we collapse it into the menu below. */}
-            <nav className="hidden xl:flex gap-1">
+            <nav className="hidden min-w-0 xl:flex gap-0.5">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path} className={navLinkClass(item.path, false)}>
                   {item.label}
