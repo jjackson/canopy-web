@@ -1,5 +1,6 @@
 import { useEffect, useState, type JSX } from 'react'
 import { listOpenSessions, enqueueTurn, type EmdashSessionOut } from '@/api/harness'
+import { normalizeRecentMessages } from '@/lib/recentMessages'
 
 // The open emdash sessions the runner reported — see them, and drop a prompt into a
 // specific one. Continue dispatches a repo turn carrying the session's emdash:{task}
@@ -10,6 +11,8 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<'ok' | string | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const messages = normalizeRecentMessages(session.recent_messages)
 
   async function send(): Promise<void> {
     if (busy || prompt.trim() === '') return
@@ -39,6 +42,32 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
         </span>
         <span className="shrink-0 text-[11px] text-muted-foreground">{session.status}</span>
       </div>
+      <button
+        type="button"
+        data-testid={`session-tail-toggle-${session.emdash_task}`}
+        onClick={() => setExpanded((v) => !v)}
+        className="mt-1 text-[11px] text-muted-foreground hover:text-foreground-secondary"
+      >
+        {expanded ? 'Hide recent' : 'Recent'}
+      </button>
+      {expanded && (
+        <div className="mt-1 flex flex-col gap-1" data-testid={`session-tail-${session.emdash_task}`}>
+          {messages.length === 0 ? (
+            <p className="text-[12px] text-muted-foreground">Recent messages unavailable.</p>
+          ) : (
+            messages.map((m, i) => (
+              <div key={i} className="rounded border border-border bg-muted/40 p-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {m.role}
+                </span>
+                <p className="whitespace-pre-wrap break-words text-[12px] text-foreground-secondary">
+                  {m.text}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      )}
       <div className="mt-2 flex gap-2">
         <input
           data-testid={`session-input-${session.emdash_task}`}
