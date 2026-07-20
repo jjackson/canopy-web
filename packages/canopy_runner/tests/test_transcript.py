@@ -82,3 +82,56 @@ def test_text_truncated_to_max(tmp_path):
     f.write_text(json.dumps({"type": "user", "message": {"content": "z" * 5000}}), "utf-8")
     msgs = transcript.read_recent_messages(f, limit=8)
     assert len(msgs[0]["text"]) == transcript.MAX_MSG_CHARS
+
+
+def test_read_recent_messages_skips_wrong_shape_message_field(tmp_path):
+    # Valid JSON, but "message" is a str instead of a dict — .get() on it
+    # would raise AttributeError if not guarded. Surrounding good messages
+    # must still come through.
+    f = tmp_path / "x.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"content":"ok"}}\n'
+        '{"type":"user","message":"not-a-dict"}\n'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n',
+        "utf-8",
+    )
+    msgs = transcript.read_recent_messages(f, limit=8)
+    assert [m["text"] for m in msgs] == ["ok", "hi"]
+
+
+def test_read_recent_messages_skips_bare_json_list_line(tmp_path):
+    # A line that is valid JSON but not an object at all (a bare list) —
+    # payload.get(...) would raise AttributeError if not guarded.
+    f = tmp_path / "x.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"content":"ok"}}\n'
+        "[1,2,3]\n"
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n',
+        "utf-8",
+    )
+    msgs = transcript.read_recent_messages(f, limit=8)
+    assert [m["text"] for m in msgs] == ["ok", "hi"]
+
+
+def test_session_tail_wrong_shape_only_returns_empty_transcript_not_raise(tmp_path):
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    worktree = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / "ddd"
+    _write_transcript(claude_home, worktree, [
+        {"type": "system", "subtype": "init", "session_id": "s1"},
+    ])
+    # Overwrite with content lines that are all wrong-shape (valid JSON,
+    # bad shape) — session_tail must degrade to ([], "empty-transcript"),
+    # never raise.
+    proj = claude_home / transcript.encode_project_dir(worktree)
+    f = proj / "sess.jsonl"
+    f.write_text(
+        '{"type":"user","message":"not-a-dict"}\n'
+        "[1,2,3]\n",
+        "utf-8",
+    )
+    msgs, reason = transcript.session_tail(
+        "canopy-web", "ddd", limit=8, home=home, claude_home=claude_home
+    )
+    assert msgs == []
+    assert reason == "empty-transcript"

@@ -85,10 +85,14 @@ def read_recent_messages(path: Path, limit: int = 8) -> list[dict]:
             payload = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if not isinstance(payload, dict):
+            continue
         kind = payload.get("type")
         if kind not in ("user", "assistant"):
             continue
-        text = _extract_text(payload.get("message", {}).get("content", ""))
+        message = payload.get("message")
+        content = message.get("content", "") if isinstance(message, dict) else ""
+        text = _extract_text(content)
         if text:
             msgs.append({"role": kind, "text": text[:MAX_MSG_CHARS]})
     return msgs[-limit:]
