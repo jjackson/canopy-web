@@ -235,6 +235,8 @@ def runner_heartbeat(request: HttpRequest, runner_id: uuid.UUID, payload: Heartb
         active_turn_ids=payload.active_turn_ids,
         degraded=payload.degraded,
         note=payload.note,
+        ready=payload.ready,
+        ready_note=payload.ready_note,
     )
 
 

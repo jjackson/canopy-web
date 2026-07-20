@@ -40,6 +40,12 @@ class Runner(models.Model):
     capabilities = models.JSONField(default=dict, help_text='e.g. {"agents": ["echo"]}')
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=DISCONNECTED)
     status_note = models.CharField(max_length=255, blank=True, default="")
+    # Can this runner actually FIRE a turn right now — distinct from being online.
+    # Set from the heartbeat: the runner self-reports cdp_healthy() AND not-recently-
+    # failed. `available = live_status == ONLINE and ready` (the Phase B cascade gate).
+    # Defaults True so an un-upgraded runner reads as able to fire, matching prior behavior.
+    ready = models.BooleanField(default=True)
+    ready_note = models.CharField(max_length=200, blank=True, default="")
     last_heartbeat_at = models.DateTimeField(null=True, blank=True)
     # macOS user @ hostname that owns this runner. Load-bearing for session reuse:
     # emdash sessions are per-macOS-account (separate emdash4.db, worktrees, transcripts),

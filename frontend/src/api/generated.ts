@@ -5457,6 +5457,10 @@ export interface components {
             readonly status: string;
             /** Status Note */
             readonly status_note: string;
+            /** Ready */
+            readonly ready: boolean;
+            /** Ready Note */
+            readonly ready_note: string;
             /** Last Heartbeat At */
             readonly last_heartbeat_at: string | null;
             /** Capabilities */
@@ -5521,6 +5525,16 @@ export interface components {
              * @default
              */
             readonly host: string;
+            /**
+             * Ready
+             * @default true
+             */
+            readonly ready: boolean;
+            /**
+             * Ready Note
+             * @default
+             */
+            readonly ready_note: string;
         };
         /** TurnOut */
         readonly TurnOut: {

@@ -39,6 +39,8 @@ class RunnerOut(Schema):
     kind: str
     status: str
     status_note: str
+    ready: bool
+    ready_note: str
     last_heartbeat_at: dt.datetime | None
     capabilities: dict
     host: str
@@ -61,6 +63,8 @@ class HeartbeatIn(Schema):
     degraded: bool = False
     note: str = ""
     host: str = ""  # refresh the owning macOS host (in case a runner row is reused)
+    ready: bool = True   # can the runner fire a turn (cdp healthy ∧ not recently failed)
+    ready_note: str = ""
 
 
 class ResolveSessionIn(Schema):
