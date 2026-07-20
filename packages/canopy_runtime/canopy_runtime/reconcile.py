@@ -82,6 +82,9 @@ def reconcile(
     (a dry scan) and never installs or writes anything."""
     result = ReconcileResult()
 
+    # Non-secret literal env first, so a secret with the same target env var always
+    # wins over a literal (secrets are the authority; literals are defaults/config).
+    result.env.update(spec.env)
     _reconcile_secrets(spec, store, env, result, apply)
     _reconcile_tools(spec, env, result)
     _reconcile_plugins(spec, env, result, apply)
@@ -173,11 +176,14 @@ class LocalEnvironment:
             return set()
         if res.returncode != 0:
             return set()
+        # `claude plugin list` prints one plugin per line as "  ❯ name@marketplace",
+        # followed by indented "Version:/Scope:/Status:" detail lines. Pick the
+        # "name@marketplace" token and keep the name.
         names: set[str] = set()
         for line in (res.stdout or "").splitlines():
-            token = line.strip().split()[0] if line.strip() else ""
-            if token:
-                names.add(token.split("@")[0])
+            for token in line.split():
+                if "@" in token and not token.startswith("@"):
+                    names.add(token.split("@")[0])
         return names
 
     def install_plugin(self, plugin: PluginRef) -> None:

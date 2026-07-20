@@ -105,6 +105,11 @@ class RuntimeSpec(_Strict):
     tools: list[ToolRef] = Field(default_factory=list)
     # Secret REFERENCES (name + destination), never values — see SecretRef.
     secrets: list[SecretRef] = Field(default_factory=list)
+    # Non-secret literal env the runtime needs (Drive folder IDs, a gog client
+    # name, doc IDs — echo's .env is full of these). NOT secrets: values live here
+    # in the clear because they aren't sensitive. The reconciler injects them
+    # alongside the resolved secrets.
+    env: dict[str, str] = Field(default_factory=dict)
     preflight: list[PreflightCheck] = Field(default_factory=list)
 
 

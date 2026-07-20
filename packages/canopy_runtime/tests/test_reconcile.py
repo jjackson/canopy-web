@@ -144,3 +144,36 @@ def test_dry_run_reports_but_does_not_apply():
     assert env.files == {}              # no file written
     assert any(g.kind == "plugin" for g in result.gaps)
     assert "/tmp/x.json" in result.files_written  # still reported as intended
+
+
+def test_non_secret_env_literals_are_injected():
+    spec = _spec(env={"ECHO_GMAIL_CLIENT": "echo", "ECHO_DRIVE_FOLDER_ID": "abc123"})
+    result = reconcile(spec, FakeStore({}), FakeEnv())
+    assert result.ready
+    assert result.env["ECHO_GMAIL_CLIENT"] == "echo"
+    assert result.env["ECHO_DRIVE_FOLDER_ID"] == "abc123"
+
+
+def test_secret_overrides_a_literal_on_the_same_env_var():
+    spec = _spec(
+        env={"CANOPY_PAT": "placeholder"},
+        secrets=[{"name": "canopy-pat", "env": "CANOPY_PAT"}],
+    )
+    result = reconcile(spec, FakeStore({"canopy-pat": "REALPAT"}), FakeEnv())
+    assert result.env["CANOPY_PAT"] == "REALPAT"  # secret wins over the literal
+
+
+def test_local_env_parses_claude_plugin_list(monkeypatch):
+    import subprocess as _sp
+
+    from canopy_runtime.reconcile import LocalEnvironment
+
+    sample = (
+        "Installed plugins:\n\n  ❯ ace@ace\n    Version: 0.13\n\n"
+        "  ❯ canopy@canopy\n    Status: enabled\n  ❯ echo@echo\n"
+    )
+    monkeypatch.setattr(
+        _sp, "run",
+        lambda *a, **k: _sp.CompletedProcess(a, 0, sample, ""),
+    )
+    assert LocalEnvironment().installed_plugins() == {"ace", "canopy", "echo"}
