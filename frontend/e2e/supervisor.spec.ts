@@ -153,4 +153,16 @@ test.describe('/supervisor', () => {
     expect(posted).toMatchObject({ project: 'canopy-web', prompt: 'rerun the failing test' })
     expect((posted as { origin_ref?: { thread_key?: string } }).origin_ref?.thread_key).toBe('emdash:cloud-runner')
   })
+
+  test('a runner shows not-ready and opens a detail view with the reason', async ({ page }) => {
+    await page.goto('/supervisor?tab=agents')
+    // the seeded runner is not-ready → the list shows the marker
+    const notReady = page.locator('[data-testid^="runner-notready-"]').first()
+    await expect(notReady).toBeVisible()
+    // tap the runner row → detail view with the reason
+    await page.locator('[data-testid^="runner-"]').filter({ hasText: /not ready/ }).first().click()
+    await expect(page.getByTestId('runner-detail-back')).toBeVisible()
+    await expect(page.getByTestId('runner-detail-ready')).toHaveText('not ready')
+    await expect(page.getByTestId('runner-detail-why')).toContainText('emdash CDP unreachable')
+  })
 })

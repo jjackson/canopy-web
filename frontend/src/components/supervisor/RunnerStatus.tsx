@@ -19,7 +19,13 @@ function relative(iso: string | null): string {
   return `${Math.round(secs / 3600)}h ago`
 }
 
-export function RunnerStatus({ runners }: { runners: RunnerOut[] }): JSX.Element {
+export function RunnerStatus({
+  runners,
+  onSelect,
+}: {
+  runners: RunnerOut[]
+  onSelect?: (r: RunnerOut) => void
+}): JSX.Element {
   if (runners.length === 0) {
     return (
       <p className="rounded-lg border border-border bg-card p-3 text-[13px] text-muted-foreground">
@@ -30,16 +36,23 @@ export function RunnerStatus({ runners }: { runners: RunnerOut[] }): JSX.Element
   return (
     <div className="flex flex-col gap-2" data-testid="runner-status">
       {runners.map((r) => (
-        <div
+        <button
           key={r.id}
-          className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2"
+          type="button"
+          onClick={() => onSelect?.(r)}
+          className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-left"
           data-testid={`runner-${r.name}`}
         >
           <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[r.status] ?? 'bg-muted-foreground'}`} />
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{r.name}</span>
+          {!r.ready && (
+            <span data-testid={`runner-notready-${r.name}`} className="shrink-0 rounded bg-destructive/15 px-1 text-[10px] text-destructive">
+              not ready
+            </span>
+          )}
           {r.host && <span className="hidden truncate text-[11px] text-foreground-subtle sm:inline">{r.host}</span>}
           <span className="shrink-0 text-[11px] text-muted-foreground">{relative(r.last_heartbeat_at)}</span>
-        </div>
+        </button>
       ))}
     </div>
   )
