@@ -120,3 +120,26 @@ def session_tail(
     if not msgs:
         return [], "empty-transcript"
     return msgs, ""
+
+
+def attach_recent_tail(
+    sessions: list[dict],
+    *,
+    limit: int = 8,
+    home: Path | None = None,
+    claude_home: Path | None = None,
+) -> None:
+    """Eagerly fill recent_messages on the MOST-RECENTLY-ACTIVE session (index 0).
+
+    That is the session the supervisor is most likely to open ("this session"),
+    so its click-in is instant with no extra round trip. In place, best-effort,
+    never raises. Other sessions carry [] until Task 4 (watch) fills them.
+    """
+    if not sessions:
+        return
+    top = sessions[0]
+    msgs, _reason = session_tail(
+        top.get("project", ""), top.get("emdash_task", ""),
+        limit=limit, home=home, claude_home=claude_home,
+    )
+    top["recent_messages"] = msgs

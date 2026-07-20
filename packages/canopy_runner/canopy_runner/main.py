@@ -39,7 +39,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from . import emdash
+from . import emdash, transcript
 from .client import Client, ClientError
 from .config import Config
 
@@ -265,9 +265,12 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
 
     # Report the open emdash sessions the phone can continue. A sqlite read of emdash's
     # DB, not CDP — keep it even while CDP is down. Best-effort: a read or POST failure
-    # must never stop the tick.
+    # must never stop the tick. The most-recently-active session also carries its recent
+    # message tail (Phase B) so the phone can read it on click-in with no extra round trip.
     try:
-        client.report_sessions(cfg.runner_id, emdash.list_open_sessions(cfg.emdash_db))
+        sessions = emdash.list_open_sessions(cfg.emdash_db)
+        transcript.attach_recent_tail(sessions, limit=cfg.session_tail_limit)
+        client.report_sessions(cfg.runner_id, sessions)
     except Exception:  # noqa: BLE001
         logger.debug("session report failed (non-fatal)", exc_info=True)
     paused = _paused_agents(cfg)

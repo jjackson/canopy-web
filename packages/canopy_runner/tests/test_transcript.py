@@ -135,3 +135,31 @@ def test_session_tail_wrong_shape_only_returns_empty_transcript_not_raise(tmp_pa
     )
     assert msgs == []
     assert reason == "empty-transcript"
+
+
+def test_attach_recent_tail_fills_first_session_only(tmp_path):
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    worktree = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / "ddd"
+    _write_transcript(claude_home, worktree, [
+        {"type": "user", "message": {"content": "hello"}},
+    ])
+    sessions = [
+        {"emdash_task": "ddd", "project": "canopy-web", "status": "in_progress"},
+        {"emdash_task": "turn", "project": "canopy-web", "status": "in_progress"},
+    ]
+    transcript.attach_recent_tail(sessions, limit=8, home=home, claude_home=claude_home)
+    assert sessions[0]["recent_messages"] == [{"role": "user", "text": "hello"}]
+    assert "recent_messages" not in sessions[1]  # only the most-recent is enriched eagerly
+
+
+def test_attach_recent_tail_empty_list_is_noop(tmp_path):
+    sessions: list[dict] = []
+    transcript.attach_recent_tail(sessions, home=tmp_path)  # must not raise
+    assert sessions == []
+
+
+def test_attach_recent_tail_missing_transcript_sets_empty(tmp_path):
+    sessions = [{"emdash_task": "nope", "project": "canopy-web"}]
+    transcript.attach_recent_tail(sessions, home=tmp_path, claude_home=tmp_path)
+    assert sessions[0]["recent_messages"] == []
