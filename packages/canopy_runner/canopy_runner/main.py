@@ -252,7 +252,8 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
         # overwritten each tick, so it is not spam.
         client.heartbeat(cfg.runner_id, [], degraded=True,
                          note=f"emdash CDP unreachable on :{cfg.cdp_port} — not claiming",
-                         host=host)
+                         host=host, ready=False,
+                         ready_note=f"emdash CDP unreachable on :{cfg.cdp_port}")
         # ...and ONE loud WARNING after sustained downtime (not per tick), for the human log.
         if _cdp_down_ticks >= CDP_DOWN_SIGNAL_TICKS and not _cdp_down_signalled:
             logger.warning(
@@ -304,7 +305,8 @@ def drain_one(cfg: Config, client: Client) -> str:
                        "immediately fail). Launch emdash with --remote-debugging-port=%s.",
                        cfg.cdp_port, cfg.cdp_port)
         client.heartbeat(cfg.runner_id, [], degraded=True,
-                         note=f"emdash CDP unreachable on :{cfg.cdp_port}", host=host_id())
+                         note=f"emdash CDP unreachable on :{cfg.cdp_port}", host=host_id(),
+                         ready=False, ready_note=f"emdash CDP unreachable on :{cfg.cdp_port}")
         return "cdp_down"
     _ready, _rnote = readiness.compute(cfg)
     client.heartbeat(cfg.runner_id, [], host=host_id(), ready=_ready, ready_note=_rnote)

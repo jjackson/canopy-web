@@ -551,7 +551,10 @@ def test_drain_one_honours_per_agent_pause_via_claim(monkeypatch, tmp_path):
 
 def test_drain_one_refuses_to_claim_when_cdp_down(monkeypatch, tmp_path):
     """The self-heal reaches the single-turn primitive too: claiming with emdash down
-    would immediately fail (burn) the turn, so drain_one refuses instead."""
+    would immediately fail (burn) the turn, so drain_one refuses instead. It must ALSO
+    report ready=False on this heartbeat — otherwise the server keeps showing the runner
+    as "ready" while it can't actually execute anything (the primary proactive case this
+    feature exists to surface)."""
     monkeypatch.setattr("canopy_runner.cdp_control.cdp_healthy", lambda **k: False)
     monkeypatch.setattr("canopy_runner.cdp_control.host_id", lambda: "u@h")
     monkeypatch.setattr(main_mod, "_paused_agents", lambda c: set())
@@ -560,10 +563,15 @@ def test_drain_one_refuses_to_claim_when_cdp_down(monkeypatch, tmp_path):
         def __init__(self):
             super().__init__(None)
             self.degraded = None
+            self.ready = None
+            self.ready_note = None
 
-        def heartbeat(self, runner_id, active, degraded=False, note="", host=""):
+        def heartbeat(self, runner_id, active, degraded=False, note="", host="",
+                      ready=True, ready_note=""):
             self.beats += 1
             self.degraded = degraded
+            self.ready = ready
+            self.ready_note = ready_note
 
         def claim(self, runner_id, paused_agents=None):
             pytest.fail("must NOT claim a turn while CDP is down")
@@ -571,6 +579,8 @@ def test_drain_one_refuses_to_claim_when_cdp_down(monkeypatch, tmp_path):
     c = C()
     assert main_mod.drain_one(_cdp_cfg(tmp_path), c) == "cdp_down"
     assert c.degraded is True  # surfaced as degraded to the control plane
+    assert c.ready is False  # must NOT default to True while CDP is unreachable
+    assert c.ready_note  # a human-readable reason accompanies it
 
 
 def test_broken_scheduling_does_not_crash_the_tick(db, tmp_path, monkeypatch, caplog):
@@ -669,6 +679,19 @@ def test_cdp_unhealthy_skips_claim_and_burns_nothing(monkeypatch, tmp_path):
     assert run_once(_cdp_loop_cfg(tmp_path), client) == "cdp_down"
     assert client.claims == 0  # nothing claimed -> nothing burned
     assert client.heartbeats[-1]["degraded"] is True  # surfaced as degraded, every tick
+
+
+def test_cdp_unhealthy_heartbeat_reports_not_ready(monkeypatch, tmp_path):
+    """The proactive case this whole feature exists for: a CDP-down runner must read as
+    NOT ready on the server, not just "degraded". Before the fix, the unhealthy-branch
+    heartbeat omitted ready/ready_note entirely, so it defaulted to ready=True — a
+    CDP-down runner would still show up as ready in the control plane."""
+    _stub_cdp(monkeypatch, healthy=False)
+    client = _CdpLoopClient()
+    run_once(_cdp_loop_cfg(tmp_path), client)
+    hb = client.heartbeats[-1]
+    assert hb["ready"] is False
+    assert hb["ready_note"]  # a human-readable reason accompanies it
 
 
 def test_cdp_down_still_polls_inbox_and_schedules(monkeypatch, tmp_path):
