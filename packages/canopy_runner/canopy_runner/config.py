@@ -32,6 +32,9 @@ class Config:
     # Hard safety cap: at most this many threads become turns per mailbox per poll,
     # so a flooded/misconfigured inbox can't spawn dozens of sessions at once.
     inbox_max_threads: int = 8
+    # Phase B: how many recent messages to include for the most-recently-active
+    # session in each session report. "Recent tail", not the full transcript.
+    session_tail_limit: int = 8
 
     @classmethod
     def load(cls, path: Path) -> "Config":

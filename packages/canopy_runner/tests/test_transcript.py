@@ -1,0 +1,180 @@
+import json
+from pathlib import Path
+
+from canopy_runner import transcript
+
+
+def test_encode_project_dir_replaces_slash_and_dot():
+    wt = Path("/Users/j/emdash/worktrees/canopy-web/emdash/mobile-kn063")
+    assert transcript.encode_project_dir(wt) == (
+        "-Users-j-emdash-worktrees-canopy-web-emdash-mobile-kn063"
+    )
+    # dots also become dashes (Claude Code's convention)
+    assert transcript.encode_project_dir(Path("/a/b.c")) == "-a-b-c"
+
+
+def _write_transcript(claude_home: Path, worktree: Path, lines: list[dict]) -> Path:
+    proj = claude_home / transcript.encode_project_dir(worktree)
+    proj.mkdir(parents=True)
+    f = proj / "sess.jsonl"
+    f.write_text("\n".join(json.dumps(x) for x in lines), "utf-8")
+    return f
+
+
+def test_session_tail_reads_recent_user_and_assistant_text(tmp_path):
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    worktree = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / "ddd"
+    _write_transcript(claude_home, worktree, [
+        {"type": "system", "subtype": "init", "session_id": "s1"},
+        {"type": "user", "message": {"content": "fix the header"}},
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": "On it."}]}},
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Edit"}]}},
+    ])
+    msgs, reason = transcript.session_tail(
+        "canopy-web", "ddd", limit=8, home=home, claude_home=claude_home
+    )
+    assert reason == ""
+    assert msgs[0] == {"role": "user", "text": "fix the header"}
+    assert msgs[1] == {"role": "assistant", "text": "On it."}
+    assert msgs[2] == {"role": "assistant", "text": "[tool: Edit]"}
+
+
+def test_session_tail_limits_to_last_n(tmp_path):
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    worktree = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / "ddd"
+    lines = [{"type": "system", "subtype": "init", "session_id": "s1"}]
+    for i in range(20):
+        lines.append({"type": "user", "message": {"content": f"m{i}"}})
+    _write_transcript(claude_home, worktree, lines)
+    msgs, reason = transcript.session_tail(
+        "canopy-web", "ddd", limit=8, home=home, claude_home=claude_home
+    )
+    assert reason == ""
+    assert [m["text"] for m in msgs] == [f"m{i}" for i in range(12, 20)]
+
+
+def test_session_tail_missing_transcript_returns_reason_not_raise(tmp_path):
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    msgs, reason = transcript.session_tail(
+        "canopy-web", "nope", limit=8, home=home, claude_home=claude_home
+    )
+    assert msgs == []
+    assert reason == "no-transcript"
+
+
+def test_read_recent_messages_skips_malformed_lines(tmp_path):
+    f = tmp_path / "x.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"content":"ok"}}\n'
+        "NOT JSON\n"
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n',
+        "utf-8",
+    )
+    msgs = transcript.read_recent_messages(f, limit=8)
+    assert [m["text"] for m in msgs] == ["ok", "hi"]
+
+
+def test_read_recent_messages_skips_sidechain(tmp_path):
+    # Subagent (Task tool) turns are recorded as top-level entries with
+    # "isSidechain": true — the recent-message tail is meant to show the
+    # MAIN conversation thread, so these must be excluded.
+    f = tmp_path / "x.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"content":"main ask"}}\n'
+        '{"type":"assistant","isSidechain":true,"message":{"content":[{"type":"text","text":"subagent noise"}]}}\n'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"main reply"}]}}\n',
+        "utf-8",
+    )
+    msgs = transcript.read_recent_messages(f, limit=8)
+    assert [m["text"] for m in msgs] == ["main ask", "main reply"]
+
+
+def test_text_truncated_to_max(tmp_path):
+    f = tmp_path / "x.jsonl"
+    f.write_text(json.dumps({"type": "user", "message": {"content": "z" * 5000}}), "utf-8")
+    msgs = transcript.read_recent_messages(f, limit=8)
+    assert len(msgs[0]["text"]) == transcript.MAX_MSG_CHARS
+
+
+def test_read_recent_messages_skips_wrong_shape_message_field(tmp_path):
+    # Valid JSON, but "message" is a str instead of a dict — .get() on it
+    # would raise AttributeError if not guarded. Surrounding good messages
+    # must still come through.
+    f = tmp_path / "x.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"content":"ok"}}\n'
+        '{"type":"user","message":"not-a-dict"}\n'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n',
+        "utf-8",
+    )
+    msgs = transcript.read_recent_messages(f, limit=8)
+    assert [m["text"] for m in msgs] == ["ok", "hi"]
+
+
+def test_read_recent_messages_skips_bare_json_list_line(tmp_path):
+    # A line that is valid JSON but not an object at all (a bare list) —
+    # payload.get(...) would raise AttributeError if not guarded.
+    f = tmp_path / "x.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"content":"ok"}}\n'
+        "[1,2,3]\n"
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n',
+        "utf-8",
+    )
+    msgs = transcript.read_recent_messages(f, limit=8)
+    assert [m["text"] for m in msgs] == ["ok", "hi"]
+
+
+def test_session_tail_wrong_shape_only_returns_empty_transcript_not_raise(tmp_path):
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    worktree = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / "ddd"
+    _write_transcript(claude_home, worktree, [
+        {"type": "system", "subtype": "init", "session_id": "s1"},
+    ])
+    # Overwrite with content lines that are all wrong-shape (valid JSON,
+    # bad shape) — session_tail must degrade to ([], "empty-transcript"),
+    # never raise.
+    proj = claude_home / transcript.encode_project_dir(worktree)
+    f = proj / "sess.jsonl"
+    f.write_text(
+        '{"type":"user","message":"not-a-dict"}\n'
+        "[1,2,3]\n",
+        "utf-8",
+    )
+    msgs, reason = transcript.session_tail(
+        "canopy-web", "ddd", limit=8, home=home, claude_home=claude_home
+    )
+    assert msgs == []
+    assert reason == "empty-transcript"
+
+
+def test_attach_recent_tail_fills_first_session_only(tmp_path):
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    worktree = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / "ddd"
+    _write_transcript(claude_home, worktree, [
+        {"type": "user", "message": {"content": "hello"}},
+    ])
+    sessions = [
+        {"emdash_task": "ddd", "project": "canopy-web", "status": "in_progress"},
+        {"emdash_task": "turn", "project": "canopy-web", "status": "in_progress"},
+    ]
+    transcript.attach_recent_tail(sessions, limit=8, home=home, claude_home=claude_home)
+    assert sessions[0]["recent_messages"] == [{"role": "user", "text": "hello"}]
+    assert "recent_messages" not in sessions[1]  # only the most-recent is enriched eagerly
+
+
+def test_attach_recent_tail_empty_list_is_noop(tmp_path):
+    sessions: list[dict] = []
+    transcript.attach_recent_tail(sessions, home=tmp_path)  # must not raise
+    assert sessions == []
+
+
+def test_attach_recent_tail_missing_transcript_sets_empty(tmp_path):
+    sessions = [{"emdash_task": "nope", "project": "canopy-web"}]
+    transcript.attach_recent_tail(sessions, home=tmp_path, claude_home=tmp_path)
+    assert sessions[0]["recent_messages"] == []
