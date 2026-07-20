@@ -506,6 +506,7 @@ def test_drain_one_runs_exactly_one_turn_without_polling(monkeypatch, tmp_path):
     """The single-turn primitive: heartbeat → claim ONE → execute, and NEVER poll the
     inbox or fire schedules — those side effects are exactly what --once has and
     --drain-one deliberately avoids, so a single turn can't spawn work you didn't ask for."""
+    monkeypatch.setattr("canopy_runner.cdp_control.cdp_healthy", lambda **k: True)
     monkeypatch.setattr("canopy_runner.cdp_control.host_id", lambda: "u@h")
     monkeypatch.setattr(main_mod, "_paused_agents", lambda c: set())
     monkeypatch.setattr(main_mod, "_maybe_check_inboxes",
@@ -523,6 +524,7 @@ def test_drain_one_runs_exactly_one_turn_without_polling(monkeypatch, tmp_path):
 
 
 def test_drain_one_idle_when_nothing_queued(monkeypatch, tmp_path):
+    monkeypatch.setattr("canopy_runner.cdp_control.cdp_healthy", lambda **k: True)
     monkeypatch.setattr("canopy_runner.cdp_control.host_id", lambda: "u@h")
     monkeypatch.setattr(main_mod, "_paused_agents", lambda c: set())
     monkeypatch.setattr("canopy_runner.execute.execute_turn",
@@ -533,6 +535,7 @@ def test_drain_one_idle_when_nothing_queued(monkeypatch, tmp_path):
 def test_drain_one_honours_per_agent_pause_via_claim(monkeypatch, tmp_path):
     """Per-agent pauses ARE respected — the paused set is passed to claim, which the
     server uses to exclude that agent's turns."""
+    monkeypatch.setattr("canopy_runner.cdp_control.cdp_healthy", lambda **k: True)
     monkeypatch.setattr("canopy_runner.cdp_control.host_id", lambda: "u@h")
     monkeypatch.setattr(main_mod, "_paused_agents", lambda c: {"eva"})
     passed = {}
@@ -544,6 +547,30 @@ def test_drain_one_honours_per_agent_pause_via_claim(monkeypatch, tmp_path):
 
     main_mod.drain_one(_cdp_cfg(tmp_path), C(None))
     assert passed["paused"] == ["eva"]
+
+
+def test_drain_one_refuses_to_claim_when_cdp_down(monkeypatch, tmp_path):
+    """The self-heal reaches the single-turn primitive too: claiming with emdash down
+    would immediately fail (burn) the turn, so drain_one refuses instead."""
+    monkeypatch.setattr("canopy_runner.cdp_control.cdp_healthy", lambda **k: False)
+    monkeypatch.setattr("canopy_runner.cdp_control.host_id", lambda: "u@h")
+    monkeypatch.setattr(main_mod, "_paused_agents", lambda c: set())
+
+    class C(_CdpClient):
+        def __init__(self):
+            super().__init__(None)
+            self.degraded = None
+
+        def heartbeat(self, runner_id, active, degraded=False, note="", host=""):
+            self.beats += 1
+            self.degraded = degraded
+
+        def claim(self, runner_id, paused_agents=None):
+            pytest.fail("must NOT claim a turn while CDP is down")
+
+    c = C()
+    assert main_mod.drain_one(_cdp_cfg(tmp_path), c) == "cdp_down"
+    assert c.degraded is True  # surfaced as degraded to the control plane
 
 
 def test_broken_scheduling_does_not_crash_the_tick(db, tmp_path, monkeypatch, caplog):
@@ -568,3 +595,139 @@ def test_broken_scheduling_does_not_crash_the_tick(db, tmp_path, monkeypatch, ca
     _fire_due_schedules(_cfg(db, tmp_path), FakeClient(), paused=set())
 
     assert "scheduling unavailable" in caplog.text.lower()
+
+
+# --------------------------------------------------------------------------------------
+# CDP preflight — don't claim (and burn) a turn when emdash's CDP is unreachable
+# --------------------------------------------------------------------------------------
+
+
+class _CdpLoopClient:
+    """A CDP-path fake: records heartbeats (degraded flag) and how many times claim ran."""
+
+    def __init__(self, turns=None):
+        self.turns = list(turns or [])
+        self.claims = 0
+        self.heartbeats = []
+
+    def heartbeat(self, runner_id, active, degraded=False, note="", host=""):
+        self.heartbeats.append({"degraded": degraded, "note": note})
+
+    def report_sessions(self, runner_id, sessions):
+        pass
+
+    def sync_schedules(self, runner_id):
+        return []
+
+    def claim(self, runner_id, paused_agents=None):
+        self.claims += 1
+        return self.turns.pop(0) if self.turns else None
+
+
+def _cdp_loop_cfg(tmp_path):
+    # executor defaults to "cdp"; no mailboxes so the inbox poll is a no-op.
+    return Config(
+        base_url="http://x", token="t", runner_id="r-1",
+        emdash_db=str(tmp_path / "e.db"), automation_ids={}, expected_migration_id=19,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _reset_cdp_throttle():
+    """The CDP-down throttle is module-level (one WARNING per outage over the loop's
+    lifetime) — reset it around every test so ordering can't leak signalled state."""
+    main_mod._reset_cdp_health_state()
+    yield
+    main_mod._reset_cdp_health_state()
+
+
+def _stub_cdp(monkeypatch, healthy):
+    monkeypatch.setattr("canopy_runner.cdp_control.cdp_healthy", lambda **k: healthy)
+    monkeypatch.setattr("canopy_runner.cdp_control.host_id", lambda: "u@h")
+    monkeypatch.setattr(main_mod.emdash, "list_open_sessions", lambda db: [])
+
+
+def test_cdp_healthy_claims_and_executes(monkeypatch, tmp_path):
+    _stub_cdp(monkeypatch, healthy=True)
+    monkeypatch.setattr("canopy_runner.execute.execute_turn",
+                        lambda cfg, client, rid, turn: f"created:{turn['id']}:task")
+    client = _CdpLoopClient(turns=[{"id": "t-1", "agent_slug": "eva"}])
+    assert run_once(_cdp_loop_cfg(tmp_path), client) == "created:t-1:task"
+    assert client.claims == 1
+    assert client.heartbeats[-1]["degraded"] is False  # healthy heartbeat
+
+
+def test_cdp_unhealthy_skips_claim_and_burns_nothing(monkeypatch, tmp_path):
+    """The core acceptance criterion: with emdash down a tick claims ZERO turns and
+    produces ZERO failed turns — queued turns stay queued."""
+    _stub_cdp(monkeypatch, healthy=False)
+    monkeypatch.setattr("canopy_runner.execute.execute_turn",
+                        lambda *a, **k: pytest.fail("must NOT execute while CDP is down"))
+    client = _CdpLoopClient(turns=[{"id": "t-1", "agent_slug": "eva"}])
+    assert run_once(_cdp_loop_cfg(tmp_path), client) == "cdp_down"
+    assert client.claims == 0  # nothing claimed -> nothing burned
+    assert client.heartbeats[-1]["degraded"] is True  # surfaced as degraded, every tick
+
+
+def test_cdp_down_still_polls_inbox_and_schedules(monkeypatch, tmp_path):
+    """Inbound work must keep ENQUEUING while CDP is down — only the claim is gated."""
+    _stub_cdp(monkeypatch, healthy=False)
+    ran = {}
+    monkeypatch.setattr(main_mod, "_maybe_check_inboxes",
+                        lambda *a, **k: ran.__setitem__("inbox", True))
+    monkeypatch.setattr(main_mod, "_fire_due_schedules",
+                        lambda *a, **k: ran.__setitem__("sched", True))
+    run_once(_cdp_loop_cfg(tmp_path), _CdpLoopClient())
+    assert ran == {"inbox": True, "sched": True}
+
+
+def test_cdp_recovery_drains_the_backlog(monkeypatch, tmp_path):
+    """When emdash comes back, the next tick claims + drains the queued turn normally."""
+    _stub_cdp(monkeypatch, healthy=False)
+    monkeypatch.setattr("canopy_runner.execute.execute_turn",
+                        lambda cfg, client, rid, turn: f"reused:{turn['id']}")
+    cfg = _cdp_loop_cfg(tmp_path)
+    client = _CdpLoopClient(turns=[{"id": "t-1", "agent_slug": "eva"}])
+
+    assert run_once(cfg, client) == "cdp_down"  # down: the queued turn waits
+    assert client.claims == 0
+
+    monkeypatch.setattr("canopy_runner.cdp_control.cdp_healthy", lambda **k: True)  # emdash returns
+    assert run_once(cfg, client) == "reused:t-1"  # back: drains the backlog
+    assert client.claims == 1
+
+
+def test_cdp_down_warning_is_throttled_to_one(monkeypatch, tmp_path, caplog):
+    """A single throttled surface signal after sustained downtime — NOT per-tick spam.
+    The degraded heartbeat still fires every tick (machine signal); the WARNING fires once."""
+    _stub_cdp(monkeypatch, healthy=False)
+    cfg = _cdp_loop_cfg(tmp_path)
+    client = _CdpLoopClient()
+    caplog.set_level("WARNING", logger="canopy_runner")
+    ticks = main_mod.CDP_DOWN_SIGNAL_TICKS + 5
+    for _ in range(ticks):
+        run_once(cfg, client)
+    warns = [r for r in caplog.records if "CDP unreachable" in r.getMessage()]
+    assert len(warns) == 1  # ONE loud log despite many down ticks
+    assert len(client.heartbeats) == ticks  # ...but a degraded heartbeat every tick
+    assert all(h["degraded"] for h in client.heartbeats)
+
+
+def test_cdp_recovery_logs_once_and_rearms(monkeypatch, tmp_path, caplog):
+    """After recovery the throttle re-arms, so a SECOND outage warns again (not muted forever)."""
+    cfg = _cdp_loop_cfg(tmp_path)
+    client = _CdpLoopClient()
+    caplog.set_level("INFO", logger="canopy_runner")
+
+    _stub_cdp(monkeypatch, healthy=False)
+    for _ in range(main_mod.CDP_DOWN_SIGNAL_TICKS):
+        run_once(cfg, client)
+    monkeypatch.setattr("canopy_runner.cdp_control.cdp_healthy", lambda **k: True)
+    run_once(cfg, client)  # recovery — logs "healthy again" and re-arms the throttle
+    assert any("healthy again" in r.getMessage() for r in caplog.records)
+
+    caplog.clear()
+    monkeypatch.setattr("canopy_runner.cdp_control.cdp_healthy", lambda **k: False)
+    for _ in range(main_mod.CDP_DOWN_SIGNAL_TICKS):
+        run_once(cfg, client)
+    assert sum("CDP unreachable" in r.getMessage() for r in caplog.records) == 1  # warns again

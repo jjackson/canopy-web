@@ -1,6 +1,7 @@
 """Wrapper-level tests for the emdash CDP control (the sidecar itself needs a live
 emdash on the debug port — validated separately)."""
 import json
+import urllib.error
 from types import SimpleNamespace
 
 import pytest
@@ -51,6 +52,48 @@ def test_node_missing_raises(monkeypatch):
 def test_host_id_has_user_and_host():
     h = cdp_control.host_id()
     assert "@" in h and len(h) > 2
+
+
+# --------------------------------------------------------------------------------------
+# cdp_healthy — the claim preflight; a green probe means create/reuse will connect
+# --------------------------------------------------------------------------------------
+
+
+class _Resp:
+    def __init__(self, status):
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_cdp_healthy_true_on_200(monkeypatch):
+    monkeypatch.setattr(cdp_control.urllib.request, "urlopen",
+                        lambda url, timeout: _Resp(200))
+    assert cdp_control.cdp_healthy(port=9222) is True
+
+
+def test_cdp_healthy_false_on_non_200(monkeypatch):
+    monkeypatch.setattr(cdp_control.urllib.request, "urlopen",
+                        lambda url, timeout: _Resp(500))
+    assert cdp_control.cdp_healthy() is False
+
+
+def test_cdp_healthy_false_on_connection_refused(monkeypatch):
+    def refused(url, timeout):
+        raise urllib.error.URLError("connection refused")
+    monkeypatch.setattr(cdp_control.urllib.request, "urlopen", refused)
+    assert cdp_control.cdp_healthy() is False
+
+
+def test_cdp_healthy_false_on_timeout(monkeypatch):
+    def slow(url, timeout):
+        raise TimeoutError("timed out")  # a TimeoutError IS an OSError — must be caught
+    monkeypatch.setattr(cdp_control.urllib.request, "urlopen", slow)
+    assert cdp_control.cdp_healthy() is False
 
 
 # --------------------------------------------------------------------------------------
