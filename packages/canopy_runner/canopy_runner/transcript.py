@@ -37,6 +37,10 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 MAX_MSG_CHARS = 2000
+# Only the last few messages are ever shown, so read at most this many bytes from
+# the END of the transcript rather than the whole file — a long session's .jsonl can
+# be tens of MB, and the runner reads several of them on every poll tick (top-K).
+TAIL_BYTES = 256 * 1024
 
 # emdash appends a short random suffix to a worktree dir name to de-dupe it
 # (e.g. the task "ace-nutrition-demo-9619-0720-1352" lives in a worktree dir
@@ -110,11 +114,18 @@ def read_recent_messages(path: Path, limit: int = 8) -> list[dict]:
     """Last `limit` user/assistant messages as [{"role", "text"}], oldest→newest.
 
     Never raises: an unreadable file yields []; a malformed line is skipped.
+    Reads only the last TAIL_BYTES of the file (the tail is all we need); if that
+    cuts the first line mid-JSON, json.loads skips it — harmless, since we only want
+    complete recent messages.
     """
     try:
-        lines = path.read_text("utf-8", errors="replace").splitlines()
+        with path.open("rb") as f:
+            size = f.seek(0, 2)
+            f.seek(max(0, size - TAIL_BYTES))
+            raw = f.read()
     except OSError:
         return []
+    lines = raw.decode("utf-8", errors="replace").splitlines()
     msgs: list[dict] = []
     for line in lines:
         line = line.strip()
@@ -166,21 +177,22 @@ def session_tail(
 def attach_recent_tail(
     sessions: list[dict],
     *,
+    count: int = 8,
     limit: int = 8,
     home: Path | None = None,
     claude_home: Path | None = None,
 ) -> None:
-    """Eagerly fill recent_messages on the MOST-RECENTLY-ACTIVE session (index 0).
+    """Fill recent_messages on the first `count` sessions (the most-recently-active,
+    since emdash.list_open_sessions returns newest-first) — the ones the phone shows
+    at the top of the list, so each has a glanceable tail without a round trip. In
+    place, best-effort, never raises; the bounded tail read keeps K reads/tick cheap.
 
-    That is the session the supervisor is most likely to open ("this session"),
-    so its click-in is instant with no extra round trip. In place, best-effort,
-    never raises. Other sessions carry [] until Task 4 (watch) fills them.
+    `count` caps how many transcripts are read per tick; `limit` caps messages per
+    session. Sessions past `count`, or with no resolvable transcript, carry [].
     """
-    if not sessions:
-        return
-    top = sessions[0]  # most-recently-active: emdash.list_open_sessions returns newest-first
-    msgs, _reason = session_tail(
-        top.get("project", ""), top.get("emdash_task", ""),
-        limit=limit, home=home, claude_home=claude_home,
-    )
-    top["recent_messages"] = msgs
+    for s in sessions[:count]:
+        msgs, _reason = session_tail(
+            s.get("project", ""), s.get("emdash_task", ""),
+            limit=limit, home=home, claude_home=claude_home,
+        )
+        s["recent_messages"] = msgs

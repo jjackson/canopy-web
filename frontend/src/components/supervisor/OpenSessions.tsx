@@ -1,17 +1,99 @@
 import { useEffect, useState, type JSX } from 'react'
 import { listOpenSessions, enqueueTurn, type EmdashSessionOut } from '@/api/harness'
-import { normalizeRecentMessages } from '@/lib/recentMessages'
+import { normalizeRecentMessages, type RecentMessage } from '@/lib/recentMessages'
 
-// The open emdash sessions the runner reported — see them, and drop a prompt into a
-// specific one. Continue dispatches a repo turn carrying the session's emdash:{task}
-// thread_key; the runner resolves that to the SessionLink the report upserted and
-// open_and_sends into that exact task. No new send path.
+// The open emdash sessions the runner reported — glance at what each is doing (the
+// recent-message tail), and drop a prompt into a specific one. Continue dispatches a
+// repo turn carrying the session's emdash:{task} thread_key; the runner resolves that
+// to the SessionLink the report upserted and open_and_sends into that exact task.
+
+function Chevron({ open }: { open: boolean }): JSX.Element {
+  return (
+    <svg
+      className={`mt-0.5 h-3 w-3 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function RoleChip({ role }: { role: string }): JSX.Element {
+  const isAssistant = role === 'assistant'
+  return (
+    <span
+      className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-wide ${
+        isAssistant ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+      }`}
+    >
+      {isAssistant ? 'agent' : 'you'}
+    </span>
+  )
+}
+
+function MessageBubble({ msg }: { msg: RecentMessage }): JSX.Element {
+  return (
+    <div className="flex items-start gap-2 rounded-md bg-muted/40 p-2">
+      <RoleChip role={msg.role} />
+      <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[12px] leading-snug text-foreground-secondary">
+        {msg.text}
+      </p>
+    </div>
+  )
+}
+
+function RecentActivity({ task, messages }: { task: string; messages: RecentMessage[] }): JSX.Element | null {
+  const [expanded, setExpanded] = useState(false)
+  if (messages.length === 0) return null
+  const latest = messages[messages.length - 1]
+
+  return (
+    <div className="mt-2" data-testid={`session-tail-${task}`}>
+      {!expanded ? (
+        <>
+          <button
+            type="button"
+            data-testid={`session-tail-toggle-${task}`}
+            onClick={() => setExpanded(true)}
+            className="flex w-full items-start gap-2 rounded-md bg-muted/40 p-2 text-left active:bg-muted"
+          >
+            <RoleChip role={latest.role} />
+            <span className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-snug text-foreground-secondary">
+              {latest.text}
+            </span>
+            <Chevron open={false} />
+          </button>
+          {messages.length > 1 && (
+            <p className="mt-1 pl-1 text-[10px] text-muted-foreground">
+              {messages.length} recent messages · tap to expand
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {messages.map((m, i) => (
+            <MessageBubble key={i} msg={m} />
+          ))}
+          <button
+            type="button"
+            data-testid={`session-tail-toggle-${task}`}
+            onClick={() => setExpanded(false)}
+            className="flex items-center gap-1 self-start py-1 text-[11px] text-muted-foreground hover:text-foreground-secondary"
+          >
+            <Chevron open={true} /> Collapse
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<'ok' | string | null>(null)
-  const [expanded, setExpanded] = useState(false)
   const messages = normalizeRecentMessages(session.recent_messages)
 
   async function send(): Promise<void> {
@@ -42,47 +124,26 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
         </span>
         <span className="shrink-0 text-[11px] text-muted-foreground">{session.status}</span>
       </div>
-      <button
-        type="button"
-        data-testid={`session-tail-toggle-${session.emdash_task}`}
-        onClick={() => setExpanded((v) => !v)}
-        className="mt-1 text-[11px] text-muted-foreground hover:text-foreground-secondary"
-      >
-        {expanded ? 'Hide recent' : 'Recent'}
-      </button>
-      {expanded && (
-        <div className="mt-1 flex flex-col gap-1" data-testid={`session-tail-${session.emdash_task}`}>
-          {messages.length === 0 ? (
-            <p className="text-[12px] text-muted-foreground">Recent messages unavailable.</p>
-          ) : (
-            messages.map((m, i) => (
-              <div key={i} className="rounded border border-border bg-muted/40 p-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {m.role}
-                </span>
-                <p className="whitespace-pre-wrap break-words text-[12px] text-foreground-secondary">
-                  {m.text}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+
+      <RecentActivity task={session.emdash_task} messages={messages} />
+
       <div className="mt-2 flex gap-2">
         <input
           data-testid={`session-input-${session.emdash_task}`}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void send() }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void send()
+          }}
           placeholder="Continue this session…"
-          className="min-w-0 flex-1 rounded border border-input bg-input px-2 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground"
+          className="min-w-0 flex-1 rounded border border-input bg-input px-2 py-2 text-[13px] text-foreground placeholder:text-muted-foreground"
         />
         <button
           type="button"
           data-testid={`session-send-${session.emdash_task}`}
           onClick={() => void send()}
           disabled={busy || prompt.trim() === ''}
-          className="rounded bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="rounded bg-primary px-3 py-2 text-[13px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           {busy ? 'Sending…' : 'Continue'}
         </button>
@@ -106,13 +167,17 @@ export function OpenSessions(): JSX.Element {
   useEffect(() => {
     let cancelled = false
     listOpenSessions()
-      .then((s) => { if (!cancelled) setSessions(s) })
+      .then((s) => {
+        if (!cancelled) setSessions(s)
+      })
       .catch((e) => {
         if (cancelled) return
         setError(e instanceof Error ? e.message : 'Failed to load sessions')
         setSessions([])
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   if (sessions === null) return <p className="text-[12px] text-muted-foreground">Loading sessions…</p>
@@ -127,11 +192,17 @@ export function OpenSessions(): JSX.Element {
     )
   }
   if (sessions.length === 0) {
-    return <p className="text-[12px] text-muted-foreground" data-testid="sessions-empty">No open sessions.</p>
+    return (
+      <p className="text-[12px] text-muted-foreground" data-testid="sessions-empty">
+        No open sessions.
+      </p>
+    )
   }
   return (
     <div className="flex flex-col gap-2" data-testid="open-sessions">
-      {sessions.map((s) => <SessionRow key={s.id} session={s} />)}
+      {sessions.map((s) => (
+        <SessionRow key={s.id} session={s} />
+      ))}
     </div>
   )
 }

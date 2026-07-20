@@ -269,7 +269,9 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
     # message tail (Phase B) so the phone can read it on click-in with no extra round trip.
     try:
         sessions = emdash.list_open_sessions(cfg.emdash_db)
-        transcript.attach_recent_tail(sessions, limit=cfg.session_tail_limit)
+        transcript.attach_recent_tail(
+            sessions, count=cfg.session_tail_count, limit=cfg.session_tail_limit
+        )
         client.report_sessions(cfg.runner_id, sessions)
     except Exception:  # noqa: BLE001
         logger.debug("session report failed (non-fatal)", exc_info=True)
