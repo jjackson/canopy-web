@@ -163,8 +163,13 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     busy_agents = Turn.objects.filter(status__in=EXECUTING).values("agent_id")
     # A session serializes like an agent: never claim a session that already has
     # an executing turn (one_executing_turn_per_session would reject the claim
-    # anyway; this avoids the wasted attempt). Filtered to non-null so the exclude
-    # can't NULL-propagate away agent/project turns (chat_session_id NULL).
+    # anyway; this avoids the wasted attempt). The chat_session__isnull=False filter
+    # is load-bearing: without it, executing agent/project turns (chat_session_id
+    # NULL) would inject a NULL into this IN-list, and every queued SESSION turn
+    # would then evaluate `id IN (…, NULL)` -> NULL -> get wrongly excluded whenever
+    # any agent turn is running. (Agent/project turns are already protected on the
+    # exclude's LEFT side by Django's `AND chat_session_id IS NOT NULL` negation
+    # guard — that's a separate mechanism from this filter.)
     busy_sessions = Turn.objects.filter(
         status__in=EXECUTING, chat_session__isnull=False
     ).values("chat_session_id")
