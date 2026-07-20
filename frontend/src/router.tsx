@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate, useLocation, useParams } from 'react-rou
 import { useWorkspace } from './workspace/WorkspaceProvider'
 import { AppLayout } from './components/AppLayout/AppLayout'
 import { RouteErrorBoundary } from './components/RouteErrorBoundary'
+import { NotFound } from './components/NotFound'
 import { ShareRouteErrorBoundary } from './components/ShareRouteErrorBoundary'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
@@ -181,6 +182,12 @@ export const router = createBrowserRouter(guarded([
       { path: '/ddd/*', element: <TenantRedirect to="ddd" /> },
       { path: '/ddd-plans', element: <Navigate to="/" replace /> },
       { path: '/reviews', element: <Navigate to="/" replace /> },
+
+      // Catch-all (LAST): an unmatched path is a bad URL OR a browser still on
+      // a pre-deploy bundle (PWA precache) whose router lacks a route this
+      // deploy added. NotFound reloads once to self-heal the latter, then shows
+      // a real 404 — so a new route never surfaces as the RouteErrorBoundary.
+      { path: '*', element: <NotFound /> },
     ],
   },
   // Public, chrome-less route — mounted OUTSIDE AppLayout so anonymous
