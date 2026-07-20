@@ -37,7 +37,10 @@ Parameters:
   ClaudeTokenSecret:
     Type: String
     Default: canopy/cloud-runner/claude-oauth-token
-    Description: Secrets Manager id holding the claude OAuth token.
+    Description: >
+      Secrets Manager id holding a dedicated claude setup-token (the long-lived,
+      non-rotating CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`). Dedicated to
+      this runner so it never rotation-conflicts with ace-web's OAuth session.
   CanopyTokenSecret:
     Type: String
     Default: canopy/cloud-runner/canopy-pat
@@ -114,13 +117,14 @@ Resources:
               permissions: '0755'
               content: |
                 #!/usr/bin/env bash
-                # Re-materialize the runner env from Secrets Manager on every start,
-                # so a rotated token is picked up on `systemctl restart`.
+                # Re-materialize the runner env + claude credentials from Secrets
+                # Manager on every start, so a rotated secret is picked up on
+                # `systemctl restart` with no redeploy.
                 set -euo pipefail
                 R="${AWS::Region}"
                 secret() { aws --region "$R" secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text; }
-                install -d -o ubuntu -g ubuntu /opt/canopy-runner
                 umask 077
+                install -d -o ubuntu -g ubuntu /opt/canopy-runner
                 cat > /opt/canopy-runner/runner.env <<ENV
                 CANOPY_BASE_URL=${CanopyBaseUrl}
                 CANOPY_TOKEN=$(secret ${CanopyTokenSecret})
@@ -140,8 +144,11 @@ Resources:
                 Wants=network-online.target
                 [Service]
                 Type=simple
-                ExecStartPre=/usr/local/bin/canopy-fetch-env
-                EnvironmentFile=/opt/canopy-runner/runner.env
+                # '+' runs fetch-env as root (writes /opt + /home/ubuntu/.claude);
+                # '-' makes the env file optional so the first start (before
+                # cloud-init's one-shot fetch) can't wedge the unit.
+                ExecStartPre=+/usr/local/bin/canopy-fetch-env
+                EnvironmentFile=-/opt/canopy-runner/runner.env
                 ExecStart=/usr/bin/python3 /opt/canopy-runner/cloud_runner.py
                 Restart=on-failure
                 RestartSec=10
@@ -153,6 +160,9 @@ Resources:
             - [ bash, -c, "DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs unzip" ]
             - [ bash, -c, "npm i -g @anthropic-ai/claude-code" ]
             - [ bash, -c, "curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip && cd /tmp && unzip -q awscliv2.zip && ./aws/install" ]
+            # Materialize the env + creds once (as root) BEFORE first start, so the
+            # unit doesn't fail on a missing EnvironmentFile on boot.
+            - [ bash, -c, "/usr/local/bin/canopy-fetch-env" ]
             - [ systemctl, daemon-reload ]
             - [ systemctl, enable, --now, canopy-runner.service ]
 

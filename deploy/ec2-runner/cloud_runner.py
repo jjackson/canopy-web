@@ -17,7 +17,8 @@ Config comes from the environment (see deploy/ec2-runner/README.md):
   WORK_DIR          where claude runs (default: /tmp/canopy-runner-work)
   POLL_SECONDS      idle poll interval (default: 15)
   STATE_FILE        runner-id cache (default: ~/.canopy-cloud-runner.json)
-`claude` authenticates from CLAUDE_CODE_OAUTH_TOKEN in its own environment.
+`claude` authenticates from CLAUDE_CODE_OAUTH_TOKEN (a dedicated setup-token from
+Secrets Manager, staged into the service env by cloud-init).
 """
 from __future__ import annotations
 

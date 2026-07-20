@@ -1,3 +1,4 @@
 *.pem
 .runner.cfn.rendered.yaml
 .state.json
+.last-ip

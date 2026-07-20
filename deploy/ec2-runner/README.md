@@ -25,7 +25,7 @@ wire.
 
 ## Secrets (in Secrets Manager, under `canopy/cloud-runner/`)
 - `canopy/cloud-runner/canopy-pat` — a canopy-web PAT (the runner pairs + claims as this user).
-- `canopy/cloud-runner/claude-oauth-token` — the OAuth token `claude` authenticates with. **Must be valid** — mint via `claude setup-token` as `ace@dimagi-ai.com`, or copy a live one. (ace-web's stored Secrets-Manager value is stale — it 401s.)
+- `canopy/cloud-runner/claude-oauth-token` — a **dedicated** claude setup-token (`CLAUDE_CODE_OAUTH_TOKEN`). Mint with `claude setup-token` as `ace@dimagi-ai.com` (Max subscription). It's long-lived and non-rotating, so the runner is self-sufficient after one bootstrap. **Do not copy ace-web's live OAuth blob** — its refresh tokens rotate on every use, so a second consumer gets invalidated (verified: it 401s / can't refresh).
 
 ## Run
 ```bash
