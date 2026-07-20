@@ -304,6 +304,13 @@ VAPID_SUBJECT = env("VAPID_SUBJECT", default="mailto:jjackson@dimagi.com")
 AI_BACKEND = env("AI_BACKEND", default="api")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 
+# --- Chat execution (apps/chat, SP2b) ---
+# When True (dev/test default), a chat "send" runs the stub executor INLINE so the
+# turn completes with no runner present. When False (production, connectlabs), the
+# send just enqueues the session turn and a session-capable cloud runner claims +
+# executes it (real claude). The one knob that flips chat from stub to cloud runner.
+CHAT_STUB_EXECUTOR = env.bool("CHAT_STUB_EXECUTOR", default=True)
+
 # CORS
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True

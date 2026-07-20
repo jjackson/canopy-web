@@ -145,13 +145,14 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     release_stale_occurrence_turns_all()
     slugs = runner.agent_slugs()
     projects = runner.project_names()
+    session_capable = runner.session_capable()
     if exclude_slugs:
         # Per-agent pause: the runner locally paused these agents; never claim their
         # queued turns (they stay QUEUED, resumed the moment the pause is lifted).
         # Scoped to agents by name and by nature — pausing an agent says nothing
         # about a repo, so project turns keep flowing.
         slugs = [s for s in slugs if s not in set(exclude_slugs)]
-    if not slugs and not projects:
+    if not slugs and not projects and not session_capable:
         return None
     routing_q = Q(routing__in=[Turn.PREFER_LOCAL, Turn.LOCAL_ONLY, Turn.ANY])
     if runner.kind == Runner.CLOUD:
@@ -160,6 +161,18 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
         # Phase 0 has no cloud runners, so keep the simple rule: cloud never
         # takes local_only.
     busy_agents = Turn.objects.filter(status__in=EXECUTING).values("agent_id")
+    # A session serializes like an agent: never claim a session that already has
+    # an executing turn (one_executing_turn_per_session would reject the claim
+    # anyway; this avoids the wasted attempt). The chat_session__isnull=False filter
+    # is load-bearing: without it, executing agent/project turns (chat_session_id
+    # NULL) would inject a NULL into this IN-list, and every queued SESSION turn
+    # would then evaluate `id IN (…, NULL)` -> NULL -> get wrongly excluded whenever
+    # any agent turn is running. (Agent/project turns are already protected on the
+    # exclude's LEFT side by Django's `AND chat_session_id IS NOT NULL` negation
+    # guard — that's a separate mechanism from this filter.)
+    busy_sessions = Turn.objects.filter(
+        status__in=EXECUTING, chat_session__isnull=False
+    ).values("chat_session_id")
     # Tenant boundary. capabilities is a caller-supplied routing hint declared at
     # pairing and never validated (b4f5ead, Critical); the workspace is the actual
     # gate, and the two INTERSECT — one never substitutes for the other.
@@ -198,8 +211,15 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     # any tenant. The two legs must therefore be split by target kind, and the
     # project leg fails closed on a NULL workspace.
     agent_tenant_q = Q(agent__workspace_id__in=ws_slugs) | Q(agent__workspace_id__isnull=True)
-    tenant_q = (Q(agent__isnull=False) & agent_tenant_q) | (
-        Q(agent__isnull=True) & Q(workspace_id__in=ws_slugs)
+    # Three target kinds, each tenant-gated on its own workspace source: agent
+    # turns via agent.workspace; project turns via their own workspace FK; session
+    # turns via chat_session.workspace. Session turns get NO null-workspace escape
+    # (like project turns): a session always has a workspace, so a NULL there fails
+    # closed rather than becoming claimable by any tenant.
+    tenant_q = (
+        (Q(agent__isnull=False) & agent_tenant_q)
+        | (Q(agent__isnull=True) & Q(chat_session__isnull=True) & Q(workspace_id__in=ws_slugs))
+        | (Q(chat_session__isnull=False) & Q(chat_session__workspace_id__in=ws_slugs))
     )
     # `busy_agents` serializes AGENTS only, and a project turn (agent_id NULL)
     # must not be swept up by it. This plain exclude() is correct: Django compiles
@@ -207,10 +227,17 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     # survive rather than falling into SQL's NULL-propagation trap. Verified by
     # test_a_busy_agent_does_not_block_a_project_turn, which is what makes it safe
     # to rely on.
+    # Target match: this runner's declared agents/projects, plus every session
+    # turn when it is session-capable (a chat send targets no specific agent — any
+    # session-capable runner in the tenant may take it).
+    target_q = Q(agent__slug__in=slugs) | Q(project__in=projects)
+    if session_capable:
+        target_q = target_q | Q(chat_session__isnull=False)
     candidates = (
         Turn.objects.filter(status=Turn.QUEUED)
-        .filter(Q(agent__slug__in=slugs) | Q(project__in=projects))
+        .filter(target_q)
         .exclude(agent_id__in=busy_agents)
+        .exclude(chat_session_id__in=busy_sessions)
         .filter(routing_q)
         .filter(tenant_q)
         .order_by("created_at")
