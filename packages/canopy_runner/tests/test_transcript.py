@@ -152,20 +152,36 @@ def test_session_tail_wrong_shape_only_returns_empty_transcript_not_raise(tmp_pa
     assert reason == "empty-transcript"
 
 
-def test_attach_recent_tail_fills_first_session_only(tmp_path):
+def test_attach_recent_tail_fills_multiple_top_sessions(tmp_path):
     home = tmp_path / "home"
     claude_home = home / ".claude" / "projects"
-    worktree = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / "ddd"
-    _write_transcript(claude_home, worktree, [
-        {"type": "user", "message": {"content": "hello"}},
-    ])
+    for task, text in [("ddd", "hello ddd"), ("turn", "hello turn")]:
+        wt = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / task
+        _write_transcript(claude_home, wt, [
+            {"type": "user", "message": {"content": text}},
+        ])
     sessions = [
         {"emdash_task": "ddd", "project": "canopy-web", "status": "in_progress"},
         {"emdash_task": "turn", "project": "canopy-web", "status": "in_progress"},
     ]
-    transcript.attach_recent_tail(sessions, limit=8, home=home, claude_home=claude_home)
-    assert sessions[0]["recent_messages"] == [{"role": "user", "text": "hello"}]
-    assert "recent_messages" not in sessions[1]  # only the most-recent is enriched eagerly
+    transcript.attach_recent_tail(sessions, home=home, claude_home=claude_home)
+    assert sessions[0]["recent_messages"] == [{"role": "user", "text": "hello ddd"}]
+    assert sessions[1]["recent_messages"] == [{"role": "user", "text": "hello turn"}]
+
+
+def test_attach_recent_tail_respects_count_cap(tmp_path):
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    for task in ("a", "b", "c"):
+        wt = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / task
+        _write_transcript(claude_home, wt, [
+            {"type": "user", "message": {"content": task}},
+        ])
+    sessions = [{"emdash_task": t, "project": "canopy-web"} for t in ("a", "b", "c")]
+    transcript.attach_recent_tail(sessions, count=2, home=home, claude_home=claude_home)
+    assert sessions[0]["recent_messages"] == [{"role": "user", "text": "a"}]
+    assert sessions[1]["recent_messages"] == [{"role": "user", "text": "b"}]
+    assert "recent_messages" not in sessions[2]  # beyond count -> untouched
 
 
 def test_attach_recent_tail_empty_list_is_noop(tmp_path):
@@ -228,3 +244,18 @@ def test_resolve_transcript_does_not_grab_a_sibling_task_prefix(tmp_path):
     )
     assert msgs == []
     assert reason == "no-transcript"
+
+
+def test_read_recent_messages_reads_only_tail_of_large_file(tmp_path):
+    # A transcript larger than TAIL_BYTES: the reader seeks to the end and must
+    # still return the final message (proving it doesn't need the whole file).
+    f = tmp_path / "big.jsonl"
+    filler = json.dumps({"type": "user", "message": {"content": "x" * 1000}})
+    n = transcript.TAIL_BYTES // len(filler) + 50  # comfortably exceed the tail window
+    lines = [filler] * n
+    lines.append(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "LAST"}]}}))
+    f.write_text("\n".join(lines), "utf-8")
+    assert f.stat().st_size > transcript.TAIL_BYTES
+    msgs = transcript.read_recent_messages(f, limit=3)
+    assert msgs[-1] == {"role": "assistant", "text": "LAST"}
+    assert len(msgs) <= 3
