@@ -81,7 +81,7 @@ export default function ActivityPage() {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {turns === null ? (
+      {!error && (turns === null ? (
         <SkeletonRows />
       ) : shown.length === 0 ? (
         <EmptyState hasTurns={(turns ?? []).length > 0} />
@@ -106,7 +106,7 @@ export default function ActivityPage() {
             </tbody>
           </table>
         </div>
-      )}
+      ))}
     </div>
   );
 }
