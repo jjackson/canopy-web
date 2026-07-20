@@ -12,12 +12,13 @@ from apps.workspaces import services as wsvc
 
 from . import services
 from .schemas import (
+    AgentCommandApplyIn,
     AgentDetailOut,
     AgentIn,
     AgentOut,
+    AgentRuntimeOut,
     AgentSkillCatalogIn,
     AgentSkillOut,
-    AgentCommandApplyIn,
     AgentSyncIn,
     AgentSyncOut,
     AgentTaskCommandIn,
@@ -138,6 +139,24 @@ def upsert_agent(request: HttpRequest, payload: AgentIn) -> Status:
 def get_agent(request: HttpRequest, slug: str) -> AgentDetailOut:
     agent = _get_agent_or_404(request, slug)
     return AgentDetailOut.model_validate(services.agent_detail(agent))
+
+
+@router.get("/{slug}/runtime", response=AgentRuntimeOut,
+            summary="Agent runtime info — how a runner provisions + runs this agent")
+def get_agent_runtime(request: HttpRequest, slug: str) -> AgentRuntimeOut:
+    """The registry entry point (Agent Runtime Registry). A runner (PAT-authed)
+    asks 'how do I run agent X?' and gets the repo pointer, the secret-reference
+    names to resolve, the engine preference, and the tenant. Tenant-gated exactly
+    like every other agent read."""
+    agent = _get_agent_or_404(request, slug)
+    return AgentRuntimeOut(
+        slug=agent.slug,
+        repo_url=agent.repo_url,
+        repo_ref=agent.repo_ref,
+        engine=agent.runtime_engine,
+        secret_refs=list(agent.runtime_secrets or []),
+        workspace=agent.workspace_id,
+    )
 
 
 @router.get("/{slug}/needs-you", response=NeedsYouOut,

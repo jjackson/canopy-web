@@ -945,6 +945,29 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/runtime": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Agent runtime info — how a runner provisions + runs this agent
+         * @description The registry entry point (Agent Runtime Registry). A runner (PAT-authed)
+         *     asks 'how do I run agent X?' and gets the repo pointer, the secret-reference
+         *     names to resolve, the engine preference, and the tenant. Tenant-gated exactly
+         *     like every other agent read.
+         */
+        readonly get: operations["apps_agents_api_get_agent_runtime"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/agents/{slug}/needs-you": {
         readonly parameters: {
             readonly query?: never;
@@ -3825,6 +3848,14 @@ export interface components {
              * @default
              */
             readonly workspace: string;
+            /** Repo Url */
+            readonly repo_url?: string | null;
+            /** Repo Ref */
+            readonly repo_ref?: string | null;
+            /** Runtime Engine */
+            readonly runtime_engine?: ("emdash" | "cloud_p" | "any") | null;
+            /** Runtime Secrets */
+            readonly runtime_secrets?: readonly string[] | null;
         };
         /**
          * FleetNeedsYouOut
@@ -3935,6 +3966,27 @@ export interface components {
             readonly latest_sync_at?: string | null;
             /** Latest Turn At */
             readonly latest_turn_at?: string | null;
+        };
+        /**
+         * AgentRuntimeOut
+         * @description What a runner needs from canopy-web to run this agent: the repo pointer
+         *     (whose runtime.yaml is the declarative spec), the secret-reference names to
+         *     resolve from the env store, the engine preference, and the tenant. The
+         *     declarative spec + secret VALUES live elsewhere (repo / secret store).
+         */
+        readonly AgentRuntimeOut: {
+            /** Slug */
+            readonly slug: string;
+            /** Repo Url */
+            readonly repo_url: string;
+            /** Repo Ref */
+            readonly repo_ref: string;
+            /** Engine */
+            readonly engine: string;
+            /** Secret Refs */
+            readonly secret_refs: readonly string[];
+            /** Workspace */
+            readonly workspace: string | null;
         };
         /** AgentSyncOut */
         readonly AgentSyncOut: {
@@ -7629,6 +7681,28 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AgentDetailOut"];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_get_agent_runtime: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentRuntimeOut"];
                 };
             };
         };
