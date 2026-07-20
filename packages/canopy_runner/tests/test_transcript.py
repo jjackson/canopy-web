@@ -77,6 +77,21 @@ def test_read_recent_messages_skips_malformed_lines(tmp_path):
     assert [m["text"] for m in msgs] == ["ok", "hi"]
 
 
+def test_read_recent_messages_skips_sidechain(tmp_path):
+    # Subagent (Task tool) turns are recorded as top-level entries with
+    # "isSidechain": true — the recent-message tail is meant to show the
+    # MAIN conversation thread, so these must be excluded.
+    f = tmp_path / "x.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"content":"main ask"}}\n'
+        '{"type":"assistant","isSidechain":true,"message":{"content":[{"type":"text","text":"subagent noise"}]}}\n'
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"main reply"}]}}\n',
+        "utf-8",
+    )
+    msgs = transcript.read_recent_messages(f, limit=8)
+    assert [m["text"] for m in msgs] == ["main ask", "main reply"]
+
+
 def test_text_truncated_to_max(tmp_path):
     f = tmp_path / "x.jsonl"
     f.write_text(json.dumps({"type": "user", "message": {"content": "z" * 5000}}), "utf-8")

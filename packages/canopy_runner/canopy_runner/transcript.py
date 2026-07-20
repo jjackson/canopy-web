@@ -87,6 +87,8 @@ def read_recent_messages(path: Path, limit: int = 8) -> list[dict]:
             continue
         if not isinstance(payload, dict):
             continue
+        if payload.get("isSidechain"):
+            continue
         kind = payload.get("type")
         if kind not in ("user", "assistant"):
             continue
@@ -137,7 +139,7 @@ def attach_recent_tail(
     """
     if not sessions:
         return
-    top = sessions[0]
+    top = sessions[0]  # most-recently-active: emdash.list_open_sessions returns newest-first
     msgs, _reason = session_tail(
         top.get("project", ""), top.get("emdash_task", ""),
         limit=limit, home=home, claude_home=claude_home,
