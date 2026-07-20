@@ -614,6 +614,22 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     """
     from .models import EmdashSession
 
+    # emdash task NAMES are not unique — two un-archived tasks can share a name
+    # (see task_state's "Names aren't unique in emdash's schema" note) — but
+    # (runner, emdash_task) is UNIQUE here. Collapse duplicates before the wholesale
+    # insert, or bulk_create raises IntegrityError and the ENTIRE report 500s. That
+    # failure is silent (the runner's report call is best-effort) and strands the
+    # whole session list, not just the dup — observed 2026-07-20 with two "mobile"
+    # tasks. The runner sends newest-first, so the first occurrence is the live
+    # session; an older namesake is stale and correctly dropped.
+    deduped: list = []
+    seen: set[str] = set()
+    for s in sessions:
+        if s.emdash_task in seen:
+            continue
+        seen.add(s.emdash_task)
+        deduped.append(s)
+
     EmdashSession.objects.filter(runner=runner).delete()
     EmdashSession.objects.bulk_create([
         EmdashSession(
@@ -622,9 +638,9 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
             last_interacted_at=_aware(s.last_interacted_at),
             recent_messages=list(s.recent_messages or []),
         )
-        for s in sessions
+        for s in deduped
     ])
-    for s in sessions:
+    for s in deduped:
         if s.project:
             # live_session_id intentionally left blank here — a session report has
             # no session_id to give; reuse keys on live_emdash_task_id +
@@ -633,7 +649,7 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
                 None, f"emdash:{s.emdash_task}", runner=runner, project=s.project,
                 workspace=workspace, emdash_task_id=s.emdash_task,
             )
-    return len(sessions)
+    return len(deduped)
 
 
 def list_visible_sessions(user) -> list:

@@ -80,6 +80,34 @@ def test_report_is_wholesale_and_upserts_a_sessionlink_for_continue():
     assert tasks == {"cloud-runner"}
 
 
+def test_report_dedupes_duplicate_task_names_keeping_newest():
+    """emdash task names are NOT unique — a report can carry two open sessions that
+    share a name. Because (runner, emdash_task) is unique, the wholesale bulk_create
+    would 500 on the duplicate (regression: two "mobile" tasks stranded the whole
+    list, 2026-07-20). The report must instead dedupe, keeping the newest (the runner
+    sends newest-first, so the first occurrence wins)."""
+    from django.test import Client
+
+    jj = _user("jj")
+    ws = _ws("dimagi", jj)
+    runner = _runner(jj, ws)
+    c = Client()
+    c.force_login(jj)
+
+    resp = _report(c, runner.id, [
+        {"emdash_task": "mobile", "project": "canopy-web", "status": "in_progress",
+         "last_interacted_at": "2026-07-20T20:20:00Z"},
+        {"emdash_task": "mobile", "project": "canopy-web", "status": "done",
+         "last_interacted_at": "2026-07-17T15:48:00Z"},
+    ])
+    assert resp.status_code == 200, resp.content
+    rows = EmdashSession.objects.filter(runner=runner)
+    assert rows.count() == 1
+    kept = rows.get()
+    assert kept.emdash_task == "mobile"
+    assert kept.status == "in_progress"  # the newer (first) namesake won
+
+
 def test_a_non_owner_cannot_report_for_another_users_runner():
     from django.test import Client
 
