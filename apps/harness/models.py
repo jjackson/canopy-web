@@ -101,6 +101,13 @@ class Runner(models.Model):
         gate, and the two intersect (b4f5ead)."""
         return list(self.capabilities.get("projects", []))
 
+    def session_capable(self) -> bool:
+        """Whether this runner executes chat-session turns (the interactive
+        front-door — SP2b). Opt-in via `capabilities.sessions: true` so a chat send
+        only reaches a runner built for it (a cloud runner with claude), never a
+        laptop emdash daemon. Like the other capabilities, a hint gated by tenant."""
+        return bool(self.capabilities.get("sessions", False))
+
     @property
     def live_status(self) -> str:
         """What we can OBSERVE, not what the runner last claimed.

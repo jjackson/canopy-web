@@ -10,14 +10,11 @@ import uuid
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from django.db import IntegrityError
 
-from apps.harness.models import Turn
 from apps.realtime.groups import session_group
 
 from . import drafts, participants, presence
 from . import services as chat_services
-from .executor import execute_turn_stub
 from .models import Session, SessionParticipant
 
 _EDIT_ROLES = {SessionParticipant.OWNER, SessionParticipant.EDITOR}
@@ -116,14 +113,10 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
 
     def _send_and_execute(self, text):
         _msg, turn = chat_services.send_message(session=self.session, text=text, user=self.user)
-        # Mirror the REST send guard: only drive a queued turn, and survive the
-        # one_executing_turn_per_session race (a concurrent send) rather than
-        # tearing down the socket. SP2b's async runner replaces this inline call.
-        if turn is not None and turn.status == Turn.QUEUED:
-            try:
-                execute_turn_stub(turn)
-            except IntegrityError:
-                pass
+        # Dev/test: stub inline. Production: leave queued for a cloud runner. The
+        # helper guards QUEUED + the one_executing_turn_per_session race so a
+        # concurrent send never tears down the socket.
+        chat_services.maybe_execute_inline(turn)
 
     # -- group frame handlers (dots -> underscores) --
     async def chat_turn_event(self, message):

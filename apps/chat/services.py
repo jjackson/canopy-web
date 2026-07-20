@@ -8,7 +8,8 @@ serializes a conversation, turn_index assignment never races within a session.
 """
 from __future__ import annotations
 
-from django.db import transaction
+from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.db.models import Max
 
 from apps.harness import services as harness_services
@@ -79,6 +80,26 @@ def send_message(*, session: Session, text: str, user, client_id: str = "") -> t
             prompt=text,
         )
     return message, turn
+
+
+def maybe_execute_inline(turn: Turn | None) -> None:
+    """The chat send's executor hop. In dev/test (CHAT_STUB_EXECUTOR=True) run the
+    stub inline so the turn completes with no runner. In production (False) leave it
+    QUEUED for a session-capable cloud runner to claim + run real claude — the same
+    ledger + Message projection either way. The one seam between stub and cloud.
+
+    Guarded on QUEUED + IntegrityError so a truly-concurrent same-session send (the
+    one_executing_turn_per_session race) never 500s the already-committed message."""
+    if not getattr(settings, "CHAT_STUB_EXECUTOR", True):
+        return
+    if turn is None or turn.status != Turn.QUEUED:
+        return
+    from .executor import execute_turn_stub
+
+    try:
+        execute_turn_stub(turn)
+    except IntegrityError:
+        pass
 
 
 def project_events(turn: Turn, rows) -> int:

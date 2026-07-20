@@ -87,3 +87,26 @@ def test_status_events_are_not_transcript_rows():
     harness.append_events(turn, [{"kind": "status", "payload": {"status": "running"}}])
     # Only the user message exists; status is not a transcript row.
     assert [m.role for m in session.messages.all()] == ["user"]
+
+
+def test_maybe_execute_inline_leaves_turn_for_runner_when_disabled(settings):
+    # Production (CHAT_STUB_EXECUTOR=False): a send enqueues and waits for a
+    # session-capable cloud runner — no inline stub, no assistant message yet.
+    settings.CHAT_STUB_EXECUTOR = False
+    user, _ws, _agent, session = _ctx()
+    _msg, turn = chat.send_message(session=session, text="hi", user=user)
+    chat.maybe_execute_inline(turn)
+    turn.refresh_from_db()
+    assert turn.status == Turn.QUEUED
+    assert [m.role for m in session.messages.all()] == ["user"]
+
+
+def test_maybe_execute_inline_runs_stub_when_enabled(settings):
+    # Dev/test (default True): the stub runs inline and completes the turn.
+    settings.CHAT_STUB_EXECUTOR = True
+    user, _ws, _agent, session = _ctx()
+    _msg, turn = chat.send_message(session=session, text="hi", user=user)
+    chat.maybe_execute_inline(turn)
+    turn.refresh_from_db()
+    assert turn.status == Turn.DONE
+    assert [m.role for m in session.messages.order_by("turn_index")] == ["user", "assistant"]
