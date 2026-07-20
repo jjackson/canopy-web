@@ -197,7 +197,7 @@ def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
     """Claim at most one eligible turn and route it to an emdash session. The shared
     core of both the loop's iteration and the single-turn primitive, so they can't
     drift. Returns reused:/created:/failed:<id> or "idle" when nothing is queued."""
-    from . import execute
+    from . import execute, readiness
 
     try:
         turn = client.claim(cfg.runner_id, paused_agents=sorted(paused))
@@ -210,8 +210,10 @@ def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
         return execute.execute_turn(cfg, client, cfg.runner_id, turn)
     except Exception as exc:  # noqa: BLE001 — one turn must never kill the loop
         logger.exception("execute_turn crashed for %s", turn.get("id"))
+        note = f"runner execute crashed: {exc}"
+        readiness.mark_failed(cfg, note)
         try:
-            client.fail_turn(turn["id"], f"runner execute crashed: {exc}")
+            client.fail_turn(turn["id"], note)
         except ClientError:
             pass
         return f"failed:{turn.get('id')}"
