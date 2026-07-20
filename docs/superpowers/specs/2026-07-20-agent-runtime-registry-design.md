@@ -53,8 +53,11 @@ Two concepts, plus a clean split of *where each kind of data lives*.
   deployment-level preference. A runner asks canopy-web "how do I run agent X?" and
   gets: its repo, which secrets to resolve, its tenant.
 - **In the secret store** (never repo, never canopy-web as plaintext): the actual
-  values — **1Password** on a laptop, **AWS Secrets Manager** on a cloud box —
-  resolved by the reconciler *from the reference*.
+  values, resolved by the reconciler *from the reference*. **1Password is the
+  single source of truth for laptop AND cloud** — see "Secret architecture" below.
+  The one bootstrap secret on a cloud box is the 1Password **service-account
+  token**, which lives in AWS Secrets Manager; everything else flows from 1Password
+  (no per-secret copying — the friction that stranded the first cloud runner).
 
 ### Reconciler flow
 ```
@@ -67,6 +70,51 @@ canopy-web  ── GET /api/agents/{slug}/runtime ──▶  repo pointer + secr
    └▶ ready → run the turn on the selected engine     |     gap needs a human → "needs bootstrap"
 ```
 
+## Secret architecture (decided — RS2)
+1Password is the **single source of truth**, resolved identically on a laptop and a
+cloud box. This is 1Password's own recommended pattern for AI agents (service
+account + SDK + per-task vault, GA as of 2026; their roadmap "Unified Access Pro"
+runtime-issuance is *not* GA and we deliberately don't build on it yet).
+
+**Two-tier vault topology** (matches "dedicated vault per task, least privilege"):
+- `Canopy-Shared` — secrets every canopy agent needs.
+- `Agent-<Slug>` — one per agent: its own identity + integration secrets
+  (`canopy-pat`, `claude-oauth-token`, `gog-token`, …).
+
+**Resolution:** `runtime.yaml` carries only reference *names* (`secrets: [canopy-pat,
+gog-token]`). The reconciler resolves each against `[Agent-<Slug>, Canopy-Shared]`
+in order (agent vault shadows shared), via the 1Password SDK
+(`secrets.resolve("op://<vault>/<item>/<field>")`). The repo never names a vault —
+the topology is convention, not config.
+
+**Access + portability:**
+- Laptop and cloud both authenticate a **service account** (`OP_SERVICE_ACCOUNT_TOKEN`)
+  and resolve the *same* `op://Agent-<Slug>/…` refs — one mechanism, no laptop-only
+  branch. Validating it on the laptop validates the production path.
+- On a cloud box the token is the **single** value in AWS Secrets Manager
+  (`canopy/cloud-runner/op-service-account-token`; the EC2 role already reads
+  `canopy/cloud-runner/*`). A box's token is scoped to exactly the vaults for the
+  agents it may run — the runner's `RUNNER_AGENTS` caps *become* vault grants.
+- **The reconciler holds the token, never the model** — it resolves secrets into the
+  engine's process env/files *before* the turn, matching 1Password's "don't expose
+  raw credentials to the model."
+
+**Write-back (cold-box zero-touch):** the SDK does full item CRUD, so the reconciler
+persists a freshly-minted `claude setup-token` back into `Agent-<Slug>` (the agent
+vault grant is `read_items,write_items`). A cold box thus provisions itself from the
+vault instead of prompting; only a *never-yet-minted* interactive cred surfaces as
+"needs bootstrap". (1Password *Environments* are read-only, so they cover the read
+set but not this write path — hence the SDK, not `op run`, is the resolution engine.)
+
+**Bootstrap:** `deploy/secrets/bootstrap_1password.sh <slug…>` idempotently creates
+the vaults + placeholder items and prints the owner-only `op service-account create`
+command (grants) + the `aws secretsmanager put-secret-value` follow-up. The operator
+runs it so the token never transits the assistant unless they choose.
+
+**Caution:** service accounts carry API rate limits (fine for a small fleet resolving
+a few secrets/turn); a self-hosted 1Password **Connect** server is the caching escape
+hatch if the fleet ever outgrows them. Service accounts require a Business plan.
+
 ## Decomposition (each its own spec → plan → build)
 ```
 RS1  Runtime-spec model + discovery API (canopy-web)  the Agent gains repo pointer + secret refs +
@@ -74,8 +122,8 @@ RS1  Runtime-spec model + discovery API (canopy-web)  the Agent gains repo point
                                                       runtime.yaml schema (a canopy schema module + an
                                                       example agent runtime.yaml). FOUNDATION.
 RS2  The reconciler (canopy-owned lib)                scan → diff → apply → preflight; warm-aware;
-                                                      "needs bootstrap" gaps; secret-store adapters
-                                                      (1Password laptop / Secrets Manager cloud).
+                                                      "needs bootstrap" gaps; OnePasswordStore
+                                                      (resolve + persist) — see "Secret architecture".
 RS3  Cloud runner consumes it                         the EC2 cloud runner fetches the agent spec +
                                                       reconciles before running (replaces today's
                                                       hardcoded RUNNER_PROJECTS/caps + the manual token).
