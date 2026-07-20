@@ -11,6 +11,8 @@ import getpass
 import json
 import socket
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 SIDECAR = Path(__file__).parent / "cdp" / "emdash_control.mjs"
@@ -57,6 +59,26 @@ def host_id() -> str:
     except OSError:
         pass                    # unwritable — degrade rather than refuse to heartbeat
     return current
+
+
+def cdp_healthy(*, port: int = 9222, timeout: float = 1.0) -> bool:
+    """True iff emdash's CDP endpoint answers on `port` — a short-timeout preflight the
+    runner runs BEFORE claiming a turn, so a down emdash skips the claim instead of
+    claiming-then-failing (which burns the turn: a failed turn is not auto-re-claimed).
+
+    Probes DevTools' ``/json/version`` — the same endpoint playwright's connectOverCDP
+    hits — so a green probe means create/reuse will actually connect. Any failure
+    (connection refused → emdash closed/crashed/rebooted, or launched without
+    --remote-debugging-port; timeout; non-200) returns False. Never raises: this gates
+    the loop, so it must fail closed (skip the claim) rather than crash the tick."""
+    url = f"http://127.0.0.1:{port}/json/version"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return getattr(resp, "status", 200) == 200
+    except (urllib.error.URLError, OSError, ValueError):
+        # URLError (refused/timeout), OSError (socket), ValueError (odd url) — all mean
+        # "not reachable right now". TimeoutError is an OSError, so it's covered.
+        return False
 
 
 def _run(command: str, args: dict, *, node: str = "node", timeout: int = 90) -> dict:

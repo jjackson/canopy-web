@@ -50,6 +50,23 @@ logger = logging.getLogger("canopy_runner")
 # wedged (skill error / crash that never called /finish) and fail+evict it.
 GRACE_SECONDS = 900
 
+# CDP-down throttle. The CDP executor is otherwise stateless (no state file — see
+# _run_once_cdp), but the human-facing "emdash is down" WARNING must fire ONCE per
+# outage, not per tick, so this small counter lives at module scope for the loop
+# process's lifetime. The per-tick machine signal is the degraded heartbeat (a status
+# field, not spam); this gates only the one loud log. Emit it after this many
+# consecutive unhealthy ticks so a brief emdash restart (a tick or two) doesn't cry wolf.
+CDP_DOWN_SIGNAL_TICKS = 3
+_cdp_down_ticks = 0
+_cdp_down_signalled = False
+
+
+def _reset_cdp_health_state() -> None:
+    """Clear the CDP-down throttle (on recovery, and between tests)."""
+    global _cdp_down_ticks, _cdp_down_signalled
+    _cdp_down_ticks = 0
+    _cdp_down_signalled = False
+
 
 def _load_state(cfg: Config) -> dict:
     p = Path(cfg.state_path)
@@ -201,26 +218,64 @@ def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
 
 
 def _run_once_cdp(cfg: Config, client: Client) -> str:
-    """CDP executor: heartbeat (with macOS host, for reuse ownership) → claim one
-    turn → route it to an emdash session (reuse or create). Turns finish synchronously
-    (the runner owns the routing lifecycle; work continues in the visible session), so
-    there is no injection state to track or schema to guard."""
-    from .cdp_control import host_id
+    """CDP executor: preflight emdash's CDP health → heartbeat (with macOS host, for
+    reuse ownership) → claim one turn → route it to an emdash session (reuse or create).
+    Turns finish synchronously (the runner owns the routing lifecycle; work continues in
+    the visible session), so there is no injection state to track or schema to guard.
 
-    client.heartbeat(cfg.runner_id, [], host=host_id())
-    # Report the open emdash sessions the phone can continue. Best-effort: a read or
-    # POST failure must never stop the tick from claiming work.
+    Self-heal: the runner CONNECTS to emdash, it never launches it, so a closed/crashed
+    emdash (or one launched without --remote-debugging-port) can't run work. If we claimed
+    anyway, execute would hit the CDP-connect failure and fail the turn — and a failed turn
+    is NOT auto-re-claimed, so one outage burned a turn per hit agent (real incident
+    2026-07-17: 11 turns). So we PREFLIGHT: an unhealthy CDP skips the claim for this tick,
+    leaving queued turns queued to auto-drain when emdash returns. Inbox + schedule polling
+    still run (inbound work keeps ENQUEUING); only the claim is gated."""
+    from .cdp_control import cdp_healthy, host_id
+
+    global _cdp_down_ticks, _cdp_down_signalled
+    healthy = cdp_healthy(port=cfg.cdp_port)
+    host = host_id()
+    if healthy:
+        if _cdp_down_signalled:
+            logger.info("emdash CDP healthy again on :%s — resuming claims after %d down tick(s)",
+                        cfg.cdp_port, _cdp_down_ticks)
+        _reset_cdp_health_state()
+        client.heartbeat(cfg.runner_id, [], host=host)
+    else:
+        _cdp_down_ticks += 1
+        # Degraded heartbeat EVERY unhealthy tick — the machine-readable surface signal the
+        # control plane + menu-bar app read ("alive but can't execute"). It's a status field,
+        # overwritten each tick, so it is not spam.
+        client.heartbeat(cfg.runner_id, [], degraded=True,
+                         note=f"emdash CDP unreachable on :{cfg.cdp_port} — not claiming",
+                         host=host)
+        # ...and ONE loud WARNING after sustained downtime (not per tick), for the human log.
+        if _cdp_down_ticks >= CDP_DOWN_SIGNAL_TICKS and not _cdp_down_signalled:
+            logger.warning(
+                "emdash CDP unreachable on 127.0.0.1:%s for %d consecutive ticks — SKIPPING "
+                "the claim so queued turns wait instead of failing. Launch emdash with "
+                "--remote-debugging-port=%s; the backlog auto-drains when it returns.",
+                cfg.cdp_port, _cdp_down_ticks, cfg.cdp_port)
+            _cdp_down_signalled = True
+
+    # Report the open emdash sessions the phone can continue. A sqlite read of emdash's
+    # DB, not CDP — keep it even while CDP is down. Best-effort: a read or POST failure
+    # must never stop the tick.
     try:
         client.report_sessions(cfg.runner_id, emdash.list_open_sessions(cfg.emdash_db))
     except Exception:  # noqa: BLE001
         logger.debug("session report failed (non-fatal)", exc_info=True)
     paused = _paused_agents(cfg)
+    # Inbound triggers run whether or not CDP is up, so inbound work still ENQUEUES while
+    # emdash is down (it just waits, queued, until emdash is back). Only the claim is gated.
     _maybe_check_inboxes(cfg, client, paused=paused)
     # Fleet-audit review ingestion was removed when Ada moved to Items: approving
     # an Item dispatches its work server-side (in the decide transaction), so there
     # is no resolved review for the runner to poll. DDD findings reviews are applied
     # by the DDD orchestrator, never here.
     _fire_due_schedules(cfg, client, paused=paused)
+    if not healthy:
+        return "cdp_down"  # nothing claimed -> nothing burned; queued turns stay queued
     return _claim_and_execute(cfg, client, paused)
 
 
@@ -233,10 +288,19 @@ def drain_one(cfg: Config, client: Client) -> str:
     runs while the daemon is paused — the global PAUSED sentinel gates main()'s loop, not
     this — so you can take one turn with the fleet otherwise off. Per-agent pauses ARE
     honoured (the claim skips a paused agent's turns)."""
-    from .cdp_control import host_id
+    from .cdp_control import cdp_healthy, host_id
 
     if cfg.executor != "cdp":
         return run_once(cfg, client)  # legacy inject path has no targeted primitive
+    # Same self-heal as the loop: claiming with emdash down would immediately fail (=burn)
+    # the turn. Refuse instead — the caller re-runs once emdash is back on its debug port.
+    if not cdp_healthy(port=cfg.cdp_port):
+        logger.warning("emdash CDP unreachable on :%s — refusing to claim a turn (it would "
+                       "immediately fail). Launch emdash with --remote-debugging-port=%s.",
+                       cfg.cdp_port, cfg.cdp_port)
+        client.heartbeat(cfg.runner_id, [], degraded=True,
+                         note=f"emdash CDP unreachable on :{cfg.cdp_port}", host=host_id())
+        return "cdp_down"
     client.heartbeat(cfg.runner_id, [], host=host_id())
     return _claim_and_execute(cfg, client, _paused_agents(cfg))
 
@@ -605,10 +669,13 @@ def main() -> None:
             result = "crashed"
         # One scannable line per cycle. Idle is quiet (a heartbeat every ~15 min so the
         # log shows the runner is alive without flooding); everything else logs at INFO.
-        if result == "idle":
+        # "cdp_down" is quiet like "idle" — the throttled WARNING in _run_once_cdp and the
+        # degraded heartbeat already carry the reason, so logging it every tick would be the
+        # per-tick spam the preflight is meant to avoid.
+        if result in ("idle", "cdp_down"):
             idle_streak += 1
             if idle_streak % max(1, (900 // max(cfg.poll_seconds, 1))) == 0:
-                logger.info("cycle: idle (x%d) — runner alive, nothing to do", idle_streak)
+                logger.info("cycle: %s (x%d) — runner alive, nothing claimed", result, idle_streak)
         else:
             if idle_streak:
                 logger.info("cycle: %s (after %d idle)", result, idle_streak)

@@ -63,6 +63,10 @@ def _record_cdp(monkeypatch):
         lambda project, prompt, **kw: (calls["create_task"].append((project, prompt)), {"task": f"{project}-new"})[1],
     )
     monkeypatch.setattr(cdp_control, "host_id", lambda: HOST)
+    # A healthy emdash is exactly what the recorder simulates — say the CDP preflight
+    # passes so the runner claims (instead of skipping the claim when :9222 is down,
+    # which it now does to avoid burning turns).
+    monkeypatch.setattr(cdp_control, "cdp_healthy", lambda **kw: True)
     # The reuse path asks sqlite "is this task live?" — say yes without a real DB.
     monkeypatch.setattr(emdash, "task_state", lambda db, name: "live")
     return calls
