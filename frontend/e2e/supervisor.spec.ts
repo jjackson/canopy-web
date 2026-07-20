@@ -160,7 +160,7 @@ test.describe('/supervisor', () => {
     const notReady = page.locator('[data-testid^="runner-notready-"]').first()
     await expect(notReady).toBeVisible()
     // tap the runner row → detail view with the reason
-    await page.locator('[data-testid^="runner-"]').filter({ hasText: /not ready/ }).first().click()
+    await page.getByTestId('runner-e2e-mbp').click()
     await expect(page.getByTestId('runner-detail-back')).toBeVisible()
     await expect(page.getByTestId('runner-detail-ready')).toHaveText('not ready')
     await expect(page.getByTestId('runner-detail-why')).toContainText('emdash CDP unreachable')
