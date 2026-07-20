@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import uuid
 
-from django.db import IntegrityError
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from ninja import Router
@@ -16,11 +15,9 @@ from ninja.errors import HttpError
 
 from apps.agents import services as agent_services
 from apps.api.auth import session_auth
-from apps.harness.models import Turn
 from apps.workspaces import services as wsvc
 
 from . import services
-from .executor import execute_turn_stub
 from .models import Session
 from .schemas import MessageOut, SendIn, SendOut, SessionCreateIn, SessionDetailOut, SessionOut
 
@@ -100,13 +97,6 @@ def send(request: HttpRequest, session_id: uuid.UUID, payload: SendIn):
     message, turn = services.send_message(
         session=session, text=payload.text, user=request.user, client_id=payload.client_id,
     )
-    # SP2a: run the stub inline. SP2b: the cloud runner claims the queued turn.
-    # Guard against the one_executing_turn_per_session race (a truly concurrent
-    # send to the same session): leave the turn queued rather than 500 the
-    # already-committed user message. Moot once SP2b makes execution async.
-    if turn is not None and turn.status == Turn.QUEUED:
-        try:
-            execute_turn_stub(turn)
-        except IntegrityError:
-            pass
+    # Dev/test: run the stub inline. Production: leave it queued for a cloud runner.
+    services.maybe_execute_inline(turn)
     return {"turn_id": turn.id if turn else None, "message": MessageOut.from_orm(message)}

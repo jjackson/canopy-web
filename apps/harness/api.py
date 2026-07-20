@@ -385,7 +385,12 @@ def enqueue_turn(request: HttpRequest, payload: TurnIn):
 
 
 @router.get("/turns/", response=list[TurnOut])
-def list_turns(request: HttpRequest, agent: str | None = None, status: str | None = None):
+def list_turns(
+    request: HttpRequest,
+    agent: str | None = None,
+    status: str | None = None,
+    limit: int = 100,
+):
     wsvc.auto_join_workspaces(request.user)
     ws = getattr(request, "workspace_slug", None)
     slugs = {ws} if ws else wsvc.user_workspace_slugs(request.user)
@@ -397,7 +402,8 @@ def list_turns(request: HttpRequest, agent: str | None = None, status: str | Non
     # Tenant filter: a turn's tenant is its agent's. Null-workspace agents stay
     # visible (ungated, per the migration-safety rule).
     qs = qs.filter(Q(agent__workspace_id__in=slugs) | Q(agent__workspace_id__isnull=True))
-    return list(qs[:100])  # filter BEFORE slicing — a sliced queryset cannot be filtered
+    limit = max(1, min(limit, 200))  # clamp; default 100 keeps existing callers unchanged
+    return list(qs[:limit])  # filter BEFORE slicing — a sliced queryset cannot be filtered
 
 
 @router.get("/sessions", response=list[EmdashSessionOut])

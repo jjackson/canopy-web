@@ -104,8 +104,17 @@ class Runner(models.Model):
     def project_names(self) -> list[str]:
         """The repos this runner declares it can drive. Like `agents`, this is a
         self-declared ROUTING hint, not a security boundary — the workspace is the
-        gate, and the two intersect (b4f5ead)."""
-        return list(self.capabilities.get("projects", []))
+        gate, and the two intersect (b4f5ead). Empties are stripped: a session turn
+        has project="", so a stray "" here would let a non-session runner match it
+        via `project__in`."""
+        return [p for p in self.capabilities.get("projects", []) if p]
+
+    def session_capable(self) -> bool:
+        """Whether this runner executes chat-session turns (the interactive
+        front-door — SP2b). Opt-in via `capabilities.sessions: true` so a chat send
+        only reaches a runner built for it (a cloud runner with claude), never a
+        laptop emdash daemon. Like the other capabilities, a hint gated by tenant."""
+        return bool(self.capabilities.get("sessions", False))
 
     @property
     def live_status(self) -> str:

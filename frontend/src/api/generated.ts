@@ -9022,6 +9022,7 @@ export interface operations {
             readonly query?: {
                 readonly agent?: string | null;
                 readonly status?: string | null;
+                readonly limit?: number;
             };
             readonly header?: never;
             readonly path?: never;

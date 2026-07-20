@@ -4,6 +4,7 @@ import { createBrowserRouter, Navigate, useLocation, useParams } from 'react-rou
 import { useWorkspace } from './workspace/WorkspaceProvider'
 import { AppLayout } from './components/AppLayout/AppLayout'
 import { RouteErrorBoundary } from './components/RouteErrorBoundary'
+import { NotFound } from './components/NotFound'
 import { ShareRouteErrorBoundary } from './components/ShareRouteErrorBoundary'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { InsightsPage } from './pages/InsightsPage'
@@ -20,6 +21,7 @@ import { AgentsPage } from './pages/AgentsPage'
 import { AgentWorkspacePage } from './pages/AgentWorkspacePage'
 import SessionSharePage from './pages/SessionSharePage'
 import SupervisorPage from '@/pages/SupervisorPage'
+import ActivityPage from '@/pages/ActivityPage'
 import SchedulesPage from './pages/SchedulesPage'
 
 // Agent Workspace sections are lazy-loaded — each owns its data fetch and only
@@ -136,6 +138,7 @@ export const router = createBrowserRouter(guarded([
       { path: '/sessions', element: <SessionsPage /> },
       { path: '/supervisor', element: <SupervisorPage /> },
       { path: '/schedules', element: <SchedulesPage /> },
+      { path: '/activity', element: <ActivityPage /> },
       { path: '/settings', element: <SettingsPage /> },
       // --- Public viewers (root; self-enforce visibility) ---
       { path: '/walkthrough/:id', element: <WalkthroughViewerPage /> },
@@ -149,6 +152,7 @@ export const router = createBrowserRouter(guarded([
       { path: '/w/:workspace/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:workspace/agents', element: <AgentsPage /> },
       { path: '/w/:workspace/schedules', element: <SchedulesPage /> },
+      { path: '/w/:workspace/activity', element: <ActivityPage /> },
       {
         path: '/w/:workspace/agents/:slug',
         element: <AgentWorkspacePage />,
@@ -178,6 +182,12 @@ export const router = createBrowserRouter(guarded([
       { path: '/ddd/*', element: <TenantRedirect to="ddd" /> },
       { path: '/ddd-plans', element: <Navigate to="/" replace /> },
       { path: '/reviews', element: <Navigate to="/" replace /> },
+
+      // Catch-all (LAST): an unmatched path is a bad URL OR a browser still on
+      // a pre-deploy bundle (PWA precache) whose router lacks a route this
+      // deploy added. NotFound reloads once to self-heal the latter, then shows
+      // a real 404 — so a new route never surfaces as the RouteErrorBoundary.
+      { path: '*', element: <NotFound /> },
     ],
   },
   // Public, chrome-less route — mounted OUTSIDE AppLayout so anonymous
