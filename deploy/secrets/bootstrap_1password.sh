@@ -27,7 +27,18 @@ SHARED_VAULT="Canopy-Shared"
 # surfaces it as needs-bootstrap rather than 404ing). Values are filled in later,
 # either interactively (claude setup-token / gog login) or by the reconciler's
 # write-back. Add fields here as the fleet's needs grow.
+#   canopy-pat         — the agent's canopy-web PAT (pairs the runner, posts turns)
+#   claude-oauth-token — the agent's `claude setup-token` (long-lived, non-rotating)
+#   gog-token          — the agent's long-lived gog refresh token (In-Production app)
 AGENT_ITEMS=("canopy-pat" "claude-oauth-token" "gog-token")
+
+# Shared items every agent resolves from Canopy-Shared. The gog OAuth *client*
+# (client_id+secret — "the app") is shared fleet-wide; only the per-agent MAILBOX
+# (gog-token above) is the identity that must never bleed. An agent that runs its
+# OWN gog client (echo is grandfathered on one) simply also gets a gog-oauth-client
+# item in ITS vault — the reconciler resolves [Agent-<Slug>, Canopy-Shared] in
+# order, so the per-agent client shadows the shared one with no special-casing.
+SHARED_ITEMS=("gog-oauth-client")
 
 log() { printf '\033[1;36m▶ %s\033[0m\n' "$*"; }
 
@@ -69,6 +80,9 @@ main() {
 
   log "=== Shared vault ==="
   ensure_vault "$SHARED_VAULT"
+  for item in "${SHARED_ITEMS[@]}"; do
+    ensure_placeholder_item "$SHARED_VAULT" "$item"
+  done
 
   for slug in "$@"; do
     # Capitalize first letter for the vault display name: echo -> Agent-Echo.

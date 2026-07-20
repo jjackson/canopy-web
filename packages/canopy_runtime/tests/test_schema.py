@@ -21,7 +21,10 @@ def test_shipped_example_yaml_validates():
     spec = load_runtime_yaml(EXAMPLE.read_text())
     assert spec.engine == "any"
     assert {p.name for p in spec.plugins} == {"canopy", "ace", "echo"}
-    assert "canopy-pat" in spec.secrets
+    assert {s.name for s in spec.secrets} >= {"canopy-pat", "claude-oauth-token"}
+    # secrets declare where their value lands (env var / file path).
+    claude = next(s for s in spec.secrets if s.name == "claude-oauth-token")
+    assert claude.env == "CLAUDE_CODE_OAUTH_TOKEN"
     assert any(c.name == "claude-authed" for c in spec.preflight)
 
 
@@ -53,26 +56,33 @@ def test_plugin_requires_a_name():
 @pytest.mark.parametrize(
     "leaked",
     [
-        "sk-ant-abc123",            # would be fine as a NAME, but the '=' / space ones aren't
         "TOKEN=supersecret",        # an assignment — clearly a value
         "some value with spaces",   # spaces — not a slug
         "x" * 121,                  # implausibly long for a reference name
     ],
 )
 def test_secret_values_are_rejected(leaked):
-    # Only the '='/space/length cases must fail; a bare slug like sk-ant-abc123
-    # passes the guard (it's a plausible name) — assert the guard catches the
-    # unambiguous leaks.
-    if "=" in leaked or " " in leaked or len(leaked) > 120:
-        with pytest.raises(ValidationError):
-            RuntimeSpec.model_validate({"secrets": [leaked]})
-    else:
-        RuntimeSpec.model_validate({"secrets": [leaked]})
+    # A secret's `name` is a reference, not a value; the '='/space/length cases are
+    # unambiguous leaks and must fail validation.
+    with pytest.raises(ValidationError):
+        RuntimeSpec.model_validate({"secrets": [{"name": leaked}]})
 
 
-def test_secret_reference_names_pass():
-    spec = RuntimeSpec.model_validate({"secrets": ["canopy-pat", "echo-gog"]})
-    assert spec.secrets == ["canopy-pat", "echo-gog"]
+def test_secret_reference_names_pass_and_carry_destinations():
+    spec = RuntimeSpec.model_validate(
+        {"secrets": [
+            {"name": "canopy-pat", "env": "CANOPY_PAT"},
+            {"name": "gog-token", "optional": True},
+        ]}
+    )
+    assert [s.name for s in spec.secrets] == ["canopy-pat", "gog-token"]
+    assert spec.secrets[0].env == "CANOPY_PAT"
+    assert spec.secrets[1].optional is True
+
+
+def test_secret_requires_a_name():
+    with pytest.raises(ValidationError):
+        RuntimeSpec.model_validate({"secrets": [{"env": "X"}]})
 
 
 def test_load_rejects_non_mapping_top_level():

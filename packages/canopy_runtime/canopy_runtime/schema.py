@@ -68,6 +68,33 @@ class PreflightCheck(_Strict):
     expect: str = ""
 
 
+class SecretRef(_Strict):
+    """A secret the agent needs, declared by REFERENCE NAME plus where its value
+    must land. The name resolves against the env's store (1Password); `env` and/or
+    `path` say how the runtime consumes it — the repo declares this because only
+    the repo knows its own tools (claude wants `CLAUDE_CODE_OAUTH_TOKEN`, gog wants
+    a credentials file). Still **never a value** — only a reference + destination.
+    """
+
+    name: str = Field(min_length=1)
+    # Inject the resolved value into this environment variable (the common case).
+    env: str = ""
+    # Or write it to this file path (e.g. a gog credentials.json). `~` is expanded.
+    path: str = ""
+    # If true, absence is fine (skipped) rather than a "needs bootstrap" gap.
+    optional: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def _name_is_a_ref_not_a_value(cls, v: str) -> str:
+        if not v or len(v) > 120 or any(c in v for c in "= \t\n"):
+            raise ValueError(
+                f"secret name is a reference NAME, not a value; got {v!r}. "
+                "Put the value in the env's secret store and reference its name."
+            )
+        return v
+
+
 class RuntimeSpec(_Strict):
     """The whole `runtime.yaml` — one agent's declarative runtime."""
 
@@ -76,23 +103,9 @@ class RuntimeSpec(_Strict):
     plugins: list[PluginRef] = Field(default_factory=list)
     mcp: list[McpRef] = Field(default_factory=list)
     tools: list[ToolRef] = Field(default_factory=list)
-    # Secret REFERENCE NAMES only (e.g. "canopy-pat", "echo-gog"). Never values.
-    secrets: list[str] = Field(default_factory=list)
+    # Secret REFERENCES (name + destination), never values — see SecretRef.
+    secrets: list[SecretRef] = Field(default_factory=list)
     preflight: list[PreflightCheck] = Field(default_factory=list)
-
-    @field_validator("secrets")
-    @classmethod
-    def _refs_are_names_not_values(cls, v: list[str]) -> list[str]:
-        # A reference name is a short slug; a stray value (a token, a JSON blob,
-        # an `=`-assignment) is almost certainly a leaked secret. Fail loud so it
-        # never lands in a repo. This is a guardrail, not airtight secret-scanning.
-        for ref in v:
-            if not ref or len(ref) > 120 or any(c in ref for c in "= \t\n"):
-                raise ValueError(
-                    f"secrets[] holds reference NAMES, not values; got {ref!r}. "
-                    "Put the value in the env's secret store and reference its name."
-                )
-        return v
 
 
 def load_runtime_yaml(text: str) -> RuntimeSpec:
