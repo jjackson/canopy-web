@@ -311,6 +311,11 @@ ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 # executes it (real claude). The one knob that flips chat from stub to cloud runner.
 CHAT_STUB_EXECUTOR = env.bool("CHAT_STUB_EXECUTOR", default=True)
 
+# Key for at-rest field encryption (per-runner credentials — apps/common/encryption.py).
+# Empty → derived from SECRET_KEY (fine for dev). Set explicitly in production so the
+# encryption key can rotate independently of SECRET_KEY.
+FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
+
 # CORS
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True

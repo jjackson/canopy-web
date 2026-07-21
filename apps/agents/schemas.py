@@ -23,6 +23,27 @@ class AgentIn(StrictModel):
     # agent MOVES it (caller must be a member of the target). Empty → legacy
     # behavior (default workspace for unhomed agents).
     workspace: str = Field(default="", max_length=64)
+    # Runtime-registry fields (Agent Runtime Registry). All None-defaulted and
+    # written only when present, so the plugin's frequent re-upserts (which omit
+    # them) never clobber runtime config back to empty. See services.upsert_agent.
+    repo_url: str | None = Field(default=None, max_length=300)
+    repo_ref: str | None = Field(default=None, max_length=120)
+    runtime_engine: Literal["emdash", "cloud_p", "any"] | None = None
+    runtime_secrets: list[str] | None = None
+
+
+class AgentRuntimeOut(StrictModel):
+    """What a runner needs from canopy-web to run this agent: the repo pointer
+    (whose runtime.yaml is the declarative spec), the secret-reference names to
+    resolve from the env store, the engine preference, and the tenant. The
+    declarative spec + secret VALUES live elsewhere (repo / secret store)."""
+
+    slug: str
+    repo_url: str
+    repo_ref: str
+    engine: str
+    secret_refs: list[str]
+    workspace: str | None
 
 
 class AgentOut(StrictModel):

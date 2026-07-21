@@ -29,16 +29,22 @@ def _aware(value):
 # ---- agents ----
 def upsert_agent(data) -> Agent:
     """Create or update an agent by slug."""
-    agent, _ = Agent.objects.update_or_create(
-        slug=data.slug,
-        defaults={
-            "name": data.name,
-            "description": data.description,
-            "persona": data.persona,
-            "email": data.email,
-            "avatar_url": data.avatar_url,
-        },
-    )
+    defaults = {
+        "name": data.name,
+        "description": data.description,
+        "persona": data.persona,
+        "email": data.email,
+        "avatar_url": data.avatar_url,
+    }
+    # Runtime-registry fields (repo pointer / engine / secret refs) are written
+    # ONLY when explicitly provided. The plugin re-upserts agents on every sync
+    # with these fields absent (None) — a plain default would clobber runtime
+    # config back to empty on each heartbeat. Configure once, keep it.
+    for field in ("repo_url", "repo_ref", "runtime_engine", "runtime_secrets"):
+        value = getattr(data, field, None)
+        if value is not None:
+            defaults[field] = value
+    agent, _ = Agent.objects.update_or_create(slug=data.slug, defaults=defaults)
     return agent
 
 

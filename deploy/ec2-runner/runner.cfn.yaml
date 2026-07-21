@@ -1,0 +1,176 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Canopy cloud runner (Wave 4 SP2b) — an ephemeral EC2 instance that pairs a
+  kind=cloud runner with canopy-web, claims harness Turns in its capabilities, and
+  runs `claude -p` on each. Secrets (the claude OAuth token + the canopy PAT) are
+  read from Secrets Manager by the instance role at boot — never baked into the
+  template. cloud_runner.py is spliced in as base64 by up.sh (single source of truth
+  is deploy/ec2-runner/cloud_runner.py).
+
+Parameters:
+  SshCidr:
+    Type: String
+    Description: CIDR allowed to SSH (the launcher's IP/32).
+  InstanceType:
+    Type: String
+    Default: t3.medium
+  Ami:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+  CanopyBaseUrl:
+    Type: String
+    Default: https://labs.connect.dimagi.com/canopy
+  RunnerProjects:
+    Type: String
+    Default: canopy-web
+    Description: Comma-separated repo names this runner may drive.
+  RunnerAgents:
+    Type: String
+    Default: ''
+    Description: Comma-separated agent slugs this runner may drive.
+  RunnerWorkspace:
+    Type: String
+    Default: dimagi
+  RunnerName:
+    Type: String
+    Default: cloud-ec2-1
+  ClaudeTokenSecret:
+    Type: String
+    Default: canopy/cloud-runner/claude-oauth-token
+    Description: >
+      Secrets Manager id holding a dedicated claude setup-token (the long-lived,
+      non-rotating CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`). Dedicated to
+      this runner so it never rotation-conflicts with ace-web's OAuth session.
+  CanopyTokenSecret:
+    Type: String
+    Default: canopy/cloud-runner/canopy-pat
+    Description: Secrets Manager id holding the canopy-web PAT.
+
+Resources:
+  KeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Sub '${AWS::StackName}-key'
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'canopy cloud runner ${AWS::StackName} (SSH from launcher only)'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SshCidr
+      Tags:
+        - { Key: Name, Value: !Ref AWS::StackName }
+        - { Key: purpose, Value: canopy-cloud-runner }
+
+  RunnerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: read-runner-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:canopy/cloud-runner/*'
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [ !Ref RunnerRole ]
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref Ami
+      KeyName: !Ref KeyPair
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds: [ !Ref SecurityGroup ]
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: { VolumeSize: 20, VolumeType: gp3 }
+      Tags:
+        - { Key: Name, Value: !Ref AWS::StackName }
+        - { Key: purpose, Value: canopy-cloud-runner }
+      UserData:
+        Fn::Base64: !Sub |
+          #cloud-config
+          write_files:
+            - path: /opt/canopy-runner/cloud_runner.py
+              encoding: b64
+              permissions: '0755'
+              content: CLOUD_RUNNER_PY_B64_PLACEHOLDER
+            - path: /usr/local/bin/canopy-fetch-env
+              permissions: '0755'
+              content: |
+                #!/usr/bin/env bash
+                # Re-materialize the runner env + claude credentials from Secrets
+                # Manager on every start, so a rotated secret is picked up on
+                # `systemctl restart` with no redeploy.
+                set -euo pipefail
+                R="${AWS::Region}"
+                secret() { aws --region "$R" secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text; }
+                umask 077
+                install -d -o ubuntu -g ubuntu /opt/canopy-runner
+                cat > /opt/canopy-runner/runner.env <<ENV
+                CANOPY_BASE_URL=${CanopyBaseUrl}
+                CANOPY_TOKEN=$(secret ${CanopyTokenSecret})
+                CLAUDE_CODE_OAUTH_TOKEN=$(secret ${ClaudeTokenSecret})
+                RUNNER_PROJECTS=${RunnerProjects}
+                RUNNER_AGENTS=${RunnerAgents}
+                RUNNER_WORKSPACE=${RunnerWorkspace}
+                RUNNER_NAME=${RunnerName}
+                ENV
+                chown ubuntu:ubuntu /opt/canopy-runner/runner.env
+                chmod 600 /opt/canopy-runner/runner.env
+            - path: /etc/systemd/system/canopy-runner.service
+              content: |
+                [Unit]
+                Description=Canopy cloud runner
+                After=network-online.target
+                Wants=network-online.target
+                [Service]
+                Type=simple
+                # '+' runs fetch-env as root (writes /opt + /home/ubuntu/.claude);
+                # '-' makes the env file optional so the first start (before
+                # cloud-init's one-shot fetch) can't wedge the unit.
+                ExecStartPre=+/usr/local/bin/canopy-fetch-env
+                EnvironmentFile=-/opt/canopy-runner/runner.env
+                ExecStart=/usr/bin/python3 /opt/canopy-runner/cloud_runner.py
+                Restart=on-failure
+                RestartSec=10
+                User=ubuntu
+                [Install]
+                WantedBy=multi-user.target
+          runcmd:
+            - [ bash, -c, "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -" ]
+            - [ bash, -c, "DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs unzip" ]
+            - [ bash, -c, "npm i -g @anthropic-ai/claude-code" ]
+            - [ bash, -c, "curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip && cd /tmp && unzip -q awscliv2.zip && ./aws/install" ]
+            # Materialize the env + creds once (as root) BEFORE first start, so the
+            # unit doesn't fail on a missing EnvironmentFile on boot.
+            - [ bash, -c, "/usr/local/bin/canopy-fetch-env" ]
+            - [ systemctl, daemon-reload ]
+            - [ systemctl, enable, --now, canopy-runner.service ]
+
+Outputs:
+  InstanceId:
+    Value: !Ref Instance
+  PublicIp:
+    Value: !GetAtt Instance.PublicIp
+  KeyPairId:
+    Value: !GetAtt KeyPair.KeyPairId
+    Description: Read the private key from SSM at /ec2/keypair/<this id> to SSH.

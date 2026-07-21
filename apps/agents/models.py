@@ -37,6 +37,24 @@ class Agent(models.Model):
         help_text="The tenant that owns this agent. Nullable for migration "
         "safety; the API always assigns one (default workspace when unspecified).",
     )
+    # --- Runtime registry (agent-runtime-registry design) ----------------
+    # canopy-web is the entry point a runner asks "how do I run agent X?": it holds
+    # the POINTER to the agent's repo (whose runtime.yaml is the declarative WHAT),
+    # the secret REFERENCES (names, never values — resolved from 1Password on a
+    # laptop / Secrets Manager on a cloud box), and the engine preference. The
+    # declarative spec itself lives in the repo; secret values live in the store.
+    EMDASH, CLOUD_P, ANY_ENGINE = "emdash", "cloud_p", "any"
+    ENGINE_CHOICES = [(EMDASH, "emdash"), (CLOUD_P, "cloud-p (claude -p)"), (ANY_ENGINE, "any")]
+    repo_url = models.CharField(
+        max_length=300, blank=True, default="", help_text="Agent's git repo (holds runtime.yaml).",
+    )
+    repo_ref = models.CharField(max_length=120, blank=True, default="main")
+    runtime_engine = models.CharField(max_length=10, choices=ENGINE_CHOICES, default=ANY_ENGINE)
+    runtime_secrets = models.JSONField(
+        default=list, blank=True,
+        help_text="Secret-reference NAMES this agent needs (never values), e.g. "
+        '["canopy-pat","echo-gog"]. The reconciler resolves each from the env store.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
