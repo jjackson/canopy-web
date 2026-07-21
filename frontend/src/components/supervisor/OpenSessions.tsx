@@ -1,6 +1,7 @@
 import { useEffect, useState, type JSX } from 'react'
 import { listOpenSessions, enqueueTurn, type EmdashSessionOut } from '@/api/harness'
 import { normalizeRecentMessages, type RecentMessage } from '@/lib/recentMessages'
+import { relTime, isRecentlyActive } from '@/lib/relTime'
 
 // The open emdash sessions the runner reported — glance at what each is doing (the
 // recent-message tail), and drop a prompt into a specific one. Continue dispatches a
@@ -95,6 +96,7 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<'ok' | string | null>(null)
   const messages = normalizeRecentMessages(session.recent_messages)
+  const active = isRecentlyActive(session.last_interacted_at)
 
   async function send(): Promise<void> {
     if (busy || prompt.trim() === '') return
@@ -123,7 +125,16 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
           {session.emdash_task}
         </span>
-        <span className="shrink-0 text-[11px] text-muted-foreground">{session.status}</span>
+        {/* Last-active time, not emdash's always-"in_progress" status. A recent
+            timestamp (green dot) is the best "running now" signal available. */}
+        <span
+          className={`flex shrink-0 items-center gap-1 text-[11px] ${
+            active ? 'text-success' : 'text-muted-foreground'
+          }`}
+        >
+          {active && <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" />}
+          {relTime(session.last_interacted_at) || session.status}
+        </span>
       </div>
 
       <RecentActivity task={session.emdash_task} messages={messages} />
