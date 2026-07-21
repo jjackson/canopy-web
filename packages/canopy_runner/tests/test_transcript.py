@@ -35,9 +35,33 @@ def test_session_tail_reads_recent_user_and_assistant_text(tmp_path):
         "canopy-web", "ddd", limit=8, home=home, claude_home=claude_home
     )
     assert reason == ""
-    assert msgs[0] == {"role": "user", "text": "fix the header"}
-    assert msgs[1] == {"role": "assistant", "text": "On it."}
-    assert msgs[2] == {"role": "assistant", "text": "[tool: Edit]"}
+    # Clean conversation only: the human prompt and the AI's text — the tool_use
+    # turn is dropped, not rendered as "[tool: Edit]".
+    assert msgs == [
+        {"role": "user", "text": "fix the header"},
+        {"role": "assistant", "text": "On it."},
+    ]
+
+
+def test_read_recent_messages_drops_tool_calls_and_results_and_noise(tmp_path):
+    f = tmp_path / "x.jsonl"
+    f.write_text("\n".join(json.dumps(x) for x in [
+        {"type": "user", "message": {"content": "run the tests"}},
+        {"type": "assistant", "message": {"content": [
+            {"type": "text", "text": "Running them now."},
+            {"type": "tool_use", "name": "Bash"},  # dropped, but the text survives
+        ]}},
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash"}]}},  # dropped entirely
+        {"type": "user", "message": {"content": [{"type": "tool_result", "content": "exit 0"}]}},  # dropped
+        {"type": "user", "message": {"content": "<task-notification>\nfoo</task-notification>"}},  # harness noise, dropped
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": "All green."}]}},
+    ]), "utf-8")
+    msgs = transcript.read_recent_messages(f, limit=8)
+    assert msgs == [
+        {"role": "user", "text": "run the tests"},
+        {"role": "assistant", "text": "Running them now."},
+        {"role": "assistant", "text": "All green."},
+    ]
 
 
 def test_session_tail_limits_to_last_n(tmp_path):
