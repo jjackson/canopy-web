@@ -5470,6 +5470,8 @@ export interface components {
             };
             /** Host */
             readonly host: string;
+            /** Code Branch */
+            readonly code_branch: string;
             /** Workspace */
             readonly workspace: string | null;
         };
@@ -5536,6 +5538,11 @@ export interface components {
              * @default
              */
             readonly ready_note: string;
+            /**
+             * Code Branch
+             * @default
+             */
+            readonly code_branch: string;
         };
         /** TurnOut */
         readonly TurnOut: {

@@ -44,6 +44,7 @@ class RunnerOut(Schema):
     last_heartbeat_at: dt.datetime | None
     capabilities: dict
     host: str
+    code_branch: str
     workspace: str | None
 
     @staticmethod
@@ -65,6 +66,7 @@ class HeartbeatIn(Schema):
     host: str = ""  # refresh the owning macOS host (in case a runner row is reused)
     ready: bool = True   # can the runner fire a turn (cdp healthy ∧ not recently failed)
     ready_note: str = ""
+    code_branch: str = ""  # the runner checkout's git branch — supervisor alerts on non-main
 
 
 class ResolveSessionIn(Schema):
