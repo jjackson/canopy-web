@@ -78,9 +78,18 @@ export async function listAgents(params: ListAgentsParams = {}): Promise<Page<Ag
   return toPage(unwrap(res, 'listAgents'))
 }
 
+// AgentDetailOut carries a readonly-array field (runner_preference) that
+// openapi-fetch's Readable<T> degrades to an ArrayLike, breaking type identity
+// (same quirk toPage documents). Rebuild it to a real array at the boundary.
+function normalizeAgentDetail(data: { runner_preference?: ArrayLike<string> }): AgentDetailOut {
+  // Spread carries every field at runtime; TS only tracks runner_preference here,
+  // so bridge through unknown (the degraded ArrayLike doesn't overlap the alias).
+  return { ...data, runner_preference: Array.from(data.runner_preference ?? []) } as unknown as AgentDetailOut
+}
+
 export async function getAgent(slug: string): Promise<AgentDetailOut> {
   const res = await apiV2.GET('/api/agents/{slug}/', { params: { path: { slug } } })
-  return unwrap(res, 'getAgent')
+  return normalizeAgentDetail(unwrap(res, 'getAgent'))
 }
 
 export async function listAgentSyncs(
@@ -177,4 +186,18 @@ export async function listAgentCommands(slug: string, status?: string): Promise<
 
 export async function listPendingCommands(slug: string): Promise<AgentCommandOut[]> {
   return listAgentCommands(slug, 'pending')
+}
+
+// Update an agent's ordered runner-kind preference (the runner-order UI). A
+// dedicated PATCH so it never clobbers the agent's other fields. Returns the
+// refreshed agent detail.
+export async function updateAgentRunnerPreference(
+  slug: string,
+  runnerPreference: readonly string[],
+): Promise<AgentDetailOut> {
+  const res = await apiV2.PATCH('/api/agents/{slug}/runner-preference', {
+    params: { path: { slug } },
+    body: { runner_preference: [...runnerPreference] },
+  })
+  return normalizeAgentDetail(unwrap(res, 'updateAgentRunnerPreference'))
 }

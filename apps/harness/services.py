@@ -16,7 +16,12 @@ from django.utils import timezone
 
 from apps.workspaces import services as wsvc
 
+# HEARTBEAT_ONLINE_WINDOW lives on models.py (Runner.live_status uses it too;
+# models.py cannot import services.py, which already imports models.py) and is
+# re-exported here so existing importers of services.HEARTBEAT_ONLINE_WINDOW keep
+# working. Intentional re-export — noqa keeps the F401 gate from deleting it.
 from .models import (
+    HEARTBEAT_ONLINE_WINDOW,  # noqa: F401
     AgentSchedule,
     Item,
     Runner,
@@ -24,12 +29,6 @@ from .models import (
     Turn,
     TurnEvent,
 )
-
-# HEARTBEAT_ONLINE_WINDOW lives on models.py (Runner.live_status uses it too;
-# models.py cannot import services.py, which already imports models.py) and is
-# re-exported here so existing importers of services.HEARTBEAT_ONLINE_WINDOW keep
-# working. Intentional re-export — noqa keeps the F401 gate from deleting it.
-from .models import HEARTBEAT_ONLINE_WINDOW  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +135,34 @@ def _kind_allows(runner: Runner, routing: str) -> bool:
     if routing == Turn.LOCAL_ONLY:
         return runner.kind in (Runner.EMDASH, Runner.REMOTE)
     return True
+
+
+# Per-agent runner-KIND preference (Agent.runner_preference, e.g. ["cloud","emdash"])
+# is honored with a per-tier TIME head-start rather than a live availability probe,
+# so the delicate claim path stays query-free and deterministic. The first preferred
+# kind may claim immediately; each lower tier waits this much MORE before it may —
+# giving the preferred runner first dibs while a lower kind still falls back if the
+# preferred one never shows. Tuned small so fallback is prompt when a tier is absent.
+PREFERENCE_TIER_GRACE_SECONDS = 20
+
+
+def _preference_allows(runner: Runner, turn: Turn, now) -> bool:
+    """May this runner's KIND claim this turn yet, under the agent's ordered
+    runner_preference? True if the agent has no preference (unconstrained), or the
+    runner's kind has waited out its tier's head-start. A kind ABSENT from a
+    non-empty preference never claims that agent. Per-agent only: project/session
+    turns (no agent) are always allowed."""
+    agent = turn.agent
+    if agent is None:
+        return True
+    pref = agent.runner_preference or []
+    if not pref:
+        return True
+    if runner.kind not in pref:
+        return False
+    rank = pref.index(runner.kind)
+    head_start = dt.timedelta(seconds=rank * PREFERENCE_TIER_GRACE_SECONDS)
+    return (now - turn.created_at) >= head_start
 
 
 EXECUTING = [Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
@@ -246,12 +273,15 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
         .exclude(chat_session_id__in=busy_sessions)
         .filter(routing_q)
         .filter(tenant_q)
+        .select_related("agent")  # _preference_allows reads turn.agent.runner_preference
         .order_by("created_at")
     )
     now = timezone.now()
     for turn in candidates:
         if not _kind_allows(runner, turn.routing):
             continue
+        if not _preference_allows(runner, turn, now):
+            continue  # a higher-preference runner kind still has first dibs (head-start)
         try:
             # Own atomic block per attempt: an IntegrityError from the
             # one_executing_turn_per_agent index (concurrent claim for the
@@ -566,7 +596,7 @@ def _aware(value: dt.datetime | None) -> dt.datetime | None:
     if value is None:
         return None
     if timezone.is_naive(value):
-        return timezone.make_aware(value, dt.timezone.utc)
+        return timezone.make_aware(value, dt.UTC)
     return value
 
 

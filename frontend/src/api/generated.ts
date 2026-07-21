@@ -950,6 +950,28 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/runner-preference": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /**
+         * Set an agent's ordered runner-kind preference
+         * @description Update just the ordered runner-kind preference (cloud/emdash/remote), no
+         *     clobber of the agent's other fields. Honored at claim time — see
+         *     harness.services.claim_next_turn.
+         */
+        readonly patch: operations["apps_agents_api_set_runner_preference"];
+        readonly trace?: never;
+    };
     readonly "/api/agents/{slug}/runtime": {
         readonly parameters: {
             readonly query?: never;
@@ -3949,6 +3971,8 @@ export interface components {
             readonly runtime_engine?: ("emdash" | "cloud_p" | "any") | null;
             /** Runtime Secrets */
             readonly runtime_secrets?: readonly string[] | null;
+            /** Runner Preference */
+            readonly runner_preference?: readonly string[] | null;
         };
         /** AgentDetailOut */
         readonly AgentDetailOut: {
@@ -4007,6 +4031,16 @@ export interface components {
             readonly latest_sync_at?: string | null;
             /** Latest Turn At */
             readonly latest_turn_at?: string | null;
+            /** Runner Preference */
+            readonly runner_preference?: readonly string[];
+        };
+        /**
+         * RunnerPreferenceIn
+         * @description Set an agent's ordered runner-kind preference (the runner-order UI).
+         */
+        readonly RunnerPreferenceIn: {
+            /** Runner Preference */
+            readonly runner_preference?: readonly string[];
         };
         /**
          * AgentRuntimeOut
@@ -7786,6 +7820,32 @@ export interface operations {
             readonly cookie?: never;
         };
         readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentDetailOut"];
+                };
+            };
+        };
+    };
+    readonly apps_agents_api_set_runner_preference: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RunnerPreferenceIn"];
+            };
+        };
         readonly responses: {
             /** @description OK */
             readonly 200: {
