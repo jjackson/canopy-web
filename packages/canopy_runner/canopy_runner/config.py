@@ -15,8 +15,14 @@ class Config:
     automation_ids: dict[str, str]
     expected_migration_id: int
     emdash_fingerprint: str = ""
-    poll_seconds: int = 20
+    # Claim cadence — how fast a queued turn (e.g. a phone "Continue this session")
+    # gets picked up. Kept low so delivery feels near-immediate; the claim + heartbeat
+    # are cheap HTTP. The heavier session report is throttled separately below.
+    poll_seconds: int = 5
     heartbeat_seconds: int = 30
+    # Session report throttle: reading up to session_tail_count transcripts is the one
+    # expensive thing per tick, so do it at most this often even as poll_seconds drops.
+    session_report_seconds: int = 20
     state_path: str = ""
     # Executor: "cdp" drives emdash's real UI over CDP (create/reuse sessions —
     # the sanctioned path); "inject" is the legacy DB-injection path. cdp needs

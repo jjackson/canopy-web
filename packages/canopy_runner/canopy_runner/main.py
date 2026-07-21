@@ -59,6 +59,7 @@ GRACE_SECONDS = 900
 CDP_DOWN_SIGNAL_TICKS = 3
 _cdp_down_ticks = 0
 _cdp_down_signalled = False
+_last_session_report = 0.0
 
 
 def _reset_cdp_health_state() -> None:
@@ -219,6 +220,26 @@ def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
         return f"failed:{turn.get('id')}"
 
 
+def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -> None:
+    """Report the open emdash sessions the phone can continue — throttled to
+    session_report_seconds so lowering poll_seconds (for snappy claims) doesn't read
+    up to session_tail_count transcripts every tick. A sqlite read of emdash's DB, not
+    CDP, so it runs even while CDP is down. Best-effort: a read or POST failure must
+    never stop the tick. Reports on the first tick after start (last stamp is 0)."""
+    global _last_session_report
+    if now_fn() - _last_session_report < cfg.session_report_seconds:
+        return
+    _last_session_report = now_fn()
+    try:
+        sessions = emdash.list_open_sessions(cfg.emdash_db)
+        transcript.attach_recent_tail(
+            sessions, count=cfg.session_tail_count, limit=cfg.session_tail_limit
+        )
+        client.report_sessions(cfg.runner_id, sessions)
+    except Exception:  # noqa: BLE001
+        logger.debug("session report failed (non-fatal)", exc_info=True)
+
+
 def _run_once_cdp(cfg: Config, client: Client) -> str:
     """CDP executor: preflight emdash's CDP health → heartbeat (with macOS host, for
     reuse ownership) → claim one turn → route it to an emdash session (reuse or create).
@@ -263,18 +284,7 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
                 cfg.cdp_port, _cdp_down_ticks, cfg.cdp_port)
             _cdp_down_signalled = True
 
-    # Report the open emdash sessions the phone can continue. A sqlite read of emdash's
-    # DB, not CDP — keep it even while CDP is down. Best-effort: a read or POST failure
-    # must never stop the tick. The most-recently-active session also carries its recent
-    # message tail (Phase B) so the phone can read it on click-in with no extra round trip.
-    try:
-        sessions = emdash.list_open_sessions(cfg.emdash_db)
-        transcript.attach_recent_tail(
-            sessions, count=cfg.session_tail_count, limit=cfg.session_tail_limit
-        )
-        client.report_sessions(cfg.runner_id, sessions)
-    except Exception:  # noqa: BLE001
-        logger.debug("session report failed (non-fatal)", exc_info=True)
+    _maybe_report_sessions(cfg, client)
     paused = _paused_agents(cfg)
     # Inbound triggers run whether or not CDP is up, so inbound work still ENQUEUES while
     # emdash is down (it just waits, queued, until emdash is back). Only the claim is gated.

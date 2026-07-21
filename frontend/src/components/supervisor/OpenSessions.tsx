@@ -1,5 +1,5 @@
-import { useEffect, useState, type JSX } from 'react'
-import { listOpenSessions, enqueueTurn, type EmdashSessionOut } from '@/api/harness'
+import { useEffect, useRef, useState, type JSX } from 'react'
+import { listOpenSessions, enqueueTurn, getTurn, type EmdashSessionOut } from '@/api/harness'
 import { normalizeRecentMessages, type RecentMessage } from '@/lib/recentMessages'
 import { relTime, isRecentlyActive } from '@/lib/relTime'
 
@@ -94,28 +94,69 @@ function RecentActivity({ task, messages }: { task: string; messages: RecentMess
 function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
-  const [sent, setSent] = useState<'ok' | string | null>(null)
+  // idle -> sending (queued, waiting for the runner) -> delivered (running in the
+  // session) | error. "delivered" is the honest confirmation: it lands only when the
+  // turn actually starts executing, not on enqueue (the old green fired too early).
+  const [phase, setPhase] = useState<'idle' | 'sending' | 'delivered' | 'error'>('idle')
+  const [errMsg, setErrMsg] = useState('')
   const messages = normalizeRecentMessages(session.recent_messages)
   const active = isRecentlyActive(session.last_interacted_at)
+  const mounted = useRef(true)
+  useEffect(() => () => { mounted.current = false }, [])
 
   async function send(): Promise<void> {
     if (busy || prompt.trim() === '') return
     setBusy(true)
-    setSent(null)
+    setPhase('sending')
+    setErrMsg('')
+    let turnId: string
     try {
-      await enqueueTurn({
+      const turn = await enqueueTurn({
         project: session.project,
         workspace: session.workspace,
         prompt: prompt.trim(),
         threadKey: `emdash:${session.emdash_task}`,
       })
-      setSent('ok')
+      turnId = turn.id
       setPrompt('')
     } catch (e) {
-      setSent(e instanceof Error ? e.message : 'Failed to send')
-    } finally {
+      if (!mounted.current) return
+      setPhase('error')
+      setErrMsg(e instanceof Error ? e.message : 'Failed to send')
       setBusy(false)
+      return
     }
+    // Poll the turn until the runner claims it and starts executing (running = the
+    // prompt has been delivered into the live session), or it finishes/fails. Give
+    // up after ~90s (runner offline) but keep the queued note so it's not lost.
+    const deadline = Date.now() + 90_000
+    const tick = async (): Promise<void> => {
+      if (!mounted.current) return
+      let status = ''
+      let note = ''
+      try {
+        const t = await getTurn(turnId)
+        status = t.status
+        note = t.result_note
+      } catch {
+        // transient error — fall through to retry
+      }
+      if (!mounted.current) return
+      if (status === 'running' || status === 'done' || status === 'needs_human') {
+        setPhase('delivered')
+        setBusy(false)
+        return
+      }
+      if (status === 'failed') {
+        setPhase('error')
+        setErrMsg(note || 'The session run failed.')
+        setBusy(false)
+        return
+      }
+      if (Date.now() < deadline) window.setTimeout(() => void tick(), 1500)
+      else setBusy(false) // still queued after 90s — stop the spinner, keep the note
+    }
+    window.setTimeout(() => void tick(), 1200)
   }
 
   return (
@@ -160,12 +201,21 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
           {busy ? 'Sending…' : 'Continue'}
         </button>
       </div>
-      {sent === 'ok' && (
-        <p className="mt-1 text-[12px] text-success" data-testid={`session-sent-${session.emdash_task}`}>
-          Sent to {session.emdash_task}.
+      {phase === 'sending' && (
+        <p
+          className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground"
+          data-testid={`session-sending-${session.emdash_task}`}
+        >
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground" />
+          Sending to {session.emdash_task}… waiting for the runner
         </p>
       )}
-      {sent && sent !== 'ok' && <p className="mt-1 text-[12px] text-destructive">{sent}</p>}
+      {phase === 'delivered' && (
+        <p className="mt-1 text-[12px] text-success" data-testid={`session-sent-${session.emdash_task}`}>
+          ✓ Delivered — running in {session.emdash_task}.
+        </p>
+      )}
+      {phase === 'error' && <p className="mt-1 text-[12px] text-destructive">{errMsg}</p>}
     </div>
   )
 }

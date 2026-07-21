@@ -20,4 +20,4 @@ def test_load_config_with_token_file(tmp_path: Path):
     assert cfg.token == "sekret"
     assert cfg.base_url == "https://labs.example.com/canopy"
     assert cfg.automation_ids["echo"] == "auto-1"
-    assert cfg.poll_seconds == 20  # default
+    assert cfg.poll_seconds == 5  # default (low, for snappy turn claims)
