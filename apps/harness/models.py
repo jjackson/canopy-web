@@ -635,3 +635,31 @@ class Item(models.Model):
     @property
     def agent_slug(self) -> str:
         return self.agent.slug
+
+
+class RunnerCredential(models.Model):
+    """Per-runner credentials the runner fetches at startup — CLOUD runners only.
+
+    Laptop/emdash runners use their ambient auth (emdash already holds the Claude
+    login) and never read this. A cloud runner boots knowing only its canopy-pat,
+    then fetches this bundle over HTTPS authed by that PAT (owner == paired_by, the
+    same gate as heartbeat/claim) and stages it into its environment: the runner's
+    Claude login, a read-only GitHub token (to clone private agent repos), and the
+    1Password service-account token (so the reconciler can resolve agent secrets).
+
+    Stored encrypted at rest (Fernet — see apps/common/encryption.py); the columns
+    hold ciphertext. One row per runner (unique login per runner, the mapping the
+    fleet wants). Values are set/read through apps/harness/services.py, never raw.
+    """
+
+    runner = models.OneToOneField(Runner, on_delete=models.CASCADE, related_name="credential")
+    claude_token_enc = models.TextField(blank=True, default="")
+    github_token_enc = models.TextField(blank=True, default="")
+    op_sa_token_enc = models.TextField(blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    def __str__(self) -> str:
+        return f"credential:{self.runner_id}"

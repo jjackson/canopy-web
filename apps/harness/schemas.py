@@ -406,3 +406,31 @@ class ItemDecideIn(Schema):
     # seen. "" is valid for a question, whose answer is the comment.
     decision: Literal["implement", "skip", "defer", ""] = ""
     comment: str = ""
+
+
+# ---- Runner credentials (per-runner, cloud-only; laptop uses emdash) ----
+class RunnerCredentialIn(Schema):
+    """Set a cloud runner's credentials. A field left None is unchanged
+    (non-clobbering) — update just the Claude token without wiping the rest."""
+
+    claude_token: str | None = None
+    github_token: str | None = None
+    op_sa_token: str | None = None
+
+
+class RunnerCredentialOut(Schema):
+    """The runner's own fetch — actual token values (HTTPS + PAT-authed, owner-gated)."""
+
+    claude_token: str = ""
+    github_token: str = ""
+    op_sa_token: str = ""
+    updated_at: dt.datetime | None = None
+
+
+class RunnerCredentialStatusOut(Schema):
+    """Masked view — booleans, never values. The POST response + any UI."""
+
+    has_claude_token: bool = False
+    has_github_token: bool = False
+    has_op_sa_token: bool = False
+    updated_at: dt.datetime | None = None

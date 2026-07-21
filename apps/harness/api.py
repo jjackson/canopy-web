@@ -26,8 +26,11 @@ from .schemas import (
     ReportSessionsIn,
     ResolveSessionIn,
     ResolveSessionOut,
-    RunnerIn,
     RunnerCapabilitiesIn,
+    RunnerCredentialIn,
+    RunnerCredentialOut,
+    RunnerCredentialStatusOut,
+    RunnerIn,
     RunnerOut,
     ScheduleFireIn,
     ScheduleOut,
@@ -179,6 +182,35 @@ def pair_runner(request: HttpRequest, payload: RunnerIn):
         workspace_id=ws_slug,
     )
     return Status(201, runner)
+
+
+@router.post("/runners/{runner_id}/credential", response=RunnerCredentialStatusOut,
+             summary="Set a cloud runner's credential bundle (owner only)")
+def set_runner_credential(request: HttpRequest, runner_id: uuid.UUID, payload: RunnerCredentialIn):
+    """Store the per-runner secrets a cloud runner fetches at startup — its Claude
+    login, a read-only GitHub token, the 1Password SA token. Owner-gated exactly
+    like heartbeat/claim (paired_by == caller). Non-clobbering per field. Encrypted
+    at rest; the response is masked (booleans, never values)."""
+    runner = _runner_or_404(request, runner_id)
+    services.set_runner_credential(
+        runner,
+        claude_token=payload.claude_token,
+        github_token=payload.github_token,
+        op_sa_token=payload.op_sa_token,
+        updated_by=request.user,
+    )
+    return services.runner_credential_status(runner)
+
+
+@router.get("/runners/{runner_id}/credential", response=RunnerCredentialOut,
+            summary="Fetch this runner's credential bundle (the runner, via its PAT)")
+def get_runner_credential(request: HttpRequest, runner_id: uuid.UUID) -> RunnerCredentialOut:
+    """A cloud runner fetches its own secrets to stage into its environment. Returns
+    the actual token values over HTTPS, gated to the runner's owner (paired_by ==
+    caller) — the same trust boundary that lets that caller claim turns as the
+    runner. Laptop/emdash runners never call this (they use ambient auth)."""
+    runner = _runner_or_404(request, runner_id)
+    return RunnerCredentialOut(**services.get_runner_credential(runner))
 
 
 @router.get("/runners/", response=list[RunnerOut], summary="List my runners")

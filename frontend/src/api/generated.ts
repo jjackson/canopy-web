@@ -1658,6 +1658,36 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/harness/runners/{runner_id}/credential": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Fetch this runner's credential bundle (the runner, via its PAT)
+         * @description A cloud runner fetches its own secrets to stage into its environment. Returns
+         *     the actual token values over HTTPS, gated to the runner's owner (paired_by ==
+         *     caller) — the same trust boundary that lets that caller claim turns as the
+         *     runner. Laptop/emdash runners never call this (they use ambient auth).
+         */
+        readonly get: operations["apps_harness_api_get_runner_credential"];
+        readonly put?: never;
+        /**
+         * Set a cloud runner's credential bundle (owner only)
+         * @description Store the per-runner secrets a cloud runner fetches at startup — its Claude
+         *     login, a read-only GitHub token, the 1Password SA token. Owner-gated exactly
+         *     like heartbeat/claim (paired_by == caller). Non-clobbering per field. Encrypted
+         *     at rest; the response is masked (booleans, never values).
+         */
+        readonly post: operations["apps_harness_api_set_runner_credential"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/harness/runners/{runner_id}": {
         readonly parameters: {
             readonly query?: never;
@@ -5548,6 +5578,65 @@ export interface components {
              */
             readonly workspace: string;
         };
+        /**
+         * RunnerCredentialStatusOut
+         * @description Masked view — booleans, never values. The POST response + any UI.
+         */
+        readonly RunnerCredentialStatusOut: {
+            /**
+             * Has Claude Token
+             * @default false
+             */
+            readonly has_claude_token: boolean;
+            /**
+             * Has Github Token
+             * @default false
+             */
+            readonly has_github_token: boolean;
+            /**
+             * Has Op Sa Token
+             * @default false
+             */
+            readonly has_op_sa_token: boolean;
+            /** Updated At */
+            readonly updated_at?: string | null;
+        };
+        /**
+         * RunnerCredentialIn
+         * @description Set a cloud runner's credentials. A field left None is unchanged
+         *     (non-clobbering) — update just the Claude token without wiping the rest.
+         */
+        readonly RunnerCredentialIn: {
+            /** Claude Token */
+            readonly claude_token?: string | null;
+            /** Github Token */
+            readonly github_token?: string | null;
+            /** Op Sa Token */
+            readonly op_sa_token?: string | null;
+        };
+        /**
+         * RunnerCredentialOut
+         * @description The runner's own fetch — actual token values (HTTPS + PAT-authed, owner-gated).
+         */
+        readonly RunnerCredentialOut: {
+            /**
+             * Claude Token
+             * @default
+             */
+            readonly claude_token: string;
+            /**
+             * Github Token
+             * @default
+             */
+            readonly github_token: string;
+            /**
+             * Op Sa Token
+             * @default
+             */
+            readonly op_sa_token: string;
+            /** Updated At */
+            readonly updated_at?: string | null;
+        };
         /** RunnerCapabilitiesIn */
         readonly RunnerCapabilitiesIn: {
             /** Capabilities */
@@ -8906,6 +8995,54 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["RunnerOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_get_runner_credential: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RunnerCredentialOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_set_runner_credential: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RunnerCredentialIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RunnerCredentialStatusOut"];
                 };
             };
         };

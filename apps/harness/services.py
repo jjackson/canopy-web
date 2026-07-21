@@ -774,3 +774,53 @@ def dismiss_item(item: Item, *, by: str, decided_by_user=None) -> Item:
     item.decided_at = timezone.now()
     item.save(update_fields=["state", "decided_by", "decided_by_user", "decided_at"])
     return item
+
+
+# ---- Runner credentials (per-runner secret bundle, encrypted at rest) ----
+def set_runner_credential(runner, *, claude_token=None, github_token=None,
+                          op_sa_token=None, updated_by=None):
+    """Upsert a runner's credential bundle. None fields are left unchanged."""
+    from apps.common.encryption import encrypt_secret
+
+    from .models import RunnerCredential
+
+    cred, _ = RunnerCredential.objects.get_or_create(runner=runner)
+    if claude_token is not None:
+        cred.claude_token_enc = encrypt_secret(claude_token)
+    if github_token is not None:
+        cred.github_token_enc = encrypt_secret(github_token)
+    if op_sa_token is not None:
+        cred.op_sa_token_enc = encrypt_secret(op_sa_token)
+    if updated_by is not None:
+        cred.updated_by = updated_by
+    cred.save()
+    return cred
+
+
+def get_runner_credential(runner) -> dict:
+    """Decrypt a runner's bundle for the runner to consume. Empty when unset."""
+    from apps.common.encryption import decrypt_secret
+
+    cred = getattr(runner, "credential", None)
+    if cred is None:
+        return {"claude_token": "", "github_token": "", "op_sa_token": "", "updated_at": None}
+    return {
+        "claude_token": decrypt_secret(cred.claude_token_enc),
+        "github_token": decrypt_secret(cred.github_token_enc),
+        "op_sa_token": decrypt_secret(cred.op_sa_token_enc),
+        "updated_at": cred.updated_at,
+    }
+
+
+def runner_credential_status(runner) -> dict:
+    """Masked view — which tokens are set, never their values."""
+    cred = getattr(runner, "credential", None)
+    if cred is None:
+        return {"has_claude_token": False, "has_github_token": False,
+                "has_op_sa_token": False, "updated_at": None}
+    return {
+        "has_claude_token": bool(cred.claude_token_enc),
+        "has_github_token": bool(cred.github_token_enc),
+        "has_op_sa_token": bool(cred.op_sa_token_enc),
+        "updated_at": cred.updated_at,
+    }
