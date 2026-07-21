@@ -161,6 +161,8 @@ def test_build_narrative_lists_runs_newest_first():
     assert len(narrative["versions"]) == 1
     v = narrative["versions"][0]
     assert v["story"] == "The story."
+    # Per-version narration is carried so the client can render a before/after diff.
+    assert v["narration"] == [{"scene": 1, "id": "n1", "text": "x"}]
     assert [r["run_id"] for r in v["runs"]] == [
         "feat-2026-06-01-002",
         "feat-2026-05-01-001",

@@ -48,6 +48,9 @@ export interface DddNarrativeVersion {
   review_id: string | null
   title: string | null
   story: string | null
+  // Per-scene narration for this version — carried so the client can render a
+  // plain-language before/after (vN -> vN+1) diff without a second fetch.
+  narration: DddNarration[]
   created_at: string | null
   gate: string | null
   status: string | null
