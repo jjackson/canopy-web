@@ -283,3 +283,17 @@ def test_read_recent_messages_reads_only_tail_of_large_file(tmp_path):
     msgs = transcript.read_recent_messages(f, limit=3)
     assert msgs[-1] == {"role": "assistant", "text": "LAST"}
     assert len(msgs) <= 3
+
+
+def test_attach_recent_tail_sets_last_active_from_transcript_mtime(tmp_path):
+    import datetime as dt
+    home = tmp_path / "home"
+    claude_home = home / ".claude" / "projects"
+    wt = home / "emdash" / "worktrees" / "canopy-web" / "emdash" / "ddd"
+    f = _write_transcript(claude_home, wt, [{"type": "user", "message": {"content": "hi"}}])
+    sessions = [{"emdash_task": "ddd", "project": "canopy-web",
+                 "last_interacted_at": "2020-01-01 00:00:00"}]  # stale emdash value
+    transcript.attach_recent_tail(sessions, home=home, claude_home=claude_home)
+    # Overridden to the transcript's write time (the real activity), not the stale value.
+    expected = dt.datetime.fromtimestamp(f.stat().st_mtime, tz=dt.timezone.utc).isoformat()
+    assert sessions[0]["last_interacted_at"] == expected
