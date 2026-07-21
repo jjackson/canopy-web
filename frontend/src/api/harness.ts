@@ -78,6 +78,15 @@ export async function enqueueTurn(input: {
   return unwrap(res, 'enqueueTurn')
 }
 
+// Poll a turn's lifecycle — the Continue flow watches queued -> running (i.e. the
+// runner has claimed it and is delivering the prompt into the live session).
+export async function getTurn(turnId: string): Promise<TurnOut> {
+  const res = await apiV2.GET('/api/harness/turns/{turn_id}', {
+    params: { path: { turn_id: turnId } },
+  })
+  return unwrap(res, 'getTurn')
+}
+
 // Un-queue a misfired turn (queued only; the server 409s a running turn).
 export async function cancelTurn(turnId: string): Promise<TurnOut> {
   const res = await apiV2.POST('/api/harness/turns/{turn_id}/cancel', {
