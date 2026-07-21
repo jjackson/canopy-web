@@ -157,10 +157,15 @@ def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time,
                 query=box.get("query", inbox_mod.DEFAULT_QUERY), max_threads=cap,
             )
             n_new, n_seen = len(res["new"]), len(res["seen"])
+            n_skip = len(res.get("skipped", []))
             # Log EVERY poll, not just ones that enqueue — otherwise a healthy poll that
             # finds nothing new is silent and you can't tell polling is happening at all.
-            logger.info("inbox[%s]: polled — %d unread (%d NEW -> session, %d already tracked)",
-                        agent, n_new + n_seen, n_new, n_seen)
+            # `skipped` = unread threads whose newest message is the agent's own reply
+            # (already had the last word), suppressed so a re-marked-unread thread can't
+            # manufacture a turn with no new inbound.
+            logger.info("inbox[%s]: polled — %d unread (%d NEW -> session, %d already tracked, "
+                        "%d skipped: agent's own reply)",
+                        agent, n_new + n_seen + n_skip, n_new, n_seen, n_skip)
         except Exception as exc:  # noqa: BLE001 — one bad inbox never kills the loop
             logger.warning("inbox check for %s failed: %s", agent, exc)
     try:
