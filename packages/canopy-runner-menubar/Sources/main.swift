@@ -365,20 +365,20 @@ final class Controller: NSObject, NSApplicationDelegate {
     @objc func reloadPanel() {
         authenticateThenLoad()  // re-mint the session cookie, then reload /supervisor
     }
-    // The bulletproof hard-refresh. "Reload panel" is a normal navigation, so a stale
-    // service worker keeps serving the cached bundle. This PURGES the WebKit data
-    // (service-worker registrations + every cache) so the next load must fetch the
-    // current /supervisor from the server and register the fresh (auto-updating) SW.
-    // We clear cookies too — harmless, because authenticateThenLoad re-mints the
-    // session cookie immediately after. Use this if the panel ever looks out of date.
+    // The bulletproof hard-refresh, WITHOUT logging you out. "Reload panel" is a
+    // normal navigation, so a stale service worker keeps serving the cached bundle.
+    // This purges the service-worker registration + every CACHE so the next load must
+    // fetch the current /supervisor and register the fresh (auto-updating) SW — but it
+    // KEEPS cookies (the session) and localStorage (theme/prefs), so the reload comes
+    // straight back signed in. No re-mint, no Google login. ("Reload panel" remains the
+    // re-auth path for when the session itself needs refreshing.)
     @objc func forceRefresh() {
         let store = web.configuration.websiteDataStore
-        store.removeData(
-            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
-            modifiedSince: Date(timeIntervalSince1970: 0)
-        ) { [weak self] in
-            self?.authed = false
-            self?.authenticateThenLoad()
+        var types = WKWebsiteDataStore.allWebsiteDataTypes()
+        types.remove(WKWebsiteDataTypeCookies)
+        types.remove(WKWebsiteDataTypeLocalStorage)
+        store.removeData(ofTypes: types, modifiedSince: Date(timeIntervalSince1970: 0)) { [weak self] in
+            self?.loadSupervisor()  // cookie preserved -> already authed -> fresh bundle
         }
     }
     @objc func openLog() {
