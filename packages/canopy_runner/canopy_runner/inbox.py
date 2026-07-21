@@ -44,18 +44,68 @@ def search_threads(mailbox: str, gog_client: str, query: str = DEFAULT_QUERY,
         raise InboxError(f"non-JSON from gog gmail search: {(r.stdout or '')[:150]!r}") from exc
 
 
+def newest_sender(mailbox: str, gog_client: str, thread_id: str, *,
+                  runner=subprocess.run) -> str | None:
+    """Return the From value of a thread's NEWEST message, lowercased — or None if it
+    can't be determined (gog missing/failed/timed-out, or an unparseable thread). None
+    is the fail-open signal: the caller enqueues rather than risk dropping a real reply."""
+    try:
+        r = runner(
+            ["gog", "gmail", "thread", "get", thread_id, "--account", mailbox,
+             "--client", gog_client, "--json"],
+            capture_output=True, text=True, timeout=45,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0:
+        return None
+    try:
+        data = json.loads(r.stdout or "{}")
+    except ValueError:
+        return None
+    msgs = data.get("messages") or (data.get("thread") or {}).get("messages") or []
+    if not msgs:
+        return None
+    headers = (msgs[-1].get("payload") or {}).get("headers") or []
+    for h in headers:
+        if h.get("name", "").lower() == "from":
+            return (h.get("value") or "").lower()
+    return None
+
+
 def check_inbox(client, agent: str, *, mailbox: str, gog_client: str,
-                query: str = DEFAULT_QUERY, max_threads: int = 15, runner=subprocess.run) -> dict:
+                query: str = DEFAULT_QUERY, max_threads: int = 15, runner=subprocess.run,
+                sender_of=None) -> dict:
     """Enqueue an email-origin turn for each new thread state. Returns
-    {"new": [thread_ids that became a NEW turn], "seen": [ids already tracked]} — the split
-    matters for logging: re-polling the same unread mail is idempotent server-side, so it
-    must read as "nothing new", not as fresh work."""
+    {"new": [thread_ids that became a NEW turn], "seen": [ids already tracked],
+    "skipped": [ids whose newest message is the agent's own reply]} — the split matters
+    for logging: re-polling the same unread mail is idempotent server-side, so it must
+    read as "nothing new", not as fresh work.
+
+    The `skipped` guard closes a real bug: idempotency is keyed on (thread, messageCount),
+    but the agent's OWN reply bumps the count to a value the watcher never registered
+    (the thread was read by the time it replied). If anything later re-marks that thread
+    unread WITHOUT a new inbound message (a human nudge, a Gmail label reshuffle), the
+    watcher would see a fresh (thread, count) and fire a turn whose "trigger" is the
+    agent's own last reply. So: if the newest message in a thread is from the agent
+    itself, it has already had the last word — skip it. `sender_of(thread_id) -> str|None`
+    is injectable for tests; it defaults to a live `newest_sender` lookup and fails open
+    (None -> enqueue) so an unreadable thread never silently drops a real reply."""
+    if sender_of is None:
+        def sender_of(tid: str) -> str | None:
+            return newest_sender(mailbox, gog_client, tid, runner=runner)
     threads = search_threads(mailbox, gog_client, query, max_threads, runner=runner)
     new: list[str] = []
     seen: list[str] = []
+    skipped: list[str] = []
+    box = mailbox.lower()
     for t in threads:
         tid = t.get("id")
         if not tid:
+            continue
+        latest = sender_of(tid)
+        if latest and box in latest:
+            skipped.append(tid)
             continue
         count = t.get("messageCount", 1)
         frm, subj = t.get("from", ""), t.get("subject", "")
@@ -68,4 +118,4 @@ def check_inbox(client, agent: str, *, mailbox: str, gog_client: str,
             prompt=f"/{agent}:turn --thread {tid}",
         )
         (new if (res or {}).get("_created") else seen).append(tid)
-    return {"new": new, "seen": seen}
+    return {"new": new, "seen": seen, "skipped": skipped}
