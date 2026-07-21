@@ -16,11 +16,8 @@ export type AgentSkillOut = Schemas['AgentSkillOut']
 export type AgentTaskOut = Schemas['AgentTaskOut']
 export type AgentTaskLink = Schemas['AgentTaskLink']
 export type AgentCommandOut = Schemas['AgentTaskCommandOut']
-export type NeedsYouOut = Schemas['NeedsYouOut']
-export type NeedsYouItem = Schemas['NeedsYouItem']
 export type PostCommandResult = Schemas['CommandResultOut']
 
-export type NeedsYouType = NeedsYouItem['type']
 export type AgentTaskStatus = AgentTaskOut['status']
 export type AgentCommandKind = Schemas['AgentTaskCommandIn']['kind']
 
@@ -84,15 +81,6 @@ export async function listAgents(params: ListAgentsParams = {}): Promise<Page<Ag
 export async function getAgent(slug: string): Promise<AgentDetailOut> {
   const res = await apiV2.GET('/api/agents/{slug}/', { params: { path: { slug } } })
   return unwrap(res, 'getAgent')
-}
-
-export async function getNeedsYou(slug: string): Promise<NeedsYouOut> {
-  const res = await apiV2.GET('/api/agents/{slug}/needs-you', { params: { path: { slug } } })
-  const data = unwrap(res, 'getNeedsYou')
-  // See toPage's comment: `items` degrades to an ArrayLike-shaped object
-  // through openapi-fetch's Readable<T>, so rebuild it as a real array
-  // (Array.from, no cast) rather than passing the degraded shape through.
-  return { ...data, items: data.items ? Array.from(data.items) : undefined }
 }
 
 export async function listAgentSyncs(
@@ -189,20 +177,4 @@ export async function listAgentCommands(slug: string, status?: string): Promise<
 
 export async function listPendingCommands(slug: string): Promise<AgentCommandOut[]> {
   return listAgentCommands(slug, 'pending')
-}
-
-export type FleetNeedsYouOut = Schemas['FleetNeedsYouOut']
-
-export async function getFleetNeedsYou(): Promise<FleetNeedsYouOut> {
-  const res = await apiV2.GET('/api/agents/needs-you')
-  const data = unwrap(res, 'getFleetNeedsYou')
-  // See toPage's comment: `agents`, and each block's `items` one level down,
-  // degrade to an ArrayLike-shaped object through openapi-fetch's
-  // Readable<T> — rebuild both levels as real arrays (Array.from, no cast).
-  return {
-    ...data,
-    agents: data.agents
-      ? Array.from(data.agents).map((a) => ({ ...a, items: a.items ? Array.from(a.items) : undefined }))
-      : undefined,
-  }
 }

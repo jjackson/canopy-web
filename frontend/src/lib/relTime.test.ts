@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, isRecentlyActive } from './relTime'
+import { relTime, isRecentlyActive, isRunning } from './relTime'
 
 const NOW = Date.parse('2026-07-21T12:00:00Z')
 
@@ -22,5 +22,13 @@ describe('isRecentlyActive', () => {
     expect(isRecentlyActive('2026-07-21T11:59:00Z', NOW)).toBe(true) // 60s
     expect(isRecentlyActive('2026-07-21T11:57:00Z', NOW)).toBe(false) // 180s > 120s
     expect(isRecentlyActive(null, NOW)).toBe(false)
+  })
+})
+
+describe('isRunning', () => {
+  it('true within ~45s (accounts for report+poll lag), false outside', () => {
+    expect(isRunning('2026-07-21T11:59:30Z', NOW)).toBe(true) // 30s ago
+    expect(isRunning('2026-07-21T11:59:00Z', NOW)).toBe(false) // 60s ago
+    expect(isRunning(null, NOW)).toBe(false)
   })
 })

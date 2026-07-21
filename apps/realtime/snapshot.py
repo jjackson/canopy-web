@@ -7,7 +7,7 @@ from __future__ import annotations
 from django.db.models import Q
 
 from apps.agents import services as agent_services
-from apps.harness.models import Runner
+from apps.harness.models import Item, Runner
 from apps.workspaces import services as wsvc
 
 
@@ -32,7 +32,10 @@ def supervisor_snapshot(user) -> dict:
         for a in agent_services.list_agents()
         if a.workspace_id in slugs or a.workspace_id is None
     ]
-    waiting = {a.slug: int(agent_services.needs_you(a).get("waiting_count") or 0) for a in agents}
+    # Waiting = open items on the agent — the inbox is a pure Item query now.
+    waiting = {
+        a.slug: Item.objects.filter(agent=a, state=Item.OPEN).count() for a in agents
+    }
 
     runners = Runner.objects.exclude(status=Runner.RETIRED).filter(
         (Q(workspace_id__in=slugs) | Q(workspace_id__isnull=True))
