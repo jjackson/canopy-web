@@ -5470,6 +5470,8 @@ export interface components {
             };
             /** Host */
             readonly host: string;
+            /** Code Branch */
+            readonly code_branch: string;
             /** Workspace */
             readonly workspace: string | null;
         };

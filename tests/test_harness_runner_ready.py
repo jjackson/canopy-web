@@ -65,3 +65,20 @@ def test_heartbeat_omitting_ready_defaults_to_ready_true(user, ws):
            content_type="application/json")
     r.refresh_from_db()
     assert r.ready is True and r.ready_note == ""
+
+
+def test_heartbeat_persists_and_serves_code_branch(user, ws):
+    """The runner self-reports its checkout's git branch; the supervisor uses it to
+    alert on non-main (stale/wrong code). Stored + echoed in RunnerOut."""
+    r = _runner(user, ws)
+    c = Client()
+    c.force_login(user)
+    resp = c.post(
+        f"/api/harness/runners/{r.id}/heartbeat",
+        {"active_turn_ids": [], "code_branch": "ddd/external-reviewer-suggest-290"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["code_branch"] == "ddd/external-reviewer-suggest-290"
+    r.refresh_from_db()
+    assert r.code_branch == "ddd/external-reviewer-suggest-290"
