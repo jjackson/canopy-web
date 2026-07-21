@@ -46,6 +46,13 @@ class Shareout(models.Model):
     all_prs = models.JSONField(default=list, blank=True)
     # Every PR in the window for this project: [{number,title,url,state}].
     author = models.CharField(max_length=100, blank=True, default="")
+    # The agent that ASSEMBLED this briefing on the author's behalf (slug, e.g.
+    # "eva"), or "" when a human ran the shareout themselves. Attribution stays
+    # with `author` (whose work it's about) — this only records the producer,
+    # so the feed can show a subtle "produced by <agent>" byline. Deliberately
+    # NOT part of the idempotency group (see services.upsert_shareouts): it
+    # rides along, so a re-post from the same source still replaces cleanly.
+    produced_by_agent = models.CharField(max_length=80, blank=True, default="")
     source = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
 
