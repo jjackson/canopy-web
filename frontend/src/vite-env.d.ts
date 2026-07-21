@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
 
 // Django's CSRF cookie name, inlined at build time via Vite `define`
 // (VITE_CSRF_COOKIE_NAME → "csrftoken" default, "csrftoken_canopy" for the
