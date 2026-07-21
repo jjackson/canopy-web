@@ -237,6 +237,14 @@ export interface ReviewSubmitPayload {
   build_order?: string[]
 }
 
+/** A suggestion from an external (share-token) reviewer who cannot resolve the gate.
+ *  Only present for a caller who can write (the owner / a workspace member). */
+export interface ReviewSuggestion {
+  response_json: ReviewSubmitPayload
+  name: string | null
+  created_at: string
+}
+
 export interface ReviewDetail {
   id: string
   run_id: string
@@ -248,6 +256,8 @@ export interface ReviewDetail {
   visibility: ReviewVisibility
   request_json: ReviewRequestJson
   response_json: ReviewSubmitPayload | null
+  /** External-reviewer suggestions — empty for anonymous readers; populated for the owner. */
+  suggestions: ReviewSuggestion[]
   share_token: string | null
   is_owner: boolean
   created_at: string
@@ -270,6 +280,10 @@ function reviewUrl(id: string, token?: string | null): string {
 function submitUrl(id: string, token?: string | null): string {
   const t = token ? `?t=${encodeURIComponent(token)}` : ''
   return `${API_BASE}/api/reviews/${id}/submit/${t}`
+}
+
+function suggestUrl(id: string, token: string): string {
+  return `${API_BASE}/api/reviews/${id}/suggest/?t=${encodeURIComponent(token)}`
 }
 
 async function parseResponse<T>(resp: Response): Promise<T> {
@@ -316,6 +330,26 @@ export async function submitReview(
     body: JSON.stringify({ response_json: payload }),
   })
   return parseResponse<ReviewDetail>(resp)
+}
+
+/**
+ * Submit a SUGGESTION as an external (share-token) reviewer. Requires the review's
+ * share token — it never resolves the gate; the edits land as a suggestion for the
+ * internal owner to accept. Returns the new suggestion count.
+ */
+export async function suggestReview(
+  id: string,
+  payload: ReviewSubmitPayload,
+  token: string,
+  name?: string | null,
+): Promise<{ ok: boolean; suggestion_count: number }> {
+  const resp = await fetch(suggestUrl(id, token), {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ response_json: payload, name: name ?? null }),
+  })
+  return parseResponse<{ ok: boolean; suggestion_count: number }>(resp)
 }
 
 /**

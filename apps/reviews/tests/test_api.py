@@ -112,7 +112,8 @@ def test_create_returns_id_and_url(auth_client):
     body = resp.json()
     assert "id" in body
     assert "url" in body
-    assert "share_token" not in body
+    # A link-visibility review returns a share token (the external-suggest capability).
+    assert body.get("share_token")
     # URL should reference the review id
     assert body["id"] in body["url"]
 
@@ -601,3 +602,133 @@ def test_list_filter_and_sort_survive_a_null_narrative_slug(auth_client, owner):
     # A run-child review has no slug to match on, but is still findable by run_id.
     hits = auth_client.get(f"{BASE}/?q=fleet-audit").json()
     assert [r["run_id"] for r in hits] == ["ada-fleet-audit-2026-07-14"]
+
+
+# ---------------------------------------------------------------------------
+# External-reviewer suggestions (share-token; NEVER resolves the gate)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_create_private_has_no_share_token(auth_client):
+    resp = auth_client.post(
+        f"{BASE}/",
+        data={"request_json": SAMPLE_REQUEST_JSON, "visibility": "private"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 201, resp.content
+    assert resp.json().get("share_token") is None
+
+
+@pytest.mark.django_db
+def test_suggest_without_token_403(owner):
+    review = _make_review(owner, visibility="link")
+    review.ensure_share_token()
+    resp = Client().post(  # anonymous, no ?t=
+        f"{BASE}/{review.id}/suggest/",
+        data={"response_json": SAMPLE_RESPONSE_JSON, "name": "Sophie"},
+        content_type="application/json",
+    )
+    assert resp.status_code == 403, resp.content
+    review.refresh_from_db()
+    assert review.status == "pending"
+
+
+@pytest.mark.django_db
+def test_suggest_wrong_token_403(owner):
+    review = _make_review(owner, visibility="link")
+    review.ensure_share_token()
+    resp = Client().post(
+        f"{BASE}/{review.id}/suggest/?t=not-the-real-token",
+        data={"response_json": SAMPLE_RESPONSE_JSON},
+        content_type="application/json",
+    )
+    assert resp.status_code == 403, resp.content
+
+
+@pytest.mark.django_db
+def test_suggest_on_private_review_403(owner):
+    # A private review is unreadable to an anonymous caller -> 404 (no existence leak),
+    # and it never carries a usable external-suggest token anyway.
+    review = _make_review(owner, visibility="private")
+    review.ensure_share_token()
+    resp = Client().post(
+        f"{BASE}/{review.id}/suggest/?t={review.share_token}",
+        data={"response_json": SAMPLE_RESPONSE_JSON},
+        content_type="application/json",
+    )
+    assert resp.status_code == 404, resp.content
+
+
+@pytest.mark.django_db
+def test_suggest_with_token_appends_and_stays_pending(owner):
+    review = _make_review(owner, visibility="link")
+    token = review.ensure_share_token()
+    resp = Client().post(  # external, unauthenticated
+        f"{BASE}/{review.id}/suggest/?t={token}",
+        data={
+            "response_json": {"edited_scenes": [{"id": "n1", "narration": "softer wording"}]},
+            "name": "Sophie",
+        },
+        content_type="application/json",
+    )
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["suggestion_count"] == 1
+
+    review.refresh_from_db()
+    # A suggestion must NEVER resolve the gate or overwrite the owner's response.
+    assert review.status == "pending"
+    assert review.response_json is None
+    assert len(review.suggestions_json) == 1
+    assert review.suggestions_json[0]["name"] == "Sophie"
+    assert review.suggestions_json[0]["response_json"]["edited_scenes"][0]["id"] == "n1"
+
+
+@pytest.mark.django_db
+def test_suggestions_accumulate(owner):
+    review = _make_review(owner, visibility="link")
+    token = review.ensure_share_token()
+    for i in range(3):
+        Client().post(
+            f"{BASE}/{review.id}/suggest/?t={token}",
+            data={"response_json": {"overall_feedback": f"note {i}"}},
+            content_type="application/json",
+        )
+    review.refresh_from_db()
+    assert len(review.suggestions_json) == 3
+
+
+@pytest.mark.django_db
+def test_suggestions_visible_to_owner_not_anon(auth_client, owner):
+    review = _make_review(owner, visibility="link")
+    token = review.ensure_share_token()
+    Client().post(
+        f"{BASE}/{review.id}/suggest/?t={token}",
+        data={"response_json": SAMPLE_RESPONSE_JSON, "name": "Sophie"},
+        content_type="application/json",
+    )
+    # Owner sees the suggestion.
+    owner_body = auth_client.get(f"{BASE}/{review.id}/").json()
+    assert len(owner_body["suggestions"]) == 1
+    # Anonymous link reader does NOT — else one external reviewer reads another's edits.
+    anon_body = Client().get(f"{BASE}/{review.id}/").json()
+    assert anon_body["suggestions"] == []
+
+
+@pytest.mark.django_db
+def test_suggest_on_resolved_review_403(auth_client, owner):
+    review = _make_review(owner, visibility="link")
+    token = review.ensure_share_token()
+    auth_client.post(
+        f"{BASE}/{review.id}/submit/",
+        data={"response_json": SAMPLE_RESPONSE_JSON},
+        content_type="application/json",
+    )
+    resp = Client().post(
+        f"{BASE}/{review.id}/suggest/?t={token}",
+        data={"response_json": SAMPLE_RESPONSE_JSON},
+        content_type="application/json",
+    )
+    assert resp.status_code == 403, resp.content
