@@ -48,7 +48,7 @@ def test_idempotency_key_includes_message_count():
 
 def test_empty_inbox_enqueues_nothing():
     client = FakeClient()
-    assert inbox.check_inbox(client, "hal", mailbox="m", gog_client="c", runner=_runner([])) == {"new": [], "seen": []}
+    assert inbox.check_inbox(client, "hal", mailbox="m", gog_client="c", runner=_runner([])) == {"new": [], "seen": [], "skipped": []}
     assert client.enqueued == []
 
 
@@ -57,3 +57,54 @@ def test_gog_failure_raises_inboxerror():
         return SimpleNamespace(returncode=1, stdout="", stderr="auth expired")
     with pytest.raises(inbox.InboxError, match="auth expired"):
         inbox.check_inbox(FakeClient(), "hal", mailbox="m", gog_client="c", runner=fail)
+
+
+def test_skips_thread_when_newest_message_is_agents_own_reply():
+    """The bug: a thread whose newest message is the agent's OWN reply must not fire a
+    turn, even while it carries the UNREAD label. `from` in the search payload is the
+    thread ORIGINATOR (a human here), so the guard must consult the newest sender."""
+    client = FakeClient()
+    r = _runner([{"id": "thr-1", "from": "Jonathan <jjackson@dimagi.com>",
+                  "subject": "Feature Requests", "messageCount": 18}])
+    res = inbox.check_inbox(client, "hal", mailbox="hal@dimagi-ai.com", gog_client="canopy",
+                            runner=r, sender_of=lambda tid: "Hal <hal@dimagi-ai.com>")
+    assert client.enqueued == []
+    assert res["new"] == []
+    assert res["skipped"] == ["thr-1"]
+
+
+def test_enqueues_when_newest_message_is_from_human():
+    """A genuine new inbound (newest message from someone other than the agent) fires."""
+    client = FakeClient()
+    r = _runner([{"id": "thr-2", "from": "x@y.com", "subject": "hi", "messageCount": 2}])
+    res = inbox.check_inbox(client, "hal", mailbox="hal@dimagi-ai.com", gog_client="canopy",
+                            runner=r, sender_of=lambda tid: "Someone <x@y.com>")
+    assert res["new"] == ["thr-2"]
+    assert len(client.enqueued) == 1
+
+
+def test_enqueues_when_newest_sender_unknown_fail_open():
+    """Fail open: if the newest sender can't be determined, enqueue — a rare spurious
+    turn is cheaper than a missed reply to a real inbound."""
+    client = FakeClient()
+    r = _runner([{"id": "thr-3", "from": "x@y.com", "subject": "hi", "messageCount": 1}])
+    res = inbox.check_inbox(client, "hal", mailbox="hal@dimagi-ai.com", gog_client="canopy",
+                            runner=r, sender_of=lambda tid: None)
+    assert res["new"] == ["thr-3"]
+
+
+def test_newest_sender_reads_last_messages_from_header():
+    payload = json.dumps({"messages": [
+        {"payload": {"headers": [{"name": "From", "value": "Sarvesh <stewari@dimagi.com>"}]}},
+        {"payload": {"headers": [{"name": "From", "value": "Hal <hal@dimagi-ai.com>"}]}},
+    ]})
+
+    def run(cmd, capture_output, text, timeout):
+        return SimpleNamespace(returncode=0, stdout=payload, stderr="")
+    assert inbox.newest_sender("hal@dimagi-ai.com", "canopy", "thr-1", runner=run) == "hal <hal@dimagi-ai.com>"
+
+
+def test_newest_sender_returns_none_on_gog_failure():
+    def fail(cmd, capture_output, text, timeout):
+        return SimpleNamespace(returncode=1, stdout="", stderr="boom")
+    assert inbox.newest_sender("m", "c", "thr-1", runner=fail) is None

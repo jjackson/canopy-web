@@ -69,6 +69,18 @@ export default function SupervisorPage(): JSX.Element {
     }
   }, [])
 
+  // Re-poll runners so the wrong-branch alert (below) appears/clears without a reload
+  // — code_branch rides the REST runner, not the live socket overlay.
+  useEffect(() => {
+    let cancelled = false
+    const id = window.setInterval(() => {
+      listRunners()
+        .then((r) => { if (!cancelled) setRunners(r) })
+        .catch(() => { /* keep last-good; the mount fetch owns first-error surfacing */ })
+    }, 30_000)
+    return () => { cancelled = true; window.clearInterval(id) }
+  }, [])
+
   // Live overlay: snapshot + runner/waiting deltas over WS. Falls back silently
   // to the mount fetch above until the socket delivers a snapshot.
   const live = useLiveSupervisor()
@@ -112,6 +124,33 @@ export default function SupervisorPage(): JSX.Element {
         <h1 className="text-lg font-semibold text-foreground">Supervisor</h1>
         <p className="mt-0.5 text-[12px] text-muted-foreground">Your fleet, and what it needs from you.</p>
       </header>
+
+      {/* LOUD alert: a runner on any branch but main is silently running stale/wrong
+          code (usually another process checked out a branch in its shared checkout). */}
+      {(renderRunners ?? [])
+        .filter((r) => r.code_branch && r.code_branch !== 'main')
+        .map((r) => (
+          <div
+            key={`branch-alert-${r.id}`}
+            role="alert"
+            data-testid={`runner-branch-alert-${r.id}`}
+            className="rounded-lg border-2 border-destructive bg-destructive/15 p-3 text-destructive"
+          >
+            <p className="text-[13px] font-bold uppercase tracking-wide">⚠ Runner on wrong branch — stale code</p>
+            <p className="mt-1 text-[13px] leading-snug">
+              <span className="font-semibold">{r.name}</span> is running on branch{' '}
+              <span className="rounded bg-destructive/20 px-1 font-mono font-semibold">{r.code_branch}</span>, not{' '}
+              <span className="font-mono">main</span>. Its turns are executing{' '}
+              <span className="font-semibold">stale / wrong code</span> — another process likely checked out a
+              branch in the runner's checkout.
+            </p>
+            <p className="mt-1.5 break-words text-[12px] leading-snug opacity-90">
+              Fix on that machine, then restart the runner:
+              <br />
+              <span className="font-mono">git -C ~/emdash-projects/canopy-web checkout main &amp;&amp; git pull</span>
+            </p>
+          </div>
+        ))}
 
       <Tabs value={tab} onValueChange={onTab} className="gap-4">
         <TabsList className="w-full">

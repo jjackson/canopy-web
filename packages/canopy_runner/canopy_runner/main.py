@@ -36,6 +36,7 @@ import json
 import logging
 import os
 import sqlite3
+import subprocess
 import time
 from pathlib import Path
 
@@ -60,6 +61,32 @@ CDP_DOWN_SIGNAL_TICKS = 3
 _cdp_down_ticks = 0
 _cdp_down_signalled = False
 _last_session_report = 0.0
+_last_branch_check = 0.0
+_cached_branch = ""
+
+
+def _code_branch(now_fn=time.monotonic) -> str:
+    """The git branch of the runner's OWN checkout (best-effort, throttled+cached).
+
+    Reported on the heartbeat so the supervisor can SHOUT when another process has
+    left this runner on a non-main branch — i.e. the daemon is silently executing
+    stale/wrong code (observed twice: a DDD run checked out a branch in the runner's
+    shared checkout). Empty string if it can't be determined (not a git checkout, git
+    missing); never raises — a heartbeat must not depend on this."""
+    global _last_branch_check, _cached_branch
+    if now_fn() - _last_branch_check < 15:
+        return _cached_branch
+    _last_branch_check = now_fn()
+    try:
+        repo = Path(__file__).resolve().parents[3]  # …/packages/canopy_runner/canopy_runner/main.py -> repo root
+        out = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=3,
+        )
+        _cached_branch = out.stdout.strip() if out.returncode == 0 else ""
+    except Exception:  # noqa: BLE001 — best-effort; never break the heartbeat
+        _cached_branch = ""
+    return _cached_branch
 
 
 def _reset_cdp_health_state() -> None:
@@ -157,10 +184,15 @@ def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time,
                 query=box.get("query", inbox_mod.DEFAULT_QUERY), max_threads=cap,
             )
             n_new, n_seen = len(res["new"]), len(res["seen"])
+            n_skip = len(res.get("skipped", []))
             # Log EVERY poll, not just ones that enqueue — otherwise a healthy poll that
             # finds nothing new is silent and you can't tell polling is happening at all.
-            logger.info("inbox[%s]: polled — %d unread (%d NEW -> session, %d already tracked)",
-                        agent, n_new + n_seen, n_new, n_seen)
+            # `skipped` = unread threads whose newest message is the agent's own reply
+            # (already had the last word), suppressed so a re-marked-unread thread can't
+            # manufacture a turn with no new inbound.
+            logger.info("inbox[%s]: polled — %d unread (%d NEW -> session, %d already tracked, "
+                        "%d skipped: agent's own reply)",
+                        agent, n_new + n_seen + n_skip, n_new, n_seen, n_skip)
         except Exception as exc:  # noqa: BLE001 — one bad inbox never kills the loop
             logger.warning("inbox check for %s failed: %s", agent, exc)
     try:
@@ -265,7 +297,8 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
                         cfg.cdp_port, _cdp_down_ticks)
         _reset_cdp_health_state()
         _ready, _rnote = readiness.compute(cfg)
-        client.heartbeat(cfg.runner_id, [], host=host, ready=_ready, ready_note=_rnote)
+        client.heartbeat(cfg.runner_id, [], host=host, ready=_ready, ready_note=_rnote,
+                         code_branch=_code_branch())
     else:
         _cdp_down_ticks += 1
         # Degraded heartbeat EVERY unhealthy tick — the machine-readable surface signal the
@@ -274,7 +307,8 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
         client.heartbeat(cfg.runner_id, [], degraded=True,
                          note=f"emdash CDP unreachable on :{cfg.cdp_port} — not claiming",
                          host=host, ready=False,
-                         ready_note=f"emdash CDP unreachable on :{cfg.cdp_port}")
+                         ready_note=f"emdash CDP unreachable on :{cfg.cdp_port}",
+                         code_branch=_code_branch())
         # ...and ONE loud WARNING after sustained downtime (not per tick), for the human log.
         if _cdp_down_ticks >= CDP_DOWN_SIGNAL_TICKS and not _cdp_down_signalled:
             logger.warning(
@@ -676,7 +710,8 @@ def main() -> None:
                                pause_file)
                 paused = True
             try:
-                client.heartbeat(cfg.runner_id, [], note="paused", host=host)
+                client.heartbeat(cfg.runner_id, [], note="paused", host=host,
+                                 code_branch=_code_branch())
             except Exception:  # noqa: BLE001
                 pass
             time.sleep(cfg.poll_seconds)

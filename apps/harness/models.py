@@ -52,6 +52,12 @@ class Runner(models.Model):
     # so a live session is reusable ONLY by the runner whose host matches the one that
     # created it. Jonathan runs the fleet under two accounts (token-limit failover).
     host = models.CharField(max_length=200, blank=True, default="")
+    # The git branch of the runner's OWN code checkout, self-reported on the heartbeat.
+    # Empty when unknown (cloud/non-git). Load-bearing for a supervisor ALERT: a runner
+    # on anything but `main` is silently executing stale/wrong code — it happens when
+    # another process (e.g. a DDD run) checks out a branch in the runner's shared
+    # checkout. The UI shouts when this is non-empty and != "main".
+    code_branch = models.CharField(max_length=200, blank=True, default="")
     # The human who paired this runner. Load-bearing for authz AND for tenancy:
     # `_runner_visibility_q` requires paired_by to be the caller (or NULL, the
     # legacy-ungated path it keeps open on purpose), and BOTH `_runner_schedule_qs`
