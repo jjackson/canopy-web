@@ -1,8 +1,8 @@
 """Push policy. The only place that decides WHETHER to push.
 
-The trigger problem: apps.agents.services.needs_you() is an aggregation (tasks +
-run gates + failed steps), so nothing emits "the fleet needs you now". We
-snapshot each agent's waiting_count and push only when it goes UP.
+The trigger problem: the fleet's waiting set is a COUNT (open items per agent),
+not a single event, so nothing naturally emits "the fleet needs you now". We
+snapshot each agent's open-item count and push only when it goes UP.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from django.db import connection, transaction
 from pywebpush import WebPushException, webpush
 
 from apps.agents.models import Agent
-from apps.agents.services import needs_you
+from apps.harness.models import Item
 
 from .models import AgentWaitingSnapshot, PushSubscription
 
@@ -101,7 +101,7 @@ def refresh_agent_waiting(agent: Agent) -> int:
     subscribed — otherwise the first push after subscribing would fire for items
     that were already sitting there.
     """
-    count = int(needs_you(agent).get("waiting_count") or 0)
+    count = Item.objects.filter(agent=agent, state=Item.OPEN).count()
     snap, created = AgentWaitingSnapshot.objects.get_or_create(agent=agent)
     previous = 0 if created else snap.waiting_count
     if count != previous:
