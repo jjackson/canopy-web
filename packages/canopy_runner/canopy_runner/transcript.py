@@ -29,10 +29,16 @@ degrades to an empty tail with a reason string, so the poll tick survives.
 """
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import re
 from pathlib import Path
+
+
+def _iso_utc(epoch: float) -> str:
+    """Epoch seconds -> ISO-8601 UTC string (what the report/API expect)."""
+    return datetime.datetime.fromtimestamp(epoch, tz=datetime.timezone.utc).isoformat()
 
 logger = logging.getLogger(__name__)
 
@@ -225,10 +231,28 @@ def attach_recent_tail(
 
     `count` caps how many transcripts are read per tick; `limit` caps messages per
     session. Sessions past `count`, or with no resolvable transcript, carry [].
+
+    Also overrides `last_interacted_at` with the transcript's mtime when we have it:
+    emdash's own last_interacted_at only tracks emdash's UI, NOT the Claude Code
+    session running in the worktree (which the runner drives), so an actively-running
+    session looked stale ("45m ago" while mid-turn). The transcript file's write time
+    is the real activity signal.
     """
+    home = home or Path.home()
+    claude_home = claude_home or (home / ".claude" / "projects")
     for s in sessions[:count]:
-        msgs, _reason = session_tail(
-            s.get("project", ""), s.get("emdash_task", ""),
-            limit=limit, home=home, claude_home=claude_home,
-        )
-        s["recent_messages"] = msgs
+        try:
+            path = resolve_transcript(
+                s.get("project", ""), s.get("emdash_task", ""),
+                home=home, claude_home=claude_home,
+            )
+        except Exception:  # noqa: BLE001 — a fragile-half failure must not crash the tick
+            path = None
+        if path is None:
+            s["recent_messages"] = []
+            continue
+        s["recent_messages"] = read_recent_messages(path, limit=limit)
+        try:
+            s["last_interacted_at"] = _iso_utc(path.stat().st_mtime)
+        except OSError:
+            pass
