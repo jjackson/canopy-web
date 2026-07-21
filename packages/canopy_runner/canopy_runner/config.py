@@ -36,7 +36,10 @@ class Config:
     # messages per session (a "recent tail", not the full transcript); `_count` caps
     # how many of the top (most-recently-active) sessions get a tail each tick.
     session_tail_limit: int = 8
-    session_tail_count: int = 8
+    # Cover every reported session (report cap is 30), not just the most-recent few,
+    # so a project-grouped list doesn't show tails on some rows and not others. The
+    # bounded tail-read (TAIL_BYTES) keeps ~30 transcript reads/tick cheap.
+    session_tail_count: int = 30
 
     @classmethod
     def load(cls, path: Path) -> "Config":

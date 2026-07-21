@@ -119,8 +119,9 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
   return (
     <div className="rounded-lg border border-border bg-card p-3" data-testid={`session-${session.emdash_task}`}>
       <div className="flex items-center gap-2">
+        {/* Project is the group header now; the row shows just the task. */}
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
-          {session.project} · {session.emdash_task}
+          {session.emdash_task}
         </span>
         <span className="shrink-0 text-[11px] text-muted-foreground">{session.status}</span>
       </div>
@@ -198,10 +199,29 @@ export function OpenSessions(): JSX.Element {
       </p>
     )
   }
+  // Group by project (a header per project), projects alphabetical, sessions within
+  // each group left in the server's most-recently-active order.
+  const groups = new Map<string, EmdashSessionOut[]>()
+  for (const s of sessions) {
+    const key = s.project || '(no project)'
+    const arr = groups.get(key)
+    if (arr) arr.push(s)
+    else groups.set(key, [s])
+  }
+  const ordered = [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+
   return (
-    <div className="flex flex-col gap-2" data-testid="open-sessions">
-      {sessions.map((s) => (
-        <SessionRow key={s.id} session={s} />
+    <div className="flex flex-col gap-4" data-testid="open-sessions">
+      {ordered.map(([project, rows]) => (
+        <div key={project} className="flex flex-col gap-2" data-testid={`session-group-${project}`}>
+          <h3 className="flex items-baseline gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {project}
+            <span className="font-normal normal-case text-foreground-subtle">{rows.length}</span>
+          </h3>
+          {rows.map((s) => (
+            <SessionRow key={s.id} session={s} />
+          ))}
+        </div>
       ))}
     </div>
   )
