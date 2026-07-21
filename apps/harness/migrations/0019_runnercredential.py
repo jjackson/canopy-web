@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('harness', '0017_runner_ready_runner_ready_note'),
+        ('harness', '0018_runner_code_branch'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
