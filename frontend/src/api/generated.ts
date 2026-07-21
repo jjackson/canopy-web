@@ -3179,6 +3179,13 @@ export interface components {
             readonly title?: string | null;
             /** Story */
             readonly story?: string | null;
+            /**
+             * Narration
+             * @default []
+             */
+            readonly narration: readonly {
+                readonly [key: string]: unknown;
+            }[];
             /** Created At */
             readonly created_at?: string | null;
             /** Gate */

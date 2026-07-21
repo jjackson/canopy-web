@@ -37,6 +37,10 @@ class NarrativeVersionOut(StrictModel):
     review_id: str | None = None
     title: str | None = None
     story: str | None = None
+    # The per-scene narration for THIS version (same shape as the review's
+    # request_json.narration). Carried so the client can render a plain-language
+    # before/after (vN -> vN+1) diff without a second fetch per version.
+    narration: list[dict[str, Any]] = []
     created_at: dt.datetime | None = None
     gate: str | None = None
     status: str | None = None
