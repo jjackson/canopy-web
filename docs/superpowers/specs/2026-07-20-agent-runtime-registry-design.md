@@ -115,6 +115,42 @@ runs it so the token never transits the assistant unless they choose.
 a few secrets/turn); a self-hosted 1Password **Connect** server is the caching escape
 hatch if the fleet ever outgrows them. Service accounts require a Business plan.
 
+## Runner execution model (decided — RS3)
+Three credential tiers, by *who owns the credential*:
+
+- **Runner-owned — the AI/Claude "cloud login".** One login per runner
+  environment, owned by and accountable to the **runner**, shared across every
+  agent and every user who fires a turn on it. The runner daemon injects
+  `CLAUDE_CODE_OAUTH_TOKEN` when it launches `claude`; the agent brings its
+  identity, never its AI subscription. Use a **long-lived `setup-token`** (not a
+  rotating blob) so concurrent agents share it with no refresh/write-back
+  machinery. On the cloud box it lives in the runner's secret store (AWS Secrets
+  Manager); the daemon reads it once and injects per-launch.
+- **Agent-owned — identity secrets** (`Agent-<Slug>`): gmail, gog, canopy-pat.
+  Resolved by the reconciler into the agent's provisioned HOME.
+- **User-owned — per-operator secrets** (e.g. chrome-sales Salesforce creds, which
+  act on behalf of the logged-in human). NOT in the agent vault; resolved from the
+  dispatching user's context. (Resolution path is future work.)
+
+**This supersedes the ace-web per-user CLI-credential port.** ace-web uploaded a
+*different user's* Claude blob per chat and ran it server-side with a staged HOME +
+single-use-refresh write-back. With one runner-owned login for everyone, that whole
+machinery (`UserCredential`, blob upload, staged HOME, `_persist_refreshed_blob`) is
+unnecessary. canopy-web keeps the **chat infrastructure** already ported (SP1–3:
+realtime tail + sessions/messages/participants/presence); only the stubbed executor
+becomes real over the runner.
+
+**Isolation on a shared runner: one EC2, one Unix user per agent.** The runner
+daemon (privileged) claims a turn → ensures the agent's Unix user exists → runs the
+reconciler **as that user** (provisioning `/home/<agent>` from `Agent-<Slug>`,
+warm-aware) → launches `claude -p` **as that user** with `HOME=/home/<agent>` and the
+runner's `CLAUDE_CODE_OAUTH_TOKEN` injected → streams the transcript into the chat
+session. Per-agent Unix users (not just per-HOME dirs) so one agent's gog/plugin/
+identity files can't collide with or be read by another's, with clean attribution.
+One EC2 hosts the whole fleet; scale to a second instance only on concurrent load,
+never for isolation. Heavier container-per-agent is deferred until an agent runs
+untrusted code.
+
 ## Decomposition (each its own spec → plan → build)
 ```
 RS1  Runtime-spec model + discovery API (canopy-web)  the Agent gains repo pointer + secret refs +
