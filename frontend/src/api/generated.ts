@@ -3425,6 +3425,11 @@ export interface components {
             readonly all_prs?: readonly components["schemas"]["ShareoutPR"][];
             /** Author */
             readonly author: string;
+            /**
+             * Produced By Agent
+             * @default
+             */
+            readonly produced_by_agent: string;
             /** Source */
             readonly source: string;
             /**
@@ -3502,6 +3507,11 @@ export interface components {
              * @default
              */
             readonly author: string;
+            /**
+             * Produced By Agent
+             * @default
+             */
+            readonly produced_by_agent: string;
             /** Source */
             readonly source: string;
         };

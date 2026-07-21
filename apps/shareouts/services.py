@@ -88,6 +88,7 @@ def upsert_shareouts(items: list, *, workspace=None) -> dict:
             links=[link.model_dump() for link in item.links],
             all_prs=[pr.model_dump() for pr in item.all_prs],
             author=item.author,
+            produced_by_agent=getattr(item, "produced_by_agent", "") or "",
             source=item.source,
         )
         created += 1
@@ -169,6 +170,7 @@ def list_shareouts(
             "links": s.links or [],
             "all_prs": s.all_prs or [],
             "author": s.author,
+            "produced_by_agent": s.produced_by_agent,
             "source": s.source,
             "created_at": s.created_at,
         }
