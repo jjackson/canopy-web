@@ -22,7 +22,9 @@ class Config:
     heartbeat_seconds: int = 30
     # Session report throttle: reading up to session_tail_count transcripts is the one
     # expensive thing per tick, so do it at most this often even as poll_seconds drops.
-    session_report_seconds: int = 20
+    # Kept modest so a message you send (and the reply) show up in the phone's tail
+    # within ~10s; the bounded tail-read keeps even ~30 transcripts/10s cheap.
+    session_report_seconds: int = 10
     state_path: str = ""
     # Executor: "cdp" drives emdash's real UI over CDP (create/reuse sessions —
     # the sanctioned path); "inject" is the legacy DB-injection path. cdp needs

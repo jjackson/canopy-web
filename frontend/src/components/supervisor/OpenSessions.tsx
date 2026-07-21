@@ -99,6 +99,7 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
   // turn actually starts executing, not on enqueue (the old green fired too early).
   const [phase, setPhase] = useState<'idle' | 'sending' | 'delivered' | 'error'>('idle')
   const [errMsg, setErrMsg] = useState('')
+  const [deliveredRunner, setDeliveredRunner] = useState('')
   const messages = normalizeRecentMessages(session.recent_messages)
   const active = isRecentlyActive(session.last_interacted_at)
   const mounted = useRef(true)
@@ -134,15 +135,18 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
       if (!mounted.current) return
       let status = ''
       let note = ''
+      let runner = ''
       try {
         const t = await getTurn(turnId)
         status = t.status
         note = t.result_note
+        runner = t.claimed_by_name ?? ''
       } catch {
         // transient error — fall through to retry
       }
       if (!mounted.current) return
       if (status === 'running' || status === 'done' || status === 'needs_human') {
+        setDeliveredRunner(runner || session.runner_name)
         setPhase('delivered')
         setBusy(false)
         return
@@ -198,7 +202,7 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
           disabled={busy || prompt.trim() === ''}
           className="rounded bg-primary px-3 py-2 text-[13px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          {busy ? 'Sending…' : 'Continue'}
+          {busy ? 'Sending…' : 'Send'}
         </button>
       </div>
       {phase === 'sending' && (
@@ -212,7 +216,7 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
       )}
       {phase === 'delivered' && (
         <p className="mt-1 text-[12px] text-success" data-testid={`session-sent-${session.emdash_task}`}>
-          ✓ Delivered — running in {session.emdash_task}.
+          ✓ Delivered — running on {deliveredRunner || session.runner_name}.
         </p>
       )}
       {phase === 'error' && <p className="mt-1 text-[12px] text-destructive">{errMsg}</p>}
@@ -226,19 +230,32 @@ export function OpenSessions(): JSX.Element {
   // collapse into "No open sessions." with no error signal. Mirrors
   // SupervisorPage's per-band `errs` convention (BandError).
   const [error, setError] = useState<string | null>(null)
+  const hasData = useRef(false)
   useEffect(() => {
     let cancelled = false
-    listOpenSessions()
-      .then((s) => {
-        if (!cancelled) setSessions(s)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setError(e instanceof Error ? e.message : 'Failed to load sessions')
-        setSessions([])
-      })
+    const load = (): void => {
+      listOpenSessions()
+        .then((s) => {
+          if (cancelled) return
+          hasData.current = true
+          setSessions(s)
+          setError(null)
+        })
+        .catch((e) => {
+          // Keep the last-good list on a transient refresh error; only surface an
+          // error if we never loaded anything.
+          if (cancelled || hasData.current) return
+          setError(e instanceof Error ? e.message : 'Failed to load sessions')
+          setSessions([])
+        })
+    }
+    load()
+    // Poll so tails + last-active times stay live — this is how a message you send
+    // (and the reply) actually appear in the tail as the runner re-reports (~10s).
+    const id = window.setInterval(load, 10_000)
     return () => {
       cancelled = true
+      window.clearInterval(id)
     }
   }, [])
 
@@ -279,8 +296,11 @@ export function OpenSessions(): JSX.Element {
             {project}
             <span className="font-normal normal-case text-foreground-subtle">{rows.length}</span>
           </h3>
+          {/* Key by task, NOT s.id: the report re-mints EmdashSession ids every tick,
+              so keying by id would remount every row on each poll and wipe in-progress
+              typing / Sending state. Task is stable within a project. */}
           {rows.map((s) => (
-            <SessionRow key={s.id} session={s} />
+            <SessionRow key={s.emdash_task} session={s} />
           ))}
         </div>
       ))}
