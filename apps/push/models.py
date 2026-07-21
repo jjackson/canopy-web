@@ -39,8 +39,9 @@ class PushSubscription(models.Model):
 class AgentWaitingSnapshot(models.Model):
     """The last waiting_count we pushed about, per agent.
 
-    needs_you() is an aggregation — there is no single event meaning "the fleet
-    now needs you" — so we diff against this and push only on an INCREASE.
+    The waiting set is a count (open items per agent) — there is no single event
+    meaning "the fleet now needs you" — so we diff against this and push only on
+    an INCREASE.
     Pushing on every recompute would buzz you when you CLEAR something, which is
     the fastest way to get notifications turned off.
     """

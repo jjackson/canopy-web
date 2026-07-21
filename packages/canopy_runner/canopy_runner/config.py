@@ -15,8 +15,16 @@ class Config:
     automation_ids: dict[str, str]
     expected_migration_id: int
     emdash_fingerprint: str = ""
-    poll_seconds: int = 20
+    # Claim cadence — how fast a queued turn (e.g. a phone "Continue this session")
+    # gets picked up. Kept low so delivery feels near-immediate; the claim + heartbeat
+    # are cheap HTTP. The heavier session report is throttled separately below.
+    poll_seconds: int = 5
     heartbeat_seconds: int = 30
+    # Session report throttle: reading up to session_tail_count transcripts is the one
+    # expensive thing per tick, so do it at most this often even as poll_seconds drops.
+    # Kept modest so a message you send (and the reply) show up in the phone's tail
+    # within ~10s; the bounded tail-read keeps even ~30 transcripts/10s cheap.
+    session_report_seconds: int = 10
     state_path: str = ""
     # Executor: "cdp" drives emdash's real UI over CDP (create/reuse sessions —
     # the sanctioned path); "inject" is the legacy DB-injection path. cdp needs
@@ -32,6 +40,14 @@ class Config:
     # Hard safety cap: at most this many threads become turns per mailbox per poll,
     # so a flooded/misconfigured inbox can't spawn dozens of sessions at once.
     inbox_max_threads: int = 8
+    # Phase B: the recent-message tail attached to reported sessions. `_limit` caps
+    # messages per session (a "recent tail", not the full transcript); `_count` caps
+    # how many of the top (most-recently-active) sessions get a tail each tick.
+    session_tail_limit: int = 8
+    # Cover every reported session (report cap is 30), not just the most-recent few,
+    # so a project-grouped list doesn't show tails on some rows and not others. The
+    # bounded tail-read (TAIL_BYTES) keeps ~30 transcript reads/tick cheap.
+    session_tail_count: int = 30
 
     @classmethod
     def load(cls, path: Path) -> "Config":

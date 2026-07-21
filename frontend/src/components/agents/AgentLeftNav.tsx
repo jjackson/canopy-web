@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { WorkbenchRail, WorkbenchNavItem } from 'canopy-ui'
-import { getNeedsYou, type AgentDetailOut } from '@/api/agents'
+import type { AgentDetailOut } from '@/api/agents'
+import { listItems } from '@/api/items'
 
 type NavItem = { to: string; label: string; count?: number }
 
 export function AgentLeftNav({ agent }: { agent: AgentDetailOut }) {
-  // The "N waiting on you" count for the inbox badge — computed server-side.
+  // The "N waiting on you" count for the inbox badge — the agent's open items.
   const [waiting, setWaiting] = useState<number | undefined>(undefined)
   useEffect(() => {
     let cancelled = false
     setWaiting(undefined)
-    getNeedsYou(agent.slug)
-      .then((d) => !cancelled && setWaiting(d.waiting_count))
+    listItems(agent.slug, { state: 'open' })
+      .then((rows) => !cancelled && setWaiting(rows.length))
       .catch(() => !cancelled && setWaiting(undefined))
     return () => {
       cancelled = true
@@ -20,12 +21,11 @@ export function AgentLeftNav({ agent }: { agent: AgentDetailOut }) {
   }, [agent.slug])
 
   const items: NavItem[] = [
-    { to: 'needs-you', label: 'Needs you', count: waiting },
+    // Inbox = OPEN items, decidable in place (the count). Items = the full ledger
+    // incl. decided/dismissed + batch sittings (?batch=) — browse/history, no badge.
+    { to: 'inbox', label: 'Inbox', count: waiting },
     { to: 'overview', label: 'Overview' },
     { to: 'tasks', label: 'Tasks', count: agent.task_count },
-    // No count, for the same reason as Schedules below: agent detail carries no
-    // item_count. The open-item count belongs on Needs you once Phase 2 reads
-    // items — putting a second "waiting" badge here would just disagree with it.
     { to: 'items', label: 'Items' },
     { to: 'turns', label: 'Turns', count: agent.turn_count },
     // No count: the agent detail carries no schedule_count, and a badge that

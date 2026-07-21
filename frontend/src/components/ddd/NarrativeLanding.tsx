@@ -11,6 +11,7 @@ import {
   type DddNarrativeVersion,
 } from '@/api/ddd'
 import { withBase } from '@/lib/basePath'
+import { NarrativeDiff } from './NarrativeDiff'
 
 function fmtDate(iso: string | null): string {
   if (!iso) return ''
@@ -117,11 +118,13 @@ function RunCard({
 function VersionBlock({
   slug,
   version,
+  previous,
   isCurrent,
   onChanged,
 }: {
   slug: string
   version: DddNarrativeVersion
+  previous?: DddNarrativeVersion
   isCurrent: boolean
   onChanged: () => void
 }) {
@@ -183,6 +186,14 @@ function VersionBlock({
             <p className="mb-3 whitespace-pre-line text-sm leading-relaxed text-foreground-secondary">
               {version.story}
             </p>
+          )}
+          {previous && previous.narration.length > 0 && version.narration.length > 0 && (
+            <NarrativeDiff
+              before={previous.narration}
+              after={version.narration}
+              beforeLabel={previous.version != null ? `v${previous.version}` : 'previous'}
+              afterLabel={label}
+            />
           )}
           {version.video_url && (
             <video
@@ -337,11 +348,12 @@ export function NarrativeLanding({ slug }: { slug: string }) {
       </div>
 
       <div className="mt-3 flex flex-col gap-3">
-        {detail.versions.map((v) => (
+        {detail.versions.map((v, i) => (
           <VersionBlock
             key={v.review_id ?? 'unversioned'}
             slug={slug}
             version={v}
+            previous={detail.versions[i + 1]}
             isCurrent={v.version != null && v.version === currentVersion}
             onChanged={() => setReloadKey((k) => k + 1)}
           />

@@ -26,6 +26,10 @@ class ReviewRequestOut(StrictModel):
     visibility: ReviewVisibility
     request_json: dict[str, Any]
     response_json: dict[str, Any] | None = None
+    # Suggestions from external (share-token) reviewers who cannot resolve the gate.
+    # Only populated for callers who can write (the owner / a workspace member);
+    # empty for anonymous link readers so one external reviewer can't see another's.
+    suggestions: list[dict[str, Any]] = []
     is_owner: bool
     created_at: dt.datetime
     resolved_at: dt.datetime | None = None
@@ -66,8 +70,28 @@ class ReviewSubmitIn(StrictModel):
     response_json: dict[str, Any]
 
 
+class ReviewSuggestIn(StrictModel):
+    """Body of POST /api/reviews/<id>/suggest/: an external (share-token) reviewer's
+    suggested edits. Same response_json shape as a submit, but it is stored as a
+    SUGGESTION — it never resolves the gate. The internal owner reviews + accepts."""
+
+    response_json: dict[str, Any]
+    name: str | None = None
+
+
+class ReviewSuggestOut(StrictModel):
+    """Slim ack for a suggestion — the suggester does not get to see others'
+    suggestions, only that theirs landed."""
+
+    ok: bool
+    suggestion_count: int
+
+
 class ReviewCreateOut(StrictModel):
     """Slim response from POST /api/reviews/: just enough for the orchestrator to poll."""
 
     id: uuid.UUID
     url: str
+    # For a link-visibility review: the per-review share token that lets an external
+    # (non-dimagi) reviewer submit SUGGESTIONS via ?t=<token>. None for private reviews.
+    share_token: str | None = None

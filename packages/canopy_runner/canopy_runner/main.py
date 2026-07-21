@@ -36,10 +36,11 @@ import json
 import logging
 import os
 import sqlite3
+import subprocess
 import time
 from pathlib import Path
 
-from . import emdash
+from . import emdash, transcript
 from .client import Client, ClientError
 from .config import Config
 
@@ -59,6 +60,33 @@ GRACE_SECONDS = 900
 CDP_DOWN_SIGNAL_TICKS = 3
 _cdp_down_ticks = 0
 _cdp_down_signalled = False
+_last_session_report = 0.0
+_last_branch_check = 0.0
+_cached_branch = ""
+
+
+def _code_branch(now_fn=time.monotonic) -> str:
+    """The git branch of the runner's OWN checkout (best-effort, throttled+cached).
+
+    Reported on the heartbeat so the supervisor can SHOUT when another process has
+    left this runner on a non-main branch — i.e. the daemon is silently executing
+    stale/wrong code (observed twice: a DDD run checked out a branch in the runner's
+    shared checkout). Empty string if it can't be determined (not a git checkout, git
+    missing); never raises — a heartbeat must not depend on this."""
+    global _last_branch_check, _cached_branch
+    if now_fn() - _last_branch_check < 15:
+        return _cached_branch
+    _last_branch_check = now_fn()
+    try:
+        repo = Path(__file__).resolve().parents[3]  # …/packages/canopy_runner/canopy_runner/main.py -> repo root
+        out = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=3,
+        )
+        _cached_branch = out.stdout.strip() if out.returncode == 0 else ""
+    except Exception:  # noqa: BLE001 — best-effort; never break the heartbeat
+        _cached_branch = ""
+    return _cached_branch
 
 
 def _reset_cdp_health_state() -> None:
@@ -156,10 +184,15 @@ def _maybe_check_inboxes(cfg: Config, client: Client, now_fn=time.time,
                 query=box.get("query", inbox_mod.DEFAULT_QUERY), max_threads=cap,
             )
             n_new, n_seen = len(res["new"]), len(res["seen"])
+            n_skip = len(res.get("skipped", []))
             # Log EVERY poll, not just ones that enqueue — otherwise a healthy poll that
             # finds nothing new is silent and you can't tell polling is happening at all.
-            logger.info("inbox[%s]: polled — %d unread (%d NEW -> session, %d already tracked)",
-                        agent, n_new + n_seen, n_new, n_seen)
+            # `skipped` = unread threads whose newest message is the agent's own reply
+            # (already had the last word), suppressed so a re-marked-unread thread can't
+            # manufacture a turn with no new inbound.
+            logger.info("inbox[%s]: polled — %d unread (%d NEW -> session, %d already tracked, "
+                        "%d skipped: agent's own reply)",
+                        agent, n_new + n_seen + n_skip, n_new, n_seen, n_skip)
         except Exception as exc:  # noqa: BLE001 — one bad inbox never kills the loop
             logger.warning("inbox check for %s failed: %s", agent, exc)
     try:
@@ -219,6 +252,26 @@ def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
         return f"failed:{turn.get('id')}"
 
 
+def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -> None:
+    """Report the open emdash sessions the phone can continue — throttled to
+    session_report_seconds so lowering poll_seconds (for snappy claims) doesn't read
+    up to session_tail_count transcripts every tick. A sqlite read of emdash's DB, not
+    CDP, so it runs even while CDP is down. Best-effort: a read or POST failure must
+    never stop the tick. Reports on the first tick after start (last stamp is 0)."""
+    global _last_session_report
+    if now_fn() - _last_session_report < cfg.session_report_seconds:
+        return
+    _last_session_report = now_fn()
+    try:
+        sessions = emdash.list_open_sessions(cfg.emdash_db)
+        transcript.attach_recent_tail(
+            sessions, count=cfg.session_tail_count, limit=cfg.session_tail_limit
+        )
+        client.report_sessions(cfg.runner_id, sessions)
+    except Exception:  # noqa: BLE001
+        logger.debug("session report failed (non-fatal)", exc_info=True)
+
+
 def _run_once_cdp(cfg: Config, client: Client) -> str:
     """CDP executor: preflight emdash's CDP health → heartbeat (with macOS host, for
     reuse ownership) → claim one turn → route it to an emdash session (reuse or create).
@@ -244,7 +297,8 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
                         cfg.cdp_port, _cdp_down_ticks)
         _reset_cdp_health_state()
         _ready, _rnote = readiness.compute(cfg)
-        client.heartbeat(cfg.runner_id, [], host=host, ready=_ready, ready_note=_rnote)
+        client.heartbeat(cfg.runner_id, [], host=host, ready=_ready, ready_note=_rnote,
+                         code_branch=_code_branch())
     else:
         _cdp_down_ticks += 1
         # Degraded heartbeat EVERY unhealthy tick — the machine-readable surface signal the
@@ -253,7 +307,8 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
         client.heartbeat(cfg.runner_id, [], degraded=True,
                          note=f"emdash CDP unreachable on :{cfg.cdp_port} — not claiming",
                          host=host, ready=False,
-                         ready_note=f"emdash CDP unreachable on :{cfg.cdp_port}")
+                         ready_note=f"emdash CDP unreachable on :{cfg.cdp_port}",
+                         code_branch=_code_branch())
         # ...and ONE loud WARNING after sustained downtime (not per tick), for the human log.
         if _cdp_down_ticks >= CDP_DOWN_SIGNAL_TICKS and not _cdp_down_signalled:
             logger.warning(
@@ -263,13 +318,7 @@ def _run_once_cdp(cfg: Config, client: Client) -> str:
                 cfg.cdp_port, _cdp_down_ticks, cfg.cdp_port)
             _cdp_down_signalled = True
 
-    # Report the open emdash sessions the phone can continue. A sqlite read of emdash's
-    # DB, not CDP — keep it even while CDP is down. Best-effort: a read or POST failure
-    # must never stop the tick.
-    try:
-        client.report_sessions(cfg.runner_id, emdash.list_open_sessions(cfg.emdash_db))
-    except Exception:  # noqa: BLE001
-        logger.debug("session report failed (non-fatal)", exc_info=True)
+    _maybe_report_sessions(cfg, client)
     paused = _paused_agents(cfg)
     # Inbound triggers run whether or not CDP is up, so inbound work still ENQUEUES while
     # emdash is down (it just waits, queued, until emdash is back). Only the claim is gated.
@@ -661,7 +710,8 @@ def main() -> None:
                                pause_file)
                 paused = True
             try:
-                client.heartbeat(cfg.runner_id, [], note="paused", host=host)
+                client.heartbeat(cfg.runner_id, [], note="paused", host=host,
+                                 code_branch=_code_branch())
             except Exception:  # noqa: BLE001
                 pass
             time.sleep(cfg.poll_seconds)

@@ -181,7 +181,14 @@ def list_open_sessions(db_path: str, limit: int = 30) -> list[dict]:
     pure read — NOT behind the write-vet pin — and it must NEVER raise: a missing DB,
     a renamed column, or an emdash schema change degrades to [] so the runner loop
     survives. The task NAME is the identity open_and_send targets; project is joined
-    from `projects` for display + the continue turn's target."""
+    from `projects` for display + the continue turn's target.
+
+    Only `type='task'` rows — the real sessions emdash shows in its project list.
+    `type='automation-run'` rows are un-promoted automation triggers that emdash hides
+    under "Automations", not sessions a human opened; including them leaked phantom rows
+    into the supervisor (e.g. an 8-day-old `plain-keys-rescue`) that don't appear in the
+    emdash UI. `status` is always 'in_progress' in practice (emdash never updates it), so
+    the display leans on last_interacted_at instead."""
     if not Path(db_path).exists():
         return []
     try:
@@ -194,7 +201,7 @@ def list_open_sessions(db_path: str, limit: int = 30) -> list[dict]:
                        t.last_interacted_at AS last_interacted_at
                 FROM tasks t
                 LEFT JOIN projects p ON p.id = t.project_id
-                WHERE t.archived_at IS NULL
+                WHERE t.archived_at IS NULL AND t.type = 'task'
                 ORDER BY t.last_interacted_at DESC
                 LIMIT ?
                 """,

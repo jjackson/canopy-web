@@ -567,7 +567,7 @@ def test_drain_one_refuses_to_claim_when_cdp_down(monkeypatch, tmp_path):
             self.ready_note = None
 
         def heartbeat(self, runner_id, active, degraded=False, note="", host="",
-                      ready=True, ready_note=""):
+                      ready=True, ready_note="", code_branch=""):
             self.beats += 1
             self.degraded = degraded
             self.ready = ready
@@ -621,7 +621,7 @@ class _CdpLoopClient:
         self.heartbeats = []
 
     def heartbeat(self, runner_id, active, degraded=False, note="", host="",
-                  ready=True, ready_note=""):
+                  ready=True, ready_note="", code_branch=""):
         self.heartbeats.append({"degraded": degraded, "note": note,
                                 "ready": ready, "ready_note": ready_note})
 
@@ -756,3 +756,23 @@ def test_cdp_recovery_logs_once_and_rearms(monkeypatch, tmp_path, caplog):
     for _ in range(main_mod.CDP_DOWN_SIGNAL_TICKS):
         run_once(cfg, client)
     assert sum("CDP unreachable" in r.getMessage() for r in caplog.records) == 1  # warns again
+
+
+def test_maybe_report_sessions_throttled(db, tmp_path, monkeypatch):
+    """The session report (up to session_tail_count transcript reads) runs at most
+    every session_report_seconds, even though the claim tick polls far faster."""
+    from canopy_runner import main as m
+    from canopy_runner import transcript
+    cfg = _cfg(db, tmp_path)  # session_report_seconds defaults to 20
+    calls = []
+    monkeypatch.setattr(emdash, "list_open_sessions", lambda p: calls.append(1) or [])
+    monkeypatch.setattr(transcript, "attach_recent_tail", lambda *a, **k: None)
+    m._last_session_report = 0.0
+    clock = [1000.0]
+    now = lambda: clock[0]
+    client = FakeClient()
+    m._maybe_report_sessions(cfg, client, now_fn=now)   # first tick -> reports
+    m._maybe_report_sessions(cfg, client, now_fn=now)   # within window -> skipped
+    clock[0] += cfg.session_report_seconds + 1
+    m._maybe_report_sessions(cfg, client, now_fn=now)   # window elapsed -> reports
+    assert len(calls) == 2

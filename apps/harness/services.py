@@ -92,7 +92,7 @@ def enqueue_turn(
 
 def heartbeat(
     runner: Runner, *, active_turn_ids: list[str], degraded: bool = False, note: str = "",
-    ready: bool = True, ready_note: str = "",
+    ready: bool = True, ready_note: str = "", code_branch: str = "",
 ) -> Runner:
     now = timezone.now()
     runner.last_heartbeat_at = now
@@ -100,7 +100,10 @@ def heartbeat(
     runner.status_note = note
     runner.ready = ready
     runner.ready_note = ready_note
-    runner.save(update_fields=["last_heartbeat_at", "status", "status_note", "ready", "ready_note"])
+    runner.code_branch = code_branch
+    runner.save(update_fields=[
+        "last_heartbeat_at", "status", "status_note", "ready", "ready_note", "code_branch",
+    ])
     if active_turn_ids:
         Turn.objects.filter(
             pk__in=active_turn_ids,
@@ -344,6 +347,12 @@ def finish_turn(
     if not updated:
         return turn
     append_events(turn, [{"kind": "status", "payload": {"status": status, "result_note": result_note}}])
+    # A finished scheduled occurrence discharges any open nag for its schedule —
+    # you no longer owe attention to a slot that has since completed.
+    if status == Turn.DONE:
+        sid = (turn.origin_ref or {}).get("schedule_id")
+        if sid:
+            resolve_schedule_nags(sid)
     return turn
 
 
@@ -459,6 +468,7 @@ def release_stale_occurrence_turns(schedule, *, now: dt.datetime | None = None) 
             turn, status=Turn.MISSED,
             result_note=f"released after {schedule.grace_minutes}m unattended",
         )
+        _raise_schedule_nag(schedule, turn)
         count += 1
     return count
 
@@ -614,6 +624,22 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     """
     from .models import EmdashSession
 
+    # emdash task NAMES are not unique — two un-archived tasks can share a name
+    # (see task_state's "Names aren't unique in emdash's schema" note) — but
+    # (runner, emdash_task) is UNIQUE here. Collapse duplicates before the wholesale
+    # insert, or bulk_create raises IntegrityError and the ENTIRE report 500s. That
+    # failure is silent (the runner's report call is best-effort) and strands the
+    # whole session list, not just the dup — observed 2026-07-20 with two "mobile"
+    # tasks. The runner sends newest-first, so the first occurrence is the live
+    # session; an older namesake is stale and correctly dropped.
+    deduped: list = []
+    seen: set[str] = set()
+    for s in sessions:
+        if s.emdash_task in seen:
+            continue
+        seen.add(s.emdash_task)
+        deduped.append(s)
+
     EmdashSession.objects.filter(runner=runner).delete()
     EmdashSession.objects.bulk_create([
         EmdashSession(
@@ -622,9 +648,9 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
             last_interacted_at=_aware(s.last_interacted_at),
             recent_messages=list(s.recent_messages or []),
         )
-        for s in sessions
+        for s in deduped
     ])
-    for s in sessions:
+    for s in deduped:
         if s.project:
             # live_session_id intentionally left blank here — a session report has
             # no session_id to give; reuse keys on live_emdash_task_id +
@@ -633,7 +659,7 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
                 None, f"emdash:{s.emdash_task}", runner=runner, project=s.project,
                 workspace=workspace, emdash_task_id=s.emdash_task,
             )
-    return len(sessions)
+    return len(deduped)
 
 
 def list_visible_sessions(user) -> list:
@@ -672,33 +698,40 @@ class AlreadyDecidedError(Exception):
 
 def create_items(*, agent, payloads: list[dict]) -> list[Item]:
     """Create items for an agent, idempotent per idempotency_key. A producer that
-    re-posts its batch (a retried audit) gets the same rows back, not duplicates."""
+    re-posts its batch (a retried audit) gets the same rows back, not duplicates.
+
+    The whole batch commits in ONE outer transaction so its post_save signals
+    coalesce into a single push per agent (a fleet audit raising N items buzzes you
+    once, not N times). Each item keeps its own SAVEPOINT so a single duplicate key
+    replays without rolling back the batch — the idempotency guarantee is unchanged.
+    """
     out: list[Item] = []
-    for p in payloads:
-        key = p["idempotency_key"]
-        existing = Item.objects.filter(idempotency_key=key).first()
-        if existing is not None:
-            out.append(existing)
-            continue
-        try:
-            with transaction.atomic():
-                out.append(Item.objects.create(
-                    agent=agent,
-                    kind=p.get("kind") or Item.REVIEW,
-                    title=p["title"],
-                    body=p.get("body") or "",
-                    origin=p.get("origin") or Turn.ORIGIN_API,
-                    origin_ref=p.get("origin_ref") or {},
-                    dispatch=p.get("dispatch") or [],
-                    batch_key=p.get("batch_key") or "",
-                    idempotency_key=key,
-                    raised_by_id=p.get("raised_by") or None,
-                ))
-        except IntegrityError:
-            replay = Item.objects.filter(idempotency_key=key).first()
-            if replay is None:
-                raise
-            out.append(replay)
+    with transaction.atomic():
+        for p in payloads:
+            key = p["idempotency_key"]
+            existing = Item.objects.filter(idempotency_key=key).first()
+            if existing is not None:
+                out.append(existing)
+                continue
+            try:
+                with transaction.atomic():  # savepoint — one dup doesn't sink the batch
+                    out.append(Item.objects.create(
+                        agent=agent,
+                        kind=p.get("kind") or Item.REVIEW,
+                        title=p["title"],
+                        body=p.get("body") or "",
+                        origin=p.get("origin") or Turn.ORIGIN_API,
+                        origin_ref=p.get("origin_ref") or {},
+                        dispatch=p.get("dispatch") or [],
+                        batch_key=p.get("batch_key") or "",
+                        idempotency_key=key,
+                        raised_by_id=p.get("raised_by") or None,
+                    ))
+            except IntegrityError:
+                replay = Item.objects.filter(idempotency_key=key).first()
+                if replay is None:
+                    raise
+                out.append(replay)
     return out
 
 
@@ -824,3 +857,51 @@ def runner_credential_status(runner) -> dict:
         "has_op_sa_token": bool(cred.op_sa_token_enc),
         "updated_at": cred.updated_at,
     }
+# ---------------------------------------------------------------------------
+# Schedule nags — an unattended occurrence becomes a real Item (not a projection)
+# ---------------------------------------------------------------------------
+
+
+def _raise_schedule_nag(schedule, turn: Turn) -> None:
+    """A grace-released (unattended) scheduled occurrence becomes a review Item.
+
+    Its `implement` re-runs the schedule's prompt as a fresh turn — the generic
+    Item action replaces the old bespoke "Run now" nag button. `skip`/`defer`
+    (or `dismiss`) retire it. Idempotent per released turn: a re-raise of the same
+    occurrence collapses on the idempotency key, and a later abandonment gets its
+    own row (keyed by the new turn), so a dismissed nag can legitimately return.
+
+    Honours the schedule's `notify` channel list — the "inbox" channel is what
+    materializes this Item; a schedule that opts out raises nothing.
+    """
+    if "inbox" not in (schedule.notify or []):
+        return
+    create_items(agent=schedule.agent, payloads=[{
+        "kind": Item.REVIEW,
+        "title": f"Scheduled turn unattended: {schedule.name}",
+        "body": (
+            f"“{schedule.name}” fired but was left unattended past "
+            f"{schedule.grace_minutes}m. Implement to run it now, or skip."
+        ),
+        "origin": Turn.ORIGIN_CRON,
+        "origin_ref": {
+            "schedule_id": schedule.id, "turn_id": str(turn.id), "kind": "schedule_nag",
+        },
+        "dispatch": [{
+            "prompt": schedule.prompt,
+            "origin": Turn.ORIGIN_MANUAL,
+            "origin_ref": {"schedule_id": schedule.id, "manual": True},
+            "routing": schedule.routing,
+        }],
+        "idempotency_key": f"sched-nag:{schedule.id}:{turn.id}",
+    }])
+
+
+def resolve_schedule_nags(schedule_id: int) -> int:
+    """Dismiss every open nag for a schedule — a later occurrence finished, so the
+    owed attention is discharged. Called from finish_turn on a DONE occurrence."""
+    count = 0
+    for item in Item.objects.filter(state=Item.OPEN, origin_ref__schedule_id=schedule_id):
+        dismiss_item(item, by="system:schedule")
+        count += 1
+    return count

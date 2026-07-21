@@ -52,6 +52,12 @@ class Runner(models.Model):
     # so a live session is reusable ONLY by the runner whose host matches the one that
     # created it. Jonathan runs the fleet under two accounts (token-limit failover).
     host = models.CharField(max_length=200, blank=True, default="")
+    # The git branch of the runner's OWN code checkout, self-reported on the heartbeat.
+    # Empty when unknown (cloud/non-git). Load-bearing for a supervisor ALERT: a runner
+    # on anything but `main` is silently executing stale/wrong code — it happens when
+    # another process (e.g. a DDD run) checks out a branch in the runner's shared
+    # checkout. The UI shouts when this is non-empty and != "main".
+    code_branch = models.CharField(max_length=200, blank=True, default="")
     # The human who paired this runner. Load-bearing for authz AND for tenancy:
     # `_runner_visibility_q` requires paired_by to be the caller (or NULL, the
     # legacy-ungated path it keeps open on purpose), and BOTH `_runner_schedule_qs`
@@ -481,8 +487,9 @@ class AgentSchedule(models.Model):
     idempotency_key="sched:<id>:<slot>"); there is deliberately no occurrence
     table. See docs/superpowers/specs/2026-07-15-agent-scheduled-turns-design.md.
 
-    int pk (not UUID like Runner/Turn): this projects into needs_you, whose
-    NeedsYouItem.ref_id is typed int on a StrictModel.
+    An unattended (grace-released) occurrence raises a real Item (kind=review)
+    whose `implement` re-runs the schedule's prompt — see
+    services._raise_schedule_nag. There is no projection: the nag is a row.
 
     No workspace FK: a schedule is agent-owned and derives its tenant via
     agent.workspace, exactly as Turn does.

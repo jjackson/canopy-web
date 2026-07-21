@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { listAgents, getFleetNeedsYou, type AgentOut, type FleetNeedsYouOut } from '@/api/agents'
+import { listAgents, type AgentOut } from '@/api/agents'
+import { listOpenItems, type ItemOut } from '@/api/items'
 import { listRunners, type RunnerOut } from '@/api/harness'
 import { useLiveSupervisor } from '@/hooks/useLiveSupervisor'
 import { RunnerStatus } from '@/components/supervisor/RunnerStatus'
 import { RunnerDetail } from '@/components/supervisor/RunnerDetail'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
-import { WaitingOnYou } from '@/components/supervisor/WaitingOnYou'
+import { ItemInbox } from '@/components/supervisor/ItemInbox'
 import { Composer } from '@/components/supervisor/Composer'
 import { OpenSessions } from '@/components/supervisor/OpenSessions'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
@@ -28,31 +29,56 @@ function BandError({ message }: { message: string }): JSX.Element {
 export default function SupervisorPage(): JSX.Element {
   const [agents, setAgents] = useState<AgentOut[] | null>(null)
   const [runners, setRunners] = useState<RunnerOut[] | null>(null)
-  const [fleet, setFleet] = useState<FleetNeedsYouOut | null>(null)
+  const [items, setItems] = useState<ItemOut[] | null>(null)
   const [selectedRunner, setSelectedRunner] = useState<RunnerOut | null>(null)
   // Per-band errors, not one page-level error: on cellular a single flaky call
   // is the common case, and Promise.all would blank all three bands for it.
-  const [errs, setErrs] = useState<{ agents?: string; runners?: string; fleet?: string }>({})
+  const [errs, setErrs] = useState<{ agents?: string; runners?: string; items?: string }>({})
+
+  // Reloadable on its own so acting on an item (decide/dismiss) refreshes the
+  // inbox without refetching agents + runners.
+  const reloadItems = useCallback(() => {
+    listOpenItems()
+      .then((rows) => {
+        setItems(rows)
+        setErrs((e) => ({ ...e, items: undefined }))
+      })
+      .catch((err: unknown) =>
+        setErrs((e) => ({ ...e, items: err instanceof Error ? err.message : 'Failed to load' })),
+      )
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     const msg = (r: PromiseRejectedResult) =>
       r.reason instanceof Error ? r.reason.message : 'Failed to load'
 
-    Promise.allSettled([listAgents({ limit: 100 }), listRunners(), getFleetNeedsYou()]).then(
+    Promise.allSettled([listAgents({ limit: 100 }), listRunners(), listOpenItems()]).then(
       ([a, r, f]) => {
         if (cancelled) return
         if (a.status === 'fulfilled') setAgents(a.value.items)
         else setErrs((e) => ({ ...e, agents: msg(a) }))
         if (r.status === 'fulfilled') setRunners(r.value)
         else setErrs((e) => ({ ...e, runners: msg(r) }))
-        if (f.status === 'fulfilled') setFleet(f.value)
-        else setErrs((e) => ({ ...e, fleet: msg(f) }))
+        if (f.status === 'fulfilled') setItems(f.value)
+        else setErrs((e) => ({ ...e, items: msg(f) }))
       },
     )
     return () => {
       cancelled = true
     }
+  }, [])
+
+  // Re-poll runners so the wrong-branch alert (below) appears/clears without a reload
+  // — code_branch rides the REST runner, not the live socket overlay.
+  useEffect(() => {
+    let cancelled = false
+    const id = window.setInterval(() => {
+      listRunners()
+        .then((r) => { if (!cancelled) setRunners(r) })
+        .catch(() => { /* keep last-good; the mount fetch owns first-error surfacing */ })
+    }, 30_000)
+    return () => { cancelled = true; window.clearInterval(id) }
   }, [])
 
   // Live overlay: snapshot + runner/waiting deltas over WS. Falls back silently
@@ -68,20 +94,19 @@ export default function SupervisorPage(): JSX.Element {
       const lr = liveById[r.id]
       return lr ? { ...r, status: lr.status, last_heartbeat_at: lr.last_heartbeat_at } : r
     }) ?? null
-  // Waiting count per agent + total: prefer the live value once a snapshot lands.
+  // Waiting count per agent + total: prefer the live value once a snapshot lands,
+  // else derive from the fetched open items.
+  const itemCountFor = (slug: string): number =>
+    (items ?? []).filter((i) => i.agent_slug === slug).length
   const waitingFor = (slug: string): number =>
-    live.hasSnapshot && slug in live.waiting
-      ? live.waiting[slug]
-      : fleet
-        ? ((fleet.agents ?? []).find((b) => b.agent_slug === slug)?.waiting_count ?? 0)
-        : 0
+    live.hasSnapshot && slug in live.waiting ? live.waiting[slug] : itemCountFor(slug)
   const liveTotalWaiting = Object.values(live.waiting).reduce((a, b) => a + b, 0)
-  const totalWaiting = live.hasSnapshot ? liveTotalWaiting : (fleet?.total_waiting ?? 0)
+  const totalWaiting = live.hasSnapshot ? liveTotalWaiting : (items?.length ?? 0)
 
   // The app-icon count. Android honours this; elsewhere it no-ops.
   useEffect(() => {
-    if (live.hasSnapshot || fleet) setBadge(totalWaiting)
-  }, [live.hasSnapshot, fleet, totalWaiting])
+    if (live.hasSnapshot || items) setBadge(totalWaiting)
+  }, [live.hasSnapshot, items, totalWaiting])
 
   const [searchParams, setSearchParams] = useSearchParams()
   const raw = searchParams.get('tab')
@@ -99,6 +124,33 @@ export default function SupervisorPage(): JSX.Element {
         <h1 className="text-lg font-semibold text-foreground">Supervisor</h1>
         <p className="mt-0.5 text-[12px] text-muted-foreground">Your fleet, and what it needs from you.</p>
       </header>
+
+      {/* LOUD alert: a runner on any branch but main is silently running stale/wrong
+          code (usually another process checked out a branch in its shared checkout). */}
+      {(renderRunners ?? [])
+        .filter((r) => r.code_branch && r.code_branch !== 'main')
+        .map((r) => (
+          <div
+            key={`branch-alert-${r.id}`}
+            role="alert"
+            data-testid={`runner-branch-alert-${r.id}`}
+            className="rounded-lg border-2 border-destructive bg-destructive/15 p-3 text-destructive"
+          >
+            <p className="text-[13px] font-bold uppercase tracking-wide">⚠ Runner on wrong branch — stale code</p>
+            <p className="mt-1 text-[13px] leading-snug">
+              <span className="font-semibold">{r.name}</span> is running on branch{' '}
+              <span className="rounded bg-destructive/20 px-1 font-mono font-semibold">{r.code_branch}</span>, not{' '}
+              <span className="font-mono">main</span>. Its turns are executing{' '}
+              <span className="font-semibold">stale / wrong code</span> — another process likely checked out a
+              branch in the runner's checkout.
+            </p>
+            <p className="mt-1.5 break-words text-[12px] leading-snug opacity-90">
+              Fix on that machine, then restart the runner:
+              <br />
+              <span className="font-mono">git -C ~/emdash-projects/canopy-web checkout main &amp;&amp; git pull</span>
+            </p>
+          </div>
+        ))}
 
       <Tabs value={tab} onValueChange={onTab} className="gap-4">
         <TabsList className="w-full">
@@ -118,14 +170,14 @@ export default function SupervisorPage(): JSX.Element {
           </TabsTrigger>
         </TabsList>
 
-        {/* Inbox — the fleet's "waiting on you" queue (the act-now surface). */}
+        {/* Inbox — the fleet's open items, actionable in place (the act-now surface). */}
         <TabsContent value="inbox" className="flex flex-col gap-3">
-          {errs.fleet ? (
-            <BandError message={errs.fleet} />
-          ) : fleet === null ? (
+          {errs.items ? (
+            <BandError message={errs.items} />
+          ) : items === null ? (
             <Skeleton className="h-24 w-full" />
           ) : (
-            <WaitingOnYou fleet={fleet} />
+            <ItemInbox items={items} onActed={reloadItems} />
           )}
         </TabsContent>
 

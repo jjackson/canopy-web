@@ -33,8 +33,6 @@ from .schemas import (
     AgentWorkProductOut,
     CommandResultOut,
     CountOut,
-    FleetNeedsYouOut,
-    NeedsYouOut,
 )
 
 router = Router(auth=session_auth, tags=["agents"])
@@ -44,8 +42,8 @@ def _visible_agent_workspace_ids(request: HttpRequest) -> set[str | None]:
     """The single definition of 'agent workspaces this caller can see'. A
     workspace_id (or None, for an unhomed agent) is visible if the caller is
     pinned to it, or — unpinned — the caller is a member of it, or it's
-    unhomed. _get_agent_or_404, list_agents, and fleet_needs_you MUST build
-    from this: they used to hand-copy this predicate three times, which is
+    unhomed. _get_agent_or_404, list_agents, and the fleet items query MUST
+    build from this: they used to hand-copy this predicate three times, which is
     exactly the failure apps/harness/api.py's _runner_visibility_q docstring
     describes (a runner the list showed but every action 404'd on) — see that
     docstring for the full story.
@@ -86,22 +84,6 @@ def list_agents(request: HttpRequest, limit: int = 100) -> Page[AgentOut]:
         if a.workspace_id in visible
     ]
     return paginate(items, offset=0, limit=limit)
-
-
-@router.get("/needs-you", response=FleetNeedsYouOut,
-            summary="Fleet-wide needs-you (the supervisor home screen)")
-def fleet_needs_you(request: HttpRequest) -> FleetNeedsYouOut:
-    """Every agent's needs-you in one call, ranked busiest-first. Declared BEFORE
-    the /{slug}/ routes so 'needs-you' isn't resolved as a slug. Tenant scoping
-    mirrors list_agents exactly (both build from _visible_agent_workspace_ids)."""
-    visible = _visible_agent_workspace_ids(request)
-    mine = [a for a in services.list_agents() if a.workspace_id in visible]
-    blocks = [NeedsYouOut.model_validate(services.needs_you(a)) for a in mine]
-    blocks.sort(key=lambda b: (-b.waiting_count, b.agent_slug))
-    return FleetNeedsYouOut(
-        total_waiting=sum(b.waiting_count for b in blocks),
-        agents=blocks,
-    )
 
 
 @router.post("/", response={201: AgentOut}, summary="Create or update an agent (upsert by slug)",
@@ -157,14 +139,6 @@ def get_agent_runtime(request: HttpRequest, slug: str) -> AgentRuntimeOut:
         secret_refs=list(agent.runtime_secrets or []),
         workspace=agent.workspace_id,
     )
-
-
-@router.get("/{slug}/needs-you", response=NeedsYouOut,
-            summary="What the human needs to act on — typed (review/question), ranked, action-only",
-            openapi_extra={"x-mcp-expose": True})
-def needs_you(request: HttpRequest, slug: str) -> NeedsYouOut:
-    agent = _get_agent_or_404(request, slug)
-    return NeedsYouOut.model_validate(services.needs_you(agent))
 
 
 # ---- syncs (Google-Doc backed) ----

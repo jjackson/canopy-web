@@ -302,7 +302,15 @@ function CopyLinkButton({ period }: { period: ShareoutPeriod }) {
   )
 }
 
+// The producer (if any) is uniform across a period — every card in a run
+// carries the same slug — so read it once from the roll-up, else the first
+// project. Empty/absent = a human ran it (render nothing).
+function periodProducer(period: ShareoutPeriod): string {
+  return (period.rollup?.produced_by_agent || period.projects[0]?.produced_by_agent || '')
+}
+
 function PeriodMain({ period }: { period: ShareoutPeriod }) {
+  const producer = periodProducer(period)
   return (
     <section className="min-w-0 flex-1 max-w-3xl">
       <div className="mb-5 flex items-start justify-between gap-3">
@@ -313,6 +321,17 @@ function PeriodMain({ period }: { period: ShareoutPeriod }) {
           <p className="text-[12px] text-muted-foreground mt-0.5">
             {period.projects.length} project{period.projects.length === 1 ? '' : 's'}
             {prTotal(period) > 0 && ` · ${prTotal(period)} PRs`}
+            {producer && (
+              <>
+                {' · produced by '}
+                <Link
+                  to={`/agents/${producer}`}
+                  className="text-muted-foreground hover:text-primary transition-colors"
+                >
+                  {producer}
+                </Link>
+              </>
+            )}
           </p>
         </div>
         <CopyLinkButton period={period} />

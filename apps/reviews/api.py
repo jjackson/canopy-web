@@ -18,6 +18,7 @@ by anyone with the URL (no ?t= token required).
 """
 from __future__ import annotations
 
+import hmac
 import logging
 from uuid import UUID
 
@@ -42,6 +43,8 @@ from .schemas import (
     ReviewListItemOut,
     ReviewRequestOut,
     ReviewSubmitIn,
+    ReviewSuggestIn,
+    ReviewSuggestOut,
 )
 
 log = logging.getLogger(__name__)
@@ -107,7 +110,23 @@ def _can_write(request: HttpRequest, review: ReviewRequest) -> bool:
     return request.user.is_authenticated and _in_caller_workspaces(request, review)
 
 
-def _detail_payload(review: ReviewRequest, *, is_owner: bool) -> dict:
+def _token_ok(request: HttpRequest, review: ReviewRequest) -> bool:
+    """True when the request carries the review's share token (``?t=<token>``).
+
+    This is the capability that lets an EXTERNAL (non-dimagi, unauthenticated)
+    reviewer submit SUGGESTIONS — never a submit that resolves the gate. The token
+    is unguessable and never ambient (not a cookie), so it is not CSRF-forgeable.
+    Constant-time compare. A link-visibility review must exist AND carry a token."""
+    if review.visibility != ReviewRequest.VISIBILITY_LINK:
+        return False
+    provided = (request.GET.get("t") or "").strip()
+    stored = (review.share_token or "").strip()
+    if not provided or not stored:
+        return False
+    return hmac.compare_digest(provided, stored)
+
+
+def _detail_payload(review: ReviewRequest, *, is_owner: bool, can_write: bool = False) -> dict:
     return {
         "id": review.id,
         "run_id": review.run_id,
@@ -117,6 +136,10 @@ def _detail_payload(review: ReviewRequest, *, is_owner: bool) -> dict:
         "narrative_slug": _narrative_slug_of(review),
         "request_json": review.request_json,
         "response_json": review.response_json,
+        # External suggestions are shown only to a writer (owner / workspace member),
+        # never to an anonymous link reader — so one external reviewer can't read
+        # another's suggested wording.
+        "suggestions": (review.suggestions_json or []) if can_write else [],
         "is_owner": is_owner,
         "created_at": review.created_at,
         "resolved_at": review.resolved_at,
@@ -316,9 +339,17 @@ def create_review(request: HttpRequest, payload: ReviewCreateIn) -> Status:
     # Build the hosted-review URL.  The frontend SPA handles /review/<id>.
     url = f"/review/{review.id}/"
 
+    # For a shareable (link) review, mint a per-review share token so an EXTERNAL
+    # (non-dimagi) reviewer can submit SUGGESTIONS via ?t=<token> without a login.
+    token = (
+        review.ensure_share_token()
+        if review.visibility == ReviewRequest.VISIBILITY_LINK
+        else None
+    )
+
     return Status(
         201,
-        ReviewCreateOut(id=review.id, url=url),
+        ReviewCreateOut(id=review.id, url=url, share_token=token),
     )
 
 
@@ -350,7 +381,7 @@ def get_review(request: HttpRequest, rid: UUID) -> ReviewRequestOut:
     is_own = _is_owner(request, review)
 
     return ReviewRequestOut.model_validate(
-        _detail_payload(review, is_owner=is_own)
+        _detail_payload(review, is_owner=is_own, can_write=_can_write(request, review))
     )
 
 
@@ -403,8 +434,50 @@ def submit_review(request: HttpRequest, rid: UUID, payload: ReviewSubmitIn) -> R
 
     is_own = _is_owner(request, review)
     return ReviewRequestOut.model_validate(
-        _detail_payload(review, is_owner=is_own)
+        _detail_payload(review, is_owner=is_own, can_write=True)
     )
+
+
+# ---------------------------------------------------------------------------
+# Suggest (external, share-token authed) — does NOT resolve the gate
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{rid}/suggest/",
+    response=ReviewSuggestOut,
+    auth=None,  # token-authed: an external reviewer with the share token, no session.
+    summary="Submit a SUGGESTION as an external (share-token) reviewer",
+)
+def suggest_review(request: HttpRequest, rid: UUID, payload: ReviewSuggestIn) -> ReviewSuggestOut:
+    """An external (non-dimagi) reviewer with the review's share token submits
+    suggested edits. Unlike /submit/, this NEVER resolves the gate — it appends to
+    the review's suggestions for the internal owner to review and accept.
+
+    Auth is the share token (``?t=<token>``), not a dimagi login. The token is
+    unguessable and never ambient (not a cookie), so no CSRF check is needed — an
+    attacker cannot forge a cross-site POST without knowing the token. A dimagi
+    member should resolve the gate via /submit/ instead."""
+    review = _get_or_404(rid)
+
+    # 404 (not 403) when unreadable, so we don't leak existence.
+    if not _can_read(request, review):
+        raise ProblemError(404, "Review request not found", type_=TYPE_NOT_FOUND)
+    if not _token_ok(request, review):
+        raise ProblemError(
+            403, "A valid share token is required to suggest", type_=TYPE_FORBIDDEN
+        )
+
+    if review.status == ReviewRequest.STATUS_RESOLVED:
+        raise ProblemError(
+            403,
+            "Review already resolved",
+            type_=TYPE_FORBIDDEN,
+            detail="This review has been resolved; suggestions are closed.",
+        )
+
+    count = review.add_suggestion(payload.response_json, payload.name)
+    return ReviewSuggestOut(ok=True, suggestion_count=count)
 
 
 # ---------------------------------------------------------------------------

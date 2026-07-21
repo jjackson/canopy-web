@@ -622,6 +622,33 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/reviews/{rid}/suggest/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Submit a SUGGESTION as an external (share-token) reviewer
+         * @description An external (non-dimagi) reviewer with the review's share token submits
+         *     suggested edits. Unlike /submit/, this NEVER resolves the gate — it appends to
+         *     the review's suggestions for the internal owner to review and accept.
+         *
+         *     Auth is the share token (``?t=<token>``), not a dimagi login. The token is
+         *     unguessable and never ambient (not a cookie), so no CSRF check is needed — an
+         *     attacker cannot forge a cross-site POST without knowing the token. A dimagi
+         *     member should resolve the gate via /submit/ instead.
+         */
+        readonly post: operations["apps_reviews_api_suggest_review"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/ddd/narratives/": {
         readonly parameters: {
             readonly query?: never;
@@ -906,28 +933,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/agents/needs-you": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /**
-         * Fleet-wide needs-you (the supervisor home screen)
-         * @description Every agent's needs-you in one call, ranked busiest-first. Declared BEFORE
-         *     the /{slug}/ routes so 'needs-you' isn't resolved as a slug. Tenant scoping
-         *     mirrors list_agents exactly (both build from _visible_agent_workspace_ids).
-         */
-        readonly get: operations["apps_agents_api_fleet_needs_you"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/api/agents/{slug}/": {
         readonly parameters: {
             readonly query?: never;
@@ -960,23 +965,6 @@ export interface paths {
          *     like every other agent read.
          */
         readonly get: operations["apps_agents_api_get_agent_runtime"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/api/agents/{slug}/needs-you": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        /** What the human needs to act on — typed (review/question), ranked, action-only */
-        readonly get: operations["apps_agents_api_needs_you"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -1374,6 +1362,30 @@ export interface paths {
         readonly put?: never;
         /** Raise items for an agent (batch, idempotent) */
         readonly post: operations["apps_harness_items_api_create_items"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/items/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Fleet inbox — items across every agent you can see
+         * @description The supervisor's home screen, as a pure query: open items across the
+         *     caller's visible agents, ranked review -> question then oldest-first. Replaces
+         *     the old needs_you aggregation. Defaults to state=open (the inbox); pass an
+         *     explicit state to widen. Authz reuses the single agent-visibility predicate, so
+         *     it can never show an item whose agent the agents list would hide.
+         */
+        readonly get: operations["apps_harness_items_api_list_fleet_items"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -3047,6 +3059,8 @@ export interface components {
             readonly id: string;
             /** Url */
             readonly url: string;
+            /** Share Token */
+            readonly share_token?: string | null;
         };
         /**
          * ReviewCreateIn
@@ -3098,6 +3112,13 @@ export interface components {
             readonly response_json?: {
                 readonly [key: string]: unknown;
             } | null;
+            /**
+             * Suggestions
+             * @default []
+             */
+            readonly suggestions: readonly {
+                readonly [key: string]: unknown;
+            }[];
             /** Is Owner */
             readonly is_owner: boolean;
             /**
@@ -3117,6 +3138,31 @@ export interface components {
             readonly response_json: {
                 readonly [key: string]: unknown;
             };
+        };
+        /**
+         * ReviewSuggestOut
+         * @description Slim ack for a suggestion — the suggester does not get to see others'
+         *     suggestions, only that theirs landed.
+         */
+        readonly ReviewSuggestOut: {
+            /** Ok */
+            readonly ok: boolean;
+            /** Suggestion Count */
+            readonly suggestion_count: number;
+        };
+        /**
+         * ReviewSuggestIn
+         * @description Body of POST /api/reviews/<id>/suggest/: an external (share-token) reviewer's
+         *     suggested edits. Same response_json shape as a submit, but it is stored as a
+         *     SUGGESTION — it never resolves the gate. The internal owner reviews + accepts.
+         */
+        readonly ReviewSuggestIn: {
+            /** Response Json */
+            readonly response_json: {
+                readonly [key: string]: unknown;
+            };
+            /** Name */
+            readonly name?: string | null;
         };
         /** NarrativeListItemOut */
         readonly NarrativeListItemOut: {
@@ -3232,6 +3278,13 @@ export interface components {
             readonly title?: string | null;
             /** Story */
             readonly story?: string | null;
+            /**
+             * Narration
+             * @default []
+             */
+            readonly narration: readonly {
+                readonly [key: string]: unknown;
+            }[];
             /** Created At */
             readonly created_at?: string | null;
             /** Gate */
@@ -3425,6 +3478,11 @@ export interface components {
             readonly all_prs?: readonly components["schemas"]["ShareoutPR"][];
             /** Author */
             readonly author: string;
+            /**
+             * Produced By Agent
+             * @default
+             */
+            readonly produced_by_agent: string;
             /** Source */
             readonly source: string;
             /**
@@ -3502,6 +3560,11 @@ export interface components {
              * @default
              */
             readonly author: string;
+            /**
+             * Produced By Agent
+             * @default
+             */
+            readonly produced_by_agent: string;
             /** Source */
             readonly source: string;
         };
@@ -3886,58 +3949,6 @@ export interface components {
             readonly runtime_engine?: ("emdash" | "cloud_p" | "any") | null;
             /** Runtime Secrets */
             readonly runtime_secrets?: readonly string[] | null;
-        };
-        /**
-         * FleetNeedsYouOut
-         * @description Every agent's needs-you in one response — the supervisor's home screen.
-         *     One round trip instead of an N+1 fan-out, which matters on cellular.
-         */
-        readonly FleetNeedsYouOut: {
-            /** Total Waiting */
-            readonly total_waiting: number;
-            /** Agents */
-            readonly agents?: readonly components["schemas"]["NeedsYouOut"][];
-        };
-        /** NeedsYouItem */
-        readonly NeedsYouItem: {
-            /**
-             * Type
-             * @enum {string}
-             */
-            readonly type: "review" | "question";
-            /**
-             * Ref Kind
-             * @enum {string}
-             */
-            readonly ref_kind: "task" | "sync" | "work_product" | "run" | "schedule" | "item";
-            /** Ref Id */
-            readonly ref_id: number | string;
-            /** Title */
-            readonly title: string;
-            /**
-             * Subtitle
-             * @default
-             */
-            readonly subtitle: string;
-            /**
-             * Url
-             * @default
-             */
-            readonly url: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            readonly created_at: string;
-        };
-        /** NeedsYouOut */
-        readonly NeedsYouOut: {
-            /** Agent Slug */
-            readonly agent_slug: string;
-            /** Waiting Count */
-            readonly waiting_count: number;
-            /** Items */
-            readonly items?: readonly components["schemas"]["NeedsYouItem"][];
         };
         /** AgentDetailOut */
         readonly AgentDetailOut: {
@@ -5551,6 +5562,8 @@ export interface components {
             };
             /** Host */
             readonly host: string;
+            /** Code Branch */
+            readonly code_branch: string;
             /** Workspace */
             readonly workspace: string | null;
         };
@@ -5676,6 +5689,11 @@ export interface components {
              * @default
              */
             readonly ready_note: string;
+            /**
+             * Code Branch
+             * @default
+             */
+            readonly code_branch: string;
         };
         /** TurnOut */
         readonly TurnOut: {
@@ -7150,6 +7168,32 @@ export interface operations {
             };
         };
     };
+    readonly apps_reviews_api_suggest_review: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly rid: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReviewSuggestIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ReviewSuggestOut"];
+                };
+            };
+        };
+    };
     readonly apps_runs_api_list_narratives: {
         readonly parameters: {
             readonly query?: {
@@ -7732,26 +7776,6 @@ export interface operations {
             };
         };
     };
-    readonly apps_agents_api_fleet_needs_you: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["FleetNeedsYouOut"];
-                };
-            };
-        };
-    };
     readonly apps_agents_api_get_agent: {
         readonly parameters: {
             readonly query?: never;
@@ -7792,28 +7816,6 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AgentRuntimeOut"];
-                };
-            };
-        };
-    };
-    readonly apps_agents_api_needs_you: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path: {
-                readonly slug: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description OK */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["NeedsYouOut"];
                 };
             };
         };
@@ -8587,6 +8589,29 @@ export interface operations {
         readonly responses: {
             /** @description Created */
             readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["ItemOut"][];
+                };
+            };
+        };
+    };
+    readonly apps_harness_items_api_list_fleet_items: {
+        readonly parameters: {
+            readonly query?: {
+                readonly state?: string;
+                readonly kind?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

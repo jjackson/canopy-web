@@ -207,3 +207,46 @@ def test_clear_empty_body_clears_all():
     assert resp.status_code == 200
     assert resp.json()["cleared"] >= 1
     assert Shareout.objects.count() == 0
+
+
+# --- produced_by_agent (agent-aware "on behalf of the user") ---------------
+
+
+@pytest.mark.django_db
+def test_produced_by_agent_round_trips():
+    """An agent-produced shareout records the producer; a human run omits it
+    and reads back as empty."""
+    client = _auth_client()
+    _make_project()
+    resp = _post(client, {"shareouts": [
+        _item(produced_by_agent="eva"),
+        _item(project_slug=None, title="Roll-up", produced_by_agent="eva"),
+    ]})
+    assert resp.status_code == 201, resp.content
+
+    rows = client.get("/api/shareouts/").json()["items"]
+    assert rows, "expected shareouts back"
+    assert all(r["produced_by_agent"] == "eva" for r in rows)
+
+    # A human run (no produced_by_agent) reads back as "".
+    _make_project(slug="echo", name="echo")
+    _post(client, {"shareouts": [_item(
+        project_slug="echo",
+        source="canopy:shareout@human",
+    )]})
+    echo_row = next(r for r in client.get("/api/shareouts/?project=echo").json()["items"])
+    assert echo_row["produced_by_agent"] == ""
+
+
+@pytest.mark.django_db
+def test_produced_by_agent_not_in_idempotency_key():
+    """produced_by_agent rides along — two posts differing ONLY in it (same
+    project+period+source) still dedupe to one row, latest value winning."""
+    client = _auth_client()
+    _make_project()
+    _post(client, {"shareouts": [_item(produced_by_agent="")]})
+    _post(client, {"shareouts": [_item(produced_by_agent="eva")]})
+
+    rows = Shareout.objects.filter(project__slug="canopy-web")
+    assert rows.count() == 1, "same period+source must replace, not append"
+    assert rows.first().produced_by_agent == "eva"

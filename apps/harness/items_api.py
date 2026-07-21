@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
@@ -93,6 +94,32 @@ def create_items(request: HttpRequest, slug: str, payload: list[ItemIn]):
         agent=agent, payloads=[p.dict() for p in payload],
     )
     return 201, [_payload(i) for i in items]
+
+
+# Rank order for the inbox: a decision to make (review) outranks a question the
+# agent is blocked on. Mirrors the frontend band order.
+_KIND_RANK = {Item.REVIEW: 0, Item.QUESTION: 1}
+
+
+@items_router.get("/", response=list[ItemOut],
+                  summary="Fleet inbox — items across every agent you can see")
+def list_fleet_items(request: HttpRequest, state: str = Item.OPEN, kind: str = "") -> list[dict]:
+    """The supervisor's home screen, as a pure query: open items across the
+    caller's visible agents, ranked review -> question then oldest-first. Replaces
+    the old needs_you aggregation. Defaults to state=open (the inbox); pass an
+    explicit state to widen. Authz reuses the single agent-visibility predicate, so
+    it can never show an item whose agent the agents list would hide."""
+    visible = _visible_agent_workspace_ids(request)
+    q = Q(agent__workspace_id__in=[w for w in visible if w is not None])
+    if None in visible:
+        q |= Q(agent__workspace_id__isnull=True)
+    qs = Item.objects.filter(q).select_related("agent")
+    if state:
+        qs = qs.filter(state=state)
+    if kind:
+        qs = qs.filter(kind=kind)
+    rows = sorted(qs, key=lambda i: (_KIND_RANK.get(i.kind, 9), i.created_at))
+    return [_payload(i) for i in rows]
 
 
 @items_router.get("/{item_id}/", response=ItemOut, summary="Get an item")

@@ -32,6 +32,9 @@ class ShareoutIn(StrictModel):
     links: list[ShareoutLink] = Field(default_factory=list)
     all_prs: list[ShareoutPR] = Field(default_factory=list)
     author: str = Field(default="", max_length=100)
+    # The agent that produced this on the author's behalf (slug), or "" for a
+    # human run. Optional so a human/legacy post omits it entirely.
+    produced_by_agent: str = Field(default="", max_length=80)
     source: str = Field(min_length=1, max_length=100)
 
 
@@ -71,5 +74,6 @@ class ShareoutOut(StrictModel):
     links: list[ShareoutLink] = Field(default_factory=list)
     all_prs: list[ShareoutPR] = Field(default_factory=list)
     author: str
+    produced_by_agent: str = ""
     source: str
     created_at: dt.datetime

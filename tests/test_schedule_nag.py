@@ -1,32 +1,38 @@
-"""The nag: an unfinished scheduled occurrence projects into needs_you."""
+"""The nag: a grace-released (unattended) scheduled occurrence raises a real Item.
+
+This is not a projection — release_stale_occurrence_turns raises a review Item whose
+`implement` re-runs the schedule; a later finished occurrence dismisses it via
+finish_turn. Firing alone does NOT nag: only holding the agent past grace does.
+"""
 from __future__ import annotations
 
 import datetime as dt
 
 import pytest
 
-from apps.agents import services as asvc
 from apps.agents.models import Agent
 from apps.harness import services as hsvc
-from apps.harness.models import AgentSchedule, Turn
+from apps.harness.models import AgentSchedule, Item, Turn
 
 pytestmark = pytest.mark.django_db
 
 SLOT = dt.datetime(2026, 7, 17, 13, tzinfo=dt.UTC)
 
 
-def _executing(turn: Turn) -> Turn:
-    """Drive a fired (QUEUED) turn into the state a runner's claim leaves it in.
-
-    finish_turn is deliberately a no-op on a QUEUED turn — a runner must never
-    finish a turn it never claimed (see services.finish_turn). Without this step
-    a test's finish_turn silently does nothing and the turn stays QUEUED, which
-    makes 'finished clears the nag' fail and 'missed still nags' pass for the
-    wrong reason. Same idiom as tests/test_schedule_services.py.
-    """
-    Turn.objects.filter(pk=turn.pk).update(status=Turn.RUNNING)
+def _claimed_long_ago(turn: Turn, *, minutes: int) -> Turn:
+    """Drive a fired (QUEUED) turn into EXECUTING with a claimed_at far enough in
+    the past that release_stale_occurrence_turns treats it as unattended. Release is
+    scoped to EXECUTING and anchored on claimed_at (see services.release_stale...)."""
+    claimed = dt.datetime(2026, 7, 17, 13, tzinfo=dt.UTC) - dt.timedelta(minutes=minutes)
+    Turn.objects.filter(pk=turn.pk).update(status=Turn.RUNNING, claimed_at=claimed)
     turn.refresh_from_db()
     return turn
+
+
+def _open_nags(agent) -> list[Item]:
+    return list(
+        agent.items.filter(state=Item.OPEN, origin_ref__kind="schedule_nag").order_by("created_at")
+    )
 
 
 @pytest.fixture()
@@ -38,119 +44,74 @@ def agent():
 def schedule(agent):
     return AgentSchedule.objects.create(
         agent=agent, name="Goal review", prompt="/eva:goal-review",
-        cron="0 9 1 * *", timezone="America/New_York",
+        cron="0 9 1 * *", timezone="America/New_York", grace_minutes=120,
     )
 
 
 def test_never_fired_schedule_does_not_nag(agent, schedule):
-    out = asvc.needs_you(agent)
-    assert out["waiting_count"] == 0
+    assert _open_nags(agent) == []
 
 
-def test_unfinished_occurrence_nags(agent, schedule):
+def test_firing_alone_does_not_nag(agent, schedule):
+    """A freshly fired (queued) slot owes nothing yet — the nag is about HOLDING
+    the agent past grace, not about a slot merely existing."""
     hsvc.fire_schedule(schedule, SLOT)
-
-    out = asvc.needs_you(agent)
-
-    items = [i for i in out["items"] if i["ref_kind"] == "schedule"]
-    assert len(items) == 1
-    assert items[0]["type"] == "review"
-    assert items[0]["ref_id"] == schedule.id
-    assert items[0]["title"] == "Goal review"
-    assert out["waiting_count"] == 1  # counts toward the 'N waiting on you' badge
+    assert _open_nags(agent) == []
 
 
-def test_nag_deep_links_to_the_schedules_rail(agent, schedule):
-    """A nag with an empty url renders as a dead, unclickable row — the spec's
-    central promise (the nag is where you act on it) never lands. Every other
-    needs_you builder carries a real url; this one must too."""
-    from django.contrib.auth.models import User
+def test_grace_released_occurrence_raises_a_review_nag(agent, schedule):
+    turn, _ = hsvc.fire_schedule(schedule, SLOT)
+    _claimed_long_ago(turn, minutes=200)  # past the 120m grace
 
-    from apps.workspaces.models import Workspace
+    released = hsvc.release_stale_occurrence_turns(schedule, now=SLOT)
 
-    owner = User.objects.create_user("acme-owner", "acme-owner@dimagi.com", "pw")
-    agent.workspace = Workspace.objects.create(
-        slug="acme", display_name="Acme", created_by=owner, auto_join_domains=[]
+    assert released == 1
+    nags = _open_nags(agent)
+    assert len(nags) == 1
+    assert nags[0].kind == Item.REVIEW
+    assert nags[0].title == "Scheduled turn unattended: Goal review"
+    # implement re-runs the schedule's prompt (self-dispatch) — the generic
+    # replacement for the old "Run now" button.
+    assert nags[0].dispatch[0]["prompt"] == "/eva:goal-review"
+
+
+def test_a_finished_later_occurrence_clears_the_nag(agent, schedule):
+    turn, _ = hsvc.fire_schedule(schedule, SLOT)
+    _claimed_long_ago(turn, minutes=200)
+    hsvc.release_stale_occurrence_turns(schedule, now=SLOT)
+    assert len(_open_nags(agent)) == 1
+
+    # A later occurrence completes -> the owed attention is discharged.
+    later, _ = hsvc.fire_schedule(schedule, SLOT + dt.timedelta(days=31))
+    Turn.objects.filter(pk=later.pk).update(status=Turn.RUNNING)
+    later.refresh_from_db()
+    hsvc.finish_turn(later, status=Turn.DONE)
+
+    assert _open_nags(agent) == []
+
+
+def test_implementing_the_nag_re_runs_the_schedule(agent, schedule):
+    turn, _ = hsvc.fire_schedule(schedule, SLOT)
+    _claimed_long_ago(turn, minutes=200)
+    hsvc.release_stale_occurrence_turns(schedule, now=SLOT)
+    nag = _open_nags(agent)[0]
+
+    item, turns = hsvc.decide_item(
+        nag, decision=Item.IMPLEMENT, comment="", by="jj@dimagi.com", actor_workspace_slugs=set(),
     )
-    agent.save()
-    hsvc.fire_schedule(schedule, SLOT)
 
-    item = next(i for i in asvc.needs_you(agent)["items"] if i["ref_kind"] == "schedule")
-
-    assert item["url"] == "/w/acme/agents/eva/schedules"
-
-
-def test_nag_url_falls_back_to_the_legacy_path_for_a_workspaceless_agent(agent, schedule):
-    """Agent.workspace is nullable (legacy rows). The flat /agents/* route
-    redirects into the active workspace, so this stays a live link — and, more
-    to the point, building the url must not crash on a null workspace."""
-    assert agent.workspace_id is None  # guard: the fixture's premise
-    hsvc.fire_schedule(schedule, SLOT)
-
-    item = next(i for i in asvc.needs_you(agent)["items"] if i["ref_kind"] == "schedule")
-
-    assert item["url"] == "/agents/eva/schedules"
+    assert item.state == Item.DECIDED
+    assert len(turns) == 1
+    assert turns[0].prompt == "/eva:goal-review"
+    assert _open_nags(agent) == []  # decided -> out of the inbox
 
 
-def test_finished_occurrence_clears_the_nag(agent, schedule):
-    turn, _ = hsvc.fire_schedule(schedule, SLOT)
-    hsvc.finish_turn(_executing(turn), status=Turn.DONE)
-
-    out = asvc.needs_you(agent)
-
-    assert [i for i in out["items"] if i["ref_kind"] == "schedule"] == []
-    assert out["waiting_count"] == 0
-
-
-def test_missed_occurrence_still_nags_until_superseded(agent, schedule):
-    """Released-as-missed is not done: you still owe it until the next slot."""
-    turn, _ = hsvc.fire_schedule(schedule, SLOT)
-    turn = hsvc.finish_turn(_executing(turn), status=Turn.MISSED, result_note="released")
-    assert turn.status == Turn.MISSED  # guard: prove we nag on MISSED, not on QUEUED
-
-    out = asvc.needs_you(agent)
-
-    assert len([i for i in out["items"] if i["ref_kind"] == "schedule"]) == 1
-
-
-def test_disabled_schedule_does_not_nag(agent, schedule):
-    hsvc.fire_schedule(schedule, SLOT)
-    schedule.enabled = False
+def test_a_schedule_that_opts_out_of_the_inbox_channel_does_not_nag(agent, schedule):
+    schedule.notify = ["carrier_pigeon"]  # no "inbox" channel
     schedule.save()
+    turn, _ = hsvc.fire_schedule(schedule, SLOT)
+    _claimed_long_ago(turn, minutes=200)
 
-    assert asvc.needs_you(agent)["waiting_count"] == 0
+    hsvc.release_stale_occurrence_turns(schedule, now=SLOT)
 
-
-def test_run_now_nags_and_finishing_it_clears_the_nag(agent, schedule):
-    """`_occurrences()` selects a schedule's turns by origin_ref__schedule_id
-    with NO origin filter — deliberately, so a manual "Run now" (origin=manual)
-    participates in the nag exactly like a fired (origin=cron) slot. Pins that:
-    a future refactor narrowing _occurrences() to origin=cron would leave every
-    other nag test green while silently breaking completion of a Run now."""
-    turn = hsvc.run_schedule_now(schedule)
-    assert turn.origin == Turn.ORIGIN_MANUAL
-
-    out = asvc.needs_you(agent)
-    items = [i for i in out["items"] if i["ref_kind"] == "schedule"]
-    assert len(items) == 1
-    assert out["waiting_count"] == 1
-
-    hsvc.finish_turn(_executing(turn), status=Turn.DONE)
-
-    out = asvc.needs_you(agent)
-    assert [i for i in out["items"] if i["ref_kind"] == "schedule"] == []
-    assert out["waiting_count"] == 0
-
-
-def test_unknown_channel_is_ignored_not_fatal(agent, schedule):
-    """CHANNELS.get(channel_id) — not CHANNELS[channel_id] — so a half-rolled-out
-    or renamed channel id in AgentSchedule.notify can never 500 the supervisor's
-    inbox. It should simply yield no nag for that channel."""
-    schedule.notify = ["carrier_pigeon"]
-    schedule.save()
-    hsvc.fire_schedule(schedule, SLOT)
-
-    out = asvc.needs_you(agent)
-
-    assert [i for i in out["items"] if i["ref_kind"] == "schedule"] == []
-    assert out["waiting_count"] == 0
+    assert _open_nags(agent) == []

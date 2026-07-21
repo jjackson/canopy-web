@@ -42,6 +42,9 @@ class ReviewRequest(models.Model):
     )
     request_json = models.JSONField()
     response_json = models.JSONField(null=True, blank=True)
+    # Suggestions from external (share-token) reviewers who cannot resolve the gate.
+    # Each entry: {response_json, name, created_at}. The owner reviews + accepts.
+    suggestions_json = models.JSONField(default=list, blank=True)
     share_token = models.CharField(max_length=64, blank=True, null=True, unique=True)
     visibility = models.CharField(
         max_length=10, choices=VISIBILITY_CHOICES, default=VISIBILITY_PRIVATE
@@ -105,3 +108,21 @@ class ReviewRequest(models.Model):
         self.share_token = secrets.token_urlsafe(24)
         self.save(update_fields=["share_token"])
         return self.share_token
+
+    def add_suggestion(self, response_json: dict, name: str | None = None) -> int:
+        """Append an external reviewer's suggestion. Does NOT resolve the gate —
+        the review stays pending for the owner to review + accept. Returns the new
+        suggestion count."""
+        from django.utils import timezone
+
+        items = list(self.suggestions_json or [])
+        items.append(
+            {
+                "response_json": response_json,
+                "name": (name or "").strip() or None,
+                "created_at": timezone.now().isoformat(),
+            }
+        )
+        self.suggestions_json = items
+        self.save(update_fields=["suggestions_json"])
+        return len(items)

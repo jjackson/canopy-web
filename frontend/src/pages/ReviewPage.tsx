@@ -5,8 +5,10 @@ import { useAuth } from '@/auth/AuthProvider'
 import {
   getReview,
   submitReview,
+  suggestReview,
   submitFindingsReview,
   type ReviewDetail,
+  type ReviewSuggestion,
   type ReviewDecision,
   type ReviewSceneActionability,
   type ReviewSubmitPayload,
@@ -923,6 +925,49 @@ function PersonasSection({
 }
 
 // ---------------------------------------------------------------------------
+// External suggestions — read-only panel shown to the OWNER (populated only for
+// a writer). Each is an external reviewer's suggested wording; the owner applies
+// the ones they agree with in the editor, then submits.
+// ---------------------------------------------------------------------------
+
+function ExternalSuggestions({ suggestions }: { suggestions: ReviewSuggestion[] }) {
+  return (
+    <section className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-amber-500">
+        External suggestions ({suggestions.length})
+      </h2>
+      <ol className="space-y-3">
+        {suggestions.map((s, i) => {
+          const scenes = (s.response_json?.edited_scenes ?? []).filter((sc) => sc.narration != null)
+          return (
+            <li key={i} className="rounded-md border border-border/60 bg-background/40 p-2 text-sm">
+              <div className="mb-1 text-[11px] text-muted-foreground">
+                {s.name || 'Guest reviewer'}
+                {s.created_at ? ` · ${new Date(s.created_at).toLocaleString()}` : ''}
+              </div>
+              {s.response_json?.overall_feedback && (
+                <p className="mb-1 whitespace-pre-line text-foreground-secondary">
+                  {s.response_json.overall_feedback}
+                </p>
+              )}
+              {scenes.map((sc) => (
+                <p key={sc.id} className="mb-1 text-foreground-secondary">
+                  <span className="text-muted-foreground">{sc.title || sc.id}: </span>
+                  {sc.narration}
+                </p>
+              ))}
+            </li>
+          )
+        })}
+      </ol>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Read-only — apply any you agree with in the editor below, then submit.
+      </p>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Inner editor — has access to the ReviewEditor context
 // Owns all user interaction + submit logic.
 // ---------------------------------------------------------------------------
@@ -930,11 +975,13 @@ function PersonasSection({
 interface ReviewEditorInnerProps {
   review: ReviewDetail
   readOnly: boolean
+  /** External (share-token) reviewer: edits go in as SUGGESTIONS, never resolve the gate. */
+  canSuggest?: boolean
   /** Called after a successful submit with the updated review */
   onResolved: (updated: ReviewDetail) => void
 }
 
-function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerProps) {
+function ReviewEditorInner({ review, readOnly, canSuggest = false, onResolved }: ReviewEditorInnerProps) {
   const {
     state,
     effectiveScenes,
@@ -985,6 +1032,8 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Set once an external reviewer's suggestions land (they don't resolve the gate).
+  const [suggested, setSuggested] = useState(false)
   const [auditOpen, setAuditOpen] = useState(false)
 
   const req = review.request_json
@@ -1114,16 +1163,24 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
       if (Object.keys(editedPersonas!).length > 0) payload.edited_personas = editedPersonas
       if (Object.keys(wbDelta!).length > 0) payload.edited_why_brief = wbDelta
 
-      const updated = await submitReview(review.id, payload, shareToken)
-      onResolved(updated)
+      if (canSuggest && shareToken) {
+        // External reviewer: land the edits as a SUGGESTION — never resolve the gate.
+        await suggestReview(review.id, payload, shareToken)
+        setSuggested(true)
+      } else {
+        const updated = await submitReview(review.id, payload, shareToken)
+        onResolved(updated)
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
-  }, [effectiveScenes, effectivePersonas, effectiveWhyBrief, overallFeedback, buildOrder, choices, review.id, review.request_json, shareToken, onResolved])
+  }, [effectiveScenes, effectivePersonas, effectiveWhyBrief, overallFeedback, buildOrder, choices, review.id, review.request_json, shareToken, canSuggest, onResolved])
 
-  const canSubmit = !busy && decisions.every((d) => !!choices[d.id])
+  // An external suggester sends language edits without resolving the gate, so they
+  // are NOT gated on filling in the gate decisions.
+  const canSubmit = !busy && (canSuggest || decisions.every((d) => !!choices[d.id]))
 
   // Video embed
   let videoElement: React.ReactNode = null
@@ -1151,6 +1208,13 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-8">
+      {canSuggest && (
+        <div className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm text-foreground-secondary">
+          You're reviewing as a guest. Edit any narration wording, then{' '}
+          <strong>Send suggestions</strong> — your notes go to the team; you're not approving anything.
+        </div>
+      )}
+      {review.suggestions.length > 0 && <ExternalSuggestions suggestions={review.suggestions} />}
       {/* Header */}
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-start gap-3 flex-wrap">
@@ -1644,9 +1708,16 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             </p>
           )}
         </div>
+      ) : suggested ? (
+        <div className="flex flex-col items-end gap-1">
+          <p className="text-sm text-success">✓ Thanks — your suggestions were sent.</p>
+          <span className="text-[11px] text-muted-foreground">
+            The team will review your wording. You can keep editing and send more.
+          </span>
+        </div>
       ) : (
         <div className="flex flex-col items-end gap-1">
-          {(frontierCount > 0 || belowBarCount > 0) && resolvedChoice('narrative-verdict') !== 'redraft' && (
+          {!canSuggest && (frontierCount > 0 || belowBarCount > 0) && resolvedChoice('narrative-verdict') !== 'redraft' && (
             <p className="text-[11px] text-warning/90 max-w-md text-right mb-1">
               ⚠ {frontierCount > 0 && `${frontierCount} scene${frontierCount === 1 ? ' shows a new feature' : 's show new features'} (not built yet)`}
               {frontierCount > 0 && belowBarCount > 0 && '; '}
@@ -1666,13 +1737,19 @@ function ReviewEditorInner({ review, readOnly, onResolved }: ReviewEditorInnerPr
             ].join(' ')}
           >
             {busy
-              ? 'Submitting…'
-              : resolvedChoice('narrative-verdict') === 'redraft'
-                ? 'Submit — send back to re-draft'
-                : 'Submit — approve & build'}
+              ? canSuggest
+                ? 'Sending…'
+                : 'Submitting…'
+              : canSuggest
+                ? 'Send suggestions'
+                : resolvedChoice('narrative-verdict') === 'redraft'
+                  ? 'Submit — send back to re-draft'
+                  : 'Submit — approve & build'}
           </button>
           <span className="text-[11px] text-muted-foreground">
-            Commits your decision above (with any edits you made).
+            {canSuggest
+              ? 'Sends your wording suggestions to the team — this does not approve anything.'
+              : 'Commits your decision above (with any edits you made).'}
           </span>
         </div>
       )}
@@ -1746,6 +1823,15 @@ export function ReviewPage() {
 
   const isResolved = review.status === 'resolved'
 
+  // An external (non-dimagi) reviewer holding the share token can SUGGEST edits on a
+  // link-visibility review — the editor is live for them, but their action sends
+  // suggestions (never resolves the gate).
+  const canSuggest =
+    auth.status !== 'authenticated' &&
+    !!shareToken &&
+    review.visibility === 'link' &&
+    !isResolved
+
   // Product-findings reviews are run-children with their own first-class
   // surface — they don't use the narrative editor machinery. Branch before the
   // ReviewEditorProvider so none of the narration/scene scaffolding mounts.
@@ -1776,9 +1862,11 @@ export function ReviewPage() {
     >
       <ReviewEditorInner
         review={review}
-        // Submitting requires a Dimagi login (public reviews are read-only to
-        // anonymous viewers); also read-only once resolved.
-        readOnly={isResolved || auth.status !== 'authenticated'}
+        // Resolving the gate requires a Dimagi login; read-only once resolved. An
+        // external share-token holder may edit to SUGGEST (canSuggest), so the editor
+        // is live for them even though they're not authenticated.
+        readOnly={isResolved || (auth.status !== 'authenticated' && !canSuggest)}
+        canSuggest={canSuggest}
         onResolved={(updated) => setReview(updated)}
       />
     </ReviewEditorProvider>,
