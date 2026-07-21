@@ -79,6 +79,15 @@ export async function listItems(
   return Array.from(rows, toItem)
 }
 
+/** The supervisor's fleet inbox: open items across every agent you can see,
+ *  ranked review -> question by the server. Defaults to state=open. */
+export async function listOpenItems(
+  query: { state?: string; kind?: string } = { state: 'open' },
+): Promise<ItemOut[]> {
+  const rows = unwrap(await apiV2.GET('/api/items/', { params: { query } }), 'listOpenItems')
+  return Array.from(rows, toItem)
+}
+
 export async function decideItem(
   itemId: string,
   decision: ItemDecision | '',
@@ -90,6 +99,16 @@ export async function decideItem(
       body: { decision, comment },
     }),
     'decideItem',
+  )
+  return toItem(row)
+}
+
+export async function dismissItem(itemId: string): Promise<ItemOut> {
+  const row = unwrap(
+    await apiV2.POST('/api/items/{item_id}/dismiss', {
+      params: { path: { item_id: itemId } },
+    }),
+    'dismissItem',
   )
   return toItem(row)
 }

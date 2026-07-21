@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.agent_runs.models import AgentRun, AgentRunGate, AgentRunStep
+from apps.agent_runs.models import AgentRun
 from apps.agents import services
 from apps.agents.models import Agent, AgentSkill, AgentSync, AgentTask, AgentTurn, AgentWorkProduct
 
@@ -149,73 +149,6 @@ def test_sync_tasks_upserts_and_normalizes_status():
     res2 = services.sync_tasks(agent, tasks[:1])
     assert res2["created"] == 0 and AgentTask.objects.filter(agent=agent).count() == 2
     assert AgentTask.objects.get(agent=agent, ext_id="t1").title == "PRIDE story v2"
-
-
-def test_needs_you_types_ranks_and_excludes_echo():
-    agent = _agent()
-    # review: a suggested task — the human must validate/decline it
-    services.create_task(agent, _task(ext_id="r1", title="Polio story", status="suggested",
-                                      owner="Matt", assigned="Matt", position=0))
-    # question: an in-progress task blocked on a human (Echo needs a decision)
-    services.create_task(agent, _task(ext_id="q1", title="Cholera story", status="in_progress",
-                                      owner="Matt", assigned="Sarvesh", position=1))
-    # excluded: in-progress assigned to Echo — Echo has the ball, not the human
-    services.create_task(agent, _task(ext_id="e1", title="Backlog upkeep", status="in_progress",
-                                      owner="Matt", assigned="Echo", position=2))
-    # excluded: a done task is no longer actionable
-    services.create_task(agent, _task(ext_id="d1", title="Shipped", status="done", position=3))
-    # FYI: a recent sync — action-only inbox must NOT surface it (it lives on the Syncs tab)
-    services.upsert_sync(agent, SimpleNamespace(
-        period_start=dt.datetime(2026, 6, 3, tzinfo=dt.timezone.utc),
-        period_end=dt.datetime(2026, 6, 17, tzinfo=dt.timezone.utc),
-        title="Sync 1", summary="", doc_url="https://d/sync", self_grades={}, source="manager-sync"))
-
-    res = services.needs_you(agent)
-    pairs = [(i["type"], i["title"]) for i in res["items"]]
-    assert pairs[0] == ("review", "Polio story")        # review band leads
-    assert ("question", "Cholera story") in pairs
-    titles = [t for _, t in pairs]
-    assert "Sync 1" not in titles                        # FYI sync is NOT a needs-you item
-    assert not any(t == "notify" for t, _ in pairs)      # no notify band at all
-    assert "Backlog upkeep" not in titles               # nothing Echo is working
-    assert "Shipped" not in titles                       # nothing done
-    rank = {"review": 0, "question": 1}
-    order = [rank[i["type"]] for i in res["items"]]
-    assert order == sorted(order)                        # typed bands, ranked
-    assert res["waiting_count"] == 2                      # every item is gated
-    assert res["waiting_count"] == len(res["items"])      # action-only: count == items
-
-
-def test_needs_you_projects_run_state():
-    """Run lifecycle surfaces on /needs-you (spec §5): open gate → review, failed
-    step → question. A COMPLETED run is FYI and is intentionally NOT surfaced."""
-    agent = _agent()
-    # Run A: an OPEN gate awaiting a human decision → review (gated/waiting).
-    run_a = AgentRun.objects.create(agent=agent, label="Render demo", current_step="render")
-    step_a = AgentRunStep.objects.create(run=run_a, key="render", ordinal=0, status=AgentRunStep.RUNNING)
-    AgentRunGate.objects.create(step=step_a)  # decided_at None → open
-    # Run B: a FAILED step → question (gated/waiting).
-    run_b = AgentRun.objects.create(agent=agent, label="Build app", current_step="build")
-    AgentRunStep.objects.create(run=run_b, key="build", ordinal=0, status=AgentRunStep.FAILED, error="boom")
-    # Run C: all steps terminal → completed run. FYI only — must NOT appear.
-    run_c = AgentRun.objects.create(agent=agent, label="Shipped run")
-    AgentRunStep.objects.create(run=run_c, key="done", ordinal=0, status=AgentRunStep.COMPLETE)
-
-    res = services.needs_you(agent)
-    triples = [(i["type"], i["ref_kind"], i["title"]) for i in res["items"]]
-    assert ("review", "run", "Render demo") in triples          # open gate
-    assert ("question", "run", "Build app") in triples           # failed step
-    assert "Shipped run" not in [t for _, _, t in triples]       # completed run is NOT surfaced
-    assert not any(ty == "notify" for ty, _, _ in triples)       # no notify band
-    # every surfaced item is gated → waiting_count == item count
-    assert res["waiting_count"] == len(res["items"]) >= 2
-    # the review item's subtitle carries the gate's step
-    review_run = next(i for i in res["items"] if i["ref_kind"] == "run" and i["type"] == "review")
-    assert "render" in review_run["subtitle"]
-    # ranking preserved across the merged task + run bands
-    rank = {"review": 0, "question": 1}
-    order = [rank[i["type"]] for i in res["items"]]
-    assert order == sorted(order)
 
 
 def test_agenttask_run_link_round_trips():

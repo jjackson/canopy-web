@@ -278,38 +278,8 @@ class CommandResultOut(StrictModel):
     task: AgentTaskOut | None = None
 
 
-# ---- "Needs you" supervisor inbox ----
-class NeedsYouItem(StrictModel):
-    type: Literal["review", "question"]
-    # 'run' covers gate/step/completion items projected from the run lifecycle
-    # (services._run_inbox_items) — task/sync/work_product are the board items.
-    # 'schedule' is the unattended-occurrence nag (apps/harness) projected in via
-    # needs_you(); it MUST stay in this Literal or the nag 500s at serialization.
-    # 'item' is a real harness.Item — the only entry here that is an OBJECT rather
-    # than a projection. The others retire into it as their producers migrate
-    # (Phases 3-4); see 2026-07-15-item-and-turn-design.md.
-    ref_kind: Literal["task", "sync", "work_product", "run", "schedule", "item"]
-    # str because Item's pk is a UUID; the projected kinds still send their int pk.
-    # Consumers use this only for React keys / test ids, so a union is free there.
-    ref_id: int | str
-    title: str
-    subtitle: str = ""
-    url: str = ""
-    created_at: dt.datetime
-
-
-class NeedsYouOut(StrictModel):
-    agent_slug: str
-    waiting_count: int  # gated (review + question) items — the "N waiting on you" badge
-    items: list[NeedsYouItem] = Field(default_factory=list)
-
-
-class FleetNeedsYouOut(StrictModel):
-    """Every agent's needs-you in one response — the supervisor's home screen.
-    One round trip instead of an N+1 fan-out, which matters on cellular."""
-
-    total_waiting: int  # sum of per-agent waiting_count — the app-icon badge
-    agents: list[NeedsYouOut] = Field(default_factory=list)
+# The supervisor inbox is now a pure query over harness.Item (open items across
+# the fleet), served by apps/harness/items_api.py — no projection DTO lives here.
 
 
 # ---- shared ----

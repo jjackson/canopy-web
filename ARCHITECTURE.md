@@ -27,7 +27,7 @@ the arrow's direction and enforce it in CI.
 
 | App | Tier | What it is |
 |---|---|---|
-| `agents` | **framework** | Agent workspace: board, command-drain queue, work-products, tasks, *needs-you* inbox. Agent-agnostic. |
+| `agents` | **framework** | Agent workspace: board, command-drain queue, work-products, tasks, the *inbox* (open Items). Agent-agnostic. |
 | `agent_runs` | **framework** | Unified agent run-lifecycle: run → step → artifact → verdict/QA → decision → gate → fork, as a storage-agnostic read model behind a `RunStore` Protocol (DB adapter persists rows; Drive adapter reads ACE's YAML). FK's `agents.Agent`; imports no product app. |
 | `harness` | **framework** | Agent-execution harness: runner registry, turn lifecycle + lease/claim, turn-event ledger (/api/harness). |
 | `workspaces` | **framework** | Multi-tenancy: `Workspace` + members (owner/editor/viewer) + email invites (ported from ace-web, domain-agnostic — no Drive coupling). The tenant that owns agents + runs. Distinct from the retired co-authoring app that used to be `apps/workspace` (singular). |

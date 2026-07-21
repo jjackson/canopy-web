@@ -481,8 +481,9 @@ class AgentSchedule(models.Model):
     idempotency_key="sched:<id>:<slot>"); there is deliberately no occurrence
     table. See docs/superpowers/specs/2026-07-15-agent-scheduled-turns-design.md.
 
-    int pk (not UUID like Runner/Turn): this projects into needs_you, whose
-    NeedsYouItem.ref_id is typed int on a StrictModel.
+    An unattended (grace-released) occurrence raises a real Item (kind=review)
+    whose `implement` re-runs the schedule's prompt — see
+    services._raise_schedule_nag. There is no projection: the nag is a row.
 
     No workspace FK: a schedule is agent-owned and derives its tenant via
     agent.workspace, exactly as Turn does.

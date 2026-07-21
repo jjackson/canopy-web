@@ -26,8 +26,8 @@ import SchedulesPage from './pages/SchedulesPage'
 
 // Agent Workspace sections are lazy-loaded — each owns its data fetch and only
 // the active section's bundle is pulled in.
-const NeedsYouSection = lazy(() =>
-  import('./pages/agents/NeedsYouSection').then((m) => ({ default: m.NeedsYouSection })),
+const InboxSection = lazy(() =>
+  import('./pages/agents/InboxSection').then((m) => ({ default: m.InboxSection })),
 )
 const AgentOverviewSection = lazy(() =>
   import('./pages/agents/AgentOverviewSection').then((m) => ({ default: m.AgentOverviewSection })),
@@ -157,8 +157,10 @@ export const router = createBrowserRouter(guarded([
         path: '/w/:workspace/agents/:slug',
         element: <AgentWorkspacePage />,
         children: [
-          { index: true, element: <Navigate to="needs-you" replace /> },
-          { path: 'needs-you', element: <LazySection><NeedsYouSection /></LazySection> },
+          { index: true, element: <Navigate to="inbox" replace /> },
+          { path: 'inbox', element: <LazySection><InboxSection /></LazySection> },
+          // Legacy path from before the rename; keep the old link working.
+          { path: 'needs-you', element: <Navigate to="../inbox" replace /> },
           { path: 'overview', element: <LazySection><AgentOverviewSection /></LazySection> },
           { path: 'tasks', element: <LazySection><AgentTasksSection /></LazySection> },
           { path: 'turns', element: <LazySection><AgentTurnsSection /></LazySection> },
