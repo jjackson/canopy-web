@@ -44,7 +44,8 @@ class FakeEnv:
         self._plugins.add(plugin.name)
         self.installed.append(plugin.name)
 
-    def run_check(self, command):
+    def run_check(self, command, env=None):
+        self.last_check_env = env
         return self._checks.get(command, (0, ""))
 
     def write_file(self, path, content):
@@ -177,3 +178,14 @@ def test_local_env_parses_claude_plugin_list(monkeypatch):
         lambda *a, **k: _sp.CompletedProcess(a, 0, sample, ""),
     )
     assert LocalEnvironment().installed_plugins() == {"ace", "canopy", "echo"}
+
+
+def test_preflight_sees_resolved_secrets_in_env():
+    spec = _spec(
+        secrets=[{"name": "canopy-pat", "env": "CANOPY_PAT"}],
+        preflight=[{"name": "pat-present", "run": "check", "expect": ""}],
+    )
+    env = FakeEnv(checks={"check": (0, "")})
+    reconcile(spec, FakeStore({"canopy-pat": "REALPAT"}), env)
+    # The preflight was handed the resolved env, so a `$CANOPY_PAT` probe can see it.
+    assert env.last_check_env["CANOPY_PAT"] == "REALPAT"

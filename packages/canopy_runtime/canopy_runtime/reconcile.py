@@ -67,7 +67,7 @@ class Environment(Protocol):
     def has_tool(self, name: str) -> bool: ...
     def installed_plugins(self) -> set[str]: ...
     def install_plugin(self, plugin: PluginRef) -> None: ...
-    def run_check(self, command: str) -> tuple[int, str]: ...
+    def run_check(self, command: str, env: dict[str, str] | None = None) -> tuple[int, str]: ...
     def write_file(self, path: str, content: str) -> None: ...
 
 
@@ -145,7 +145,9 @@ def _run_preflight(spec, env, result):
     for check in spec.preflight:
         if not check.run:
             continue
-        rc, out = env.run_check(check.run)
+        # Run with the secrets we just resolved in scope, so a real auth probe
+        # (`claude whoami`, `gog whoami`, `test -n "$CANOPY_PAT"`) can see them.
+        rc, out = env.run_check(check.run, result.env)
         ok = rc == 0 and (not check.expect or check.expect in out)
         if not ok:
             result.gaps.append(
@@ -195,8 +197,11 @@ class LocalEnvironment:
         if res.returncode != 0:
             raise RuntimeError(res.stderr.strip() or f"install {target} failed")
 
-    def run_check(self, command: str) -> tuple[int, str]:
-        res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=120)
+    def run_check(self, command: str, env: dict[str, str] | None = None) -> tuple[int, str]:
+        merged = {**os.environ, **env} if env else None
+        res = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=120, env=merged
+        )
         return res.returncode, (res.stdout or "") + (res.stderr or "")
 
     def write_file(self, path: str, content: str) -> None:
