@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { listOpenSessions, enqueueTurn, getTurn, type EmdashSessionOut } from '@/api/harness'
 import { normalizeRecentMessages, type RecentMessage } from '@/lib/recentMessages'
-import { relTime, isRecentlyActive } from '@/lib/relTime'
+import { relTime, isRunning } from '@/lib/relTime'
 
 // The open emdash sessions the runner reported — glance at what each is doing (the
 // recent-message tail), and drop a prompt into a specific one. Continue dispatches a
@@ -101,7 +101,7 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
   const [errMsg, setErrMsg] = useState('')
   const [deliveredRunner, setDeliveredRunner] = useState('')
   const messages = normalizeRecentMessages(session.recent_messages)
-  const active = isRecentlyActive(session.last_interacted_at)
+  const running = isRunning(session.last_interacted_at)
   const mounted = useRef(true)
   useEffect(() => () => { mounted.current = false }, [])
 
@@ -170,16 +170,18 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
           {session.emdash_task}
         </span>
-        {/* Last-active time, not emdash's always-"in_progress" status. A recent
-            timestamp (green dot) is the best "running now" signal available. */}
-        <span
-          className={`flex shrink-0 items-center gap-1 text-[11px] ${
-            active ? 'text-success' : 'text-muted-foreground'
-          }`}
-        >
-          {active && <span className="inline-block h-1.5 w-1.5 rounded-full bg-success" />}
-          {relTime(session.last_interacted_at) || session.status}
-        </span>
+        {/* "running" (pulsing) when the transcript was just written — the agent is
+            working now; otherwise the last-active age. Never emdash's fake status. */}
+        {running ? (
+          <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-success">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
+            running
+          </span>
+        ) : (
+          <span className="shrink-0 text-[11px] text-muted-foreground">
+            {relTime(session.last_interacted_at) || session.status}
+          </span>
+        )}
       </div>
 
       <RecentActivity task={session.emdash_task} messages={messages} />

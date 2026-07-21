@@ -28,3 +28,14 @@ export function isRecentlyActive(
   if (Number.isNaN(then)) return false
   return (now - then) / 1000 < withinSeconds
 }
+
+// The transcript was written in the last ~RUNNING_WINDOW_S seconds, i.e. the agent is
+// (very likely) generating output RIGHT NOW. The window is deliberately wider than the
+// pipeline lag (runner reports every ~10s + the phone polls every ~10s) so an actively
+// working session doesn't flicker off between updates. Caveat: a session mid-way through
+// one long tool call writes nothing for a while, so it can briefly read as not-running —
+// this tracks message activity, not raw CPU.
+export const RUNNING_WINDOW_S = 45
+export function isRunning(iso: string | null | undefined, now: number = Date.now()): boolean {
+  return isRecentlyActive(iso, now, RUNNING_WINDOW_S)
+}
