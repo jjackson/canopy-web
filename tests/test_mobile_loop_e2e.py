@@ -46,8 +46,7 @@ def _seed():
 def _cfg(base_url: str, raw: str, runner_id, tmp_path) -> Config:
     return Config(
         base_url=base_url, token=raw, runner_id=str(runner_id),
-        emdash_db=str(tmp_path / "emdash.db"), automation_ids={},
-        expected_migration_id=0, executor="cdp", state_path=str(tmp_path / "state.json"),
+        emdash_db=str(tmp_path / "emdash.db"), state_path=str(tmp_path / "state.json"),
     )
 
 
