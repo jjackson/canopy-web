@@ -53,6 +53,8 @@ RUNNER_WORKSPACE = os.environ.get("RUNNER_WORKSPACE", "")
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 WORK_DIR = os.environ.get("WORK_DIR", "/tmp/canopy-runner-work")
 POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "15"))
+# Idle WS recv timeout → app-level heartbeat cadence (keeps the lease + status fresh).
+HEARTBEAT_SECONDS = int(os.environ.get("HEARTBEAT_SECONDS", "20"))
 STATE_FILE = pathlib.Path(os.environ.get("STATE_FILE", str(pathlib.Path.home() / ".canopy-cloud-runner.json")))
 
 _stop = False
@@ -103,9 +105,9 @@ def pair_or_load() -> str:
     return rid
 
 
-def run_claude(prompt: str, turn_id: str) -> tuple[bool, str]:
-    """Run `claude -p` on the prompt, streaming stream-json events into the ledger.
-    Returns (ok, final_text)."""
+def run_claude(prompt: str, turn_id: str, emit) -> tuple[bool, str]:
+    """Run `claude -p` on the prompt, streaming stream-json events via `emit`
+    (a callable taking a list of event dicts — WS or REST). Returns (ok, final_text)."""
     workdir = pathlib.Path(WORK_DIR) / turn_id[:8]
     workdir.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -124,7 +126,7 @@ def run_claude(prompt: str, turn_id: str) -> tuple[bool, str]:
     def flush():
         nonlocal batch
         if batch:
-            _api("POST", f"/turns/{turn_id}/events", {"events": batch})
+            emit(batch)
             batch = []
 
     for line in proc.stdout:  # type: ignore[union-attr]
@@ -197,14 +199,9 @@ def fetch_and_stage_credential(runner_id: str) -> bool:
     return False
 
 
-def main() -> None:
-    if not BASE_URL or not TOKEN:
-        _log("FATAL: CANOPY_BASE_URL and CANOPY_TOKEN are required")
-        sys.exit(1)
-    runner_id = pair_or_load()
-    if not fetch_and_stage_credential(runner_id):
-        return  # stopped before a credential was provisioned
-    _log(f"polling {BASE_URL} every {POLL_SECONDS}s")
+# ── REST fallback loop (poll) ───────────────────────────────────────────────
+def run_over_rest(runner_id: str) -> None:
+    _log(f"polling {BASE_URL} every {POLL_SECONDS}s (REST fallback)")
     while not _stop:
         _api("POST", f"/runners/{runner_id}/heartbeat", {"active_turn_ids": []})
         status, turn = _api("POST", f"/runners/{runner_id}/claim")
@@ -212,17 +209,133 @@ def main() -> None:
             time.sleep(POLL_SECONDS)
             continue
         turn_id = turn["id"]
-        _log(f"claimed turn {turn_id[:8]} target={turn.get('target')}")
+        _log(f"claimed turn {turn_id[:8]} target={turn.get('target')} (REST)")
         _api("POST", f"/turns/{turn_id}/start", {"session_id": f"cloud-{turn_id[:8]}"})
-        # keep the lease alive while claude runs
         _api("POST", f"/runners/{runner_id}/heartbeat", {"active_turn_ids": [turn_id]})
+
+        def emit(events, _tid=turn_id):
+            _api("POST", f"/turns/{_tid}/events", {"events": events})
+
         try:
-            ok, text = run_claude(turn.get("prompt", ""), turn_id)
+            ok, text = run_claude(turn.get("prompt", ""), turn_id, emit)
         except Exception as exc:  # never let one turn kill the loop
             ok, text = False, f"runner error: {exc}"
         finish = "done" if ok else "failed"
         _api("POST", f"/turns/{turn_id}/finish", {"status": finish, "result_note": text[:2000]})
         _log(f"finished turn {turn_id[:8]}: {finish}")
+
+
+# ── WebSocket control channel (RC2) ─────────────────────────────────────────
+def _ws_url(runner_id: str) -> str:
+    base = BASE_URL.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+    return f"{base.replace('/api', '')}/ws/runner/{runner_id}/"
+
+
+def _ws_request(ws, frame: dict, want_type: str, timeout: float = 120.0):
+    """Send an action frame and read until the matching ack/result, skipping
+    unrelated frames (a wake/interject that arrives mid-request is not what we're
+    waiting on right now). Returns the matched frame, or None on close/timeout."""
+    import websocket  # local: only the WS path needs the dep
+
+    ws.send(json.dumps(frame))
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            raw = ws.recv()
+        except websocket.WebSocketTimeoutException:
+            continue  # socket idle; keep waiting for our ack
+        if not raw:
+            return None
+        msg = json.loads(raw)
+        if msg.get("type") == want_type:
+            return msg
+    return None
+
+
+def _claim_and_run(ws, runner_id: str) -> None:
+    res = _ws_request(ws, {"action": "claim"}, "claim.result")
+    turn = res.get("turn") if res else None
+    if not turn:
+        return
+    tid = turn["id"]
+    _log(f"claimed turn {tid[:8]} target={turn.get('target')} (WS)")
+    _ws_request(ws, {"action": "start", "turn_id": tid, "session_id": f"cloud-{tid[:8]}"}, "start.ack")
+
+    def emit(events, _tid=tid):
+        _ws_request(ws, {"action": "event", "turn_id": _tid, "events": events}, "event.ack", timeout=60)
+
+    try:
+        ok, text = run_claude(turn.get("prompt", ""), tid, emit)
+    except Exception as exc:
+        ok, text = False, f"runner error: {exc}"
+    _ws_request(ws, {"action": "finish", "turn_id": tid,
+                     "status": "done" if ok else "failed", "result_note": text[:2000]}, "finish.ack")
+    _log(f"finished turn {tid[:8]} (WS): {'done' if ok else 'failed'}")
+
+
+def run_over_ws(runner_id: str) -> bool:
+    """Persistent control channel: heartbeat, claim-on-wake, run + stream over the
+    socket. Returns False if the WS lib/endpoint is unavailable (caller falls back
+    to REST); loops until _stop otherwise, reconnecting on drops."""
+    try:
+        import websocket
+    except ImportError:
+        _log("websocket-client not installed; using REST")
+        return False
+    url = _ws_url(runner_id)
+    connected_ever = False
+    while not _stop:
+        try:
+            ws = websocket.create_connection(
+                url, header=[f"Authorization: Bearer {TOKEN}"], timeout=HEARTBEAT_SECONDS,
+            )
+        except Exception as exc:
+            if not connected_ever:
+                _log(f"ws connect failed ({exc}); falling back to REST")
+                return False
+            _log(f"ws reconnect failed ({exc}); retry in {POLL_SECONDS}s")
+            time.sleep(POLL_SECONDS)
+            continue
+        connected_ever = True
+        _log(f"ws connected: {url}")
+        _claim_and_run(ws, runner_id)  # drain anything already queued (no wake for those)
+        try:
+            while not _stop:
+                try:
+                    raw = ws.recv()
+                except websocket.WebSocketTimeoutException:
+                    _ws_request(ws, {"action": "heartbeat", "active_turn_ids": []}, "heartbeat.ack", timeout=15)
+                    continue
+                if not raw:
+                    break
+                msg = json.loads(raw)
+                mtype = msg.get("type")
+                if mtype == "wake":
+                    _claim_and_run(ws, runner_id)
+                elif mtype == "interject":
+                    _log(f"interject turn={msg.get('turn_id')}: {msg.get('message')!r}")
+        except Exception as exc:
+            _log(f"ws loop error: {exc}")
+        finally:
+            try:
+                ws.close()
+            except Exception:
+                pass
+        if not _stop:
+            time.sleep(2)  # brief backoff before reconnect
+    return True
+
+
+def main() -> None:
+    if not BASE_URL or not TOKEN:
+        _log("FATAL: CANOPY_BASE_URL and CANOPY_TOKEN are required")
+        sys.exit(1)
+    runner_id = pair_or_load()
+    if not fetch_and_stage_credential(runner_id):
+        return  # stopped before a credential was provisioned
+    # Prefer the WS control channel; fall back to REST polling if it can't be used.
+    if not run_over_ws(runner_id):
+        run_over_rest(runner_id)
 
 
 def _handle_stop(*_a):
