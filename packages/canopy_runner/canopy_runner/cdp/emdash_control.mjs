@@ -6,6 +6,13 @@
 //   list                              -> {ok, tasks:[names], projects:[names]}
 //   create {project, prompt}          -> {ok, action:"created"}    (new session)
 //   open-send {task, text}            -> {ok, action:"sent", task} (REUSE existing)
+//                                        -> {ok, action:"collision", line} if the prompt
+//                                           already holds UNSENT text (human was typing when
+//                                           emdash switched tasks) — does NOT clobber it.
+//   open-send {task, text, clearFirst}-> {ok, action:"sent-cleared"} kills the current input
+//                                           line first, then sends (the human's "Clear & send").
+// Text is delivered via CDP Input.insertText (one atomic commit, not char-by-char
+// typing) so it lands fast and narrows the window for a keystroke collision.
 // All output is a single JSON line on stdout. Occlusion-proof: uses JS-dispatched
 // clicks so it works while emdash is backgrounded (no foreground focus needed).
 import { chromium } from 'playwright-core';
@@ -104,7 +111,7 @@ try {
     // Initial-conversation prompt is a contenteditable in the Create Task dialog.
     const ce = page.locator('[role=dialog] [contenteditable="true"], [class*=Dialog] [contenteditable="true"]').first();
     await ce.click();
-    await page.keyboard.type(prompt);
+    await page.keyboard.insertText(prompt);   // atomic commit, not char-by-char
     const created = await page.evaluate(() => {
       const dlg = document.querySelector('[role=dialog],[class*=Dialog],[class*=modal]');
       if (!dlg) return false;
@@ -127,7 +134,7 @@ try {
     // so with dozens of tasks the target is usually absent from the DOM despite being
     // live (observed 2026-07-15: eva's org-research session, present in emdash's DB,
     // reported TASK_NOT_FOUND and duplicated).
-    const { task, text } = args;
+    const { task, text, clearFirst } = args;
     const found = await scrollToFind(`Open task ${task}`);
     // TASK_NOT_FOUND is a claim about the WHOLE sidebar, only trustworthy now that we
     // scan all of it. Even so the caller cross-checks it against emdash's sqlite before
@@ -138,10 +145,10 @@ try {
       fail(`could not click task "${task}" after locating it in the sidebar`);
     }
     await page.waitForTimeout(1200);
-    // Focus the ACTIVE terminal's input, then type. xterm's real input is an
-    // off-screen `.xterm-helper-textarea`, so a Playwright .click() fails its
-    // viewport check — we focus it via JS (viewport-agnostic) instead, picking the
-    // visible xterm (the active task's pane) when several are mounted.
+    // Focus the ACTIVE terminal's input. xterm's real input is an off-screen
+    // `.xterm-helper-textarea`, so a Playwright .click() fails its viewport check — we
+    // focus it via JS (viewport-agnostic) instead, picking the visible xterm (the active
+    // task's pane) when several are mounted.
     const focused = await page.evaluate(() => {
       const terms = [...document.querySelectorAll('.xterm')]
         .filter(t => t.offsetParent !== null && t.getBoundingClientRect().width > 0);
@@ -153,9 +160,58 @@ try {
       return true;
     });
     if (!focused) fail(`could not focus the terminal input for task "${task}"`);
-    await page.keyboard.type(text);
-    await page.keyboard.press('Enter');
-    out({ ok: true, action: 'sent', task });
+
+    // Read whatever is ALREADY sitting in the prompt. claude's TUI renders its input
+    // inside a bordered box; the input line is the last visible row carrying a '>'
+    // prompt marker. A non-empty line here means the human was typing when emdash
+    // switched to this task and their keystrokes leaked in — a COLLISION we must NOT
+    // clobber blindly. Heuristic + version-fragile: on any ambiguity it returns '',
+    // which takes the fast send path (never worse than the pre-collision behaviour, and
+    // no false-positive dialog).
+    const readLine = () => page.evaluate(() => {
+      const terms = [...document.querySelectorAll('.xterm')]
+        .filter(t => t.offsetParent !== null && t.getBoundingClientRect().width > 0);
+      const term = terms[0];
+      if (!term) return '';
+      const rows = [...term.querySelectorAll('.xterm-rows > div')]
+        .map(r => (r.textContent || '').replace(/\u00a0/g, ' '));
+      for (let i = rows.length - 1; i >= 0 && i >= rows.length - 14; i--) {
+        const m = rows[i].match(/(?:^|[│|])\s*>\s?(.*)$/);
+        if (m) return (m[1] || '').replace(/[│|─╭╮╰╯]/g, '').trim();
+      }
+      return '';
+    });
+    // Ghost/placeholder hints claude shows in an EMPTY input — treat as empty so the
+    // fast path still fires instead of popping a spurious collision dialog.
+    const PLACEHOLDER = /^(Try |Ask |\/ for |\? for )/i;
+    const isEmpty = (s) => !s || PLACEHOLDER.test(s);
+
+    if (clearFirst) {
+      // The human chose "Clear & send": deterministically empty the input, then send.
+      // Ctrl+U (kill-to-start) as a fast path, then backspace the MEASURED content and
+      // re-read until empty (self-correcting; robust to whatever line editing claude's
+      // TUI actually honors). Leaked text is "the last few words", so this is short.
+      await page.keyboard.press('Control+U');
+      for (let i = 0; i < 6; i++) {
+        const n = Math.min((await readLine()).length, 300);
+        if (n === 0) break;
+        await page.keyboard.press('End');
+        for (let k = 0; k < n; k++) await page.keyboard.press('Backspace');
+      }
+      await page.keyboard.insertText(text);
+      await page.keyboard.press('Enter');
+      out({ ok: true, action: 'sent-cleared', task });
+    } else {
+      const line = await readLine();
+      if (!isEmpty(line)) {
+        // Don't touch it — hand the collision back to the runner to ask the human.
+        out({ ok: true, action: 'collision', task, line });
+      } else {
+        await page.keyboard.insertText(text);   // atomic commit, not char-by-char
+        await page.keyboard.press('Enter');
+        out({ ok: true, action: 'sent', task });
+      }
+    }
 
   } else {
     fail(`unknown command: ${command}`);
