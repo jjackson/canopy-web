@@ -1,22 +1,20 @@
 # canopy_runner
 
 A laptop-side runner (stdlib-only) that watches for claimed turns on the
-canopy-web harness and triggers a visible emdash session by inserting a
-queued automation run directly into emdash's local sqlite DB.
+canopy-web harness and routes each one to a **visible emdash session**, driving
+emdash's real UI over the Chrome DevTools Protocol (create a new session, or
+reuse the existing session for that thread). It never writes to emdash's DB —
+the only emdash-DB access is two READ-ONLY queries (`emdash.py`: `task_state`,
+`list_open_sessions`) that answer "does this session still exist?" (the DOM
+can't, because emdash virtualizes the sidebar).
 
 ## One-time laptop setup
 
-1. **Create the emdash automation** (emdash UI → Automations → New), one per
-   agent:
-   - Name: `canopy — automated turn execution (echo)`
-   - Project: the agent's repo; Workspace: repo root or a persistent workspace
-   - Schedule: none/disabled (the runner triggers runs; cron stays off)
-   - Prompt: `/canopy:drain-turn echo`
-   - Provider: claude, terminal (pty) mode
-
-   Copy the automation id:
+1. **Launch emdash with its debug port** via the **"Emdash CDP"** Spotlight app
+   (or any launcher that passes `--remote-debugging-port=9222`), and install the
+   CDP sidecar deps once:
    ```bash
-   sqlite3 ~/Library/Application\ Support/Emdash/emdash4.db "SELECT id,name FROM automations;"
+   cd canopy_runner/cdp && npm install
    ```
 
 2. **Pair the runner** with canopy-web:
@@ -36,23 +34,13 @@ queued automation run directly into emdash's local sqlite DB.
      "token": "@~/.claude/canopy/workbench-token",
      "runner_id": "<uuid from step 2>",
      "emdash_db": "/Users/jjackson/Library/Application Support/Emdash/emdash4.db",
-     "automation_ids": {"echo": "<automation id — inject executor only>"},
-     "expected_migration_id": 19,
-     "executor": "cdp",
      "cdp_port": 9222,
      "mailboxes": {"hal": {"account": "hal@dimagi-ai.com", "client": "canopy"}},
      "inbox_poll_seconds": 300
    }
    ```
    `token` may be a literal value or `@/path/to/token/file` (read + stripped
-   at load time).
-
-   **Executor.** `"cdp"` (default) drives emdash's real UI over the DevTools
-   protocol — create/reuse sessions, appearing live in the sidebar; launch emdash
-   via the **"Emdash CDP"** Spotlight app so `--remote-debugging-port=9222` is set,
-   and run `cd canopy_runner/cdp && npm install` once. `"inject"` is the legacy
-   DB-injection path (`automation_ids` + `expected_migration_id` apply only there;
-   see "After an emdash update").
+   at load time). Unknown/legacy keys in the file are ignored, not rejected.
 
    **Email trigger.** `mailboxes` maps each agent to its gog `{account, client}`;
    the runner polls them every `inbox_poll_seconds` and enqueues an email-origin
@@ -65,7 +53,8 @@ queued automation run directly into emdash's local sqlite DB.
    ```bash
    python3 -m canopy_runner.main --config ~/.canopy/runner.json --once
    ```
-   → should report `idle` (no claimed turns yet).
+   → should report `idle` (no claimed turns yet), or `cdp_down` if emdash isn't
+   up on its debug port.
 
 5. **Install the launchd job** to run the watch loop continuously:
    ```bash
@@ -76,10 +65,12 @@ queued automation run directly into emdash's local sqlite DB.
 ## Commands
 
 - `run` (default when no subcommand is given) — the main watch loop. `--once`
-  runs a single iteration (used by cron/tests/launchd health checks).
-- `vet` — re-vet the emdash schema pin after an emdash update (see below).
+  runs a single iteration (used by cron/tests/launchd health checks);
+  `--drain-one` claims + runs exactly one queued turn, then exits.
+- `verify-emdash` — read-only check that emdash's DB still has the columns the
+  reads depend on (run after an emdash update; see below).
 
-## E2E check (Phase 0 exit criterion)
+## E2E check
 
 ```bash
 TOKEN=$(cat ~/.claude/canopy/workbench-token)
@@ -91,43 +82,38 @@ TOKEN=$(cat ~/.claude/canopy/workbench-token)
      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
      -d '{"agent_slug":"echo","origin":"manual","idempotency_key":"e2e-'$(date +%s)'"}'
    ```
-2. Within ~2 min: an emdash session appears (Automations panel immediately;
-   sidebar after promote) running `/canopy:drain-turn echo`.
+2. Within seconds: an emdash session appears live in the sidebar (created or
+   reused) running `/canopy:drain-turn echo`.
 3. Poll the turn until it resolves:
    ```bash
    curl {base}/api/harness/turns/{id} -H "Authorization: Bearer $TOKEN"
    ```
-   → `done`. Events begin at `claimed` (enqueue itself writes no event); the
-   work-summary is a `status`-kind event with payload
-   `{"status": "work_summary", ...}`. Full flow: `claimed → injected →
-   emdash_task → running → work_summary (status payload) → done`.
-4. Close the laptop, enqueue another turn → it stays `queued`; reopen the
-   laptop → it executes.
+   → `done`.
+4. Close the laptop (or quit emdash), enqueue another turn → it stays `queued`
+   (the runner reports `cdp_down` and doesn't claim); reopen → it executes.
 
 ## After an emdash update
 
-emdash auto-updates, and the runner refuses to write into its DB whenever
-emdash's Drizzle migration id has moved past the vetted pin (`expected_migration_id`
-in `runner.json`) — the runner goes `degraded` and stops injecting until
-re-vetted. Rather than requiring a full manual re-vet on every emdash release,
-`vet` fingerprints the schema of the three tables the adapter actually
-touches (`automations`, `automation_runs`, `tasks`) and compares it to the
-last-vetted fingerprint stored in `runner.json` (`emdash_fingerprint`):
+emdash auto-updates. The runner drives emdash over CDP and reads its sqlite DB;
+the reads are deliberately **fail-soft** (any sqlite error degrades to
+`"unknown"`/`[]` so a read failure is never mistaken for "session gone"). The
+cost of that safety is that a *silent* schema drift — emdash renaming a column
+`task_state`/`list_open_sessions` name — wouldn't crash; it would quietly break
+session reuse (duplicate sessions) and blank the phone's session list, with
+nothing in the log.
+
+`verify-emdash` is the guard against exactly that. Run it after an emdash update:
 
 ```bash
-python3 -m canopy_runner.main vet --config ~/.canopy/runner.json
+python3 -m canopy_runner.main verify-emdash --config ~/.canopy/runner.json
 ```
 
-- schema of the touched tables unchanged → the migration id bump was just
-  noise; the pin (`expected_migration_id`) bumps automatically and the
-  runner resumes on its next iteration
-- schema changed → refuses to touch the config (naming the tables that
-  changed) and stays degraded; before editing the pin by hand, re-verify the
-  injection surface (the two writes — `INSERT INTO automation_runs`,
-  `UPDATE tasks.type` — plus the columns they read) against the emdash
-  source (see the spec §6.1)
-- no fingerprint baseline stored yet: `vet` adopts one only when the pin
-  already matches the actual migration id (i.e. a human vetted at this id).
-  If the pin has drifted and there is no baseline, it refuses — verify the
-  injection surface by hand, set `expected_migration_id` yourself, then
-  re-run `vet` to adopt the fingerprint
+- all read columns present → exit 0, `✓ … schema intact`. Nothing else to do —
+  everything else the runner assumes about emdash (it's installed, its CDP port,
+  transcripts) fails LOUDLY and is obvious within a tick.
+- a column drifted → exit 1, naming each missing `table.column`. Reconcile
+  `task_state()` / `list_open_sessions()` in `canopy_runner/emdash.py` against
+  emdash's new schema, then update `READ_SCHEMA` (the allowlist those two reads
+  are checked against) to match.
+- the DB itself can't be read → exit 2 (bad `emdash_db` path, or emdash not
+  installed).

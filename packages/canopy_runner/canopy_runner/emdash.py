@@ -1,45 +1,56 @@
-"""Emdash sqlite adapter — two very different halves. Keep them straight:
+"""Emdash sqlite adapter — READ-ONLY.
 
-**Writes (legacy injection, `executor="inject"`).** Trigger a visible emdash session
-by inserting a queued automation run. Superseded by the CDP executor, which drives
-emdash's real UI instead. Unsupported-surface rules:
+The CDP executor drives emdash's real UI (create/reuse sessions); it never writes
+to emdash's DB. But the DOM cannot answer "does this task still exist?" — emdash
+virtualizes the sidebar, so a scrolled-out task is absent from the page — so the
+reuse decision asks sqlite instead (`task_state`), and the phone's session list is
+read the same way (`list_open_sessions`).
 
-- NEVER write when the Drizzle migration id differs from the vetted pin.
-- Only two writes exist: INSERT into automation_runs, UPDATE tasks.type.
-- Everything else (task creation, worktree, session spawn) is emdash's own
-  runtime reacting to the queued row — verified by live experiment 2026-07-05.
-
-**Reads (`task_state`, used by the CDP executor).** The CDP rewrite dropped DB
-*writes* for good reasons above — but took reads down with it, and reads were never
-the risk. A read cannot corrupt emdash, so it is NOT behind the vetted pin and stays
-correct across emdash upgrades. The CDP path asks sqlite "does this task exist?"
-because the DOM cannot answer it (see `task_state`).
+Both reads are deliberately **fail-soft**: any sqlite error degrades to "unknown" /
+`[]` rather than raising, because a read failure must never be mistaken for "session
+gone" (that false negative duplicated a live session — see `task_state`). The cost of
+that safety is that a *silent* schema drift — emdash renaming a column these queries
+name — would quietly break the runner (duplicate sessions, a blank supervisor) with
+nothing in the log. `check_read_schema` (surfaced as `canopy_runner verify-emdash`)
+is the one guard against that: run it after an emdash update to confirm the columns
+these two functions depend on still exist. Keep `READ_SCHEMA` in lockstep with the
+SQL below — it IS the list of columns the SQL names.
 """
 from __future__ import annotations
 
-import hashlib
 import sqlite3
-import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-VETTED_TABLES = ["automations", "automation_runs", "tasks"]
+# The exact columns the two reads below depend on. verify-emdash asserts these
+# still exist after an emdash update. Update this the moment you change the SQL.
+READ_SCHEMA: dict[str, list[str]] = {
+    "tasks": [
+        "name",
+        "archived_at",
+        "created_at",
+        "status",
+        "last_interacted_at",
+        "type",
+        "project_id",
+    ],
+    "projects": ["id", "name"],
+}
 
 
-class SchemaDrift(Exception):
-    """emdash migrated its DB; injection is disabled until re-vetted."""
+class SchemaCheckError(Exception):
+    """The emdash DB itself couldn't be opened/read — distinct from a column drift,
+    so 'the DB isn't there' isn't mistaken for 'the schema changed'."""
 
 
 @contextmanager
 def _db(db_path: str) -> Iterator[sqlite3.Connection]:
     """Open a connection and guarantee it is closed.
 
-    ``sqlite3.Connection`` used as a context manager only commits/rolls back
-    the transaction on `__exit__` — it does NOT close the connection. Every
-    caller here must go through this helper (instead of holding a bare
-    connection open) so the underlying file handle is always released, on
-    both the read and write paths.
+    ``sqlite3.Connection`` used as a context manager only commits/rolls back the
+    transaction on `__exit__` — it does NOT close the connection. Every caller here
+    must go through this helper so the underlying file handle is always released.
     """
     conn = sqlite3.connect(db_path, timeout=3.0)
     conn.row_factory = sqlite3.Row
@@ -49,97 +60,30 @@ def _db(db_path: str) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def _table_sqls(db_path: str, tables: list[str]) -> dict[str, str]:
-    """Normalized CREATE TABLE SQL per named table (missing tables absent)."""
-    with _db(db_path) as conn:
-        rows = conn.execute(
-            "SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN (%s)"
-            % ",".join("?" * len(tables)),
-            list(tables),
-        ).fetchall()
-    return {r["name"]: " ".join((r["sql"] or "").split()) for r in rows}
+def check_read_schema(db_path: str) -> list[str]:
+    """Verify every column the CDP-path reads depend on still exists.
 
-
-def table_fingerprint(db_path: str, tables: list[str]) -> str:
-    """sha256 over the normalized CREATE TABLE SQL of the named tables.
-
-    The migration id moves on every emdash release; the shape of the three
-    tables we touch almost never does. Fingerprint-match => safe to re-pin.
+    Returns a list of human-readable problems (``"tasks.foo missing"``,
+    ``"table 'projects' missing"``); an EMPTY list means the read surface is intact.
+    Raises ``SchemaCheckError`` if the DB itself can't be opened, so "can't find the
+    DB" stays distinct from "the schema drifted".
     """
-    sqls = _table_sqls(db_path, tables)
-    parts = [f"{name}::{sql}" for name, sql in sqls.items()]
-    return hashlib.sha256("\n".join(sorted(parts)).encode()).hexdigest()
-
-
-def per_table_fingerprints(db_path: str, tables: list[str]) -> dict[str, str]:
-    """sha256 per table over its normalized CREATE TABLE SQL.
-
-    Stored alongside the combined fingerprint so a refusal can name exactly
-    which tables changed instead of just "something drifted".
-    """
-    sqls = _table_sqls(db_path, tables)
-    return {name: hashlib.sha256(sql.encode()).hexdigest() for name, sql in sqls.items()}
-
-
-def check_schema(db_path: str, expected_migration_id: int) -> None:
-    with _db(db_path) as conn:
-        try:
-            row = conn.execute("SELECT MAX(id) AS m FROM __drizzle_migrations").fetchone()
-        except sqlite3.OperationalError as exc:
-            if "no such table" in str(exc):
-                raise SchemaDrift(f"no __drizzle_migrations table in {db_path}") from exc
-            raise
-    actual = row["m"] if row else None
-    if actual != expected_migration_id:
-        raise SchemaDrift(
-            f"emdash migration id {actual} != vetted {expected_migration_id}; refusing to write"
-        )
-
-
-def inject_run(db_path: str, automation_id: str, run_id: str, task_name: str) -> None:
-    """Insert a queued automation_runs row to trigger a visible emdash session.
-
-    Idempotent on ``run_id``: the runner generates ``run_id`` itself, so a
-    duplicate call (e.g. a retry after an ambiguous crash where the caller
-    couldn't tell whether the prior INSERT committed) means "same intended
-    injection" — the row is left untouched and this returns without raising.
-    """
-    now_ms = int(time.time() * 1000)
-    with _db(db_path) as conn:
-        existing = conn.execute(
-            "SELECT id FROM automation_runs WHERE id=?", (run_id,)
-        ).fetchone()
-        if existing is not None:
-            return
-        auto = conn.execute(
-            "SELECT id, task_config, conversation_config, enabled, deleted_at FROM automations WHERE id=?",
-            (automation_id,),
-        ).fetchone()
-        if auto is None or auto["deleted_at"] is not None:
-            raise ValueError(f"automation {automation_id} not found in {db_path}")
-        if not auto["enabled"]:
-            raise ValueError(f"automation {automation_id} is disabled")
-        conn.execute(
-            "INSERT INTO automation_runs (id, automation_id, scheduled_at, deadline_at, started_at,"
-            " task_created_at, launched_at, finished_at, status, error, trigger_kind,"
-            " trigger_config_snapshot, conversation_config_snapshot, task_config_snapshot, generated_task_name)"
-            " VALUES (?, ?, ?, NULL, NULL, NULL, NULL, NULL, 'queued', NULL, 'manual', '{}', ?, ?, ?)",
-            (
-                run_id,
-                automation_id,
-                now_ms,
-                auto["conversation_config"] or "{}",
-                auto["task_config"],
-                task_name,
-            ),
-        )
-        conn.commit()
-
-
-def run_status(db_path: str, run_id: str) -> str | None:
-    with _db(db_path) as conn:
-        row = conn.execute("SELECT status FROM automation_runs WHERE id=?", (run_id,)).fetchone()
-    return row["status"] if row else None
+    if not Path(db_path).exists():  # don't let sqlite3.connect() create an empty file
+        raise SchemaCheckError(f"emdash DB not found at {db_path}")
+    problems: list[str] = []
+    try:
+        with _db(db_path) as conn:
+            for table, cols in READ_SCHEMA.items():
+                # PRAGMA can't be parameter-bound; the table name is our own constant,
+                # never user input, so the f-string is safe here.
+                present = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+                if not present:
+                    problems.append(f"table {table!r} missing (or has no columns)")
+                    continue
+                problems.extend(f"{table}.{col} missing" for col in cols if col not in present)
+    except sqlite3.Error as exc:
+        raise SchemaCheckError(f"cannot read emdash DB {db_path}: {exc}") from exc
+    return problems
 
 
 def task_state(db_path: str, name: str) -> str:
@@ -178,10 +122,10 @@ def task_state(db_path: str, name: str) -> str:
 def list_open_sessions(db_path: str, limit: int = 30) -> list[dict]:
     """READ-ONLY: the un-archived emdash tasks, newest-first, capped. Returns
     [{emdash_task, project, status, last_interacted_at}]. Like task_state this is a
-    pure read — NOT behind the write-vet pin — and it must NEVER raise: a missing DB,
-    a renamed column, or an emdash schema change degrades to [] so the runner loop
-    survives. The task NAME is the identity open_and_send targets; project is joined
-    from `projects` for display + the continue turn's target.
+    pure read that must NEVER raise: a missing DB, a renamed column, or an emdash schema
+    change degrades to [] so the runner loop survives. The task NAME is the identity
+    open_and_send targets; project is joined from `projects` for display + the continue
+    turn's target.
 
     Only `type='task'` rows — the real sessions emdash shows in its project list.
     `type='automation-run'` rows are un-promoted automation triggers that emdash hides
@@ -210,20 +154,3 @@ def list_open_sessions(db_path: str, limit: int = 30) -> list[dict]:
         return [dict(r) for r in rows]
     except sqlite3.Error:
         return []
-
-
-def find_task(db_path: str, automation_run_id: str) -> dict | None:
-    with _db(db_path) as conn:
-        row = conn.execute(
-            "SELECT id, name, status, type FROM tasks WHERE automation_run_id=?",
-            (automation_run_id,),
-        ).fetchone()
-    return dict(row) if row else None
-
-
-def promote_task(db_path: str, task_id: str) -> None:
-    with _db(db_path) as conn:
-        conn.execute(
-            "UPDATE tasks SET type='task', updated_at=datetime('now') WHERE id=?", (task_id,)
-        )
-        conn.commit()

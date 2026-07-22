@@ -12,9 +12,6 @@ class Config:
     token: str
     runner_id: str
     emdash_db: str
-    automation_ids: dict[str, str]
-    expected_migration_id: int
-    emdash_fingerprint: str = ""
     # Claim cadence — how fast a queued turn (e.g. a phone "Continue this session")
     # gets picked up. Kept low so delivery feels near-immediate; the claim + heartbeat
     # are cheap HTTP. The heavier session report is throttled separately below.
@@ -26,10 +23,8 @@ class Config:
     # within ~10s; the bounded tail-read keeps even ~30 transcripts/10s cheap.
     session_report_seconds: int = 10
     state_path: str = ""
-    # Executor: "cdp" drives emdash's real UI over CDP (create/reuse sessions —
-    # the sanctioned path); "inject" is the legacy DB-injection path. cdp needs
+    # The runner drives emdash's real UI over CDP (create/reuse sessions); it needs
     # emdash launched with --remote-debugging-port=<cdp_port> (see "Emdash CDP").
-    executor: str = "cdp"
     cdp_port: int = 9222
     inbox_poll_seconds: int = 300
     # {agent_slug: {"account": "<mailbox>", "client": "<gog client>", "query": "<opt>"}}

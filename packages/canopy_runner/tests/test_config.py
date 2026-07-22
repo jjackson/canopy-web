@@ -13,11 +13,13 @@ def test_load_config_with_token_file(tmp_path: Path):
         "token": f"@{token_file}",
         "runner_id": "r-1",
         "emdash_db": str(tmp_path / "emdash4.db"),
+        # Extra/legacy keys (e.g. a leftover automation_ids from the retired inject
+        # executor) are ignored by load, not rejected — keep the runner bootable across
+        # a config that predates their removal.
         "automation_ids": {"echo": "auto-1"},
-        "expected_migration_id": 19,
     }))
     cfg = Config.load(cfg_file)
     assert cfg.token == "sekret"
     assert cfg.base_url == "https://labs.example.com/canopy"
-    assert cfg.automation_ids["echo"] == "auto-1"
+    assert not hasattr(cfg, "automation_ids")  # dropped field, silently ignored on load
     assert cfg.poll_seconds == 5  # default (low, for snappy turn claims)

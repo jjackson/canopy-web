@@ -1,4 +1,3 @@
-import json
 import sqlite3
 import uuid
 from pathlib import Path
@@ -6,164 +5,99 @@ from pathlib import Path
 import pytest
 
 from canopy_runner.emdash import (
-    SchemaDrift,
-    check_schema,
-    find_task,
-    inject_run,
-    promote_task,
-    run_status,
+    READ_SCHEMA,
+    SchemaCheckError,
+    check_read_schema,
+    list_open_sessions,
     task_state,
 )
 
-AUTOMATION_ID = "auto-1"
+
+def _emdash_schema() -> str:
+    """The CDP-path's read surface: the `tasks` and `projects` columns task_state()
+    and list_open_sessions() name. Deliberately a superset-shaped, minimal stand-in
+    for emdash's real schema — only the read columns matter here."""
+    return """
+        CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+        CREATE TABLE tasks (
+          id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL,
+          archived_at TEXT, last_interacted_at TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+          type TEXT DEFAULT 'task' NOT NULL, automation_run_id TEXT
+        );
+    """
 
 
 @pytest.fixture()
 def db(tmp_path: Path) -> str:
     path = tmp_path / "emdash4.db"
     conn = sqlite3.connect(path)
-    conn.executescript(
-        """
-        CREATE TABLE __drizzle_migrations (id INTEGER PRIMARY KEY, hash TEXT, created_at INTEGER);
-        INSERT INTO __drizzle_migrations (id, hash, created_at) VALUES (19, 'h', 0);
-        CREATE TABLE automations (
-          id TEXT PRIMARY KEY, name TEXT NOT NULL, task_config TEXT, project_id TEXT,
-          enabled INTEGER DEFAULT 1 NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
-          trigger_config TEXT, conversation_config TEXT, deleted_at INTEGER
-        );
-        CREATE TABLE automation_runs (
-          id TEXT PRIMARY KEY, automation_id TEXT NOT NULL, scheduled_at INTEGER, deadline_at INTEGER,
-          started_at INTEGER, task_created_at INTEGER, launched_at INTEGER, finished_at INTEGER,
-          status TEXT NOT NULL, error TEXT, trigger_kind TEXT NOT NULL,
-          trigger_config_snapshot TEXT DEFAULT '{}' NOT NULL,
-          conversation_config_snapshot TEXT DEFAULT '{}' NOT NULL,
-          task_config_snapshot TEXT, generated_task_name TEXT
-        );
-        CREATE TABLE tasks (
-          id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL,
-          archived_at TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
-          type TEXT DEFAULT 'task' NOT NULL, automation_run_id TEXT
-        );
-        """
-    )
-    conn.execute(
-        "INSERT INTO automations (id, name, task_config, project_id, enabled, created_at, updated_at, conversation_config) "
-        "VALUES (?, 'canopy-turns', ?, 'proj-1', 1, 0, 0, ?)",
-        (
-            AUTOMATION_ID,
-            json.dumps({"version": "1", "taskConfig": {"version": "1", "name": "t"}, "workspaceConfig": {}}),
-            json.dumps({"prompt": "/canopy:drain-turn echo", "provider": "claude", "autoApprove": False, "type": "pty"}),
-        ),
-    )
+    conn.executescript(_emdash_schema())
+    conn.execute("INSERT INTO projects (id, name) VALUES ('proj-1', 'canopy-web')")
     conn.commit()
     conn.close()
     return str(path)
 
 
-def test_check_schema_ok(db):
-    check_schema(db, 19)  # no raise
+# --------------------------------------------------------------------------------------
+# check_read_schema — verify-emdash's one job: the read columns still exist
+# --------------------------------------------------------------------------------------
+
+def test_check_read_schema_intact(db):
+    assert check_read_schema(db) == []
 
 
-def test_check_schema_drift_raises(db):
-    with pytest.raises(SchemaDrift):
-        check_schema(db, 18)
-
-
-def test_inject_run_copies_snapshots(db):
-    rid = str(uuid.uuid4())
-    inject_run(db, AUTOMATION_ID, rid, task_name="canopy-turn-echo")
+def test_check_read_schema_names_a_dropped_column(db):
+    """A renamed/dropped column the reads depend on must be reported by name — this is
+    the SILENT failure verify-emdash exists to make loud (the reads swallow it)."""
     conn = sqlite3.connect(db)
-    row = conn.execute(
-        "SELECT status, trigger_kind, conversation_config_snapshot, generated_task_name "
-        "FROM automation_runs WHERE id=?", (rid,)
-    ).fetchone()
-    assert row[0] == "queued" and row[1] == "manual"
-    assert json.loads(row[2])["prompt"] == "/canopy:drain-turn echo"
-    assert row[3] == "canopy-turn-echo"
-    assert run_status(db, rid) == "queued"
-
-
-def test_inject_refuses_unknown_automation(db):
-    with pytest.raises(ValueError):
-        inject_run(db, "nope", str(uuid.uuid4()), task_name="x")
-
-
-def test_find_and_promote_task(db):
-    rid = str(uuid.uuid4())
-    inject_run(db, AUTOMATION_ID, rid, task_name="x")
-    assert find_task(db, rid) is None
-    conn = sqlite3.connect(db)
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, name, status, type, automation_run_id) "
-        "VALUES ('task-1', 'proj-1', 'fruity', 'in_progress', 'automation-run', ?)", (rid,)
-    )
-    conn.commit(); conn.close()
-    task = find_task(db, rid)
-    assert task == {"id": "task-1", "name": "fruity", "status": "in_progress", "type": "automation-run"}
-    promote_task(db, "task-1")
-    assert find_task(db, rid)["type"] == "task"
-
-
-def test_inject_run_is_idempotent_on_same_run_id(db):
-    rid = str(uuid.uuid4())
-    inject_run(db, AUTOMATION_ID, rid, task_name="first")
-    # Simulate a runner retry after an ambiguous crash: same run_id, called again.
-    inject_run(db, AUTOMATION_ID, rid, task_name="second")
-
-    conn = sqlite3.connect(db)
-    rows = conn.execute(
-        "SELECT generated_task_name FROM automation_runs WHERE id=?", (rid,)
-    ).fetchall()
+    conn.execute("ALTER TABLE tasks RENAME COLUMN last_interacted_at TO touched_at")
+    conn.commit()
     conn.close()
+    problems = check_read_schema(db)
+    assert problems == ["tasks.last_interacted_at missing"]
 
-    assert len(rows) == 1
-    assert rows[0][0] == "first"
 
-
-def test_check_schema_raises_schemadrift_when_table_missing(tmp_path: Path):
-    path = tmp_path / "no-migrations.db"
+def test_check_read_schema_reports_a_missing_table(tmp_path):
+    path = tmp_path / "partial.db"
     conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE tasks (name TEXT, archived_at TEXT, created_at TEXT, status TEXT, "
+        "last_interacted_at TEXT, type TEXT, project_id TEXT);"
+    )  # no `projects` table at all
+    conn.commit()
     conn.close()
-
-    with pytest.raises(SchemaDrift):
-        check_schema(str(path), 19)
+    assert "table 'projects' missing (or has no columns)" in check_read_schema(str(path))
 
 
-def test_connections_are_closed(db, monkeypatch):
-    """Every sqlite3.connect() made by the module must be closed, on both the
-    read (run_status) and write (inject_run) paths."""
-    real_connect = sqlite3.connect
-    created: list["TrackingConnection"] = []
-    closed: list["TrackingConnection"] = []
+def test_check_read_schema_raises_when_db_absent(tmp_path):
+    """A missing DB is distinct from a drifted schema — it raises rather than returning
+    a (misleading) list of 'missing columns'."""
+    with pytest.raises(SchemaCheckError):
+        check_read_schema(str(tmp_path / "nope.db"))
 
-    class TrackingConnection:
-        def __init__(self, real_conn):
-            object.__setattr__(self, "_real", real_conn)
 
-        def __getattr__(self, name):
-            return getattr(self._real, name)
+def test_check_read_schema_does_not_create_a_db_file(tmp_path):
+    missing = tmp_path / "nope.db"
+    with pytest.raises(SchemaCheckError):
+        check_read_schema(str(missing))
+    assert not missing.exists()
 
-        def __setattr__(self, name, value):
-            setattr(self._real, name, value)
 
-        def close(self):
-            closed.append(self)
-            self._real.close()
-
-    def fake_connect(*args, **kwargs):
-        wrapped = TrackingConnection(real_connect(*args, **kwargs))
-        created.append(wrapped)
-        return wrapped
-
-    monkeypatch.setattr(sqlite3, "connect", fake_connect)
-
-    rid = str(uuid.uuid4())
-    inject_run(db, AUTOMATION_ID, rid, task_name="x")
-    run_status(db, rid)
-
-    assert len(created) >= 2
-    assert len(closed) == len(created)
+def test_read_schema_matches_the_actual_read_sql(db):
+    """Guard against READ_SCHEMA drifting from the SQL it's supposed to mirror: every
+    column named in READ_SCHEMA must be a real column the live reads can select. If this
+    fails, either the SQL changed without READ_SCHEMA, or vice-versa."""
+    conn = sqlite3.connect(db)
+    try:
+        for table, cols in READ_SCHEMA.items():
+            present = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            assert set(cols) <= present, f"{table}: {set(cols) - present}"
+    finally:
+        conn.close()
+    # ...and the reads themselves run clean against a schema that has exactly these cols.
+    assert list_open_sessions(db) == []
+    assert task_state(db, "never-existed") == "absent"
 
 
 # --------------------------------------------------------------------------------------
@@ -207,17 +141,6 @@ def test_task_state_does_not_create_a_db_file(tmp_path):
     assert not missing.exists()
 
 
-def test_task_state_is_read_only_and_ungated_by_the_migration_pin(db):
-    """Reads can't corrupt emdash, so unlike inject_run they are NOT behind the vetted
-    pin — a drifted emdash must still be able to answer 'does this task exist?'."""
-    conn = sqlite3.connect(db)
-    conn.execute("UPDATE __drizzle_migrations SET id=999")
-    conn.commit()
-    conn.close()
-    _add_task(db, "still-answerable")
-    assert task_state(db, "still-answerable") == "live"
-
-
 def test_task_state_prefers_the_newest_row_for_a_reused_name(db):
     """Task names aren't unique in emdash's schema. If a name was reused, the newest row
     decides — an old archived namesake must not report the live one as gone."""
@@ -233,3 +156,33 @@ def test_task_state_prefers_the_newest_row_for_a_reused_name(db):
     conn.commit()
     conn.close()
     assert task_state(db, "dup-name") == "live"
+
+
+# --------------------------------------------------------------------------------------
+# list_open_sessions — the phone's continuable-session list; fail-soft, type='task' only
+# --------------------------------------------------------------------------------------
+
+def test_list_open_sessions_returns_unarchived_tasks_joined_to_projects(db):
+    _add_task(db, "live-one")
+    rows = list_open_sessions(db)
+    assert len(rows) == 1
+    assert rows[0]["emdash_task"] == "live-one"
+    assert rows[0]["project"] == "canopy-web"  # joined from `projects`
+
+
+def test_list_open_sessions_excludes_automation_runs_and_archived(db):
+    _add_task(db, "real-session")
+    _add_task(db, "gone", archived_at="2026-07-15T00:00:00Z")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, name, status, type) "
+        "VALUES ('a1', 'proj-1', 'phantom', 'in_progress', 'automation-run')"
+    )
+    conn.commit()
+    conn.close()
+    names = {r["emdash_task"] for r in list_open_sessions(db)}
+    assert names == {"real-session"}  # archived + automation-run rows excluded
+
+
+def test_list_open_sessions_is_fail_soft_on_missing_db(tmp_path):
+    assert list_open_sessions(str(tmp_path / "nope.db")) == []
