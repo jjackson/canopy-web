@@ -183,6 +183,16 @@ class RunnerConsumer(AsyncJsonWebsocketConsumer):
         # runnable.{ws} group_send type="runner.wake" dispatches here.
         await self.send_json({"type": "wake"})
 
+    async def runner_interject(self, message):
+        # runner.{id} group_send type="runner.interject" — a human message for a
+        # turn this runner is running. Pushed down so the live agent sees it.
+        await self.send_json({
+            "type": "interject",
+            "turn_id": message.get("turn_id"),
+            "session_id": message.get("session_id"),
+            "message": message.get("message"),
+        })
+
     async def receive_json(self, content, **kwargs):
         action = content.get("action")
         if action == "claim":
@@ -191,6 +201,19 @@ class RunnerConsumer(AsyncJsonWebsocketConsumer):
         elif action == "heartbeat":
             await self._heartbeat(content.get("active_turn_ids") or [])
             await self.send_json({"type": "heartbeat.ack"})
+        elif action == "start":
+            ok = await self._start(content.get("turn_id"), content.get("session_id") or "")
+            await self.send_json({"type": "start.ack", "ok": ok})
+        elif action == "event":
+            n = await self._append(content.get("turn_id"), content.get("events") or [])
+            await self.send_json({"type": "event.ack", "count": n})
+        elif action == "finish":
+            ok = await self._finish(
+                content.get("turn_id"),
+                content.get("status") or Turn.DONE,
+                content.get("result_note") or "",
+            )
+            await self.send_json({"type": "finish.ack", "ok": ok})
         else:
             await self.send_json({"type": "error", "detail": f"unknown action {action!r}"})
 
@@ -227,3 +250,39 @@ class RunnerConsumer(AsyncJsonWebsocketConsumer):
         runner = Runner.objects.filter(pk=self._runner_pk).first()
         if runner is not None:
             harness_services.heartbeat(runner, active_turn_ids=active_turn_ids)
+
+    def _turn_owned_sync(self, turn_id):
+        """A turn THIS runner claimed — the only ones it may start/append/finish.
+        Plain sync (called inside the database_sync_to_async handlers below)."""
+        try:
+            tid = uuid.UUID(str(turn_id))
+        except (ValueError, TypeError):
+            return None
+        return (
+            Turn.objects.select_related("agent", "chat_session")
+            .filter(pk=tid, claimed_by_id=self._runner_pk)
+            .first()
+        )
+
+    @database_sync_to_async
+    def _start(self, turn_id, session_id):
+        turn = self._turn_owned_sync(turn_id)
+        if turn is None:
+            return False
+        harness_services.mark_running(turn, session_id=session_id)
+        return True
+
+    @database_sync_to_async
+    def _append(self, turn_id, events):
+        turn = self._turn_owned_sync(turn_id)
+        if turn is None:
+            return 0
+        return harness_services.append_events(turn, events)
+
+    @database_sync_to_async
+    def _finish(self, turn_id, status, result_note):
+        turn = self._turn_owned_sync(turn_id)
+        if turn is None:
+            return False
+        harness_services.finish_turn(turn, status=status, result_note=result_note)
+        return True
