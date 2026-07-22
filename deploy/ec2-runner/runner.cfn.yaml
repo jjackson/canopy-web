@@ -157,7 +157,7 @@ Resources:
                 WantedBy=multi-user.target
           runcmd:
             - [ bash, -c, "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -" ]
-            - [ bash, -c, "DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs unzip" ]
+            - [ bash, -c, "DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs unzip python3-websocket" ]
             - [ bash, -c, "npm i -g @anthropic-ai/claude-code" ]
             - [ bash, -c, "curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip && cd /tmp && unzip -q awscliv2.zip && ./aws/install" ]
             # Materialize the env + creds once (as root) BEFORE first start, so the
