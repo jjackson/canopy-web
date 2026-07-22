@@ -1,5 +1,6 @@
 import { useState, type JSX } from 'react'
 import { decideItem, dismissItem, type ItemDecision, type ItemOut } from '@/api/items'
+import { Markdown } from '@/components/Markdown'
 
 // One actionable inbox row, shared by both surfaces that render open items: the
 // /supervisor fleet queue and the per-agent rail. Every open Item is decidable in
@@ -55,7 +56,11 @@ export function ItemCard({
     >
       <p className="text-[13px] font-semibold leading-snug text-foreground">{item.title}</p>
       {meta && <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{meta}</p>}
-      {item.body && <p className="mt-1 text-[12px] leading-snug text-foreground-secondary">{item.body}</p>}
+      {item.body && (
+        <Markdown className="mt-1 text-[12px] leading-snug text-foreground-secondary">
+          {item.body}
+        </Markdown>
+      )}
       {error && <p className="mt-1 text-[11px] text-destructive">{error}</p>}
 
       {item.kind === 'question' ? (
