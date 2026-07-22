@@ -819,9 +819,10 @@ def decide_item(
     return item, turns
 
 
-def dismiss_item(item: Item, *, by: str, decided_by_user=None) -> Item:
+def dismiss_item(item: Item, *, by: str, decided_by_user=None, comment: str = "") -> Item:
     """Retire an OPEN item without acting — a producer that raised it in error, or
-    a subject that changed under it.
+    a subject that changed under it. `comment` records WHY (e.g. an agent retracting
+    a finding it verified was already shipped), so a dismissed row isn't a mystery.
 
     Only an OPEN item may be dismissed. Dismissing an already-DECIDED item would
     overwrite `decided_by`/`decided_at` — erasing who approved it — while the turns
@@ -835,7 +836,11 @@ def dismiss_item(item: Item, *, by: str, decided_by_user=None) -> Item:
     item.decided_by = by
     item.decided_by_user = decided_by_user if getattr(decided_by_user, "is_authenticated", False) else None
     item.decided_at = timezone.now()
-    item.save(update_fields=["state", "decided_by", "decided_by_user", "decided_at"])
+    fields = ["state", "decided_by", "decided_by_user", "decided_at"]
+    if comment:
+        item.comment = comment
+        fields.append("comment")
+    item.save(update_fields=fields)
     return item
 
 

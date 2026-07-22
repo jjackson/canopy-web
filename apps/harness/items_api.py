@@ -25,7 +25,7 @@ from apps.workspaces import services as wsvc
 
 from . import services
 from .models import Item
-from .schemas import ItemDecideIn, ItemIn, ItemOut
+from .schemas import ItemDecideIn, ItemDismissIn, ItemIn, ItemOut
 
 agent_items_router = Router(auth=session_auth, tags=["items"])
 items_router = Router(auth=session_auth, tags=["items"])
@@ -148,12 +148,14 @@ def decide_item(request: HttpRequest, item_id: uuid.UUID, payload: ItemDecideIn)
 
 
 @items_router.post("/{item_id}/dismiss", response=ItemOut, summary="Dismiss an item")
-def dismiss_item(request: HttpRequest, item_id: uuid.UUID) -> dict:
+def dismiss_item(request: HttpRequest, item_id: uuid.UUID,
+                 payload: ItemDismissIn | None = None) -> dict:
     item = _item_or_404(request, item_id)
     try:
         item = services.dismiss_item(
             item, by=request.user.email or request.user.get_username(),
             decided_by_user=request.user,
+            comment=(payload.comment if payload else ""),
         )
     except services.AlreadyDecidedError as exc:
         # Already decided or dismissed — mirror decide's 409 so a double-click or a
