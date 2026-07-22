@@ -93,3 +93,12 @@ if _REDIS_URL:
 # Redis stays the Django CACHE backend above (request-scoped reads, never a
 # long-lived blocking pop — unaffected by this).
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+
+# Chat sends execute for REAL on labs (not the inline dev stub): a chat Session turn
+# stays QUEUED for a session-capable runner (e.g. the laptop emdash daemon), which
+# drives the agent's emdash session and bridges the reply back to the ledger — so the
+# website streams the actual agent response and you can continue a session from your
+# phone. If no session-capable runner is online, the turn simply waits (rather than
+# getting an instant fake reply). See apps/chat/executor.py + packages/canopy_runner
+# chat_bridge/execute_chat_turn.
+CHAT_STUB_EXECUTOR = False
