@@ -65,14 +65,31 @@ if _REDIS_URL:
             "LOCATION": _REDIS_URL,
         }
     }
-    # W4: the Channels layer lands here now that `channels` is a dependency. The
-    # prefix namespaces channel-layer keys so they don't COLLIDE with the Django
-    # cache on the same shared ElastiCache DB index. (It does not protect against
-    # a cache FLUSHDB, which ignores prefixes — but cache.clear() is never on a
-    # prod path here, and clients rebuild from durable DB state on reconnect.)
-    CHANNEL_LAYERS = {
-        "default": {
-            "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [_REDIS_URL], "prefix": "canopy:realtime:"},
-        }
-    }
+# Channel layer = InMemory, NOT Redis, and this is deliberate.
+#
+# This service runs a SINGLE ECS task with a SINGLE uvicorn process (DesiredCount=1,
+# no --workers). Every WebSocket consumer AND every group-send publisher (turn
+# enqueue → wake, chat → interject) lives in that one process, so an in-process
+# layer is all the coordination that's needed — and it is the layer the Channels
+# docs recommend for a single process.
+#
+# The Redis channel layer (channels_redis) actively BROKE long-lived WebSockets
+# here: its consumer receive loop does a blocking read against the shared
+# ElastiCache, and on an idle connection that read raises
+# `redis.exceptions.TimeoutError: Timeout reading from …` up through
+# channels.utils.await_many_dispatch, which tears the socket down. That produced
+# erratic ~5-10s disconnects on every realtime surface (runner control channel,
+# supervisor + turn tails) that looked like a proxy idle-timeout but was not — the
+# shared ALB holds long connections fine (connect-labs' long-running workflows
+# prove it). Redis bought us nothing here (nothing to coordinate across) and cost
+# us the whole feature.
+#
+# SCALING CAVEAT: InMemory does not cross processes. If this service ever runs more
+# than one web task (or uvicorn --workers > 1), a runner connected to task A would
+# not receive a wake published by task B. At that point restore a Redis channel
+# layer — but configure it with connection health so idle reads don't kill sockets:
+#   "hosts": [{"address": _REDIS_URL, "health_check_interval": 30,
+#             "socket_keepalive": True, "retry_on_timeout": True}]
+# Redis stays the Django CACHE backend above (request-scoped reads, never a
+# long-lived blocking pop — unaffected by this).
+CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
