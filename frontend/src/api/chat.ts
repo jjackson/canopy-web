@@ -55,13 +55,18 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export interface CreateSessionInput {
   title?: string;
   agentSlug?: string;
+  // Create in this workspace (the chosen agent's) via the tenant route; omit to
+  // use the caller's default. Needed cross-workspace — "new chat with <agent>"
+  // must land in that agent's tenant, not the caller's default.
+  workspace?: string;
   metadata?: Record<string, unknown>;
 }
 
 export function createSession(
   input: CreateSessionInput = {},
 ): Promise<ChatSession> {
-  return request<ChatSession>("/api/chat/", {
+  const path = input.workspace ? `/api/w/${input.workspace}/chat/` : "/api/chat/";
+  return request<ChatSession>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
