@@ -35,8 +35,19 @@ def _target(turn: dict) -> str:
 
 
 def _thread_key(turn: dict) -> str:
+    """The session-continuity key: which emdash session this turn continues.
+
+    An explicit `thread_key`/`thread_id` in the origin_ref means CONTINUE the same
+    session across turns — the phone's persistent per-target thread, a "continue this
+    session" dispatch. With neither, the turn is a self-contained unit of work (a cron
+    fire, a board turn) and must open its OWN fresh session, so we key it on the turn's
+    unique id. The old `{agent}:main` fallback was a shared sink: every keyless turn —
+    all of an agent's cron fires, every board dispatch — resolved to it and reused one
+    ever-growing session (the `{agent}-cron-main-…` task). Continuity is opt-in; keyless
+    is fresh-per-turn."""
     ref = turn.get("origin_ref") or {}
-    return ref.get("thread_key") or ref.get("thread_id") or f"{_target(turn)}:main"
+    explicit = ref.get("thread_key") or ref.get("thread_id")
+    return explicit or f"{_target(turn)}:{turn.get('id') or ''}"
 
 
 def _slug(text: str, n: int = 28) -> str:
