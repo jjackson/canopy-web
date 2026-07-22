@@ -46,10 +46,21 @@ class RunnerOut(Schema):
     host: str
     code_branch: str
     workspace: str | None
+    # The human who paired the runner. This — NOT `workspace` — is what governs
+    # what the runner may WORK FOR (claim_next_turn derives the tenant from the
+    # pairer's workspace memberships, so a runner serves agents across every
+    # workspace its pairer belongs to). `workspace` is only the home/visibility
+    # tenant. Surfaced so the supervisor can show the meaningful owner instead of
+    # implying a single-workspace serving scope.
+    paired_by_email: str | None
 
     @staticmethod
     def resolve_workspace(obj) -> str | None:
         return obj.workspace_id
+
+    @staticmethod
+    def resolve_paired_by_email(obj) -> str | None:
+        return obj.paired_by.email if obj.paired_by_id else None
 
     @staticmethod
     def resolve_status(obj) -> str:

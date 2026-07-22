@@ -5602,6 +5602,8 @@ export interface components {
             readonly code_branch: string;
             /** Workspace */
             readonly workspace: string | null;
+            /** Paired By Email */
+            readonly paired_by_email: string | null;
         };
         /** RunnerIn */
         readonly RunnerIn: {
