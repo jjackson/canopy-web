@@ -27,6 +27,8 @@ def test_send_sets_thread_key_to_session_id():
     u, s, _a = _seed()
     _msg, turn = send_message(session=s, text="hi", user=u)
     assert turn.origin_ref.get("thread_key") == str(s.id)
+    # chat_session_id marks it as a chat turn the runner should bridge back.
+    assert turn.origin_ref.get("chat_session_id") == str(s.id)
 
 
 def test_session_turn_exposes_session_agent_slug():

@@ -80,8 +80,10 @@ def send_message(*, session: Session, text: str, user, client_id: str = "") -> t
             prompt=text,
             # Continuity: every send in a chat reuses ONE emdash session (the runner's
             # _thread_key reads this), so a conversation is one durable thread rather
-            # than a fresh session per message.
-            origin_ref={"thread_key": str(session.id)},
+            # than a fresh session per message. chat_session_id tells a session-capable
+            # runner to BRIDGE the emdash response back into the ledger (vs the normal
+            # fire-and-continue), so the website streams the reply.
+            origin_ref={"thread_key": str(session.id), "chat_session_id": str(session.id)},
         )
     # RC4 — multiplayer interjection: if a turn is ALREADY running for this session,
     # the human's message is an interjection. Push it down to the runner executing
