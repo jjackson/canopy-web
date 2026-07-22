@@ -1,4 +1,15 @@
-name: Regenerate OpenAPI types
+name: OpenAPI types check
+
+# Frontend types (frontend/src/api/generated.ts) are generated from the backend's
+# OpenAPI schema. This job VERIFIES they're up to date on any PR that touches the
+# API surface — it regenerates and fails if the committed file is stale. It does
+# NOT commit for you.
+#
+# Why verify instead of auto-commit: a bot commit pushed with the default
+# GITHUB_TOKEN cannot trigger the required CI checks (GitHub's workflow-loop
+# guard), so it left the PR head with no status checks and blocked the merge. A
+# verify check has no bot commit, so the PR head stays the author's commit that CI
+# runs on normally. Fix a failure locally with `cd frontend && npm run gen:api`.
 
 on:
   pull_request:
@@ -7,23 +18,14 @@ on:
       - "apps/**/schemas.py"
       - "apps/api/**"
 
+permissions:
+  contents: read
+
 jobs:
-  regen:
+  check:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # push the regenerated generated.ts back to the PR branch
     steps:
       - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          # Push with a PAT when one is configured (secret REGEN_TOKEN) so the
-          # regenerated-types commit RE-TRIGGERS CI on the PR. Commits pushed
-          # with the default GITHUB_TOKEN do not start new workflow runs, which
-          # leaves the PR head with no status checks — a problem once `main`
-          # requires status checks (the merge gets blocked). With REGEN_TOKEN
-          # set you can safely enforce branch protection on admins too.
-          # Falls back to GITHUB_TOKEN when the secret is absent.
-          token: ${{ secrets.REGEN_TOKEN || secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
@@ -46,12 +48,16 @@ jobs:
         run: |
           npm install
           npx openapi-typescript openapi.json --output src/api/generated.ts --immutable
-      - name: Commit if changed
+      - name: Fail if types are stale
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
           if ! git diff --quiet frontend/src/api/generated.ts; then
-            git add frontend/src/api/generated.ts
-            git commit -m "chore(api): regenerate OpenAPI types"
-            git push
+            echo "::error::frontend/src/api/generated.ts is out of date with the OpenAPI schema."
+            echo "You changed an API schema/route but didn't regenerate the frontend types."
+            echo "Fix it locally and commit the result:"
+            echo "    cd frontend && npm run gen:api        # with the backend running on :8000"
+            echo "    # or, against a dumped schema:  npm run gen:api:local"
+            echo "--- diff ---"
+            git --no-pager diff frontend/src/api/generated.ts
+            exit 1
           fi
+          echo "generated.ts is up to date."
