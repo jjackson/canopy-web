@@ -112,6 +112,19 @@ async def test_claim_over_ws_empty_when_nothing_queued():
     await comm.disconnect()
 
 
+async def test_keepalive_acks_without_touching_the_db():
+    # The idle-channel keepalive (the shared labs proxy drops a WS that sends no
+    # DATA for ~6-8s) must ack cheaply so the client can pace data frames under
+    # that window without a heartbeat's DB write on every tick.
+    user, _ws, _a, runner = await database_sync_to_async(_setup)()
+    comm = await _connect(runner.id, user)
+    await comm.connect()
+    await comm.send_json_to({"action": "keepalive"})
+    frame = await comm.receive_json_from(timeout=2)
+    assert frame == {"type": "keepalive.ack"}
+    await comm.disconnect()
+
+
 # --- run a whole turn over the socket (start/event/finish) -------------------
 async def test_run_turn_end_to_end_over_ws():
     user, ws, agent, runner = await database_sync_to_async(_setup)()

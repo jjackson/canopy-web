@@ -53,8 +53,14 @@ RUNNER_WORKSPACE = os.environ.get("RUNNER_WORKSPACE", "")
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 WORK_DIR = os.environ.get("WORK_DIR", "/tmp/canopy-runner-work")
 POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "15"))
-# Idle WS recv timeout → app-level heartbeat cadence (keeps the lease + status fresh).
+# Full heartbeat cadence (keeps the runner's lease + ONLINE status fresh via a DB write).
 HEARTBEAT_SECONDS = int(os.environ.get("HEARTBEAT_SECONDS", "20"))
+# Idle WS keepalive cadence. The shared labs proxy drops a WebSocket that sends no
+# application DATA for ~6-8s — it does NOT count ws ping/pong control frames as
+# activity (proven empirically). So on an idle control channel we must emit a data
+# frame well under that window; 4s leaves margin. This is a cheap DB-free keepalive;
+# a real heartbeat still fires every HEARTBEAT_SECONDS.
+KEEPALIVE_SECONDS = int(os.environ.get("KEEPALIVE_SECONDS", "4"))
 STATE_FILE = pathlib.Path(os.environ.get("STATE_FILE", str(pathlib.Path.home() / ".canopy-cloud-runner.json")))
 
 _stop = False
@@ -302,12 +308,24 @@ def run_over_ws(runner_id: str) -> bool:
         # gates on it) rather than waiting out the first idle timeout.
         _ws_request(ws, {"action": "heartbeat", "active_turn_ids": []}, "heartbeat.ack", timeout=15)
         _claim_and_run(ws, runner_id)  # drain anything already queued (no wake for those)
+        # Recv on the KEEPALIVE window (not the heartbeat window): the proxy kills an
+        # idle socket in ~6-8s, so we must send a data frame every few seconds or the
+        # channel flaps. A wake frame arriving mid-window is returned by recv() at
+        # once, so keepalive cadence never adds wake latency.
+        ws.settimeout(KEEPALIVE_SECONDS)
+        last_heartbeat = time.time()
         try:
             while not _stop:
                 try:
                     raw = ws.recv()
                 except websocket.WebSocketTimeoutException:
-                    _ws_request(ws, {"action": "heartbeat", "active_turn_ids": []}, "heartbeat.ack", timeout=15)
+                    # Idle tick: a real heartbeat when its cadence is due (keeps the
+                    # lease/ONLINE fresh), else the cheap DB-free keepalive.
+                    if time.time() - last_heartbeat >= HEARTBEAT_SECONDS:
+                        _ws_request(ws, {"action": "heartbeat", "active_turn_ids": []}, "heartbeat.ack", timeout=15)
+                        last_heartbeat = time.time()
+                    else:
+                        _ws_request(ws, {"action": "keepalive"}, "keepalive.ack", timeout=15)
                     continue
                 if not raw:
                     break
@@ -315,6 +333,7 @@ def run_over_ws(runner_id: str) -> bool:
                 mtype = msg.get("type")
                 if mtype == "wake":
                     _claim_and_run(ws, runner_id)
+                    last_heartbeat = time.time()  # _claim_and_run just exchanged frames
                 elif mtype == "interject":
                     _log(f"interject turn={msg.get('turn_id')}: {msg.get('message')!r}")
         except Exception as exc:
