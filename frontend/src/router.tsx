@@ -56,6 +56,12 @@ const AgentSkillsSection = lazy(() =>
   import('./pages/agents/AgentSkillsSection').then((m) => ({ default: m.AgentSkillsSection })),
 )
 
+// The standalone live-chat route is lazy — it pulls in the canopy-ui/chat kit
+// (WebSocket hook + presentational tree) and react-markdown only when opened.
+const ChatPage = lazy(() =>
+  import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })),
+)
+
 // Each lazy section renders inside the workspace shell's scrolling <main>; this
 // keeps a minimal fallback in that same content area while the chunk loads.
 function LazySection({ children }: { children: React.ReactNode }) {
@@ -154,6 +160,14 @@ export const router = createBrowserRouter(guarded([
       { path: '/w/:workspace/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:workspace/agents', element: <AgentsPage /> },
       { path: '/w/:workspace/schedules', element: <SchedulesPage /> },
+      {
+        path: '/w/:workspace/chat/:id',
+        element: (
+          <LazySection>
+            <ChatPage />
+          </LazySection>
+        ),
+      },
       { path: '/w/:workspace/activity', element: <ActivityPage /> },
       {
         path: '/w/:workspace/agents/:slug',
