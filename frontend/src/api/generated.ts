@@ -702,6 +702,29 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/ddd/release/{run_id}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Clean, shareable run release page (public via ?t=<share_token>)
+         * @description Anonymous-capable: the handler self-enforces access (workspace member OR a
+         *     matching ``?t=`` share token) inside ``build_release`` — the middleware
+         *     allowlist only lets the request reach here. Auto-join runs for authed members
+         *     so their workspace membership resolves, mirroring the console endpoints.
+         */
+        readonly get: operations["apps_runs_api_get_run_release"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/ddd/narratives/{slug}/visibility/": {
         readonly parameters: {
             readonly query?: never;
@@ -3429,6 +3452,52 @@ export interface components {
              * @default []
              */
             readonly all_artifacts: readonly components["schemas"]["RunArtifactRefOut"][];
+        };
+        /**
+         * RunReleaseOut
+         * @description Curated, shareable run release page (the clean public-capable surface).
+         *
+         *     A trimmed, outsider-legible slice of a run: title + video + narrative story
+         *     + the live product URLs it used. Artifact URLs are token-appended so an
+         *     anonymous ?t= viewer can stream them. No phase/gate jargon, no artifact
+         *     dump, no edit affordances — the operator console (RunPackageOut) keeps those.
+         */
+        readonly RunReleaseOut: {
+            /** Run Id */
+            readonly run_id: string;
+            /** Narrative Slug */
+            readonly narrative_slug: string;
+            /** Title */
+            readonly title?: string | null;
+            /** Lede */
+            readonly lede?: string | null;
+            readonly video?: components["schemas"]["RunArtifactOut"] | null;
+            readonly documentation?: components["schemas"]["RunArtifactOut"] | null;
+            readonly narrative?: components["schemas"]["RunNarrativeOut"] | null;
+            /**
+             * Product Links
+             * @default []
+             */
+            readonly product_links: readonly components["schemas"]["WalkthroughLink"][];
+            /**
+             * Related Links
+             * @default []
+             */
+            readonly related_links: readonly components["schemas"]["WalkthroughLink"][];
+            /**
+             * Is Public
+             * @default false
+             */
+            readonly is_public: boolean;
+            /**
+             * Is Member
+             * @default false
+             */
+            readonly is_member: boolean;
+            /** Share Token */
+            readonly share_token?: string | null;
+            /** Build Url */
+            readonly build_url?: string | null;
         };
         /** NarrativeVisibilityOut */
         readonly NarrativeVisibilityOut: {
@@ -7336,6 +7405,28 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly apps_runs_api_get_run_release: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly run_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RunReleaseOut"];
+                };
             };
         };
     };
