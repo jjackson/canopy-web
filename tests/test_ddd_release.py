@@ -121,10 +121,12 @@ def test_release_anonymous_wrong_token_404s(db, owner):
 # --- link curation + title -----------------------------------------------
 
 def test_clean_links_drops_junk_and_dedupes():
+    # The ${var} link is FIRST so it would pollute host derivation if the helper
+    # naively took the first absolute-looking url (the real nutrition-demo bug).
     raw = [
+        {"label": "template", "url": "https://labs.x${par_url}", "kind": "reference"},  # unresolved var, first
         {"label": "PAR", "url": "https://labs.x/labs/workflow/5003/run/?program_id=1", "kind": "reference"},
         {"label": "PAR again", "url": "/labs/workflow/5003/run/?program_id=1", "kind": "reference"},  # host-less dup
-        {"label": "template", "url": "https://labs.x${par_url}", "kind": "reference"},  # unresolved var
         {"label": "App", "url": "https://labs.x", "kind": "reference"},  # bare origin
         {"label": "App/", "url": "https://labs.x/", "kind": "reference"},  # bare origin w/ slash
         {"label": "Audit", "url": "https://labs.x/audit/4996/bulk/", "kind": "reference"},
@@ -132,9 +134,10 @@ def test_clean_links_drops_junk_and_dedupes():
     out = aggregate._clean_links(raw)
     urls = [l["url"] for l in out]
     assert urls == [
-        "https://labs.x/labs/workflow/5003/run/?program_id=1",  # first wins; relative dup collapsed
+        "https://labs.x/labs/workflow/5003/run/?program_id=1",  # relative dup absolutized to clean host + collapsed
         "https://labs.x/audit/4996/bulk/",
-    ]  # ${} leak + both bare origins dropped
+    ]
+    assert not any("${" in u for u in urls)  # no leak survives, even via absolutization
 
 
 @override_settings(REQUIRE_AUTH=True)
