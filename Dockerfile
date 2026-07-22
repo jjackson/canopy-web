@@ -63,8 +63,14 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
-# --ws-ping-interval 5: the shared labs proxy drops IDLE WebSockets at ~8s, well
-# before uvicorn's default 20s ping. Pinging every 5s keeps every WS client (the
-# supervisor/turn tails AND the runner control channel) alive through the proxy.
+# --ws-ping-interval 5: uvicorn sends a WebSocket ping every 5s. This IS the idle
+# keepalive for long-lived sockets (runner control channel, supervisor + turn
+# tails): the server→client traffic keeps the shared ALB from idle-closing the
+# connection, and clients auto-pong. Proven live: a fully idle WS holds 90s+ with
+# only these pings. (The earlier erratic ~5-10s drops were NOT the proxy — they
+# were the channels_redis layer's blocking reads timing out on ElastiCache and
+# killing the consumer; fixed by moving the single-task channel layer to InMemory.
+# See config/settings/connectlabs.py.) --ws-ping-timeout 20 closes a peer that
+# stops ponging.
 CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", \
      "--ws-ping-interval", "5", "--ws-ping-timeout", "20"]
