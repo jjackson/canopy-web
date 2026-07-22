@@ -92,6 +92,10 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': 'http://localhost:8000',
+      // WebSocket control channels (realtime supervisor/turn tails, chat). Without
+      // this, NO ws feature works under `vite dev` — the socket would hit :3000,
+      // which has no /ws handler. ws:true upgrades the proxied connection.
+      '/ws': { target: 'ws://localhost:8000', ws: true },
       '/health': 'http://localhost:8000',
       '/accounts': 'http://localhost:8000',
       '/admin': 'http://localhost:8000',

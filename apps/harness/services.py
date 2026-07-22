@@ -386,6 +386,16 @@ def finish_turn(
     return turn
 
 
+def cancel_queued_turn(turn: Turn) -> Turn | None:
+    """Best-effort un-queue: FAIL a still-QUEUED turn. Cancel is 'un-queue', not
+    'kill' — a CLAIMED/RUNNING turn is owned by its runner's lease and is left
+    alone (returns None). Terminal turns also return None (idempotent no-op). The
+    REST cancel view and chat's `chat.stop` both route through here."""
+    if turn.status != Turn.QUEUED:
+        return None
+    return finish_turn(turn, status=Turn.FAILED, result_note="cancelled", allow_queued=True)
+
+
 # --------------------------------------------------------------------------------------
 # AgentSchedule — recurring turns. The runner evaluates the cron and calls fire_schedule;
 # the server materializes a normal Turn. See models.AgentSchedule.

@@ -68,6 +68,43 @@ async def test_authenticated_chat_socket_connects_and_snapshots():
     await comm.disconnect()
 
 
+async def _recv_until(comm, event, tries=18):
+    for _ in range(tries):
+        f = await comm.receive_json_from(timeout=2)
+        if f.get("event") == event:
+            return f
+    raise AssertionError(f"no {event} frame")
+
+
+async def test_canonical_round_trip():
+    """connect -> canonical session.state -> draft.update -> chat.send ->
+    draft.committed -> chat.stream_start -> chat.stream_complete, all through the
+    assembled RealtimeAuthMiddleware -> URLRouter -> SessionConsumer stack."""
+    def setup():
+        owner, session = _seed()
+        return session, _make_session_cookie(owner), owner.pk
+
+    session, headers, uid = await database_sync_to_async(setup)()
+    comm = WebsocketCommunicator(_ws_app(), f"/ws/chat/{session.id}/", headers=headers)
+    assert (await comm.connect())[0]
+    snap = await _recv_until(comm, "session.state")
+    assert snap["data"]["current_user_id"] == uid
+    await comm.send_json_to({"action": "draft.update", "data": {"version": 0, "body": "hi there"}})
+    await _recv_until(comm, "draft.updated")
+    await comm.send_json_to({"action": "chat.send", "data": {}})
+    # The stub executes inline, so stream frames and the draft.committed/cleared
+    # frames can interleave — assert on the drained SET, not on arrival order.
+    seen = {}
+    for _ in range(24):
+        f = await comm.receive_json_from(timeout=2)
+        seen[f["event"]] = f["data"]
+        if {"draft.committed", "chat.stream_complete"} <= set(seen):
+            break
+    assert {"draft.committed", "chat.stream_start", "chat.stream_complete"} <= set(seen)
+    assert "plaintext" in seen["chat.stream_complete"]
+    await comm.disconnect()
+
+
 async def test_anonymous_chat_socket_rejected_through_stack():
     def setup():
         _owner, session = _seed()

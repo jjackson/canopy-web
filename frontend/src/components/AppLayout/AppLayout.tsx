@@ -331,7 +331,11 @@ function AppShell() {
       location.pathname.startsWith('/timeline') ||
       // An individual Agent Workspace (/agents/<slug>) is a full-bleed workbench
       // like DDD; the bare /agents LIST stays in the standard container.
-      /^\/agents\/[^/]+/.test(location.pathname) ? (
+      /^\/agents\/[^/]+/.test(location.pathname) ||
+      // The standalone live chat (/w/:ws/chat/:id) is a full-height surface —
+      // the composer must sit at the viewport bottom with the list scrolling
+      // above it, not flow inside the padded max-w container.
+      /\/chat\/[^/]+/.test(location.pathname) ? (
         // DDD (and the narrative editor at /review) is a full-bleed workspace:
         // persistent left rail + wide main. The page owns its own scroll.
         <main className="h-[calc(100vh-53px)]"><Outlet /></main>

@@ -38,8 +38,9 @@ def _on_turn_events(sender, turn, rows, **kwargs):
     # field only (turn.chat_session_id) — no chat-app import here.
     if turn.chat_session_id:
         sgroup = groups.session_group(turn.chat_session_id)
+        turn_id = str(turn.id)
         for event in events:
-            groups.publish(sgroup, {"type": "chat.turn_event", "event": event})
+            groups.publish(sgroup, {"type": "chat.turn_event", "event": event, "turn_id": turn_id})
 
 
 @receiver(post_save, sender=Turn, dispatch_uid="realtime_runnable_wake")
