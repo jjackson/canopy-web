@@ -48,6 +48,12 @@ export default function SupervisorPage(): JSX.Element {
       )
   }, [])
 
+  // After an inline runner-order save, patch the agent's preference in local
+  // state so the Runners tab's priority list + "N agents" chip re-derive live.
+  const handleAgentPreferenceSaved = useCallback((slug: string, pref: string[]) => {
+    setAgents((prev) => prev?.map((a) => (a.slug === slug ? { ...a, runner_preference: pref } : a)) ?? prev)
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     const msg = (r: PromiseRejectedResult) =>
@@ -112,7 +118,8 @@ export default function SupervisorPage(): JSX.Element {
   const raw = searchParams.get('tab')
   // Unknown / absent value falls back to Inbox — never a blank tab, and no param
   // means Inbox (what push targets).
-  const tab = raw === 'sessions' || raw === 'agents' ? raw : 'inbox'
+  const tab =
+    raw === 'sessions' || raw === 'agents' || raw === 'runners' ? raw : 'inbox'
   const onTab = (value: string) =>
     // Push history (not replace) so the phone back button steps through tabs.
     // Inbox is the bare URL; the others carry ?tab=.
@@ -168,6 +175,9 @@ export default function SupervisorPage(): JSX.Element {
           <TabsTrigger value="agents" data-testid="tab-agents">
             Agents
           </TabsTrigger>
+          <TabsTrigger value="runners" data-testid="tab-runners">
+            Runners
+          </TabsTrigger>
         </TabsList>
 
         {/* Inbox — the fleet's open items, actionable in place (the act-now surface). */}
@@ -187,18 +197,8 @@ export default function SupervisorPage(): JSX.Element {
           <OpenSessions />
         </TabsContent>
 
-        {/* Agents — fleet KPIs + runner status + the one-time setup prompts. */}
+        {/* Agents — fleet KPIs + the one-time setup prompts. */}
         <TabsContent value="agents" className="flex flex-col gap-4">
-          {selectedRunner ? (
-            <RunnerDetail runner={selectedRunner} onBack={() => setSelectedRunner(null)} />
-          ) : errs.runners ? (
-            <BandError message={errs.runners} />
-          ) : renderRunners === null ? (
-            <Skeleton className="h-12 w-full" />
-          ) : (
-            <RunnerStatus runners={renderRunners} onSelect={setSelectedRunner} />
-          )}
-
           {errs.agents ? (
             <BandError message={errs.agents} />
           ) : agents === null ? (
@@ -216,6 +216,25 @@ export default function SupervisorPage(): JSX.Element {
 
           <InstallPrompt />
           <PushToggle />
+        </TabsContent>
+
+        {/* Runners — fleet runner health + which agents prioritize each kind. */}
+        <TabsContent value="runners" className="flex flex-col gap-4">
+          {selectedRunner ? (
+            <RunnerDetail
+              runner={selectedRunner}
+              agents={agents ?? []}
+              runners={renderRunners ?? []}
+              onAgentSaved={handleAgentPreferenceSaved}
+              onBack={() => setSelectedRunner(null)}
+            />
+          ) : errs.runners ? (
+            <BandError message={errs.runners} />
+          ) : renderRunners === null ? (
+            <Skeleton className="h-12 w-full" />
+          ) : (
+            <RunnerStatus runners={renderRunners} agents={agents ?? []} onSelect={setSelectedRunner} />
+          )}
         </TabsContent>
       </Tabs>
     </div>

@@ -75,7 +75,16 @@ function toPage<T>(p: {
 
 export async function listAgents(params: ListAgentsParams = {}): Promise<Page<AgentOut>> {
   const res = await apiV2.GET('/api/agents/', { params: { query: { limit: params.limit } } })
-  return toPage(unwrap(res, 'listAgents'))
+  const page = toPage(unwrap(res, 'listAgents'))
+  // runner_preference degrades the same way one level down (see toPage's comment);
+  // rebuild each item.
+  return {
+    ...page,
+    items: page.items.map((a) => ({
+      ...a,
+      runner_preference: a.runner_preference ? Array.from(a.runner_preference) : undefined,
+    })),
+  }
 }
 
 // AgentDetailOut carries a readonly-array field (runner_preference) that
