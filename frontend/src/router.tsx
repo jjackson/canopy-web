@@ -61,6 +61,9 @@ const AgentSkillsSection = lazy(() =>
 const ChatPage = lazy(() =>
   import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })),
 )
+const ChatListPage = lazy(() =>
+  import('./pages/ChatListPage').then((m) => ({ default: m.ChatListPage })),
+)
 
 // Each lazy section renders inside the workspace shell's scrolling <main>; this
 // keeps a minimal fallback in that same content area while the chunk loads.
@@ -160,6 +163,14 @@ export const router = createBrowserRouter(guarded([
       { path: '/w/:workspace/walkthroughs', element: <WalkthroughsPage /> },
       { path: '/w/:workspace/agents', element: <AgentsPage /> },
       { path: '/w/:workspace/schedules', element: <SchedulesPage /> },
+      {
+        path: '/w/:workspace/chat',
+        element: (
+          <LazySection>
+            <ChatListPage />
+          </LazySection>
+        ),
+      },
       {
         path: '/w/:workspace/chat/:id',
         element: (
