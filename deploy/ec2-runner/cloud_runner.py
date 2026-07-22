@@ -53,8 +53,14 @@ RUNNER_WORKSPACE = os.environ.get("RUNNER_WORKSPACE", "")
 CLAUDE_BIN = os.environ.get("CLAUDE_BIN", "claude")
 WORK_DIR = os.environ.get("WORK_DIR", "/tmp/canopy-runner-work")
 POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "15"))
-# Idle WS recv timeout → app-level heartbeat cadence (keeps the lease + status fresh).
+# App-level heartbeat cadence (keeps the lease + status fresh).
 HEARTBEAT_SECONDS = int(os.environ.get("HEARTBEAT_SECONDS", "20"))
+# Short recv poll so the WS loop regains control regularly and drives the heartbeat
+# on a wall clock. MUST stay below uvicorn's --ws-ping-interval (5s): the server
+# pings every 5s and websocket-client auto-pongs and keeps recv() looping, so a
+# heartbeat gated on recv() timing out would never fire and the runner would go
+# stale while still connected.
+WS_POLL_TIMEOUT = float(os.environ.get("WS_POLL_TIMEOUT", "3"))
 STATE_FILE = pathlib.Path(os.environ.get("STATE_FILE", str(pathlib.Path.home() / ".canopy-cloud-runner.json")))
 
 _stop = False
@@ -298,25 +304,35 @@ def run_over_ws(runner_id: str) -> bool:
             continue
         connected_ever = True
         _log(f"ws connected: {url}")
-        # Heartbeat first so the runner registers ONLINE immediately (claim_next_turn
-        # gates on it) rather than waiting out the first idle timeout.
-        _ws_request(ws, {"action": "heartbeat", "active_turn_ids": []}, "heartbeat.ack", timeout=15)
+        # Poll on a short timeout so recv() hands control back regularly; the
+        # heartbeat is driven on a wall clock below, NOT gated on recv timing out
+        # (see WS_POLL_TIMEOUT — server pings would otherwise starve the heartbeat).
+        ws.settimeout(WS_POLL_TIMEOUT)
+
+        def _beat():
+            _ws_request(ws, {"action": "heartbeat", "active_turn_ids": []}, "heartbeat.ack", timeout=15)
+
+        _beat()  # register ONLINE immediately (claim_next_turn gates on a fresh heartbeat)
+        last_beat = time.monotonic()
         _claim_and_run(ws, runner_id)  # drain anything already queued (no wake for those)
         try:
             while not _stop:
                 try:
                     raw = ws.recv()
                 except websocket.WebSocketTimeoutException:
-                    _ws_request(ws, {"action": "heartbeat", "active_turn_ids": []}, "heartbeat.ack", timeout=15)
-                    continue
-                if not raw:
-                    break
-                msg = json.loads(raw)
-                mtype = msg.get("type")
-                if mtype == "wake":
-                    _claim_and_run(ws, runner_id)
-                elif mtype == "interject":
-                    _log(f"interject turn={msg.get('turn_id')}: {msg.get('message')!r}")
+                    raw = None
+                if raw:
+                    msg = json.loads(raw)
+                    mtype = msg.get("type")
+                    if mtype == "wake":
+                        _claim_and_run(ws, runner_id)
+                    elif mtype == "interject":
+                        _log(f"interject turn={msg.get('turn_id')}: {msg.get('message')!r}")
+                elif raw == "":
+                    break  # server closed the socket
+                if time.monotonic() - last_beat >= HEARTBEAT_SECONDS:
+                    _beat()
+                    last_beat = time.monotonic()
         except Exception as exc:
             _log(f"ws loop error: {exc}")
         finally:
