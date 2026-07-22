@@ -9,6 +9,7 @@ import { RunnerDetail } from '@/components/supervisor/RunnerDetail'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
 import { ItemInbox } from '@/components/supervisor/ItemInbox'
 import { Composer } from '@/components/supervisor/Composer'
+import { OpenSessions } from '@/components/supervisor/OpenSessions'
 import { ChatSessionsPanel } from '@/components/chat/ChatSessionsPanel'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
 import { PushToggle } from '@/pwa/PushToggle'
@@ -191,10 +192,11 @@ export default function SupervisorPage(): JSX.Element {
           )}
         </TabsContent>
 
-        {/* Sessions — your chats with agents (live, continue from any device);
-            quick dispatch below. */}
+        {/* Sessions — start a chat with an agent, then all open sessions across every
+            runner (laptop + cloud), grouped by project, with the emdash task tag. */}
         <TabsContent value="sessions" className="flex flex-col gap-4">
-          <ChatSessionsPanel agents={agents ?? undefined} heading="Chats" />
+          <ChatSessionsPanel agents={agents ?? undefined} heading="Start a chat" showList={false} />
+          <OpenSessions />
           {agents && agents.length > 0 && <Composer agents={agents} />}
         </TabsContent>
 
