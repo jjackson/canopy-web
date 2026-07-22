@@ -5,8 +5,10 @@ import { RunnerOrder } from '@/components/agents/RunnerOrder'
 import { agentsForKind, ordinal } from './runnerPriority'
 
 // A runner's full state — the click-through from the Runners tab's runner list.
-// Surfaces the two health signals that matter (ON / READY), the runner's info,
-// and which agents prioritize this runner's KIND — editable in place.
+// Leads with the signals that actually matter: is it AVAILABLE to fire a turn
+// (online ∧ ready — a stale runner reporting last-known ready=true is NOT), what
+// agents/repos it can drive, and who paired it (the owner that governs what it may
+// work for). Plus which agents prioritize this runner's KIND — editable in place.
 export function RunnerDetail({
   runner,
   agents,
@@ -21,6 +23,14 @@ export function RunnerDetail({
   onBack: () => void
 }): JSX.Element {
   const online = runner.status === 'online'
+  // Real availability, not last-known ready: a stale runner's ready flag is
+  // whatever it reported on its final heartbeat and no longer reflects reality.
+  const available = online && runner.ready
+  const badge = available
+    ? { text: 'available', cls: 'bg-success/15 text-success' }
+    : online
+      ? { text: 'not ready', cls: 'bg-destructive/15 text-destructive' }
+      : { text: runner.status || 'offline', cls: 'bg-muted text-muted-foreground' }
   const caps = (runner.capabilities ?? {}) as { agents?: string[]; projects?: string[] }
   const { ranked, acceptsAll } = agentsForKind(agents, runner.kind)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -75,21 +85,23 @@ export function RunnerDetail({
         <span className="text-[15px] font-semibold text-foreground">{runner.name}</span>
         <span
           data-testid="runner-detail-ready"
-          className={`ml-auto rounded px-1.5 py-0.5 text-[11px] ${runner.ready ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'}`}
+          className={`ml-auto rounded px-1.5 py-0.5 text-[11px] ${badge.cls}`}
         >
-          {runner.ready ? 'ready' : 'not ready'}
+          {badge.text}
         </span>
       </div>
-      {!runner.ready && runner.ready_note && (
+      {online && !runner.ready && runner.ready_note && (
         <p className="text-[12px] text-destructive" data-testid="runner-detail-why">{runner.ready_note}</p>
       )}
       <div className="rounded-lg border border-border bg-card p-3">
-        {row('status', online ? 'online' : (runner.status ?? 'unknown'))}
-        {row('kind', runner.kind ?? '')}
-        {row('host', runner.host ?? '')}
-        {row('workspace', runner.workspace ?? '')}
         {row('agents', (caps.agents ?? []).join(', ') || '—')}
         {row('projects', (caps.projects ?? []).join(', ') || '—')}
+        {row('kind', runner.kind ?? '')}
+        {row('paired by', runner.paired_by_email ?? '—')}
+        {/* host only matters for emdash (per-macOS-account session reuse); cloud
+            runners report no host, so skip the empty row entirely. */}
+        {runner.host && row('host', runner.host)}
+        {row('status', runner.status ?? 'unknown')}
       </div>
 
       {/* Which agents route work to this runner's KIND, and how strongly. */}
