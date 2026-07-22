@@ -30,6 +30,14 @@ class AgentIn(StrictModel):
     repo_ref: str | None = Field(default=None, max_length=120)
     runtime_engine: Literal["emdash", "cloud_p", "any"] | None = None
     runtime_secrets: list[str] | None = None
+    # Ordered runner-kind preference, e.g. ["cloud","emdash"]. None = leave unchanged.
+    runner_preference: list[str] | None = None
+
+
+class RunnerPreferenceIn(StrictModel):
+    """Set an agent's ordered runner-kind preference (the runner-order UI)."""
+
+    runner_preference: list[str] = Field(default_factory=list)
 
 
 class AgentRuntimeOut(StrictModel):
@@ -80,6 +88,8 @@ class AgentDetailOut(AgentOut):
     turn_count: int = 0
     latest_sync_at: dt.datetime | None = None
     latest_turn_at: dt.datetime | None = None
+    # Ordered runner-kind preference (for the runner-order UI). Empty = no preference.
+    runner_preference: list[str] = Field(default_factory=list)
 
 
 # ---- Sync (Google-Doc backed) ----

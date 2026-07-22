@@ -159,11 +159,51 @@ def run_claude(prompt: str, turn_id: str) -> tuple[bool, str]:
     return ok, final_text
 
 
+def _stage_github_token(token: str) -> None:
+    """Wire a git credential helper so `git clone` of private agent repos works
+    (used by the reconciler in the next milestone; harmless for a trivial turn)."""
+    try:
+        subprocess.run(["git", "config", "--global", "credential.helper", "store"],
+                       check=False, capture_output=True)
+        creds = pathlib.Path.home() / ".git-credentials"
+        line = f"https://x-access-token:{token}@github.com\n"
+        creds.write_text(line)
+        creds.chmod(0o600)
+    except OSError as exc:
+        _log(f"warn: could not stage github token: {exc}")
+
+
+def fetch_and_stage_credential(runner_id: str) -> bool:
+    """A CLOUD runner owns no secrets at boot beyond its PAT — it fetches its
+    credential bundle from canopy-web (the per-runner hub) and stages it into the
+    environment. Blocks (polling) until the Claude token is set, so the operator can
+    provision the runner AFTER it has paired and appeared in the fleet. A laptop
+    runner never does this — it uses emdash's ambient auth.
+    """
+    while not _stop:
+        status, cred = _api("GET", f"/runners/{runner_id}/credential")
+        if status == 200 and cred and cred.get("claude_token"):
+            os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = cred["claude_token"]
+            if cred.get("op_sa_token"):
+                os.environ["OP_SERVICE_ACCOUNT_TOKEN"] = cred["op_sa_token"]
+            if cred.get("github_token"):
+                _stage_github_token(cred["github_token"])
+            _log("staged credential bundle from canopy-web (claude"
+                 f"{'+op' if cred.get('op_sa_token') else ''}"
+                 f"{'+github' if cred.get('github_token') else ''})")
+            return True
+        _log("waiting for this runner's credential bundle to be set on canopy-web…")
+        time.sleep(POLL_SECONDS)
+    return False
+
+
 def main() -> None:
     if not BASE_URL or not TOKEN:
         _log("FATAL: CANOPY_BASE_URL and CANOPY_TOKEN are required")
         sys.exit(1)
     runner_id = pair_or_load()
+    if not fetch_and_stage_credential(runner_id):
+        return  # stopped before a credential was provisioned
     _log(f"polling {BASE_URL} every {POLL_SECONDS}s")
     while not _stop:
         _api("POST", f"/runners/{runner_id}/heartbeat", {"active_turn_ids": []})

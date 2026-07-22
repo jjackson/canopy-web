@@ -22,7 +22,7 @@ _VALID_TASK_STATUS = {AgentTask.SUGGESTED, AgentTask.IN_PROGRESS, AgentTask.DONE
 
 def _aware(value):
     if isinstance(value, dt.datetime) and timezone.is_naive(value):
-        return value.replace(tzinfo=dt.timezone.utc)
+        return value.replace(tzinfo=dt.UTC)
     return value
 
 
@@ -40,7 +40,7 @@ def upsert_agent(data) -> Agent:
     # ONLY when explicitly provided. The plugin re-upserts agents on every sync
     # with these fields absent (None) — a plain default would clobber runtime
     # config back to empty on each heartbeat. Configure once, keep it.
-    for field in ("repo_url", "repo_ref", "runtime_engine", "runtime_secrets"):
+    for field in ("repo_url", "repo_ref", "runtime_engine", "runtime_secrets", "runner_preference"):
         value = getattr(data, field, None)
         if value is not None:
             defaults[field] = value
@@ -67,6 +67,7 @@ def agent_detail(agent: Agent) -> dict:
         "email": agent.email,
         "avatar_url": agent.avatar_url,
         "workspace_id": agent.workspace_id,
+        "runner_preference": list(agent.runner_preference or []),
         "created_at": agent.created_at,
         "updated_at": agent.updated_at,
         "sync_count": agent.syncs.count(),
