@@ -13,6 +13,30 @@ from canopy_runner.config import Config
 from canopy_runner.main import _fire_due_schedules, run_once
 
 
+@pytest.fixture(autouse=True)
+def _wake_off(monkeypatch):
+    """Keep the RC3 wake listener inert so `main()`'s poll wait falls back to the
+    plain time.sleep these loop tests patch to break the loop. Without this, an env
+    that HAS websocket-client installed would give `main()` a live wake channel, the
+    wait would block on the Event instead of time.sleep, the patched break would
+    never fire, and the loop would hang — the exact 6h CI hang, made env-dependent."""
+    import threading
+
+    import canopy_runner.wake as wake_mod
+
+    class _InertWaker:
+        def __init__(self, *a, **k):
+            self.event = threading.Event()
+
+        def start(self) -> bool:
+            return False
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(wake_mod, "WakeListener", _InertWaker)
+
+
 @pytest.fixture()
 def db(tmp_path: Path) -> str:
     """A minimal emdash DB — just the read surface (tasks + projects). The runner never

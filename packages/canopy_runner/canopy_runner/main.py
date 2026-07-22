@@ -418,10 +418,20 @@ def main() -> None:
     # fallback and still owns heartbeat/claim/execute; off if websocket-client is absent.
     from .wake import WakeListener
     waker = WakeListener(cfg.base_url, cfg.token, cfg.runner_id)
-    if waker.start():
+    wake_on = waker.start()
+    if wake_on:
         logger.info("  wake: WS control channel connected — claims fire on enqueue, not just poll")
 
     def _wait(seconds: float) -> None:
+        # With a live wake channel, block until a nudge OR the poll interval,
+        # whichever comes first. Without one (websocket-client absent — the
+        # poll-only laptop, the cloud REST fallback, the test env), fall back to
+        # the exact prior behavior: a plain time.sleep. Routing the wait through
+        # the Event unconditionally would swallow the time.sleep the loop tests
+        # patch to break the loop — an infinite hang.
+        if not wake_on:
+            time.sleep(seconds)
+            return
         if waker.event.wait(seconds):  # returns early on a wake nudge
             waker.event.clear()
 
