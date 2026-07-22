@@ -32,6 +32,25 @@ def supervisor_user_group(user_id: int) -> str:
     return f"supervisor.user.{user_id}"
 
 
+def runner_group(runner_id) -> str:
+    """Per-runner control-channel group — targeted server→runner frames (a specific
+    interject, a cancel). The runner's WS consumer joins this plus its workspaces'
+    runnable groups."""
+    hexid = runner_id.hex if hasattr(runner_id, "hex") else str(runner_id).replace("-", "")
+    return f"runner.{hexid}"
+
+
+def runnable_group(workspace_slug: str) -> str:
+    """Per-tenant 'a turn is claimable' wake group. Runners long-polling /claim
+    join their workspaces' runnable groups; enqueue publishes a wake here so a
+    blocked claim returns immediately instead of waiting out its poll interval.
+    Deliberately coarse (per-workspace, not per-agent): the wake only prompts a
+    re-attempt — claim_next_turn still does all the capability/tenant/preference
+    gating — so a small thundering herd (a few runners re-attempt, one wins) is
+    fine and keeps the publish side from re-deriving eligibility."""
+    return f"runnable.{workspace_slug}"
+
+
 def session_group(session_id) -> str:
     """Per-session multiplayer group (SP3). A pure string helper so realtime's
     fan-out can target it without importing the chat app."""
