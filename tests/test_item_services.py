@@ -125,6 +125,24 @@ def test_dismiss_never_dispatches_even_with_a_decision_set(ada):
     assert Turn.objects.count() == 0
 
 
+def test_dismiss_records_an_optional_reason(ada):
+    # A producer retracting its own erroneous item records WHY; the reason lands on
+    # the item's comment so the board shows it instead of a bare dismissed row.
+    item = _item(ada)
+    item = services.dismiss_item(item, by="ada@dimagi-ai.com",
+                                 comment="retracted: already shipped in origin/main")
+    assert item.state == Item.DISMISSED
+    assert item.comment == "retracted: already shipped in origin/main"
+
+
+def test_dismiss_reason_is_optional(ada):
+    # Backward-compatible: an empty-body dismiss (no comment) leaves comment untouched.
+    item = _item(ada)
+    item = services.dismiss_item(item, by="jj@dimagi.com")
+    assert item.state == Item.DISMISSED
+    assert item.comment == ""
+
+
 def test_dismiss_refuses_an_already_decided_item(ada):
     # Dismissing a decided-and-dispatched item would erase who approved it while its
     # turns keep running. Dismiss guards on state exactly like decide does.

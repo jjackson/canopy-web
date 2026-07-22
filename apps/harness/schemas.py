@@ -421,6 +421,14 @@ class ItemDecideIn(Schema):
     comment: str = ""
 
 
+class ItemDismissIn(Schema):
+    # Dismiss carries an optional reason: a PRODUCER retracting its own item raised
+    # in error (e.g. an agent that verified the friction was already fixed) records
+    # WHY, so the board shows "retracted: already shipped" instead of a bare
+    # dismissed row. Optional — an empty-body dismiss stays valid.
+    comment: str = ""
+
+
 # ---- Runner credentials (per-runner, cloud-only; laptop uses emdash) ----
 class RunnerCredentialIn(Schema):
     """Set a cloud runner's credentials. A field left None is unchanged
