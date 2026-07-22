@@ -12,6 +12,17 @@ dependencies = [
     "canopy-cron",
 ]
 
+[project.optional-dependencies]
+# The runner's core loop is stdlib-only over HTTP and never needs this. The
+# `realtime` extra turns on the WebSocket wake listener (wake.py): the runner
+# holds a live control channel to canopy-web and claims on push instead of only
+# on the 5s poll tick. `wake.py` imports `websocket` LAZILY and falls back to
+# poll-only when it's absent, so this stays an OPT-IN capability, not a hard
+# requirement — but it's installed by default in the one-time setup (see README)
+# so a normally-provisioned runner gets instant wakes rather than silently
+# regressing to polling because nothing ever declared the dep.
+realtime = ["websocket-client>=1.8,<2"]
+
 [tool.uv.sources]
 # In-repo, standalone, installable — same editable path-dep wiring the root
 # pyproject uses for canopy-agent-runs / canopy-cron, resolved relative to this

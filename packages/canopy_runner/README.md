@@ -62,6 +62,20 @@ can't, because emdash virtualizes the sidebar).
    launchctl load ~/Library/LaunchAgents/com.canopy.runner.plist
    ```
 
+6. **Enable the realtime wake listener** (recommended). The core loop claims
+   turns on the 5s poll; the `realtime` extra (`pyproject.toml`) adds a WebSocket
+   control channel so the runner also claims on *push* — instant wakes instead of
+   up to a 5s delay. `wake.py` imports `websocket` lazily and degrades to
+   poll-only when it's absent, so this is opt-in — but install it so a provisioned
+   runner isn't silently stuck on polling. Install into the **same interpreter the
+   launchd job uses** (the plist runs `/usr/bin/env python3`):
+   ```bash
+   python3 -m pip install --user --break-system-packages 'websocket-client>=1.8,<2'
+   ```
+   Then `launchctl kickstart -k gui/$(id -u)/com.canopy.runner`. The log should
+   read `wake listener connected: wss://…` rather than `websocket-client not
+   installed — wake listener off, polling only`.
+
 ## Commands
 
 - `run` (default when no subcommand is given) — the main watch loop. `--once`
