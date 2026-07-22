@@ -118,6 +118,36 @@ def test_release_anonymous_wrong_token_404s(db, owner):
     assert resp.status_code == 404
 
 
+# --- link curation + title -----------------------------------------------
+
+def test_clean_links_drops_junk_and_dedupes():
+    raw = [
+        {"label": "PAR", "url": "https://labs.x/labs/workflow/5003/run/?program_id=1", "kind": "reference"},
+        {"label": "PAR again", "url": "/labs/workflow/5003/run/?program_id=1", "kind": "reference"},  # host-less dup
+        {"label": "template", "url": "https://labs.x${par_url}", "kind": "reference"},  # unresolved var
+        {"label": "App", "url": "https://labs.x", "kind": "reference"},  # bare origin
+        {"label": "App/", "url": "https://labs.x/", "kind": "reference"},  # bare origin w/ slash
+        {"label": "Audit", "url": "https://labs.x/audit/4996/bulk/", "kind": "reference"},
+    ]
+    out = aggregate._clean_links(raw)
+    urls = [l["url"] for l in out]
+    assert urls == [
+        "https://labs.x/labs/workflow/5003/run/?program_id=1",  # first wins; relative dup collapsed
+        "https://labs.x/audit/4996/bulk/",
+    ]  # ${} leak + both bare origins dropped
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_release_title_falls_back_when_story_line_is_long(db, owner):
+    _hero(owner, visibility="private")
+    long_first_line = "Priya runs a nutrition program funded to deliver RUTF across three managers"
+    _rev(owner, request_json={"narrative": f"{long_first_line}\nShe reviews compliance weekly."})
+    client = Client(); client.force_login(owner)
+    body = client.get(f"/api/ddd/release/{RUN_ID}/").json()
+    assert body["title"] == "Demo"  # humanized slug, not the 74-char sentence
+    assert body["lede"] and body["lede"].startswith("Priya runs")  # sentence becomes the lede
+
+
 @override_settings(REQUIRE_AUTH=True)
 def test_release_member_gets_internal_affordances(db, owner):
     _hero(owner, visibility="private")  # not public
