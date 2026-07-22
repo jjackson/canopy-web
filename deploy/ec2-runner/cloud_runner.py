@@ -298,6 +298,9 @@ def run_over_ws(runner_id: str) -> bool:
             continue
         connected_ever = True
         _log(f"ws connected: {url}")
+        # Heartbeat first so the runner registers ONLINE immediately (claim_next_turn
+        # gates on it) rather than waiting out the first idle timeout.
+        _ws_request(ws, {"action": "heartbeat", "active_turn_ids": []}, "heartbeat.ack", timeout=15)
         _claim_and_run(ws, runner_id)  # drain anything already queued (no wake for those)
         try:
             while not _stop:

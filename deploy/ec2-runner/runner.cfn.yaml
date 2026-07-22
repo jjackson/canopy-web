@@ -110,7 +110,7 @@ Resources:
           #cloud-config
           write_files:
             - path: /opt/canopy-runner/cloud_runner.py
-              encoding: b64
+              encoding: gz+b64
               permissions: '0755'
               content: CLOUD_RUNNER_PY_B64_PLACEHOLDER
             - path: /usr/local/bin/canopy-fetch-env

@@ -30,7 +30,9 @@ echo ">> SSH allowed from ${MYIP}/32"
 # Render: splice cloud_runner.py (base64) into the template. cloud_runner.py stays
 # the single source of truth; the rendered template is a build artifact.
 RENDERED=".runner.cfn.rendered.yaml"
-B64=$(python3 -c "import base64;print(base64.b64encode(open('cloud_runner.py','rb').read()).decode())")
+# gzip+base64 (cloud-init decodes via `encoding: gz+b64`): the RC2 WS client pushed
+# the plain-base64 UserData past EC2's 25.6 KB limit; gzip keeps it well under.
+B64=$(python3 -c "import base64,gzip;print(base64.b64encode(gzip.compress(open('cloud_runner.py','rb').read())).decode())")
 python3 - "$B64" > "$RENDERED" <<'PY'
 import sys, pathlib
 b64 = sys.argv[1]
