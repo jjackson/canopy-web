@@ -10,6 +10,7 @@ the HTTP layer, and so the Ninja handlers stay thin.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -382,6 +383,49 @@ def _humanize_slug(slug: str) -> str:
     return (slug or "").replace("-", " ").replace("_", " ").strip().title()
 
 
+def _clean_links(raw: list[dict]) -> list[dict]:
+    """Curate a run's link list into clean, visitable destinations.
+
+    Upstream link capture (the DDD upload harvesting scene targets) can emit
+    junk the release page must not show: an unexpanded ``${var}`` template that
+    never resolved, a bare origin with no path ("App"), a host-less relative
+    URL, and the same page repeated per scene. Drop template leaks + bare
+    origins, absolutize relative URLs against the run's own host, and de-dupe —
+    so "Try it live" is a short list of real pages, not a scene-by-scene dump.
+    """
+    host = ""
+    for link in raw:
+        m = re.match(r"^(https?://[^/]+)", (link.get("url") or "").strip())
+        if m:
+            host = m.group(1)
+            break
+    out: list[dict] = []
+    seen: set[str] = set()
+    for link in raw:
+        if not isinstance(link, dict):
+            continue
+        url = (link.get("url") or "").strip()
+        if not url or "${" in url:  # empty or an unresolved template variable
+            continue
+        if url.startswith("/") and host:  # host-less relative → absolute
+            url = host + url
+        m = re.match(r"^https?://[^/]+(.*)$", url)
+        path = m.group(1) if m else url
+        if path in ("", "/"):  # bare origin, no meaningful destination
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        out.append(
+            {
+                "label": link.get("label", ""),
+                "url": url,
+                "kind": link.get("kind", "reference"),
+            }
+        )
+    return out
+
+
 def _lede_from_story(story: str | None, title: str | None) -> str | None:
     """A one-line hook for the hero: the first sentence of the story that isn't
     the title line (the story's first line is what _title_from_review returns)."""
@@ -458,30 +502,32 @@ def build_release(run_id: str, request) -> dict | None:
         narrative_review = versions[-1] if versions else None
     narrative_payload = _narrative_payload(narrative_review)
 
-    title = (narrative_payload or {}).get("title") or _humanize_slug(narrative_slug)
-    lede = _lede_from_story((narrative_payload or {}).get("story"), title)
+    # Title: a short, human headline. The narrative's derived title is the
+    # story's first LINE, which is often a full scene-setting sentence — too
+    # long for an H1. When it is, use the humanized slug and let that long
+    # sentence be the lede instead.
+    story = (narrative_payload or {}).get("story")
+    derived_title = (narrative_payload or {}).get("title")
+    if derived_title and len(derived_title) <= 70:
+        title = derived_title
+        lede = _lede_from_story(story, derived_title)
+    else:
+        title = _humanize_slug(narrative_slug)
+        lede = _lede_from_story(story, None)
 
     # Product URLs the run used (reference) vs sibling artifacts (narrative /
-    # companion). De-duped on url, oldest-first.
-    product_links: list[dict] = []
-    related_links: list[dict] = []
-    seen: set[str] = set()
+    # companion), each curated (template leaks + bare origins dropped, relative
+    # absolutized, de-duped) so the page shows real, visitable destinations.
+    raw_product: list[dict] = []
+    raw_related: list[dict] = []
     for w in sorted(wts, key=lambda x: x.created_at):
         for link in w.links or []:
             if not isinstance(link, dict):
                 continue
-            url = link.get("url", "")
-            if not url or url in seen:
-                continue
-            seen.add(url)
-            entry = {
-                "label": link.get("label", ""),
-                "url": url,
-                "kind": link.get("kind", "reference"),
-            }
-            (product_links if entry["kind"] == "reference" else related_links).append(
-                entry
-            )
+            kind = link.get("kind", "reference")
+            (raw_product if kind == "reference" else raw_related).append(link)
+    product_links = _clean_links(raw_product)
+    related_links = _clean_links(raw_related)
 
     return {
         "run_id": run_id,
