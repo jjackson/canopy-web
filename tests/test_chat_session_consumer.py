@@ -74,6 +74,21 @@ async def test_member_gets_session_snapshot():
     await comm.disconnect()
 
 
+async def test_snapshot_is_canonical():
+    owner, _t, session = await database_sync_to_async(_seed)()
+    comm = await _connect(session, owner)
+    assert (await comm.connect())[0]
+    snap = await _recv_match(comm, lambda f: f.get("event") == "session.state")
+    data = snap["data"]
+    assert set(data) >= {"messages", "active_draft", "participants",
+                         "presence_user_ids", "current_user_id"}
+    assert data["current_user_id"] == owner.id
+    assert owner.id in data["presence_user_ids"]
+    # participants carry full identity, not just {user_id, role}
+    assert data["participants"][0]["email"] == owner.email
+    await comm.disconnect()
+
+
 async def test_draft_update_broadcasts_to_other_socket():
     owner, teammate, session = await database_sync_to_async(_seed)()
     a = await _connect(session, owner)

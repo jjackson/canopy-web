@@ -13,7 +13,7 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from apps.realtime.groups import session_group
 
-from . import drafts, participants, presence
+from . import drafts, participants, presence, serializers
 from . import services as chat_services
 from .models import Session, SessionParticipant
 
@@ -157,21 +157,17 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _snapshot(self):
-        parts = [
-            {"user_id": p.user_id, "role": p.role}
-            for p in self.session.participants.all()
-        ]
+        parts = list(self.session.participants.select_related("user").all())
         draft = drafts.active_draft(self.session)
-        recent = [
-            {"turn_index": m.turn_index, "role": m.role, "plaintext": m.plaintext}
-            for m in self.session.messages.order_by("turn_index")[:200]
-        ]
+        messages = list(self.session.messages.order_by("turn_index")[:200])
         return {
             "event": "session.state",
-            "data": {
-                "participants": parts,
-                "present": sorted(presence.present_ids(self.session.id)),
-                "draft": {"body": draft.body, "version": draft.version, "last_editor": draft.last_editor_id},
-                "messages": recent,
-            },
+            "data": serializers.session_state_dto(
+                session=self.session,
+                current_user_id=self.user.id,
+                participants=parts,
+                present_ids=sorted(presence.present_ids(self.session.id)),
+                draft=draft,
+                messages=messages,
+            ),
         }
