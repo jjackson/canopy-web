@@ -9,7 +9,7 @@ import { RunnerDetail } from '@/components/supervisor/RunnerDetail'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
 import { ItemInbox } from '@/components/supervisor/ItemInbox'
 import { Composer } from '@/components/supervisor/Composer'
-import { OpenSessions } from '@/components/supervisor/OpenSessions'
+import { ChatSessionsPanel } from '@/components/chat/ChatSessionsPanel'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
 import { PushToggle } from '@/pwa/PushToggle'
 import { setBadge } from '@/pwa/usePush'
@@ -191,10 +191,11 @@ export default function SupervisorPage(): JSX.Element {
           )}
         </TabsContent>
 
-        {/* Sessions — dispatch, then the open emdash sessions you can continue. */}
+        {/* Sessions — your chats with agents (live, continue from any device);
+            quick dispatch below. */}
         <TabsContent value="sessions" className="flex flex-col gap-4">
+          <ChatSessionsPanel agents={agents ?? undefined} heading="Chats" />
           {agents && agents.length > 0 && <Composer agents={agents} />}
-          <OpenSessions />
         </TabsContent>
 
         {/* Agents — fleet KPIs + the one-time setup prompts. */}
