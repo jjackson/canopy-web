@@ -139,6 +139,34 @@ def test_a_bad_dispatch_spec_is_422_and_leaves_the_item_open(client_member, ada)
     assert Turn.objects.count() == 0
 
 
+import json as _json
+
+
+def test_dismiss_persists_an_optional_reason(client_member, ada):
+    # A producer retracting its own item can post a reason; it lands on comment and
+    # is serialized back — so the board can show "why dismissed".
+    _post_batch(client_member)
+    item_id = Item.objects.first().id
+    resp = client_member.post(
+        f"/api/items/{item_id}/dismiss",
+        data=_json.dumps({"comment": "retracted: already shipped"}),
+        content_type="application/json",
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "dismissed"
+    assert body["comment"] == "retracted: already shipped"
+
+
+def test_dismiss_with_no_body_still_works(client_member, ada):
+    # Backward compat: the no-body dismiss (the pre-existing call shape) still 200s.
+    _post_batch(client_member)
+    item_id = Item.objects.first().id
+    resp = client_member.post(f"/api/items/{item_id}/dismiss", content_type="application/json")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "dismissed"
+
+
 def test_dismiss_never_dispatches(client_member, ada):
     Agent.objects.create(slug="hal", name="Hal", workspace=ada.workspace)
     _post_batch(client_member)

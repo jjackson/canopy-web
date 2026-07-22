@@ -81,7 +81,6 @@ function Centered({ children }: { children: React.ReactNode }) {
 function Release({ data }: { data: DddRunRelease }) {
   const shareUrl = useShareUrl(data)
   const products = data.product_links
-  const related = data.related_links
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -121,44 +120,48 @@ function Release({ data }: { data: DddRunRelease }) {
           </div>
         )}
 
-        {/* The story */}
-        {data.narrative && (data.narrative.story || data.narrative.narration.length > 0) && (
-          <Section title="The story">
-            {data.narrative.story && (
-              <p className="whitespace-pre-line text-[15px] leading-relaxed text-foreground-secondary">
-                {data.narrative.story}
-              </p>
-            )}
-            {data.narrative.narration.length > 0 && (
-              <ol className="mt-5 flex flex-col gap-2">
-                {data.narrative.narration.map((n, i) => {
-                  const persona = n.persona ? data.narrative?.personas?.[n.persona] : undefined
-                  return (
-                    <li
-                      key={n.id ?? i}
-                      className="rounded-lg border border-border bg-card px-4 py-3"
-                    >
-                      <div className="mb-1 flex items-center gap-2">
-                        <span className="font-mono text-[11px] text-muted-foreground">
-                          {n.scene ?? i + 1}
+        {/* The story — the complete narrative, read as one piece (the opening
+            background that frames the whole demo). */}
+        {data.narrative?.story && (
+          <Section title="The story" subtitle="the whole demo, start to finish">
+            <p className="whitespace-pre-line text-[15px] leading-relaxed text-foreground-secondary">
+              {data.narrative.story}
+            </p>
+          </Section>
+        )}
+
+        {/* Scene by scene — the same narrative, broken into the beats the video
+            walks through. */}
+        {data.narrative && data.narrative.narration.length > 0 && (
+          <Section title="Scene by scene" subtitle="the narrative, beat by beat">
+            <ol className="flex flex-col gap-2">
+              {data.narrative.narration.map((n, i) => {
+                const persona = n.persona ? data.narrative?.personas?.[n.persona] : undefined
+                return (
+                  <li
+                    key={n.id ?? i}
+                    className="rounded-lg border border-border bg-card px-4 py-3"
+                  >
+                    <div className="mb-1 flex items-center gap-2">
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        {n.scene ?? i + 1}
+                      </span>
+                      {n.title && (
+                        <span className="text-[13px] font-medium text-foreground">{n.title}</span>
+                      )}
+                      {persona?.name && (
+                        <span className="text-[11px] text-primary" title={persona.role || ''}>
+                          {persona.name}
                         </span>
-                        {n.title && (
-                          <span className="text-[13px] font-medium text-foreground">{n.title}</span>
-                        )}
-                        {persona?.name && (
-                          <span className="text-[11px] text-primary" title={persona.role || ''}>
-                            {persona.name}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[13px] leading-relaxed text-foreground-secondary">
-                        {n.text}
-                      </p>
-                    </li>
-                  )
-                })}
-              </ol>
-            )}
+                      )}
+                    </div>
+                    <p className="text-[13px] leading-relaxed text-foreground-secondary">
+                      {n.text}
+                    </p>
+                  </li>
+                )
+              })}
+            </ol>
           </Section>
         )}
 
@@ -188,16 +191,6 @@ function Release({ data }: { data: DddRunRelease }) {
           </Section>
         )}
 
-        {/* Related material (narrative / companion links) */}
-        {related.length > 0 && (
-          <Section title="Related">
-            <div className="flex flex-col gap-2">
-              {related.map((l) => (
-                <LinkButton key={l.url} link={l} />
-              ))}
-            </div>
-          </Section>
-        )}
 
         {/* Footer */}
         <footer className="mt-16 flex items-center justify-between border-t border-border pt-6 text-[11px] text-muted-foreground">
@@ -253,15 +246,19 @@ function LinkButton({ link }: { link: DddLink }) {
       href={link.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:border-input hover:bg-muted/40"
+      className="group flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 transition-colors hover:border-input hover:bg-muted/40"
     >
-      <span className="text-[13px] font-medium text-foreground group-hover:text-primary">
-        {link.label || link.url}
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-medium text-foreground group-hover:text-primary">
+          {link.label || link.url}
+        </span>
+        <span className="block truncate font-mono text-[11px] text-muted-foreground">
+          {link.url}
+        </span>
       </span>
-      <span className="flex-1" />
       <span
         aria-hidden
-        className="text-[13px] text-muted-foreground transition-colors group-hover:text-primary"
+        className="shrink-0 text-[13px] text-muted-foreground transition-colors group-hover:text-primary"
       >
         {KIND_ICON[link.kind] ?? '↗'}
       </span>

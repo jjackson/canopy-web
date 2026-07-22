@@ -5393,6 +5393,14 @@ export interface components {
              */
             readonly comment: string;
         };
+        /** ItemDismissIn */
+        readonly ItemDismissIn: {
+            /**
+             * Comment
+             * @default
+             */
+            readonly comment: string;
+        };
         /** WorkspaceOut */
         readonly WorkspaceOut: {
             /** Slug */
@@ -8833,7 +8841,11 @@ export interface operations {
             };
             readonly cookie?: never;
         };
-        readonly requestBody?: never;
+        readonly requestBody?: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ItemDismissIn"] | null;
+            };
+        };
         readonly responses: {
             /** @description OK */
             readonly 200: {
