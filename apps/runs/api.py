@@ -21,6 +21,7 @@ from .schemas import (
     NarrativeVisibilityIn,
     NarrativeVisibilityOut,
     RunPackageOut,
+    RunReleaseOut,
 )
 
 router = Router(auth=session_auth, tags=["ddd"])
@@ -78,6 +79,25 @@ def get_run(request: HttpRequest, run_id: str) -> RunPackageOut:
     if data is None:
         raise ProblemError(404, "Run not found", type_=TYPE_NOT_FOUND)
     return RunPackageOut.model_validate(data)
+
+
+@router.get(
+    "/release/{run_id}/",
+    response=RunReleaseOut,
+    auth=None,
+    summary="Clean, shareable run release page (public via ?t=<share_token>)",
+)
+def get_run_release(request: HttpRequest, run_id: str) -> RunReleaseOut:
+    """Anonymous-capable: the handler self-enforces access (workspace member OR a
+    matching ``?t=`` share token) inside ``build_release`` — the middleware
+    allowlist only lets the request reach here. Auto-join runs for authed members
+    so their workspace membership resolves, mirroring the console endpoints."""
+    if request.user.is_authenticated:
+        wsvc.auto_join_workspaces(request.user)
+    data = aggregate.build_release(run_id, request)
+    if data is None:
+        raise ProblemError(404, "Run not found", type_=TYPE_NOT_FOUND)
+    return RunReleaseOut.model_validate(data)
 
 
 @router.patch(

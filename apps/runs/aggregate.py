@@ -332,6 +332,178 @@ def build_run(run_id: str, workspace_slugs: set[str] | None = None) -> dict | No
 
 
 # ---------------------------------------------------------------------------
+# Clean, shareable run RELEASE page
+#
+# A curated, outside-the-app-shell view of ONE run: title + video + narrative
+# story + the live product URLs the run used. Unlike build_run (the operator
+# console, session-gated), this is reachable anonymously via a ?t=<share_token>
+# link, so its stream URLs must carry each artifact's own token. Access is the
+# same gate the walkthrough viewer uses: a workspace MEMBER, or anyone holding a
+# matching share token for the run's primary (public) artifact.
+# ---------------------------------------------------------------------------
+
+
+def _is_member(w: Walkthrough, request) -> bool:
+    """True iff the caller is a member of the walkthrough's workspace (the
+    non-token half of Walkthrough.readable_by)."""
+    from apps.workspaces import services as wsvc
+
+    if w.workspace_id is None:
+        return bool(request.user.is_authenticated)
+    return w.workspace_id in wsvc.request_workspace_slugs(request)
+
+
+def _tok(base: str, w: Walkthrough) -> str:
+    """Append ?t=<share_token> when the artifact is public + tokened, so an
+    anonymous browser can stream it (each artifact self-checks its OWN token in
+    Walkthrough.readable_by). Members stream tokenlessly via session; the token
+    is harmless for them."""
+    if w.visibility == Walkthrough.VISIBILITY_LINK and w.share_token:
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}t={w.share_token}"
+    return base
+
+
+def _release_artifact(w: Walkthrough | None) -> dict | None:
+    if w is None:
+        return None
+    return {
+        "id": w.id,
+        "title": w.title,
+        "kind": w.kind,
+        "role": w.role,
+        "content_url": _tok(f"/walkthrough/{w.id}/content", w),
+        "viewer_url": _tok(f"/walkthrough/{w.id}", w),
+        "duration_sec": w.duration_sec,
+    }
+
+
+def _humanize_slug(slug: str) -> str:
+    return (slug or "").replace("-", " ").replace("_", " ").strip().title()
+
+
+def _lede_from_story(story: str | None, title: str | None) -> str | None:
+    """A one-line hook for the hero: the first sentence of the story that isn't
+    the title line (the story's first line is what _title_from_review returns)."""
+    if not story:
+        return None
+    lines = [ln.strip() for ln in story.splitlines() if ln.strip()]
+    body = [ln for ln in lines if ln != (title or "").strip()]
+    if not body:
+        return None
+    first = body[0]
+    # Trim to the first sentence, capped so the hero stays one line.
+    for end in (". ", "? ", "! "):
+        if end in first:
+            first = first.split(end, 1)[0] + end.strip()
+            break
+    return first[:240]
+
+
+def build_release(run_id: str, request) -> dict | None:
+    """Curated, token-aware package for the clean release page.
+
+    Returns ``None`` (→ 404) when the run doesn't exist OR the caller is neither
+    a workspace member nor holding a valid share token — never leaking existence.
+    NOT workspace-scoped at query time: the share token itself is the capability;
+    the primary artifact's ``readable_by`` gate is the authority.
+    """
+    wts = list(Walkthrough.objects.filter(run_id=run_id).select_related("owner"))
+    revs = list(ReviewRequest.objects.filter(run_id=run_id))
+    if not wts and not revs:
+        return None
+
+    # The primary artifact anchors both the access gate and the shareable token.
+    primary = _pick(
+        wts,
+        lambda w: w.role == Walkthrough.ROLE_HERO_VIDEO,
+        lambda w: w.kind == Walkthrough.KIND_VIDEO,
+        lambda w: w.role == Walkthrough.ROLE_DECK,
+        lambda w: w.role == Walkthrough.ROLE_DOCS,
+        lambda w: True,
+    )
+    if primary is None or not primary.readable_by(request):
+        return None
+
+    is_member = _is_member(primary, request)
+    is_public = bool(
+        primary.visibility == Walkthrough.VISIBILITY_LINK and primary.share_token
+    )
+
+    video = _pick(
+        wts,
+        lambda w: w.role == Walkthrough.ROLE_HERO_VIDEO,
+        lambda w: w.role == Walkthrough.ROLE_CLIP,
+        lambda w: w.kind == Walkthrough.KIND_VIDEO,
+    )
+    documentation = _pick(
+        wts,
+        lambda w: w.role == Walkthrough.ROLE_DOCS,
+        lambda w: w.kind == Walkthrough.KIND_HTML and w.role != Walkthrough.ROLE_DECK,
+    )
+
+    explicit_narrative_slug = next(
+        (w.narrative_slug for w in wts if (w.narrative_slug or "").strip()), None
+    )
+    narrative_slug = explicit_narrative_slug or narrative_slug_from_run_id(run_id)
+
+    stamped = next((w.narrative_review_id for w in wts if w.narrative_review_id), None)
+    narrative_review = None
+    if stamped:
+        narrative_review = ReviewRequest.objects.filter(pk=stamped).first()
+    if narrative_review is None:
+        narrative_review = next((r for r in revs if _is_narrative_version(r)), None)
+    if narrative_review is None:
+        versions = _narrative_versions_for(narrative_slug, None)
+        narrative_review = versions[-1] if versions else None
+    narrative_payload = _narrative_payload(narrative_review)
+
+    title = (narrative_payload or {}).get("title") or _humanize_slug(narrative_slug)
+    lede = _lede_from_story((narrative_payload or {}).get("story"), title)
+
+    # Product URLs the run used (reference) vs sibling artifacts (narrative /
+    # companion). De-duped on url, oldest-first.
+    product_links: list[dict] = []
+    related_links: list[dict] = []
+    seen: set[str] = set()
+    for w in sorted(wts, key=lambda x: x.created_at):
+        for link in w.links or []:
+            if not isinstance(link, dict):
+                continue
+            url = link.get("url", "")
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            entry = {
+                "label": link.get("label", ""),
+                "url": url,
+                "kind": link.get("kind", "reference"),
+            }
+            (product_links if entry["kind"] == "reference" else related_links).append(
+                entry
+            )
+
+    return {
+        "run_id": run_id,
+        "narrative_slug": narrative_slug,
+        "title": title,
+        "lede": lede,
+        "video": _release_artifact(video),
+        "documentation": _release_artifact(documentation),
+        "narrative": narrative_payload,
+        "product_links": product_links,
+        "related_links": related_links,
+        "is_public": is_public,
+        "is_member": is_member,
+        # The shareable handle: the primary artifact's token (only when public).
+        "share_token": primary.share_token if is_public else None,
+        # Internal-only link to the full operator console (flat path redirects
+        # into the member's workspace). The clean page shows it only to members.
+        "build_url": f"/ddd/{narrative_slug}/{run_id}",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Narrative list + detail
 # ---------------------------------------------------------------------------
 
@@ -659,6 +831,15 @@ def set_narrative_visibility(
         for r in _scope(ReviewRequest.objects.all(), workspace_slugs)
         if narrative_of_review(r) == slug
     ]
-    wt_n = Walkthrough.objects.filter(pk__in=wt_pks).update(visibility=visibility)
+    wt_qs = Walkthrough.objects.filter(pk__in=wt_pks)
+    wt_n = wt_qs.update(visibility=visibility)
+    # Flipping a narrative to public (link) must MINT a share token on each
+    # walkthrough, or anonymous ?t= access 404s and there is no shareable link.
+    # The bulk update() above bypasses save(), so re-fetch and ensure a token on
+    # each — mirrors the per-walkthrough PATCH flip-to-public (apps/walkthroughs
+    # /api.py). Reviews stay tokenless by design.
+    if visibility == Walkthrough.VISIBILITY_LINK:
+        for w in wt_qs:
+            w.ensure_share_token()
     rev_n = ReviewRequest.objects.filter(pk__in=rev_pks).update(visibility=visibility)
     return wt_n, rev_n

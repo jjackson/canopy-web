@@ -134,6 +134,23 @@ export interface DddRunPackage {
   all_artifacts: DddRunArtifactRef[]
 }
 
+/** The curated, shareable run-release payload (the clean public-capable page). */
+export interface DddRunRelease {
+  run_id: string
+  narrative_slug: string
+  title: string | null
+  lede: string | null
+  video: DddRunArtifact | null
+  documentation: DddRunArtifact | null
+  narrative: DddRunNarrative | null
+  product_links: DddLink[]
+  related_links: DddLink[]
+  is_public: boolean
+  is_member: boolean
+  share_token: string | null
+  build_url: string | null
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const resp = await fetch(apiUrl(url), { credentials: 'same-origin' })
   if (!resp.ok) {
@@ -229,6 +246,17 @@ export function setNarrativeVisibility(
 
 export function getRun(runId: string): Promise<DddRunPackage> {
   return getJson(`/api/ddd/runs/${encodeURIComponent(runId)}/`)
+}
+
+/**
+ * Fetch the clean, shareable release view of a run. Anonymous-capable: pass the
+ * `?t=<share_token>` from the URL so a public viewer (no Dimagi login) is
+ * admitted; members are recognised by their session cookie and `token` is
+ * unnecessary.
+ */
+export function getRelease(runId: string, token?: string | null): Promise<DddRunRelease> {
+  const q = token ? `?t=${encodeURIComponent(token)}` : ''
+  return getJson(`/api/ddd/release/${encodeURIComponent(runId)}/${q}`)
 }
 
 /** Delete a single run: its walkthroughs + reviews (best-effort Drive cleanup). */

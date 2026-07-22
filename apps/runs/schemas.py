@@ -124,6 +124,31 @@ class RunPackageOut(StrictModel):
     all_artifacts: list[RunArtifactRefOut] = []
 
 
+class RunReleaseOut(StrictModel):
+    """Curated, shareable run release page (the clean public-capable surface).
+
+    A trimmed, outsider-legible slice of a run: title + video + narrative story
+    + the live product URLs it used. Artifact URLs are token-appended so an
+    anonymous ?t= viewer can stream them. No phase/gate jargon, no artifact
+    dump, no edit affordances — the operator console (RunPackageOut) keeps those.
+    """
+
+    run_id: str
+    narrative_slug: str
+    title: str | None = None
+    lede: str | None = None
+    video: RunArtifactOut | None = None
+    documentation: RunArtifactOut | None = None
+    narrative: RunNarrativeOut | None = None
+    # Live systems the run used, shown as named buttons.
+    product_links: list[WalkthroughLink] = []
+    related_links: list[WalkthroughLink] = []
+    is_public: bool = False
+    is_member: bool = False
+    share_token: str | None = None
+    build_url: str | None = None
+
+
 class NarrativeVisibilityIn(StrictModel):
     visibility: Literal["private", "link"]
 

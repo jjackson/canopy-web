@@ -76,6 +76,17 @@ def _is_walkthrough_link(request) -> bool:
     )
 
 
+def _is_ddd_release_link(request) -> bool:
+    # /ddd-release/<slug>/<run_id> (SPA shell) and the read API
+    # (/api/ddd/release/<run_id>/) self-enforce the ?t=<share_token> gate (or a
+    # workspace-member session) inside build_release, so admit anonymous callers
+    # through the middleware. The rest of /ddd/* and /api/ddd/* stay auth'd.
+    path = request.path
+    if path.startswith("/ddd-release/"):
+        return True
+    return request.method == "GET" and path.startswith("/api/ddd/release/")
+
+
 class LoginRequiredMiddleware:
     """Require authentication for every request except the allowlist.
 
@@ -103,6 +114,7 @@ class LoginRequiredMiddleware:
             or _is_walkthrough_link(request)
             or _is_review_link(request.path)
             or _is_share_link(request.path)
+            or _is_ddd_release_link(request)
         ):
             return self.get_response(request)
 

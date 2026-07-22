@@ -1,0 +1,133 @@
+"""Clean, shareable DDD run release page (/api/ddd/release/<run_id>/).
+
+Covers the two halves of the share path: the visibility cascade must now MINT a
+share token on flip-to-public, and the release endpoint must be reachable
+anonymously with a matching ?t= token (and 404 without one) while giving members
+the extra internal affordances.
+"""
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import Client, override_settings
+
+from apps.reviews.models import ReviewRequest
+from apps.runs import aggregate
+from apps.walkthroughs.models import Walkthrough
+from apps.workspaces import services as wsvc
+from apps.workspaces.models import Workspace, WorkspaceMembership
+
+RUN_ID = "demo-2026-07-22-001"
+
+
+@pytest.fixture
+def owner(db):
+    u = get_user_model().objects.create_user(
+        username="owner@dimagi.com", email="owner@dimagi.com",
+    )
+    ws = Workspace.objects.create(slug="dimagi", display_name="Dimagi", created_by=u)
+    wsvc.ensure_member(ws, u, WorkspaceMembership.OWNER)
+    return u
+
+
+def _ws():
+    return Workspace.objects.get(slug="dimagi")
+
+
+def _hero(owner, **kw):
+    defaults = dict(
+        title="Hero", kind="video", role=Walkthrough.ROLE_HERO_VIDEO,
+        owner=owner, workspace=_ws(), drive_file_id="hero", drive_folder_id="d",
+        content_type="video/mp4", size_bytes=1, duration_sec=100,
+        run_id=RUN_ID, narrative_slug="demo",
+        links=[{"label": "Program Admin Report", "url": "https://labs/par", "kind": "reference"}],
+    )
+    defaults.update(kw)
+    return Walkthrough.objects.create(**defaults)
+
+
+def _rev(owner, **kw):
+    defaults = dict(
+        run_id=RUN_ID, narrative_slug="demo", workspace=_ws(),
+        gate="narrative-agreement",
+        request_json={"narrative": "The Story Title\nA program manager reads three managers."},
+        owner=owner,
+    )
+    defaults.update(kw)
+    return ReviewRequest.objects.create(**defaults)
+
+
+# --- cascade now mints tokens ------------------------------------------------
+
+def test_cascade_mints_share_tokens_on_public(db, owner):
+    w = _hero(owner, visibility="private")
+    assert not w.share_token
+    aggregate.set_narrative_visibility("demo", "link")
+    w.refresh_from_db()
+    assert w.visibility == "link"
+    assert w.share_token, "flip-to-public must mint a share token"
+
+
+def test_cascade_to_private_leaves_token(db, owner):
+    w = _hero(owner, visibility="private")
+    aggregate.set_narrative_visibility("demo", "link")
+    w.refresh_from_db()
+    tok = w.share_token
+    aggregate.set_narrative_visibility("demo", "private")
+    w.refresh_from_db()
+    assert w.visibility == "private"
+    assert w.share_token == tok, "flip-to-private keeps the token (revive later)"
+
+
+# --- the release endpoint ----------------------------------------------------
+
+@override_settings(REQUIRE_AUTH=True)
+def test_release_anonymous_without_token_404s(db, owner):
+    _hero(owner, visibility="private")
+    _rev(owner)
+    resp = Client().get(f"/api/ddd/release/{RUN_ID}/")
+    assert resp.status_code == 404  # never leaks existence
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_release_anonymous_with_valid_token(db, owner):
+    _hero(owner, visibility="private")
+    _rev(owner)
+    aggregate.set_narrative_visibility("demo", "link")
+    token = Walkthrough.objects.get(run_id=RUN_ID).share_token
+
+    resp = Client().get(f"/api/ddd/release/{RUN_ID}/?t={token}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run_id"] == RUN_ID
+    assert body["is_public"] is True
+    assert body["is_member"] is False
+    assert body["share_token"] == token
+    # Stream URL carries the artifact's own token so anonymous playback works.
+    assert body["video"]["content_url"] == f"/walkthrough/{Walkthrough.objects.get(run_id=RUN_ID).id}/content?t={token}"
+    # Product URLs surfaced as named links; no operator jargon fields.
+    assert body["product_links"] == [
+        {"label": "Program Admin Report", "url": "https://labs/par", "kind": "reference"}
+    ]
+    assert "phase" not in body and "all_artifacts" not in body
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_release_anonymous_wrong_token_404s(db, owner):
+    _hero(owner, visibility="private")
+    aggregate.set_narrative_visibility("demo", "link")
+    resp = Client().get(f"/api/ddd/release/{RUN_ID}/?t=not-the-token")
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
+def test_release_member_gets_internal_affordances(db, owner):
+    _hero(owner, visibility="private")  # not public
+    _rev(owner)
+    client = Client(); client.force_login(owner)
+    resp = client.get(f"/api/ddd/release/{RUN_ID}/")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_member"] is True
+    assert body["is_public"] is False
+    assert body["build_url"] == f"/ddd/demo/{RUN_ID}"
+    # Private artifact → tokenless stream URL (session auth covers it).
+    assert body["video"]["content_url"].endswith("/content")

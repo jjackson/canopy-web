@@ -20,6 +20,8 @@ import { SessionsPage } from './pages/SessionsPage'
 import { AgentsPage } from './pages/AgentsPage'
 import { AgentWorkspacePage } from './pages/AgentWorkspacePage'
 import SessionSharePage from './pages/SessionSharePage'
+import DddReleasePage from './pages/DddReleasePage'
+import { PublicLayout } from './components/PublicLayout'
 import SupervisorPage from '@/pages/SupervisorPage'
 import ActivityPage from '@/pages/ActivityPage'
 import SchedulesPage from './pages/SchedulesPage'
@@ -199,6 +201,17 @@ export const router = createBrowserRouter(guarded([
   // Canopy"-linking app boundary off a page anonymous visitors can't log
   // into.
   { path: '/share/:token', element: <SessionSharePage />, errorElement: <ShareRouteErrorBoundary /> },
+  // The clean, shareable DDD run RELEASE page — also mounted OUTSIDE AppLayout,
+  // in a chrome-less PublicLayout, so a `?t=<share_token>` viewer with no Dimagi
+  // login is served (the release API self-enforces token-or-member access). New
+  // URL; the operator console at /w/:ws/ddd/:narrative/:runId is untouched.
+  {
+    element: <PublicLayout />,
+    errorElement: <ShareRouteErrorBoundary />,
+    children: [
+      { path: '/ddd-release/:narrative/:runId', element: <DddReleasePage /> },
+    ],
+  },
 ]), {
   // "/" at root, "/canopy" as a labs tenant — keeps every route + <Link> under
   // the deployment's path prefix (from Vite's import.meta.env.BASE_URL).
