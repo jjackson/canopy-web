@@ -3917,6 +3917,8 @@ export interface components {
             readonly updated_at: string;
             /** Workspace */
             readonly workspace?: string | null;
+            /** Runner Preference */
+            readonly runner_preference?: readonly string[];
         };
         /** Page[AgentOut] */
         readonly Page_AgentOut_: {
@@ -4002,6 +4004,8 @@ export interface components {
             readonly updated_at: string;
             /** Workspace */
             readonly workspace?: string | null;
+            /** Runner Preference */
+            readonly runner_preference?: readonly string[];
             /**
              * Sync Count
              * @default 0
@@ -4031,8 +4035,6 @@ export interface components {
             readonly latest_sync_at?: string | null;
             /** Latest Turn At */
             readonly latest_turn_at?: string | null;
-            /** Runner Preference */
-            readonly runner_preference?: readonly string[];
         };
         /**
          * RunnerPreferenceIn

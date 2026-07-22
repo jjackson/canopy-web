@@ -26,23 +26,30 @@ export function RunnerOrder({
   slug,
   name,
   preference,
+  onSaved,
+  runners: runnersProp,
 }: {
   slug: string
   name: string
   preference: readonly string[]
+  onSaved?: (pref: string[]) => void
+  runners?: RunnerOut[]
 }): JSX.Element {
   const [order, setOrder] = useState<string[]>([...preference])
-  const [runners, setRunners] = useState<RunnerOut[]>([])
+  const [fetched, setFetched] = useState<RunnerOut[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Only self-fetch when the caller didn't supply a runner list.
   useEffect(() => {
+    if (runnersProp) return
     listRunners()
-      .then(setRunners)
-      .catch(() => setRunners([]))
-  }, [])
+      .then(setFetched)
+      .catch(() => setFetched([]))
+  }, [runnersProp])
 
+  const runners = runnersProp ?? fetched
   const online = useMemo(() => onlineByKind(runners), [runners])
   const dirty = useMemo(
     () => JSON.stringify(order) !== JSON.stringify([...preference]),
@@ -74,6 +81,7 @@ export function RunnerOrder({
     try {
       await updateAgentRunnerPreference(slug, order)
       setSaved(true)
+      onSaved?.(order)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to save')
     } finally {

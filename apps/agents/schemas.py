@@ -78,6 +78,13 @@ class AgentOut(StrictModel):
     # already the slug string with zero extra queries. Nullable for migration
     # safety, same as the FK itself.
     workspace: str | None = Field(default=None, validation_alias="workspace_id")
+    # Ordered runner-kind preference (["cloud", "emdash", "remote"]). Empty = no
+    # preference (any eligible runner, first-poll-wins). Lifted to the base schema
+    # so the agents LIST (Page[AgentOut]) carries it — the supervisor Runners tab
+    # maps it to "which agents prioritize which runner kind". Read directly from
+    # the Agent.runner_preference JSONField by AgentOut.model_validate(agent);
+    # AgentDetailOut inherits it.
+    runner_preference: list[str] = Field(default_factory=list)
 
 
 class AgentDetailOut(AgentOut):
@@ -88,8 +95,6 @@ class AgentDetailOut(AgentOut):
     turn_count: int = 0
     latest_sync_at: dt.datetime | None = None
     latest_turn_at: dt.datetime | None = None
-    # Ordered runner-kind preference (for the runner-order UI). Empty = no preference.
-    runner_preference: list[str] = Field(default_factory=list)
 
 
 # ---- Sync (Google-Doc backed) ----
