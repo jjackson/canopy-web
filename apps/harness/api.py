@@ -507,14 +507,13 @@ def cancel_turn(request: HttpRequest, turn_id: uuid.UUID):
     turn = _turn_or_404(request, turn_id)
     if turn.status in Turn.TERMINAL:
         return turn  # idempotent
-    if turn.status != Turn.QUEUED:
+    cancelled = services.cancel_queued_turn(turn)
+    if cancelled is None:
         raise ProblemError(
             409, "Turn not cancelable",
             detail=f"status={turn.status}; only a queued turn can be cancelled",
         )
-    return services.finish_turn(
-        turn, status=Turn.FAILED, result_note="cancelled by supervisor", allow_queued=True
-    )
+    return cancelled
 
 
 # --------------------------------------------------------------------------------------

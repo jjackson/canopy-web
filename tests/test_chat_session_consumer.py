@@ -96,10 +96,12 @@ async def test_draft_update_broadcasts_to_other_socket():
     b = await _connect(session, teammate)
     assert (await b.connect())[0]
 
-    await a.send_json_to({"action": "draft.update", "data": {"expected_version": 0, "body": "hello team"}})
+    await a.send_json_to({"action": "draft.update", "data": {"version": 0, "body": "hello team"}})
     frame = await _recv_match(b, lambda f: f.get("event") == "draft.updated")
     assert frame["data"]["body"] == "hello team"
     assert frame["data"]["last_editor"] == owner.id
+    # canonical draft.updated is the full DraftSerializer shape
+    assert {"id", "slot", "status", "last_edit_at"} <= set(frame["data"])
     await a.disconnect()
     await b.disconnect()
 
@@ -111,14 +113,14 @@ async def test_commit_sends_and_streams_assistant_to_all():
     b = await _connect(session, teammate)
     assert (await b.connect())[0]
 
-    await a.send_json_to({"action": "draft.update", "data": {"expected_version": 0, "body": "do it"}})
+    await a.send_json_to({"action": "draft.update", "data": {"version": 0, "body": "do it"}})
     await _recv_match(a, lambda f: f.get("event") == "draft.updated")
-    await a.send_json_to({"action": "draft.commit"})
+    await a.send_json_to({"action": "chat.send", "data": {}})
 
-    # Both sockets see the streamed assistant turn event (the stub executed).
-    is_assistant = lambda f: f.get("event") == "chat.turn_event" and f["data"].get("kind") == "assistant"
-    assert await _recv_match(a, is_assistant)
-    assert await _recv_match(b, is_assistant)
+    # Both sockets see the streamed assistant reply as canonical stream frames.
+    is_complete = lambda f: f.get("event") == "chat.stream_complete"
+    assert await _recv_match(a, is_complete)
+    assert await _recv_match(b, is_complete)
 
     # And the durable transcript has the user + assistant messages.
     roles = await database_sync_to_async(
@@ -140,9 +142,9 @@ async def test_commit_survives_concurrent_running_turn():
     )()
     a = await _connect(session, owner)
     assert (await a.connect())[0]
-    await a.send_json_to({"action": "draft.update", "data": {"expected_version": 0, "body": "hi"}})
+    await a.send_json_to({"action": "draft.update", "data": {"version": 0, "body": "hi"}})
     await _recv_match(a, lambda f: f.get("event") == "draft.updated")
-    await a.send_json_to({"action": "draft.commit"})
+    await a.send_json_to({"action": "chat.send", "data": {}})
     # cleared-draft frame arrives (socket did not tear down on the IntegrityError)
     cleared = await _recv_match(a, lambda f: f.get("event") == "draft.updated" and f["data"]["body"] == "")
     assert cleared["data"]["body"] == ""
@@ -161,7 +163,46 @@ async def test_viewer_cannot_edit():
     b = await _connect(session, teammate)
     assert (await b.connect())[0]
     await _recv_match(b, lambda f: f.get("event") == "session.state")
-    await b.send_json_to({"action": "draft.update", "data": {"expected_version": 0, "body": "nope"}})
-    err = await _recv_match(b, lambda f: f.get("event") == "error")
+    await b.send_json_to({"action": "draft.update", "data": {"version": 0, "body": "nope"}})
+    err = await _recv_match(b, lambda f: f.get("event") == "session.error")
     assert err["data"]["code"] == "forbidden"
     await b.disconnect()
+
+
+async def test_version_conflict_uses_session_error():
+    owner, _t, session = await database_sync_to_async(_seed)()
+    comm = await _connect(session, owner)
+    assert (await comm.connect())[0]
+    await _recv_match(comm, lambda f: f.get("event") == "session.state")
+    await comm.send_json_to({"action": "draft.update", "data": {"version": 99, "body": "x"}})
+    err = await _recv_match(comm, lambda f: f.get("event") == "session.error")
+    assert err["data"]["code"] == "draft_version_mismatch"
+    assert "current_version" in err["data"]["detail"]
+    await comm.disconnect()
+
+
+async def test_send_broadcasts_draft_committed():
+    owner, _t, session = await database_sync_to_async(_seed)()
+    comm = await _connect(session, owner)
+    assert (await comm.connect())[0]
+    await _recv_match(comm, lambda f: f.get("event") == "session.state")
+    await comm.send_json_to({"action": "draft.update", "data": {"version": 0, "body": "ping"}})
+    await _recv_match(comm, lambda f: f.get("event") == "draft.updated")
+    await comm.send_json_to({"action": "chat.send", "data": {}})
+    committed = await _recv_match(comm, lambda f: f.get("event") == "draft.committed")
+    assert "user_message_id" in committed["data"]
+    await comm.disconnect()
+
+
+async def test_assistant_event_streams_canonical_frames():
+    owner, _t, session = await database_sync_to_async(_seed)()
+    comm = await _connect(session, owner)
+    assert (await comm.connect())[0]
+    await _recv_match(comm, lambda f: f.get("event") == "session.state")
+    await comm.send_json_to({"action": "draft.update", "data": {"version": 0, "body": "hi"}})
+    await _recv_match(comm, lambda f: f.get("event") == "draft.updated")
+    await comm.send_json_to({"action": "chat.send", "data": {}})
+    await _recv_match(comm, lambda f: f.get("event") == "chat.stream_start")
+    done = await _recv_match(comm, lambda f: f.get("event") == "chat.stream_complete")
+    assert "plaintext" in done["data"]
+    await comm.disconnect()

@@ -11,13 +11,16 @@ import uuid
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
+from apps.harness import services as harness_services
+from apps.harness.models import Turn
 from apps.realtime.groups import session_group
 
-from . import drafts, participants, presence, serializers
+from . import drafts, participants, presence, serializers, stream_map
 from . import services as chat_services
-from .models import Session, SessionParticipant
+from .models import Message, Session, SessionParticipant
 
 _EDIT_ROLES = {SessionParticipant.OWNER, SessionParticipant.EDITOR}
+_EDIT_ACTIONS = ("draft.update", "draft.take_over", "draft.discard", "chat.send")
 
 
 class SessionConsumer(AsyncJsonWebsocketConsumer):
@@ -60,34 +63,47 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         if action == "presence.heartbeat":
             await database_sync_to_async(presence.touch)(self.session.id, self.user.id)
             return
-        if action in ("draft.update", "draft.take_over", "draft.commit"):
-            if self.role not in _EDIT_ROLES:
-                await self.send_json({"event": "error", "data": {"code": "forbidden"}})
-                return
+        if action == "chat.stop":
+            await self._chat_stop(data)
+            return
+        if action in _EDIT_ACTIONS and self.role not in _EDIT_ROLES:
+            await self._error("forbidden", "You do not have edit access to this session.")
+            return
         if action == "draft.update":
             await self._draft_update(data)
         elif action == "draft.take_over":
             await self._draft_take_over()
-        elif action == "draft.commit":
-            await self._draft_commit()
+        elif action == "draft.discard":
+            await self._draft_discard()
+        elif action == "chat.send":
+            await self._chat_send()
 
     # -- actions --
+    async def _error(self, code, message="", detail=None):
+        payload = {"code": code, "message": message}
+        if detail is not None:
+            payload["detail"] = detail
+        await self.send_json({"event": "session.error", "data": payload})
+
     async def _draft_update(self, data):
         try:
             draft = await database_sync_to_async(drafts.update_draft)(
                 self.session,
-                expected_version=int(data.get("expected_version", 0)),
+                expected_version=int(data.get("version", 0)),
                 body=str(data.get("body", "")),
                 editor=self.user,
             )
         except drafts.DraftVersionMismatch as exc:
-            await self.send_json({
-                "event": "draft.conflict",
-                "data": {"current_version": exc.current_version, "current_body": exc.current_body},
-            })
+            await self._error(
+                "draft_version_mismatch", "Draft changed since your last edit.",
+                {"current_version": exc.current_version, "current_body": exc.current_body},
+            )
             return
         except drafts.DraftLockHeld as exc:
-            await self.send_json({"event": "draft.locked", "data": {"holder_id": exc.holder_id}})
+            await self._error(
+                "draft_lock_held", "Another teammate is editing.",
+                {"holder_user_id": exc.holder_id, "expires_at": None},
+            )
             return
         await self._broadcast_draft(draft)
 
@@ -95,35 +111,110 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         try:
             draft = await database_sync_to_async(drafts.take_over)(self.session, editor=self.user)
         except drafts.DraftLockHeld as exc:
-            await self.send_json({"event": "draft.locked", "data": {"holder_id": exc.holder_id}})
+            await self._error(
+                "draft_lock_held", "Another teammate is editing.",
+                {"holder_user_id": exc.holder_id, "expires_at": None},
+            )
             return
+        await self._broadcast({
+            "type": "draft.lock_changed", "draft_id": str(draft.pk),
+            "holder_user_id": self.user.id, "expires_at": None,
+        })
         await self._broadcast_draft(draft)
 
-    async def _draft_commit(self):
-        # commit deliberately ignores lock/version (spec: any editor can commit the
-        # shared draft). Broadcast the cleared draft FIRST so co-editors' UI always
-        # resets, even if execution below is a no-op / races a concurrent turn.
-        text = await database_sync_to_async(drafts.commit_active_draft)(self.session)
-        draft = await database_sync_to_async(drafts.active_draft)(self.session)
+    async def _draft_discard(self):
+        draft = await database_sync_to_async(self._discard_active)()
+        await self._broadcast({"type": "draft.discarded", "draft_id": str(draft.pk)})
         await self._broadcast_draft(draft)
-        if not text.strip():
-            return
-        await database_sync_to_async(self._send_and_execute)(text)
+
+    async def _chat_send(self):
+        # Any editor may send the shared draft (commit ignores lock/version). Broadcast
+        # draft.committed + the cleared draft FIRST so co-editors' UI resets even if
+        # execution below is a no-op / races a concurrent turn.
+        user_message_id = await database_sync_to_async(self._commit_and_send)()
+        draft = await database_sync_to_async(drafts.active_draft)(self.session)
+        if user_message_id is not None:
+            await self._broadcast({
+                "type": "draft.committed", "draft_id": str(draft.pk),
+                "user_message_id": user_message_id,
+            })
+        await self._broadcast_draft(draft)
         # turn events fan out to the session group automatically (realtime signal).
 
-    def _send_and_execute(self, text):
-        _msg, turn = chat_services.send_message(session=self.session, text=text, user=self.user)
-        # Dev/test: stub inline. Production: leave queued for a cloud runner. The
-        # helper guards QUEUED + the one_executing_turn_per_session race so a
-        # concurrent send never tears down the socket.
+    async def _chat_stop(self, data):
+        # Cancel is 'un-queue', not 'kill' (harness owns a running turn's lease).
+        # Best-effort un-queue, then ack so the sender's Stop UI resets.
+        await database_sync_to_async(self._cancel_session_turn)()
+        await self.send_json({
+            "event": "chat.stream_cancelled",
+            "data": {"message_id": data.get("message_id"), "partial_len": 0},
+        })
+
+    # -- sync DB helpers --
+    def _commit_and_send(self):
+        text = drafts.commit_active_draft(self.session)
+        if not text.strip():
+            return None
+        msg, turn = chat_services.send_message(session=self.session, text=text, user=self.user)
         chat_services.maybe_execute_inline(turn)
+        return str(msg.pk)
+
+    def _discard_active(self):
+        draft = drafts.active_draft(self.session)
+        if draft.body:
+            draft.body = ""
+            draft.version += 1
+            draft.save(update_fields=["body", "version", "updated_at"])
+        return draft
+
+    def _cancel_session_turn(self):
+        turn = (
+            Turn.objects.filter(chat_session=self.session, status=Turn.QUEUED)
+            .order_by("-created_at").first()
+        )
+        if turn is not None:
+            harness_services.cancel_queued_turn(turn)
+
+    def _resolve_message_id_sync(self, turn_id, seq):
+        if turn_id:
+            pk = (
+                Message.objects.filter(turn_id=turn_id, content__source_seq=seq)
+                .values_list("pk", flat=True).first()
+            )
+            if pk is not None:
+                return str(pk)
+            return f"{str(turn_id)[:8]}:{seq}"
+        return f"seq:{seq}"
 
     # -- group frame handlers (dots -> underscores) --
     async def chat_turn_event(self, message):
-        await self.send_json({"event": "chat.turn_event", "data": message["event"]})
+        evt = message["event"]
+        turn_id = message.get("turn_id")
+        mid = await database_sync_to_async(self._resolve_message_id_sync)(turn_id, evt.get("seq"))
+        for frame in stream_map.turn_event_to_frames(evt, lambda _seq: mid):
+            await self.send_json(frame)
 
     async def draft_updated(self, message):
         await self.send_json({"event": "draft.updated", "data": message["draft"]})
+
+    async def draft_committed(self, message):
+        await self.send_json({
+            "event": "draft.committed",
+            "data": {"draft_id": message["draft_id"], "user_message_id": message["user_message_id"]},
+        })
+
+    async def draft_discarded(self, message):
+        await self.send_json({"event": "draft.discarded", "data": {"draft_id": message["draft_id"]}})
+
+    async def draft_lock_changed(self, message):
+        await self.send_json({
+            "event": "draft.lock_changed",
+            "data": {
+                "draft_id": message["draft_id"],
+                "holder_user_id": message["holder_user_id"],
+                "expires_at": message["expires_at"],
+            },
+        })
 
     async def presence_joined(self, message):
         await self.send_json({"event": "presence.joined", "data": {"user_id": message["user_id"]}})
@@ -137,15 +228,7 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
 
     async def _broadcast_draft(self, draft):
         await self.channel_layer.group_send(
-            self.group,
-            {
-                "type": "draft.updated",
-                "draft": {
-                    "body": draft.body,
-                    "version": draft.version,
-                    "last_editor": draft.last_editor_id,
-                },
-            },
+            self.group, {"type": "draft.updated", "draft": serializers.draft_dto(draft)}
         )
 
     @database_sync_to_async
