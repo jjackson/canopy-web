@@ -25,13 +25,7 @@ def ws_url(base_url: str, runner_id: str) -> str:
 
 
 class WakeListener:
-    # The shared labs proxy drops a WS that sends no application DATA for ~6-8s (it
-    # ignores ws ping/pong control frames as activity). So even this read-only wake
-    # socket must emit a data frame under that window or it flaps every few seconds;
-    # 4s leaves margin. It's a cheap DB-free keepalive on the server side.
-    KEEPALIVE_SECONDS = 4
-
-    def __init__(self, base_url: str, token: str, runner_id: str, *, recv_timeout: int = KEEPALIVE_SECONDS):
+    def __init__(self, base_url: str, token: str, runner_id: str, *, recv_timeout: int = 30):
         self.event = threading.Event()
         self._url = ws_url(base_url, runner_id)
         self._token = token
@@ -81,16 +75,7 @@ class WakeListener:
                     try:
                         raw = ws.recv()
                     except websocket.WebSocketTimeoutException:
-                        # Idle: send a keepalive data frame so the proxy keeps the
-                        # socket open (ping/pong control frames don't count as
-                        # activity for it). Best-effort — a send error just drops us
-                        # into reconnect, exactly as a dead socket would.
-                        try:
-                            ws.send(json.dumps({"action": "keepalive"}))
-                            continue
-                        except Exception as exc:  # noqa: BLE001
-                            logger.debug("wake keepalive send failed (%s); reconnecting", exc)
-                            break
+                        continue  # idle; keep the socket open
                     if not raw:
                         break
                     self._handle(raw)
