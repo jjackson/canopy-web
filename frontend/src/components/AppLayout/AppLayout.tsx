@@ -9,6 +9,7 @@ import { WorkspaceProvider, useWorkspace } from '@/workspace/WorkspaceProvider'
 // `tenant` items live under /w/:workspace; the rest are personal/global (root).
 const NAV_ITEMS = [
   { path: '', label: 'Projects', tenant: true },
+  { path: 'chat', label: 'Chats', tenant: true },
   { path: 'ddd', label: 'DDD', tenant: true },
   { path: 'agents', label: 'Agents', tenant: true },
   { path: 'walkthroughs', label: 'Walkthroughs', tenant: true },
