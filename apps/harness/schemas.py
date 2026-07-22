@@ -192,7 +192,12 @@ class TurnOut(Schema):
     def resolve_agent_slug(obj) -> str | None:
         # None for project turns — dereferencing obj.agent unconditionally is
         # what this used to do, and it 500s the moment agent can be NULL.
-        return obj.agent.slug if obj.agent_id else None
+        if obj.agent_id:
+            return obj.agent.slug
+        # A chat SESSION turn targets a Session, not an agent — but you chat WITH an
+        # agent, so surface the session's agent as the emdash target the runner drives.
+        cs = getattr(obj, "chat_session", None)
+        return cs.agent.slug if cs and cs.agent_id else None
 
     @staticmethod
     def resolve_workspace_slug(obj) -> str | None:
