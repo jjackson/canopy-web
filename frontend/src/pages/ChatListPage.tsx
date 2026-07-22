@@ -81,12 +81,12 @@ export function ChatListPage() {
               <DropdownMenuItem disabled>No agents in this workspace</DropdownMenuItem>
             )}
             {agents.map((a) => (
-              <DropdownMenuItem key={a.slug} onSelect={() => startChat(a.slug)}>
+              <DropdownMenuItem key={a.slug} onClick={() => startChat(a.slug)}>
                 {a.name}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => startChat(undefined)}>
+            <DropdownMenuItem onClick={() => startChat(undefined)}>
               Blank chat (no agent)
             </DropdownMenuItem>
           </DropdownMenuContent>
