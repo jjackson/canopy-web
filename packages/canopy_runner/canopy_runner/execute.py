@@ -21,8 +21,10 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+import time
+from pathlib import Path
 
-from . import cdp_control, dialog, emdash, readiness
+from . import cdp_control, chat_bridge, dialog, emdash, readiness, transcript
 
 logger = logging.getLogger("canopy_runner.execute")
 
@@ -151,9 +153,93 @@ def _deliver_to_existing(cfg, client, runner_id, turn, task, state, work_prompt)
     return f"reused:{turn_id}"
 
 
+def _resolve_transcript_path(target: str, task: str):
+    home = Path.home()
+    return transcript.resolve_transcript(
+        target, task, home=home, claude_home=home / ".claude" / "projects"
+    )
+
+
+def _wait_for_transcript(target: str, task: str, *, timeout: float = 45.0, poll: float = 0.5):
+    """A freshly-created emdash session's transcript .jsonl doesn't exist until Claude
+    Code starts writing. Wait (bounded) for it to appear; reused sessions resolve at once."""
+    deadline = time.monotonic() + timeout
+    path = _resolve_transcript_path(target, task)
+    while path is None and time.monotonic() < deadline:
+        time.sleep(poll)
+        path = _resolve_transcript_path(target, task)
+    return path
+
+
+def execute_chat_turn(cfg, client, runner_id: str, turn: dict) -> str:
+    """A chat SESSION turn: inject the human's message into the session's emdash session,
+    then BRIDGE the assistant reply back into the ledger — unlike agent/project turns,
+    which fire-and-continue in the visible emdash session. The chat SessionConsumer turns
+    the bridged assistant events into chat.stream_* so the website streams the reply."""
+    turn_id = turn["id"]
+    agent_slug = turn.get("agent_slug") or ""
+    project = turn.get("project") or ""
+    workspace = turn.get("workspace_slug") or ""
+    target = agent_slug or project  # the emdash project to drive
+    thread_key = _thread_key(turn)
+    prompt = turn.get("prompt") or ""
+
+    plan = client.resolve_session(
+        runner_id, agent_slug, thread_key, project=project, workspace=workspace
+    )
+    client.start(turn_id)
+
+    task = plan.get("emdash_task_id") if plan.get("reuse") else None
+    if task and emdash.task_state(cfg.emdash_db, task) in ("absent", "archived"):
+        task = None  # the linked emdash session is gone — create a fresh one
+    if task:
+        try:
+            cdp_control.open_and_send(task, prompt, port=cfg.cdp_port)
+        except Exception as exc:  # noqa: BLE001 — any send failure ends the turn
+            logger.error("chat reuse send failed turn=%s task=%s: %s", turn_id, task, exc)
+            client.fail_turn(turn_id, f"chat reuse send failed: {str(exc)[:200]}")
+            return f"failed:{turn_id}"
+        logger.info("chat turn=%s reused emdash task=%s (agent=%s)", turn_id, task, target)
+    else:
+        try:
+            res = cdp_control.create_task(
+                target, prompt, task_name=_task_name(target, turn), port=cfg.cdp_port
+            )
+        except cdp_control.CDPError as exc:
+            logger.error("chat create failed turn=%s agent=%s: %s", turn_id, target, exc)
+            client.fail_turn(turn_id, f"chat create failed: {str(exc)[:200]}")
+            return f"failed:{turn_id}"
+        task = res.get("task") or ""
+        client.record_session(
+            runner_id, agent_slug, thread_key, project=project, workspace=workspace,
+            emdash_task_id=task, summary=None,
+        )
+        logger.info("chat turn=%s created emdash task=%s (agent=%s)", turn_id, task, target)
+
+    path = _wait_for_transcript(target, task)
+    if path is None:
+        logger.warning("chat turn=%s: no transcript for task=%s (agent=%s) — reply not bridged",
+                       turn_id, task, target)
+        client.finish(turn_id, note="chat: transcript not found; reply not bridged")
+        return f"chat:{turn_id}:{task}"
+    start_index = len(chat_bridge.read_records(path))
+    text = chat_bridge.bridge_response(
+        lambda e: client.post_events(turn_id, [e]),
+        lambda: chat_bridge.read_records(path),
+        start_index=start_index, sleep=time.sleep,
+    )
+    client.finish(turn_id, note=f"chat reply bridged ({len(text)} chars)")
+    logger.info("chat turn=%s bridged %d chars from task=%s", turn_id, len(text), task)
+    return f"chat:{turn_id}:{task}"
+
+
 def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
     """Route one claimed turn to an emdash session (reuse or create). Returns a short
     action string: reused:<id> | created:<id>:<task> | failed:<id>."""
+    # A chat session send is bridged back to the website (its own path); everything
+    # else fires into the visible emdash session and continues there.
+    if (turn.get("origin_ref") or {}).get("chat_session_id"):
+        return execute_chat_turn(cfg, client, runner_id, turn)
     turn_id = turn["id"]
     # `agent` names the emdash project to drive for BOTH turn kinds — an agent's
     # slug or, for a repo turn, the project name. cdp_control takes a project name
