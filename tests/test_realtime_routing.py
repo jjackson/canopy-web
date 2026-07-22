@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from apps.realtime.consumers import SupervisorConsumer, TurnConsumer
+from apps.realtime.consumers import RunnerConsumer, SupervisorConsumer, TurnConsumer
 from apps.realtime.routing import websocket_urlpatterns
 
 
@@ -16,12 +16,16 @@ def _match(path: str):
     return None
 
 
-def test_two_routes_registered():
-    assert len(websocket_urlpatterns) == 2
+def test_routes_registered():
+    assert len(websocket_urlpatterns) == 3
 
 
 def test_turn_route_resolves():
     assert _match(f"ws/turns/{uuid.uuid4().hex}/") is TurnConsumer
+
+
+def test_runner_route_resolves():
+    assert _match(f"ws/runner/{uuid.uuid4().hex}/") is RunnerConsumer
 
 
 def test_supervisor_route_resolves():

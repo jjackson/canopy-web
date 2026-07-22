@@ -19,7 +19,7 @@ from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from apps.harness.models import Runner
+from apps.harness.models import Runner, Turn
 from apps.harness.signals import turn_events_appended
 from apps.push.models import AgentWaitingSnapshot
 from apps.workspaces.services import workspace_member_ids
@@ -40,6 +40,22 @@ def _on_turn_events(sender, turn, rows, **kwargs):
         sgroup = groups.session_group(turn.chat_session_id)
         for event in events:
             groups.publish(sgroup, {"type": "chat.turn_event", "event": event})
+
+
+@receiver(post_save, sender=Turn, dispatch_uid="realtime_runnable_wake")
+def _on_turn_enqueued(sender, instance: Turn, created, **kwargs):
+    """A newly-QUEUED turn wakes runners in its tenant so a blocked/idle runner
+    claims it now instead of waiting out its poll interval. Coarse per-workspace
+    wake — it only PROMPTS a claim; claim_next_turn still gates everything. Deferred
+    to on_commit (create fires mid-transaction) and null-safe like every publish."""
+    if not created or instance.status != Turn.QUEUED:
+        return
+    slug = groups.turn_workspace_slug(instance)
+    if not slug:
+        return
+    transaction.on_commit(
+        lambda: groups.publish(groups.runnable_group(slug), {"type": "runner.wake"})
+    )
 
 
 @receiver(post_save, sender=Runner, dispatch_uid="realtime_runner")

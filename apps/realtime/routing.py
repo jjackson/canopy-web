@@ -10,4 +10,5 @@ from . import consumers
 websocket_urlpatterns = [
     re_path(r"^ws/turns/(?P<turn_id>[0-9a-fA-F-]+)/$", consumers.TurnConsumer.as_asgi()),
     path("ws/supervisor/", consumers.SupervisorConsumer.as_asgi()),
+    re_path(r"^ws/runner/(?P<runner_id>[0-9a-fA-F-]+)/$", consumers.RunnerConsumer.as_asgi()),
 ]

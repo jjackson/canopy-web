@@ -79,7 +79,35 @@ def send_message(*, session: Session, text: str, user, client_id: str = "") -> t
             idempotency_key=f"chat:{session.id.hex}:{client_id or index}",
             prompt=text,
         )
+    # RC4 — multiplayer interjection: if a turn is ALREADY running for this session,
+    # the human's message is an interjection. Push it down to the runner executing
+    # that turn (over its control channel) so the live agent sees it, on top of the
+    # new turn that queues behind it. Post-commit + null-safe (a realtime hiccup
+    # never breaks the send).
+    _maybe_interject(session, message)
     return message, turn
+
+
+def _maybe_interject(session: Session, message: Message) -> None:
+    from apps.realtime import groups
+
+    running = (
+        Turn.objects.filter(
+            chat_session=session,
+            status__in=[Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN],
+            claimed_by__isnull=False,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if running is None:
+        return
+    groups.publish(groups.runner_group(running.claimed_by_id), {
+        "type": "runner.interject",
+        "turn_id": str(running.id),
+        "session_id": str(session.id),
+        "message": message.plaintext,
+    })
 
 
 def maybe_execute_inline(turn: Turn | None) -> None:
