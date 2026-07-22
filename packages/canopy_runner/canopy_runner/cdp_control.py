@@ -120,7 +120,18 @@ def create_task(project: str, prompt: str, *, task_name: str = "", port: int = 9
     return _run("create", args)
 
 
-def open_and_send(task: str, text: str, *, port: int = 9222) -> dict:
-    """REUSE: open an existing task and send `text` into its live terminal.
+def open_and_send(task: str, text: str, *, clear_first: bool = False, port: int = 9222) -> dict:
+    """REUSE: open an existing task and deliver `text` into its live terminal.
+
+    Returns the sidecar dict — normally ``{"action": "sent"}``. If the prompt already
+    holds UNSENT text (the human was typing when emdash switched tasks and their
+    keystrokes leaked in), returns ``{"action": "collision", "line": "<preview>"}``
+    WITHOUT clobbering it — the caller asks the human what to do (see `dialog.py`) and
+    may re-call with ``clear_first=True`` to kill the current line first, then send
+    (``{"action": "sent-cleared"}``).
+
     Raises CDPError if the task isn't present (caller falls back to create+rehydrate)."""
-    return _run("open-send", {"port": port, "task": task, "text": text})
+    args = {"port": port, "task": task, "text": text}
+    if clear_first:
+        args["clearFirst"] = True
+    return _run("open-send", args)

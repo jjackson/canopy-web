@@ -22,7 +22,7 @@ import datetime as dt
 import logging
 import re
 
-from . import cdp_control, emdash, readiness
+from . import cdp_control, dialog, emdash, readiness
 
 logger = logging.getLogger("canopy_runner.execute")
 
@@ -66,6 +66,89 @@ def _task_name(agent: str, turn: dict, now=None) -> str:
     disc = re.sub(r"[^a-z0-9]", "", _thread_key(turn).lower())[-4:]
     bits = [agent] + ([label] if label else []) + [b for b in (disc, stamp) if b]
     return "-".join(bits)
+
+
+def _deliver_to_existing(cfg, client, runner_id, turn, task, state, work_prompt):
+    """Deliver a turn into the linked LIVE emdash session `task`.
+
+    Returns a terminal action string (``reused:`` / ``failed:`` / ``deferred:``) when the
+    turn is fully handled, or ``None`` to tell the caller to route to a NEW session
+    (reuse fell back, or the human/timeout chose a fresh session on a collision).
+
+    The collision case: `open_and_send` finds unsent text already in the prompt (the
+    human's keystrokes leaked in when emdash switched to this task) and returns without
+    clobbering it. We ask the human via a native dialog:
+      Clear & send → kill the line, send here (``reused:``)
+      New session  → leave it, create fresh (return ``None`` → caller creates)
+      Cancel       → deliver nothing, requeue the turn (``deferred:``)
+      timeout/no-GUI → treated as New session (non-destructive default).
+    """
+    turn_id = turn["id"]
+    agent = _target(turn)
+    thread_key = _thread_key(turn)
+
+    try:
+        res = cdp_control.open_and_send(task, work_prompt, port=cfg.cdp_port)
+    except cdp_control.CDPError as exc:
+        if state == "unknown" and "TASK_NOT_FOUND" in str(exc):
+            # Degraded: emdash's DB was unreadable, so CDP's verdict is all we have.
+            # Loud, because reuse is running blind until the db path is fixed.
+            logger.warning("reuse: emdash DB unreadable — trusting CDP's TASK_NOT_FOUND "
+                           "for '%s' (agent=%s); fix the db path to make reuse deterministic",
+                           task, agent)
+            client.post_events(turn_id, [{"kind": "status",
+                "payload": {"status": "reuse_task_gone", "task": task, "task_state": state}}])
+            return None                         # create + rehydrate
+        # The task EXISTS (sqlite says so) but we couldn't drive it. Creating a fresh
+        # session here would DUPLICATE the live one and orphan its context — the bug that
+        # spawned two Hal sessions. Fail the turn instead (it retries); never duplicate.
+        logger.error("reuse FAILED on '%s' which emdash's DB says is %s (agent=%s): %s "
+                     "— NOT creating a duplicate; failing the turn for retry",
+                     task, state, agent, str(exc)[:200])
+        client.post_events(turn_id, [{"kind": "error",
+            "payload": {"status": "reuse_send_failed", "task": task,
+                        "task_state": state, "detail": str(exc)[:300]}}])
+        _note = (f"reuse failed on existing session '{task}' ({state} per emdash's DB) "
+                 f"— not spawning a duplicate; retry")
+        readiness.mark_failed(cfg, _note)
+        client.fail_turn(turn_id, _note)
+        return f"failed:{turn_id}"
+
+    if res.get("action") == "collision":
+        choice = dialog.collision_choice(task, res.get("line", ""))
+        logger.info("collision on '%s' (turn=%s): unsent text in prompt — human chose %r",
+                    task, turn_id, choice)
+        client.post_events(turn_id, [{"kind": "status",
+            "payload": {"status": "collision", "task": task, "choice": choice}}])
+        if choice == dialog.NEW:
+            return None                         # leave the prompt untouched; create fresh
+        if choice == dialog.CANCEL:
+            _note = f"collision on session '{task}': cancelled by human; will retry"
+            readiness.mark_ok(cfg)              # not a runner fault — a human deferral
+            client.fail_turn(turn_id, _note)
+            return f"deferred:{turn_id}"
+        # CLEAR & send: kill the leaked text, then send into the same session.
+        try:
+            cdp_control.open_and_send(task, work_prompt, clear_first=True, port=cfg.cdp_port)
+        except cdp_control.CDPError as exc:
+            logger.error("collision clear-and-send failed on '%s': %s", task, str(exc)[:200])
+            _note = f"collision clear-and-send failed on '{task}'; retry"
+            readiness.mark_failed(cfg, _note)
+            client.fail_turn(turn_id, _note)
+            return f"failed:{turn_id}"
+        # fall through to the shared success tail below
+
+    # Delivered — either the empty-line fast path, or a cleared-then-sent collision.
+    logger.info("REUSE  turn=%s agent=%s thread=%s -> existing session '%s' (no new claude session)",
+                turn_id, agent, thread_key, task)
+    client.post_events(turn_id, [{"kind": "status",
+        "payload": {"status": "reused_session", "task": task, "thread_key": thread_key}}])
+    client.record_session(runner_id, turn.get("agent_slug") or "", thread_key,
+                          project=turn.get("project") or "",
+                          workspace=turn.get("workspace_slug") or "", emdash_task_id=task)
+    readiness.mark_ok(cfg)
+    client.finish(turn_id, note=f"delivered to existing session '{task}'")
+    return f"reused:{turn_id}"
 
 
 def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
@@ -112,45 +195,12 @@ def execute_turn(cfg, client, runner_id: str, turn: dict) -> str:
             client.post_events(turn_id, [{"kind": "status",
                 "payload": {"status": "reuse_task_gone", "task": task, "task_state": state}}])
         else:
-            try:
-                cdp_control.open_and_send(task, work_prompt, port=cfg.cdp_port)
-            except cdp_control.CDPError as exc:
-                if state == "unknown" and "TASK_NOT_FOUND" in str(exc):
-                    # Degraded: emdash's DB was unreadable, so CDP's verdict is all we
-                    # have. Loud, because reuse is running blind until the db path is fixed.
-                    logger.warning("reuse: emdash DB unreadable at %r — trusting CDP's "
-                                   "TASK_NOT_FOUND for '%s' (agent=%s); fix the db path to "
-                                   "make reuse deterministic", cfg.emdash_db, task, agent)
-                    client.post_events(turn_id, [{"kind": "status",
-                        "payload": {"status": "reuse_task_gone", "task": task, "task_state": state}}])
-                else:
-                    # The task EXISTS (sqlite says so) but we couldn't drive it. Creating
-                    # a fresh session here would DUPLICATE the live one and orphan its
-                    # context — the bug that spawned two Hal sessions, and that split
-                    # eva's org-research thread across three cold sessions. Fail the turn
-                    # instead (it retries); never duplicate.
-                    logger.error("reuse FAILED on '%s' which emdash's DB says is %s (agent=%s): "
-                                 "%s — NOT creating a duplicate; failing the turn for retry",
-                                 task, state, agent, str(exc)[:200])
-                    client.post_events(turn_id, [{"kind": "error",
-                        "payload": {"status": "reuse_send_failed", "task": task,
-                                    "task_state": state, "detail": str(exc)[:300]}}])
-                    _note = (f"reuse failed on existing session '{task}' "
-                             f"({state} per emdash's DB) — not spawning a "
-                             f"duplicate; retry")
-                    readiness.mark_failed(cfg, _note)
-                    client.fail_turn(turn_id, _note)
-                    return f"failed:{turn_id}"
-            else:
-                logger.info("REUSE  turn=%s agent=%s thread=%s -> existing session '%s' (no new claude session)",
-                            turn_id, agent, thread_key, task)
-                client.post_events(turn_id, [{"kind": "status",
-                    "payload": {"status": "reused_session", "task": task, "thread_key": thread_key}}])
-                client.record_session(runner_id, agent_slug, thread_key,
-                                      project=project, workspace=workspace, emdash_task_id=task)
-                readiness.mark_ok(cfg)
-                client.finish(turn_id, note=f"delivered to existing session '{task}'")
-                return f"reused:{turn_id}"
+            # Try to deliver into the live session (handles the reuse-glitch and the
+            # human-was-typing collision). A terminal outcome ends the turn here; None
+            # means "route to a fresh session" and falls through to create below.
+            outcome = _deliver_to_existing(cfg, client, runner_id, turn, task, state, work_prompt)
+            if outcome is not None:
+                return outcome
 
     # --- create a fresh session, rehydrating durable context when we have it ---
     prompt = work_prompt
