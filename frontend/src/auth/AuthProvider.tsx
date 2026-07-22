@@ -24,6 +24,7 @@ function isPublicLinkRoute(): boolean {
     path.startsWith('/review/') ||
     path.startsWith('/walkthrough/') ||
     path.startsWith('/share/') ||
+    path.startsWith('/ddd-release/') ||
     LEGACY_WALKTHROUGH_RE.test(path)
   )
 }

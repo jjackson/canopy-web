@@ -71,7 +71,8 @@ function isPublicLinkRoute(): boolean {
   return (
     p.startsWith("/review/") ||
     p.startsWith("/walkthrough/") ||
-    p.startsWith("/share/")
+    p.startsWith("/share/") ||
+    p.startsWith("/ddd-release/")
   );
 }
 
