@@ -393,9 +393,15 @@ def _clean_links(raw: list[dict]) -> list[dict]:
     origins, absolutize relative URLs against the run's own host, and de-dupe —
     so "Try it live" is a short list of real pages, not a scene-by-scene dump.
     """
+    # Derive the run's host from the first CLEAN absolute url — never a
+    # template-polluted one, or the leaked ${var} would pollute the host and
+    # get prefixed onto every relative link.
     host = ""
     for link in raw:
-        m = re.match(r"^(https?://[^/]+)", (link.get("url") or "").strip())
+        u = (link.get("url") or "").strip()
+        if "${" in u:
+            continue
+        m = re.match(r"^(https?://[^/]+)", u)
         if m:
             host = m.group(1)
             break
@@ -409,6 +415,8 @@ def _clean_links(raw: list[dict]) -> list[dict]:
             continue
         if url.startswith("/") and host:  # host-less relative → absolute
             url = host + url
+        if "${" in url:  # defence: absolutization must never reintroduce a leak
+            continue
         m = re.match(r"^https?://[^/]+(.*)$", url)
         path = m.group(1) if m else url
         if path in ("", "/"):  # bare origin, no meaningful destination
