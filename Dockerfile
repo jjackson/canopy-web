@@ -63,4 +63,8 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000"]
+# --ws-ping-interval 5: the shared labs proxy drops IDLE WebSockets at ~8s, well
+# before uvicorn's default 20s ping. Pinging every 5s keeps every WS client (the
+# supervisor/turn tails AND the runner control channel) alive through the proxy.
+CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", \
+     "--ws-ping-interval", "5", "--ws-ping-timeout", "20"]
