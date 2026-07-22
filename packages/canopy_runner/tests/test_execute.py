@@ -160,11 +160,36 @@ def test_create_failure_fails_the_turn(monkeypatch):
     assert client.failed and "emdash create failed" in client.failed[0][1]
 
 
-def test_thread_key_defaults_to_agent_main_when_no_ref(monkeypatch):
+def test_keyless_turn_gets_a_fresh_per_turn_key(monkeypatch):
+    """A turn with no explicit thread_key/thread_id is a self-contained unit of work (a
+    cron fire, a board turn). It must NOT collapse onto a shared '{agent}:main' sink —
+    that piled every keyless turn (all of an agent's cron fires, all board dispatches)
+    into one ever-growing session. It keys on the turn's own id, so each opens fresh."""
     monkeypatch.setattr(cdp_control, "create_task", lambda *a, **k: {"task": "x"})
     client = FakeClient({"reuse": False, "new_thread": True, "summary": ""})
-    execute.execute_turn(_cfg(), client, "r-1", _turn(origin_ref={}))
-    assert client.calls[0] == ("resolve", "hal", "hal:main", "", "")
+    execute.execute_turn(_cfg(), client, "r-1", _turn(id="t-1", origin_ref={}))
+    assert client.calls[0] == ("resolve", "hal", "hal:t-1", "", "")
+
+
+def test_two_keyless_turns_get_distinct_keys(monkeypatch):
+    """The core anti-collision property: different keyless turns never share a session."""
+    monkeypatch.setattr(cdp_control, "create_task", lambda *a, **k: {"task": "x"})
+    c1 = FakeClient({"reuse": False, "new_thread": True, "summary": ""})
+    c2 = FakeClient({"reuse": False, "new_thread": True, "summary": ""})
+    execute.execute_turn(_cfg(), c1, "r-1", _turn(id="t-1", origin_ref={}))
+    execute.execute_turn(_cfg(), c2, "r-1", _turn(id="t-2", origin_ref={}))
+    assert c1.calls[0][2] == "hal:t-1" and c2.calls[0][2] == "hal:t-2"
+    assert c1.calls[0][2] != c2.calls[0][2]
+
+
+def test_explicit_thread_key_still_continues_one_session(monkeypatch):
+    """Continuity is opt-in and preserved: an explicit thread_key/thread_id is honored
+    verbatim (the phone's persistent thread, a 'continue this session' dispatch)."""
+    monkeypatch.setattr(cdp_control, "create_task", lambda *a, **k: {"task": "x"})
+    client = FakeClient({"reuse": False, "new_thread": True, "summary": ""})
+    execute.execute_turn(_cfg(), client, "r-1",
+                         _turn(id="t-1", origin_ref={"thread_key": "phone:jj:hal"}))
+    assert client.calls[0] == ("resolve", "hal", "phone:jj:hal", "", "")
 
 
 def test_a_project_turn_drives_the_repo_and_carries_its_tenant(monkeypatch):
@@ -186,8 +211,8 @@ def test_a_project_turn_drives_the_repo_and_carries_its_tenant(monkeypatch):
     result = execute.execute_turn(_cfg(), client, "r-1", turn)
 
     assert result == "created:t-9:ct"
-    # resolve keyed on the repo, tagged with project + workspace
-    assert client.calls[0] == ("resolve", "", "canopy-web:main", "canopy-web", "canopy")
+    # resolve keyed on the repo (fresh-per-turn via the turn id), tagged with project + workspace
+    assert client.calls[0] == ("resolve", "", "canopy-web:t-9", "canopy-web", "canopy")
     # the CDP create drove the repo as its emdash project, with the composer's prompt
     assert created == {"project": "canopy-web", "prompt": "fix the header"}
     # the durable link was recorded with the repo's tenant
@@ -199,10 +224,12 @@ def test_a_project_turn_drives_the_repo_and_carries_its_tenant(monkeypatch):
 def test_task_name_is_readable_subject_plus_stamp():
     import datetime as dt
     now = dt.datetime(2026, 7, 14, 15, 32)
-    t = _turn(origin="email", origin_ref={"subject": "Re: Bednet demo!!"})
-    assert execute._task_name("hal", t, now=now) == "hal-re-bednet-demo-main-0714-1532"
+    # keyless turn -> thread key is '{agent}:{turn_id}', so the discriminator comes
+    # from the turn id (last 4 of 'halt1') rather than a shared 'main'.
+    t = _turn(id="t-1", origin="email", origin_ref={"subject": "Re: Bednet demo!!"})
+    assert execute._task_name("hal", t, now=now) == "hal-re-bednet-demo-alt1-0714-1532"
     # no subject -> agent + stamp
-    assert execute._task_name("hal", _turn(origin="manual", origin_ref={}), now=now) == "hal-manual-main-0714-1532"
+    assert execute._task_name("hal", _turn(id="t-1", origin="manual", origin_ref={}), now=now) == "hal-manual-alt1-0714-1532"
 
 
 def test_task_name_distinguishes_threads_with_same_subject():
