@@ -78,6 +78,14 @@ class TurnConsumer(AsyncJsonWebsocketConsumer):
         # group_send type="turn.event" dispatches here (dots -> underscores).
         await self.send_json({"event": message["event"]})
 
+    async def receive_json(self, content, **kwargs):
+        # The only inbound frame is the client's keepalive: the shared labs proxy
+        # drops an idle WS at ~6-8s and counts only application DATA frames as
+        # activity (not ws ping/pong), so the browser sends one every few seconds.
+        # Ack it so data flows both ways, exactly as the proven-live pattern does.
+        if content.get("action") == "keepalive":
+            await self.send_json({"type": "keepalive.ack"})
+
     # -- helpers --
     @database_sync_to_async
     def _get_turn(self, raw_id):
@@ -132,6 +140,12 @@ class SupervisorConsumer(AsyncJsonWebsocketConsumer):
 
     async def supervisor_waiting(self, message):
         await self.send_json(message)
+
+    async def receive_json(self, content, **kwargs):
+        # Client keepalive (see TurnConsumer.receive_json) — the proxy needs a data
+        # frame every few seconds or it drops this idle status socket.
+        if content.get("action") == "keepalive":
+            await self.send_json({"type": "keepalive.ack"})
 
     @database_sync_to_async
     def _snapshot(self, user):
@@ -198,6 +212,13 @@ class RunnerConsumer(AsyncJsonWebsocketConsumer):
         if action == "claim":
             turn = await self._claim()
             await self.send_json({"type": "claim.result", "turn": turn})
+        elif action == "keepalive":
+            # A cheap, DB-free liveness frame. The shared labs proxy drops a WS
+            # that sends no APPLICATION DATA for ~6-8s (it ignores ws ping/pong
+            # control frames as activity), so an idle-waiting runner must emit a
+            # data frame faster than that window. Kept distinct from heartbeat so
+            # the sub-window cadence doesn't hammer the DB on every tick.
+            await self.send_json({"type": "keepalive.ack"})
         elif action == "heartbeat":
             await self._heartbeat(content.get("active_turn_ids") or [])
             await self.send_json({"type": "heartbeat.ack"})

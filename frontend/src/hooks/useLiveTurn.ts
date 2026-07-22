@@ -46,6 +46,7 @@ export function useLiveTurn(turnId: string | null): LiveTurn {
 
     let ws: WebSocket | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let keepaliveTimer: ReturnType<typeof setInterval> | null = null
     let closed = false
 
     const connect = () => {
@@ -56,6 +57,13 @@ export function useLiveTurn(turnId: string | null): LiveTurn {
         attemptRef.current = 0
         setConnected(true)
         setLastError(null)
+        // The shared labs proxy drops an idle WS at ~6-8s, counting only
+        // application DATA frames as activity (not ws ping/pong). Send a small
+        // keepalive data frame every 4s so a quiet turn tail stays connected.
+        if (keepaliveTimer) clearInterval(keepaliveTimer)
+        keepaliveTimer = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ action: 'keepalive' }))
+        }, 4000)
       }
       ws.onmessage = (msg) => {
         try {
@@ -72,6 +80,7 @@ export function useLiveTurn(turnId: string | null): LiveTurn {
       ws.onerror = () => setLastError('connection error')
       ws.onclose = () => {
         setConnected(false)
+        if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null }
         if (closed) return
         const delay = BACKOFFS_MS[Math.min(attemptRef.current, BACKOFFS_MS.length - 1)]
         attemptRef.current += 1
@@ -84,6 +93,7 @@ export function useLiveTurn(turnId: string | null): LiveTurn {
     return () => {
       closed = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (keepaliveTimer) clearInterval(keepaliveTimer)
       if (ws) ws.close()
     }
   }, [turnId])

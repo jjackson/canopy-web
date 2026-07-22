@@ -63,8 +63,11 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
-# --ws-ping-interval 5: the shared labs proxy drops IDLE WebSockets at ~8s, well
-# before uvicorn's default 20s ping. Pinging every 5s keeps every WS client (the
-# supervisor/turn tails AND the runner control channel) alive through the proxy.
+# WS keepalive note: the shared labs proxy drops an idle WebSocket at ~6-8s and —
+# proven empirically — does NOT count ws ping/pong CONTROL frames as activity, only
+# application DATA frames. So these uvicorn ping flags do NOT by themselves keep a
+# client alive through the proxy; the real keepalive is an app-level data frame sent
+# every ~4s by each client (the runner's `keepalive` action; browser clients send
+# their own). The flags stay as sane dead-peer detection defaults.
 CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", \
      "--ws-ping-interval", "5", "--ws-ping-timeout", "20"]
