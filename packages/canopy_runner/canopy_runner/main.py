@@ -27,6 +27,7 @@ from pathlib import Path
 
 from . import emdash, transcript
 from .client import Client, ClientError
+from .tail import TailReader
 from .config import Config
 
 logger = logging.getLogger("canopy_runner")
@@ -182,18 +183,64 @@ def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
         return f"failed:{turn.get('id')}"
 
 
+# Per-session incremental tail readers, keyed by emdash_task — the byte-offset change
+# signal that makes the phone reflect live emdash activity (see _session_changed).
+_tail_readers: dict[str, "TailReader | None"] = {}
+
+
+def _session_changed(cfg: Config, sessions: list[dict]) -> bool:
+    """True if any SHOWN session's transcript grew, or a new session appeared, since
+    the last check. This is the LIVE signal — cheap (a byte-offset read of only the
+    newly-appended bytes) and it catches assistant streaming too (transcript growth),
+    not just user interaction (which is all last_interacted_at would catch)."""
+    home = Path.home()
+    claude_home = home / ".claude" / "projects"
+    active: set[str] = set()
+    changed = False
+    for s in sessions[: cfg.session_tail_count]:  # only the sessions the phone shows
+        task = s.get("emdash_task")
+        if not task:
+            continue
+        active.add(task)
+        first_sight = task not in _tail_readers
+        tr = _tail_readers.get(task)
+        if tr is None:  # unresolved (new session, or transcript not found yet) — (re)try
+            path = transcript.resolve_transcript(
+                s.get("project") or "", task, home=home, claude_home=claude_home
+            )
+            tr = TailReader(str(path)) if path else None
+            if tr is not None:
+                tr.seek_end()  # stream only NEW activity from here, never the history
+            _tail_readers[task] = tr
+        if first_sight:
+            changed = True  # a session newly appeared
+        elif tr is not None and tr.read_new():
+            changed = True  # its transcript grew
+    for task in list(_tail_readers):  # drop readers for sessions that are gone
+        if task not in active:
+            _tail_readers.pop(task, None)
+    return changed
+
+
 def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -> None:
-    """Report the open emdash sessions the phone can continue — throttled to
-    session_report_seconds so lowering poll_seconds (for snappy claims) doesn't read
-    up to session_tail_count transcripts every tick. A sqlite read of emdash's DB, not
-    CDP, so it runs even while CDP is down. Best-effort: a read or POST failure must
-    never stop the tick. Reports on the first tick after start (last stamp is 0)."""
+    """Report the open emdash sessions the phone can continue. CHANGE-DRIVEN: reports
+    the instant a shown session's transcript grows (so the phone reflects live emdash
+    activity within a poll tick), plus a heartbeat every session_report_seconds so a
+    freshly-connected phone gets state. The cheap change-check runs every tick; the
+    expensive recent-tail read + POST only on a real change or the heartbeat. A sqlite
+    read of emdash's DB (runs even while CDP is down); best-effort — never stops a tick."""
     global _last_session_report
-    if now_fn() - _last_session_report < cfg.session_report_seconds:
+    try:
+        sessions = emdash.list_open_sessions(cfg.emdash_db)
+    except Exception:  # noqa: BLE001
+        logger.debug("session list failed (non-fatal)", exc_info=True)
+        return
+    changed = _session_changed(cfg, sessions)
+    heartbeat = now_fn() - _last_session_report >= cfg.session_report_seconds
+    if not changed and not heartbeat:
         return
     _last_session_report = now_fn()
     try:
-        sessions = emdash.list_open_sessions(cfg.emdash_db)
         transcript.attach_recent_tail(
             sessions, count=cfg.session_tail_count, limit=cfg.session_tail_limit
         )

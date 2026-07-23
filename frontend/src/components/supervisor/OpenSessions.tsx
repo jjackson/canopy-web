@@ -252,9 +252,11 @@ export function OpenSessions(): JSX.Element {
         })
     }
     load()
-    // Poll so tails + last-active times stay live — this is how a message you send
-    // (and the reply) actually appear in the tail as the runner re-reports (~10s).
-    const id = window.setInterval(load, 10_000)
+    // Poll so tails + last-active times stay live. The runner now re-reports the
+    // instant a session's transcript grows (change-driven, ~1 poll tick), so a short
+    // refresh here surfaces live emdash activity — a message you (or the agent) type
+    // directly in emdash shows within a few seconds, not just on a website send.
+    const id = window.setInterval(load, 4_000)
     return () => {
       cancelled = true
       window.clearInterval(id)
