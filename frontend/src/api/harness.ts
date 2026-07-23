@@ -6,7 +6,6 @@ import type { components } from './generated'
 
 export type RunnerOut = components['schemas']['RunnerOut']
 export type TurnOut = components['schemas']['TurnOut']
-export type EmdashSessionOut = components['schemas']['EmdashSessionOut']
 
 function unwrap<T>(res: { data?: T; error?: unknown }, what: string): T {
   if (res.error !== undefined || res.data === undefined) {
@@ -22,14 +21,6 @@ export async function listRunners(): Promise<RunnerOut[]> {
   // ./agents.ts's toPage comment for the full explanation. Array.from rebuilds
   // a real array rather than casting.
   return Array.from(unwrap(res, 'listRunners'))
-}
-
-export async function listOpenSessions(): Promise<EmdashSessionOut[]> {
-  const res = await apiV2.GET('/api/harness/sessions')
-  const items = Array.from(unwrap(res, 'listOpenSessions'))
-  // recent_messages degrades the same way one level down (see listRunners'
-  // comment above); rebuild it per item.
-  return items.map((s) => ({ ...s, recent_messages: Array.from(s.recent_messages) }))
 }
 
 // Dispatch a turn from the phone composer — to an agent OR a repo.

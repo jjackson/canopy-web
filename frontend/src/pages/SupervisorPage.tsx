@@ -194,7 +194,7 @@ export default function SupervisorPage(): JSX.Element {
             Session now). Every row opens into the streaming ChatPanel; "New chat with
             <agent> or project" stays as the creation entry point. */}
         <TabsContent value="sessions" className="flex flex-col gap-4">
-          <ChatSessionsPanel agents={agents ?? undefined} heading="Sessions" showList />
+          <ChatSessionsPanel agents={agents ?? undefined} heading="Sessions" />
         </TabsContent>
 
         {/* Agents — fleet KPIs + the one-time setup prompts. */}

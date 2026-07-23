@@ -36,8 +36,10 @@ export interface SupervisorWaitingFrame {
 
 export interface SupervisorSessionsFrame {
   type: 'supervisor.sessions'
-  // EmdashSessionOut[] — kept loose here to avoid a cross-module type import; the
-  // consumer casts to the OpenSessions shape.
+  // The server still fans out a live sessions push (apps/realtime), but no
+  // frontend consumer reads it today — useLiveSupervisor ignores this frame
+  // type via applyFrame's default case. Kept loose (no EmdashSessionOut import)
+  // since nothing here needs the shape.
   sessions: Record<string, unknown>[]
 }
 
