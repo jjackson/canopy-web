@@ -6,6 +6,9 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    # Renamed from `chat` — see 0001_initial for the rename/replaces rationale.
+    replaces = [('chat', '0003_session_project_and_more')]
+
     dependencies = [
         ('agents', '0012_agent_runner_preference'),
         ('canopy_sessions', '0002_draft_sessionparticipant'),

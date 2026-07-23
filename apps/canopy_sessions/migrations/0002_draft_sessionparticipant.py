@@ -7,6 +7,9 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    # Renamed from `chat` — see 0001_initial for the rename/replaces rationale.
+    replaces = [('chat', '0002_draft_sessionparticipant')]
+
     dependencies = [
         ('canopy_sessions', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
