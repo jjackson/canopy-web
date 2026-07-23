@@ -8,6 +8,7 @@ import {
   parseInsightCategory,
 } from '@/api/insights'
 import { CATEGORY_STYLES, CategoryBadge } from '@/components/InsightChip'
+import { Markdown } from '@/components/Markdown'
 
 const CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -52,7 +53,7 @@ function InsightCard({ insight, onDismiss }: { insight: Insight; onDismiss: (id:
           ✕
         </button>
       </div>
-      <p className="text-sm text-foreground-secondary leading-relaxed mb-2">{body}</p>
+      <Markdown className="text-sm text-foreground-secondary leading-relaxed mb-2">{body}</Markdown>
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
         <span>{insight.source}</span>
         <span>·</span>

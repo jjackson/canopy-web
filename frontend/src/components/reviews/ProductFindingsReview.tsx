@@ -24,6 +24,7 @@ import type {
   ProductFindingsResponseJson,
 } from '../../api/reviews'
 import { withBase } from '../../lib/basePath'
+import { Markdown } from '../Markdown'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -279,7 +280,9 @@ const ClusterCard = memo(function ClusterCard({
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
             Suggested fix
           </p>
-          <p className="text-sm text-foreground-secondary leading-relaxed">{cluster.suggested_fix}</p>
+          <Markdown className="text-sm text-foreground-secondary leading-relaxed">
+            {cluster.suggested_fix}
+          </Markdown>
         </div>
       )}
 
