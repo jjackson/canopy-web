@@ -30,6 +30,12 @@ class MessageOut(Schema):
     created_at: dt.datetime
 
 
+class MessagePageOut(Schema):
+    """One backward page of transcript for scroll-back ("Load earlier")."""
+    messages: list[MessageOut]
+    has_more_before: bool
+
+
 class SessionOut(Schema):
     id: uuid.UUID
     agent_slug: str | None

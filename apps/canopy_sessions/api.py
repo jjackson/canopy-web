@@ -19,7 +19,15 @@ from apps.workspaces import services as wsvc
 
 from . import services
 from .models import Session
-from .schemas import MessageOut, SendIn, SendOut, SessionCreateIn, SessionDetailOut, SessionOut
+from .schemas import (
+    MessageOut,
+    MessagePageOut,
+    SendIn,
+    SendOut,
+    SessionCreateIn,
+    SessionDetailOut,
+    SessionOut,
+)
 
 router = Router(auth=session_auth, tags=["chat"])
 
@@ -97,6 +105,27 @@ def get_session(request: HttpRequest, session_id: uuid.UUID, full: bool = False)
     data["has_more_before"] = has_more
     data["oldest_loaded_turn_index"] = oldest
     return data
+
+
+@router.get(
+    "/{session_id}/messages",
+    response=MessagePageOut,
+    summary="Load earlier transcript (scroll-back)",
+)
+def list_messages(
+    request: HttpRequest,
+    session_id: uuid.UUID,
+    before: int,
+    limit: int = services.SCROLLBACK_PAGE_DEFAULT,
+):
+    # Cursor-based backward paging: the window of `limit` messages immediately
+    # older than `before` (a turn_index), chronological, + whether older exists.
+    session = _session_or_404(request, session_id)
+    rows, has_more = services.messages_before(session, before=before, limit=limit)
+    return {
+        "messages": [MessageOut.from_orm(m) for m in rows],
+        "has_more_before": has_more,
+    }
 
 
 @router.post("/{session_id}/send", response=SendOut, summary="Send a message")

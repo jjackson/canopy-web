@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 from django.test import Client
 
 from apps.canopy_sessions import services
@@ -108,3 +109,31 @@ def test_get_empty_session_cursor_is_null():
     assert body["messages"] == []
     assert body["has_more_before"] is False
     assert body["oldest_loaded_turn_index"] is None
+
+
+def test_scrollback_pages_backward_over_rest():
+    c, s = _api_ctx(50)
+    # First window older than the tail's oldest (30), page of 10
+    body = c.get(f"/api/chat/{s.id}/messages?before=30&limit=10").json()
+    assert [m["turn_index"] for m in body["messages"]] == list(range(20, 30))
+    assert body["has_more_before"] is True
+    # Final window reaches the start
+    body = c.get(f"/api/chat/{s.id}/messages?before=10&limit=10").json()
+    assert [m["turn_index"] for m in body["messages"]] == list(range(0, 10))
+    assert body["has_more_before"] is False
+
+
+def test_scrollback_before_zero_is_empty():
+    c, s = _api_ctx(50)
+    body = c.get(f"/api/chat/{s.id}/messages?before=0").json()
+    assert body["messages"] == []
+    assert body["has_more_before"] is False
+
+
+def test_scrollback_tenant_gated():
+    c, s = _api_ctx(5)
+    other = User.objects.create_user("no", "no@dimagi.com", "pw")
+    ws2 = Workspace.objects.create(slug="other", display_name="Other", created_by=other)
+    WorkspaceMembership.objects.create(user=other, workspace=ws2, role=WorkspaceMembership.OWNER)
+    c2 = Client(); c2.force_login(other)
+    assert c2.get(f"/api/chat/{s.id}/messages?before=5").status_code == 404
