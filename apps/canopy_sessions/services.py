@@ -102,6 +102,55 @@ def is_session_running(binding) -> bool:
 _BACKFILL_ROLES = {Message.USER, Message.ASSISTANT, Message.TOOL_USE, Message.TOOL_RESULT, Message.SYSTEM}
 
 
+def last_activity_at(session, binding):
+    """When this session last DID something — not when its row was created.
+
+    A runner-discovered session's row is created the moment the report sweep first
+    sees it, so `created_at` is "when canopy first noticed you", identical for every
+    session in that sweep. Rendering it made a long-dead repo and a live one both
+    read "4h ago". The real signal is the binding's `last_interacted_at` (the runner
+    reports it every tick); web sessions fall back to their newest message, then to
+    creation. `_last_msg_at` is annotated by the callers so this stays N+1-free.
+    """
+    if binding is not None and binding.last_interacted_at:
+        return binding.last_interacted_at
+    return getattr(session, "_last_msg_at", None) or session.created_at
+
+
+def tail_as_messages(session, binding) -> list[dict]:
+    """A local runner session's reported tail, shaped like MessageOut rows.
+
+    Local sessions hold NO `Message` rows until a backfill lands — the recent
+    history lives on `RunnerBinding.tail` (what the retired OpenSessions used to
+    render). Without this the converged ChatPanel opened blank on every discovered
+    session even though the server had the last N messages in hand.
+
+    turn_index is NEGATIVE (-n..-1): it orders the tail before any real row and can
+    never collide with backfilled rows (which start at 0) or with a live stream's
+    `seq:` ids, so a backfill or a live message layers on cleanly.
+    """
+    if binding is None or not binding.tail:
+        return []
+    ts = binding.last_interacted_at or session.created_at
+    n = len(binding.tail)
+    rows = []
+    for i, m in enumerate(binding.tail):
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role") or Message.ASSISTANT
+        if role not in _BACKFILL_ROLES:
+            role = Message.ASSISTANT
+        text = m.get("text") or ""
+        rows.append({
+            "turn_index": i - n,
+            "role": role,
+            "plaintext": text,
+            "content": {"text": text},
+            "created_at": ts,
+        })
+    return rows
+
+
 def request_backfill(session) -> str:
     """The client asked for full history. 'ready' if already server-full; 'requested'
     if a live runner is bound (signal it); 'unavailable' otherwise (tail still shows)."""
@@ -246,17 +295,26 @@ def send_message(*, session: Session, text: str, user, client_id: str = "") -> t
         message = Message.objects.create(
             session=session, turn_index=index, role=Message.USER, plaintext=text, content=content,
         )
+        # Continuity: every send in a chat reuses ONE emdash session (the runner's
+        # _thread_key reads this), so a conversation is one durable thread rather
+        # than a fresh session per message. chat_session_id tells a session-capable
+        # runner to BRIDGE the emdash response back into the ledger (vs the normal
+        # fire-and-continue), so the website streams the reply.
+        #
+        # A RUNNER-DISCOVERED session already has a binding keyed `emdash:<task>` (the
+        # report sweep wrote it). Sending str(session.id) there matched nothing, so
+        # resolve_session answered new_thread and the runner SPAWNED A FRESH emdash
+        # session instead of typing into the live one you were looking at. Prefer the
+        # binding's existing thread_key; web sessions (no binding yet) keep the
+        # session id, which is what record_session then stores.
+        binding = getattr(session, "runner_binding", None)
+        thread_key = binding.thread_key if (binding and binding.thread_key) else str(session.id)
         turn, _created = harness_services.enqueue_turn(
             session=session,
             origin=Turn.ORIGIN_API,
             idempotency_key=f"chat:{session.id.hex}:{client_id or index}",
             prompt=text,
-            # Continuity: every send in a chat reuses ONE emdash session (the runner's
-            # _thread_key reads this), so a conversation is one durable thread rather
-            # than a fresh session per message. chat_session_id tells a session-capable
-            # runner to BRIDGE the emdash response back into the ledger (vs the normal
-            # fire-and-continue), so the website streams the reply.
-            origin_ref={"thread_key": str(session.id), "chat_session_id": str(session.id)},
+            origin_ref={"thread_key": thread_key, "chat_session_id": str(session.id)},
         )
     # RC4 — multiplayer interjection: if a turn is ALREADY running for this session,
     # the human's message is an interjection. Push it down to the runner executing

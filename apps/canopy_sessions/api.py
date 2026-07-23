@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import uuid
 
+from django.db.models import Max
+
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from ninja import Router
@@ -46,6 +48,8 @@ def _out(session: Session) -> dict:
         "title": session.title,
         "status": session.status,
         "created_at": session.created_at,
+        # When it last DID something (binding > newest message > created).
+        "last_activity_at": services.last_activity_at(session, binding),
         # --- liveness (Plan 4): one shape, computed from the binding ---
         "origin": session.origin,
         "running": services.is_session_running(binding),
@@ -63,7 +67,8 @@ def _visible_slugs(request: HttpRequest) -> set[str]:
 
 def _session_or_404(request: HttpRequest, session_id: uuid.UUID) -> Session:
     session = get_object_or_404(
-        Session.objects.select_related("agent", "runner_binding", "runner_binding__runner"),
+        Session.objects.select_related("agent", "runner_binding", "runner_binding__runner")
+        .annotate(_last_msg_at=Max("messages__created_at")),
         pk=session_id,
     )
     if session.workspace_id not in _visible_slugs(request):
@@ -97,18 +102,23 @@ def list_sessions(request: HttpRequest):
     # workspaces — their own web sessions UNION any session that has a
     # RunnerBinding (runner-discovered or live). Deduped, running-first, then
     # newest. Replaces the creator-only list + the harness OpenSessions projection.
-    from django.db.models import Q
+    from django.db.models import Max, Q
 
     slugs = _visible_slugs(request)
     rows = (
         Session.objects.select_related("agent", "runner_binding", "runner_binding__runner")
         .filter(workspace_id__in=slugs)
         .filter(Q(created_by=request.user) | Q(runner_binding__isnull=False))
+        .annotate(_last_msg_at=Max("messages__created_at"))
         .distinct()
         .order_by("-created_at")
     )
     out = [_out(s) for s in rows]
-    out.sort(key=lambda r: (not r["running"], ))  # stable: running first, created-desc within
+    # Running first, then genuinely-most-recent. Sorting by created_at made a
+    # dead repo and a live one interleave arbitrarily (both "created" in the
+    # same report sweep); last_activity_at is the real signal. The client can
+    # re-group by project — this is the default order.
+    out.sort(key=lambda r: (not r["running"], -(r["last_activity_at"].timestamp())))
     return out
 
 
@@ -124,6 +134,13 @@ def get_session(request: HttpRequest, session_id: uuid.UUID, full: bool = False)
     else:
         rows, has_more, oldest = services.tail_messages(session)
     data["messages"] = [MessageOut.from_orm(m) for m in rows]
+    if not data["messages"]:
+        # A local runner session holds NO Message rows until a backfill lands, but
+        # the runner reports a rolling tail we already store on the binding. Render
+        # it so the panel opens with recent context instead of blank; "Load full
+        # session" still pulls the real history, and a live stream layers on top.
+        binding = getattr(session, "runner_binding", None)
+        data["messages"] = services.tail_as_messages(session, binding)
     data["has_more_before"] = has_more
     data["oldest_loaded_turn_index"] = oldest
     return data
