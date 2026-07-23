@@ -133,6 +133,9 @@ class SupervisorConsumer(AsyncJsonWebsocketConsumer):
     async def supervisor_waiting(self, message):
         await self.send_json(message)
 
+    async def supervisor_sessions(self, message):
+        await self.send_json(message)
+
     @database_sync_to_async
     def _snapshot(self, user):
         from .snapshot import supervisor_snapshot

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import type { EmdashSessionOut } from '@/api/harness'
 import type { SupervisorFrame, SupervisorRunnerLive } from '@/api/types.ws'
 import { wsUrl } from '@/lib/wsUrl'
 
@@ -7,12 +8,16 @@ export interface SupervisorState {
   runners: Record<string, SupervisorRunnerLive>
   waiting: Record<string, number>
   totalWaiting: number
+  // null until the first sessions push arrives — the OpenSessions view uses this
+  // (live, one broadcast to every device) and falls back to its own fetch otherwise.
+  sessions: EmdashSessionOut[] | null
 }
 
 export const EMPTY_SUPERVISOR_STATE: SupervisorState = {
   runners: {},
   waiting: {},
   totalWaiting: 0,
+  sessions: null,
 }
 
 // Pure reducer: a snapshot seeds state; runner/waiting deltas patch it. Exported
@@ -22,7 +27,14 @@ export function applyFrame(state: SupervisorState, frame: SupervisorFrame): Supe
     case 'supervisor.snapshot': {
       const runners: Record<string, SupervisorRunnerLive> = {}
       for (const r of frame.runners) runners[r.id] = r
-      return { runners, waiting: { ...frame.waiting }, totalWaiting: frame.total_waiting }
+      // The snapshot seeds runners/waiting; sessions arrive via their own push, so
+      // preserve whatever we already have (don't clobber a live list on reconnect).
+      return {
+        runners,
+        waiting: { ...frame.waiting },
+        totalWaiting: frame.total_waiting,
+        sessions: state.sessions,
+      }
     }
     case 'supervisor.runner':
       return { ...state, runners: { ...state.runners, [frame.runner.id]: frame.runner } }
@@ -31,6 +43,8 @@ export function applyFrame(state: SupervisorState, frame: SupervisorFrame): Supe
       const totalWaiting = Object.values(waiting).reduce((a, b) => a + b, 0)
       return { ...state, waiting, totalWaiting }
     }
+    case 'supervisor.sessions':
+      return { ...state, sessions: frame.sessions as unknown as EmdashSessionOut[] }
     default:
       return state
   }
@@ -41,6 +55,7 @@ const BACKOFFS_MS = [1000, 2000, 5000, 10000]
 export interface LiveSupervisor {
   runners: SupervisorRunnerLive[]
   waiting: Record<string, number>
+  sessions: EmdashSessionOut[] | null
   connected: boolean
   hasSnapshot: boolean
 }
@@ -94,6 +109,7 @@ export function useLiveSupervisor(): LiveSupervisor {
   return {
     runners: Object.values(state.runners),
     waiting: state.waiting,
+    sessions: state.sessions,
     connected,
     hasSnapshot,
   }

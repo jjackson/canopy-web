@@ -20,7 +20,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from apps.harness.models import Runner, Turn
-from apps.harness.signals import turn_events_appended
+from apps.harness.signals import sessions_reported, turn_events_appended
 from apps.push.models import AgentWaitingSnapshot
 from apps.workspaces.services import workspace_member_ids
 
@@ -97,3 +97,24 @@ def _on_waiting_saved(sender, instance: AgentWaitingSnapshot, **kwargs):
             groups.publish(groups.supervisor_user_group(uid), frame)
 
     transaction.on_commit(_fire)
+
+
+@receiver(sessions_reported, dispatch_uid="realtime_sessions_reported")
+def _on_sessions_reported(sender, runner, **kwargs):
+    """A runner reported its open sessions -> push the owner's visible sessions to
+    their supervisor group. One broadcast reaches every device the user has open
+    (phone + desktop + menubar) instead of each polling. Already post-commit (the
+    sender fires inside its own on_commit), so publish directly."""
+    if not runner.paired_by_id:
+        return
+    # Local imports keep this module import-cycle-free and the serialization co-located
+    # with where the GET /sessions endpoint reads the same rows.
+    from apps.harness.schemas import EmdashSessionOut
+    from apps.harness.services import list_visible_sessions
+
+    sessions = list_visible_sessions(runner.paired_by)
+    frame = {
+        "type": "supervisor.sessions",
+        "sessions": [EmdashSessionOut.from_orm(s).model_dump(mode="json") for s in sessions],
+    }
+    groups.publish(groups.supervisor_user_group(runner.paired_by_id), frame)
