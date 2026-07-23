@@ -242,7 +242,11 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
     def _snapshot(self):
         parts = list(self.session.participants.select_related("user").all())
         draft = drafts.active_draft(self.session)
-        messages = list(self.session.messages.order_by("turn_index")[:200])
+        # Tail-first: the connect snapshot ships the last N messages (the same
+        # SESSION_TAIL_DEFAULT the REST load uses), never the head. Scroll-back
+        # for earlier history is REST (GET /{id}/messages?before=); Plan 4 wires
+        # it into the panel. The session.state frame shape is otherwise frozen.
+        messages, _has_more, _oldest = chat_services.tail_messages(self.session)
         return {
             "event": "session.state",
             "data": serializers.session_state_dto(
