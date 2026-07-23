@@ -26,6 +26,13 @@ class Runner(models.Model):
     EMDASH, CLOUD, REMOTE = "emdash", "cloud", "remote"
     KIND_CHOICES = [(EMDASH, "Emdash"), (CLOUD, "Cloud"), (REMOTE, "Remote")]
 
+    # Environment (first-class; the persistence tier derives from `location`).
+    LOCAL = "local"
+    CLOUD = "cloud"
+    LOCATION_CHOICES = [(LOCAL, "Local"), (CLOUD, "Cloud")]
+    ENGINE_EMDASH = "emdash"
+    ENGINE_CHOICES = [(ENGINE_EMDASH, "emdash")]
+
     ONLINE, STALE, DISCONNECTED, DEGRADED, RETIRED = (
         "online", "stale", "disconnected", "degraded", "retired",
     )
@@ -37,6 +44,14 @@ class Runner(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
     kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    location = models.CharField(
+        max_length=16, choices=LOCATION_CHOICES, default=LOCAL,
+        help_text="Where the runner runs. Drives the session persistence tier.",
+    )
+    engine = models.CharField(
+        max_length=32, choices=ENGINE_CHOICES, default=ENGINE_EMDASH,
+        help_text="The agent engine this runner drives (not assumed to be emdash).",
+    )
     capabilities = models.JSONField(default=dict, help_text='e.g. {"agents": ["echo"]}')
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=DISCONNECTED)
     status_note = models.CharField(max_length=255, blank=True, default="")
