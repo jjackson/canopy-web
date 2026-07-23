@@ -1,12 +1,18 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import type { JSX } from 'react'
 
-// Shared markdown renderer for agent-authored text (Item bodies, and any other
-// surface that shows model output). One place so the prose styling — semantic
-// tokens only, so it works in both light and dark — never drifts across the app.
-// (react-markdown is already in the eager bundle via SystemPage/ShareoutsPage,
-// so this imports it directly rather than code-splitting.)
+// Shared markdown renderer for agent-authored text (Item bodies, turn/sync
+// summaries, and any other surface that shows model output). One place so the
+// prose styling — semantic tokens only, so it works in both light and dark —
+// never drifts across the app. (react-markdown is already in the eager bundle
+// via SystemPage/ShareoutsPage, so this imports it directly rather than
+// code-splitting.)
+//
+// remark-breaks turns single newlines into <br>, so model output authored with
+// bare line breaks (rather than blank-line paragraphs) keeps its intended shape
+// — the behavior the turn/sync summaries previously got from whitespace-pre-wrap.
 
 // Token-based prose styling. The caller's `className` sets the base text size and
 // color (e.g. `text-[12px] text-foreground-secondary`); block children inherit it.
@@ -42,7 +48,7 @@ export function Markdown({
 }): JSX.Element {
   return (
     <div className={`${PROSE} ${className}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>{children}</ReactMarkdown>
     </div>
   )
 }

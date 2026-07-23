@@ -9,6 +9,7 @@ import type {
   AgentTurnOut,
   AgentWorkProductOut,
 } from '@/api/agents'
+import { Markdown } from '@/components/Markdown'
 
 export function formatDate(s: string): string {
   return new Date(s).toLocaleDateString(undefined, {
@@ -79,7 +80,9 @@ export function SyncCard({ sync }: { sync: AgentSyncOut }) {
         <OpenDocChip url={sync.doc_url} label="Open in Google Docs" />
       </div>
       {sync.summary && (
-        <p className="text-[13px] text-muted-foreground leading-relaxed mt-2">{sync.summary}</p>
+        <Markdown className="text-[13px] text-muted-foreground leading-relaxed mt-2">
+          {sync.summary}
+        </Markdown>
       )}
       {grades.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-3">
@@ -118,7 +121,9 @@ export function TurnCard({ turn }: { turn: AgentTurnOut }) {
         {shareHref && <OpenDocChip url={shareHref} label="View transcript" />}
       </div>
       {turn.summary && (
-        <p className="text-[13px] text-muted-foreground leading-relaxed mt-2 whitespace-pre-wrap">{turn.summary}</p>
+        <Markdown className="text-[13px] text-muted-foreground leading-relaxed mt-2">
+          {turn.summary}
+        </Markdown>
       )}
       {(turn.task_ext_ids ?? []).length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
