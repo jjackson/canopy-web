@@ -161,8 +161,12 @@ export function ChatPage() {
     historyUnavailable,
   })
 
-  const historySlot = (
-    <div className="flex flex-col items-center gap-1 py-2">
+  // The slot is PINNED above the transcript, so render nothing at all when
+  // there's nothing to offer — otherwise every session carries an empty strip.
+  const hasHistoryControls = historyUnavailable || hasMoreBefore || showLoadFull
+
+  const historySlot = !hasHistoryControls ? undefined : (
+    <div className="flex flex-col items-center gap-1 border-b border-border py-2">
       {historyUnavailable && (
         <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-1.5 text-[12px] text-warning">
           Full history unavailable — runner offline. Showing the latest messages.

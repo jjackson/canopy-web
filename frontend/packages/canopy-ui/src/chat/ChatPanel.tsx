@@ -107,8 +107,15 @@ export function ChatPanel({
           />
         </div>
       </div>
+      {/* Pinned ABOVE the scroll container, not inside it. The container is
+          auto-scrolled to the bottom (useStickyBottom), so a slot rendered as
+          the first child of the scroll content sits above the visible area —
+          on prod the "Load full session" control on an empty runner-discovered
+          session was in the DOM but scrolled out of view and covered by the
+          header, i.e. unreachable. Pinning keeps "Load earlier"/"Load full"
+          always visible. */}
+      {historySlot}
       <div ref={containerRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
-        {historySlot}
         <MessageList
           messages={state.messages}
           emptyState={emptyState}
