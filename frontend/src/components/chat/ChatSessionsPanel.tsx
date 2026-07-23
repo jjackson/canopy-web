@@ -109,7 +109,7 @@ export function ChatSessionsPanel({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
             <DropdownMenuLabel>New chat with…</DropdownMenuLabel>
-            {agents.length === 0 && <DropdownMenuItem disabled>No agents available</DropdownMenuItem>}
+            {agents.length === 0 && projects.length === 0 && <DropdownMenuItem disabled>No agents available</DropdownMenuItem>}
             {agents.map((a) => (
               <DropdownMenuItem key={`${a.workspace}/${a.slug}`} onClick={() => startChat(a)}>
                 {a.name}
