@@ -41,7 +41,7 @@ Two forces shape the fix:
 Promote `apps/chat` into the canonical session system — **rename the app to `apps/sessions`** (a framework app; the `sessions` name was freed earlier for exactly this). One model, evolved from `chat.Session`:
 
 **`Session`** — *a canopy runner session*.
-- Keeps: `id` (UUID), `agent` (FK, nullable), `workspace` (FK), `title`, `status`, `created_by`, `metadata`, timestamps, and the `Message` / `SessionParticipant` / `Draft` relations.
+- Keeps: `id` (UUID), `workspace` (FK), `title`, `status`, `created_by`, `metadata`, timestamps, and the `Message` / `SessionParticipant` / `Draft` relations. A session **targets an agent or a project** (agent FK nullable + project reference, per #347 "chat with a project") — orthogonal to which runner backs it.
 - Adds `origin`: `web` (started in-app) | `runner` (discovered on a runner) — provenance, independent of where it currently runs.
 - Adds a one-to-one **`runner_binding`** (nullable — null when nothing is live). The binding **absorbs today's `EmdashSession` + `SessionLink`**:
   - `runner` (FK → `Runner`) — the runner currently backing the session.
@@ -84,7 +84,7 @@ Applies regardless of tier, so the phone never gets a full dump:
 - **One Sessions list.** Chat-started and runner-discovered sessions are now the same `Session`, so the tab is a single list — no separate "Start a chat" panel *and* live-sessions list. Group/filter by runner (local/cloud) and running/idle; a per-row chip shows the runner + engine.
 - **Every row opens into the streaming `ChatPanel`** (`canopy-ui/chat`). The `OpenSessions` inline continue-box is retired — a live session is just a session you click into and chat with.
 - **ChatPanel gains:** tail-first load; a **"Load earlier"** (scroll-back) affordance and an explicit **"Load full session"**; a running/idle indicator; and a **runner-offline / history-unavailable** state for local sessions whose runner is unreachable (tail still shows).
-- **"New chat with `<agent>`"** and the `Composer` stay — they create a `Session` that gets bound to a runner.
+- **"New chat with `<agent>` or project"** stays as the session-creation entry point (the standalone `Composer` widget was already removed in #347) — it creates a `Session` that gets bound to a runner.
 
 ### 6. Framework boundary (sets up later ace-web adoption)
 
