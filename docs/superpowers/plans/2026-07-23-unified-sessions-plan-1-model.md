@@ -17,6 +17,15 @@
 - **Every schema/api change regenerates types:** `cd frontend && npm run gen:api` (backend up) — but this plan aims for a no-op diff to `generated.ts` since the wire shape is frozen.
 - Run backend tests with `uv run pytest`. Run one test: `uv run pytest tests/path::name -v`.
 
+## ⚠️ Cutover note (deploy safety) — added post-implementation
+
+The app was renamed `apps/chat` → `apps/canopy_sessions` (module + Django label; plain `sessions` collides with `django.contrib.sessions`) by repointing the historical migrations in place — there is **no** Django-native `AlterModelTable` / `SeparateDatabaseAndState` transition from the old `chat` label. Consequences:
+
+- **Fresh DB (tests, new dev):** correct — a fresh migrate builds `canopy_sessions_*` tables under the new label. This is what the green suite validates.
+- **Existing labs DB (the trap):** `django_migrations` holds rows under app label `chat`, so `manage.py migrate` treats `canopy_sessions` as brand-new and applies `0001–0005` fresh: it creates **empty** `canopy_sessions_*` tables, leaves the old `chat_*` tables orphaned, and leaves `harness.Turn.chat_session`'s FK still pointing at the stale `chat_session` table while the ORM writes into `canopy_sessions_session`. The deploy-to-labs auto-migrate does **not** fail loudly — it produces a silent inconsistent schema.
+
+Because data is disposable / single-user ("fine losing historical chats"), the intended cutover is an **explicit DB reset** on labs (DROP + recreate the `canopy_web` DB, or reset `django_migrations`) as part of the deploy that first ships this — NOT a reliance on the idempotent auto-migrate. Alternatively, ship a `SeparateDatabaseAndState`/`AlterModelTable` migration that renames `chat_* → canopy_sessions_*` and reconciles the label if a zero-downtime, data-preserving cutover is ever wanted. (Whole-branch review finding #1.)
+
 ---
 
 ### Task 1: `Runner` gains `location` + `engine`
