@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import uuid
+from dataclasses import dataclass
 
 from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
@@ -653,43 +654,52 @@ def record_session(
 
 @transaction.atomic
 def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
-    """Wholesale-replace this runner's reported EmdashSessions, and upsert a
-    SessionLink per session so `continue` rides the existing reuse path.
-
-    Wholesale: a session that vanished from emdash simply stops being reported and
-    disappears here. The SessionLinks are NOT deleted on drop — a durable link that
-    revives when the session reappears is harmless, and deleting them would fight the
-    reuse machinery; a stale link only ever resolves to reuse if its live hint still
-    matches, which the next real report refreshes.
-    """
-    from .models import EmdashSession
+    """Upsert a durable Session(origin=runner) + RunnerBinding per reported
+    session. Sessions that fell off the report keep their Session row but have
+    their live binding cleared."""
+    from apps.canopy_sessions.models import RunnerBinding, Session
 
     # emdash task NAMES are not unique — two un-archived tasks can share a name
-    # (see task_state's "Names aren't unique in emdash's schema" note) — but
-    # (runner, emdash_task) is UNIQUE here. Collapse duplicates before the wholesale
-    # insert, or bulk_create raises IntegrityError and the ENTIRE report 500s. That
-    # failure is silent (the runner's report call is best-effort) and strands the
-    # whole session list, not just the dup — observed 2026-07-20 with two "mobile"
-    # tasks. The runner sends newest-first, so the first occurrence is the live
-    # session; an older namesake is stale and correctly dropped.
-    deduped: list = []
-    seen: set[str] = set()
+    # (see task_state's "Names aren't unique in emdash's schema" note). Collapse
+    # duplicates before upserting; the runner sends newest-first, so the first
+    # occurrence is the live session and an older namesake is stale and correctly
+    # dropped (observed 2026-07-20 with two "mobile" tasks).
+    deduped, seen = [], set()
     for s in sessions:
         if s.emdash_task in seen:
             continue
         seen.add(s.emdash_task)
         deduped.append(s)
 
-    EmdashSession.objects.filter(runner=runner).delete()
-    EmdashSession.objects.bulk_create([
-        EmdashSession(
-            runner=runner, workspace=workspace, emdash_task=s.emdash_task,
-            project=s.project, status=s.status,
-            last_interacted_at=_aware(s.last_interacted_at),
-            recent_messages=list(s.recent_messages or []),
+    now_keys = {s.emdash_task for s in deduped}
+
+    for s in deduped:
+        binding = (
+            RunnerBinding.objects.select_for_update()
+            .filter(runner=runner, session_key=s.emdash_task)
+            .first()
         )
-        for s in deduped
-    ])
+        if binding is None:
+            session = Session.objects.create(
+                workspace=workspace,
+                origin=Session.ORIGIN_RUNNER,
+                project=s.project or "",
+                title=s.emdash_task,
+            )
+            binding = RunnerBinding(session=session, session_key=s.emdash_task)
+        binding.runner = runner
+        binding.status = s.status or ""
+        binding.last_interacted_at = _aware(s.last_interacted_at)
+        binding.live_seen_at = timezone.now()
+        binding.tail = list(s.recent_messages or [])
+        binding.save()
+
+    # Clear the live pointer on this runner's bindings that were NOT re-reported.
+    RunnerBinding.objects.filter(runner=runner).exclude(session_key__in=now_keys).update(
+        runner=None
+    )
+
+    # Keep the durable SessionLink upsert (runner-reuse path) unchanged.
     for s in deduped:
         if s.project:
             # live_session_id intentionally left blank here — a session report has
@@ -712,7 +722,22 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     return len(deduped)
 
 
-def list_visible_sessions(user) -> list:
+@dataclass
+class SessionView:
+    """The wire projection of a live runner session — the fields EmdashSessionOut
+    reads. Derived from Session + RunnerBinding; preserves the frozen shape."""
+
+    id: str
+    emdash_task: str
+    project: str
+    status: str
+    last_interacted_at: object
+    recent_messages: list
+    workspace_id: str
+    runner_name: str
+
+
+def list_visible_sessions(user) -> list[SessionView]:
     """Open sessions in the caller's workspaces whose runner is LIVE. Runner liveness
     (not deletion) is what suppresses a briefly-offline runner's stale rows — see
     Runner.live_status. Newest-first.
@@ -724,16 +749,34 @@ def list_visible_sessions(user) -> list:
     WorkspaceMembership row and user_workspace_slugs(user) returns empty,
     silently hiding their workspace's sessions instead of listing them.
     """
-    from .models import EmdashSession
+    from apps.canopy_sessions.models import RunnerBinding
 
     wsvc.auto_join_workspaces(user)
     ws_slugs = wsvc.user_workspace_slugs(user)
-    rows = (
-        EmdashSession.objects.filter(workspace_id__in=ws_slugs)
-        .select_related("runner")
+    bindings = (
+        RunnerBinding.objects.filter(
+            runner__isnull=False, session__workspace_id__in=ws_slugs
+        )
+        .select_related("runner", "session")
         .order_by("-last_interacted_at")
     )
-    return [s for s in rows if s.runner.live_status == Runner.ONLINE]
+    out = []
+    for b in bindings:
+        if b.runner.live_status != Runner.ONLINE:
+            continue
+        out.append(
+            SessionView(
+                id=str(b.session_id),
+                emdash_task=b.session_key,
+                project=b.session.project,
+                status=b.status,
+                last_interacted_at=b.last_interacted_at,
+                recent_messages=b.tail,
+                workspace_id=b.session.workspace_id,
+                runner_name=b.runner.name,
+            )
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------

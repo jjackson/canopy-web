@@ -12,8 +12,8 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import User
 
 from apps.agents.models import Agent
-from apps.chat import services as chat
-from apps.chat.executor import execute_turn_stub
+from apps.canopy_sessions import services as chat
+from apps.canopy_sessions.executor import execute_turn_stub
 from apps.realtime.consumers import TurnConsumer
 from apps.workspaces.models import Workspace, WorkspaceMembership
 

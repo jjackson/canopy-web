@@ -15,8 +15,8 @@ from channels.testing import WebsocketCommunicator
 from django.conf import settings
 from django.contrib.auth.models import User
 
-from apps.chat import services as chat
-from apps.chat.routing import websocket_urlpatterns as chat_ws
+from apps.canopy_sessions import services as chat
+from apps.canopy_sessions.routing import websocket_urlpatterns as chat_ws
 from apps.realtime.channels_auth import RealtimeAuthMiddleware
 from apps.realtime.routing import websocket_urlpatterns as realtime_ws
 from apps.workspaces.models import Workspace, WorkspaceMembership

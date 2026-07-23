@@ -135,7 +135,7 @@ class EmdashSessionOut(Schema):
 
     @staticmethod
     def resolve_runner_name(obj) -> str:
-        return obj.runner.name
+        return obj.runner_name
 
 
 class SessionReportOut(Schema):

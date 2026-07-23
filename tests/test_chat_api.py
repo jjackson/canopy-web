@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.test import Client
 
 from apps.agents.models import Agent
-from apps.chat.models import Session
+from apps.canopy_sessions.models import Session
 from apps.workspaces.models import Workspace, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db(transaction=True)

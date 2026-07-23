@@ -6,8 +6,8 @@ import pytest
 from django.contrib.auth.models import User
 
 from apps.agents.models import Agent
-from apps.chat import services as chat
-from apps.chat.services import send_message
+from apps.canopy_sessions import services as chat
+from apps.canopy_sessions.services import send_message
 from apps.harness.schemas import TurnOut
 from apps.workspaces.models import Workspace, WorkspaceMembership
 
