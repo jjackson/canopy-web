@@ -65,6 +65,38 @@ def new_assistant_texts(records: list[dict], since: int) -> list[str]:
     return texts
 
 
+def _user_text(content) -> str:
+    """A user record's text — a bare string, or the text blocks of a content list."""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        return "".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ).strip()
+    return ""
+
+
+def transcript_messages(records: list[dict]) -> list[dict]:
+    """The full transcript as chronological {"role","text"} rows — user + assistant
+    text only (tool blocks skipped, matching the v1 bridge). Drives on-demand
+    backfill of a local session's history into server Message rows."""
+    out: list[dict] = []
+    for rec in records:
+        kind = rec.get("type")
+        msg = rec.get("message")
+        content = msg.get("content", "") if isinstance(msg, dict) else ""
+        if kind == "user":
+            t = _user_text(content)
+            if t:
+                out.append({"role": "user", "text": t})
+        elif kind == "assistant":
+            t = _assistant_text(content)
+            if t:
+                out.append({"role": "assistant", "text": t})
+    return out
+
+
 def bridge_response(
     post_event: Callable[[dict], None],
     records_fn: Callable[[], list[dict]],

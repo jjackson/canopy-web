@@ -92,6 +92,16 @@ class Client:
         self._call("POST", f"/runners/{runner_id}/session-stream",
                    {"session_id": session_id, "events": events})
 
+    def sync_backfills(self, runner_id: str) -> list[dict]:
+        """Sessions the server asked this runner to ship full history for."""
+        _, payload = self._call("GET", f"/runners/{runner_id}/backfills")
+        return (payload or {}).get("backfills", [])
+
+    def post_session_backfill(self, runner_id: str, session_id: str, messages: list[dict]) -> None:
+        """Ship a session's full transcript for the server to write as Message rows."""
+        self._call("POST", f"/runners/{runner_id}/session-backfill",
+                   {"session_id": session_id, "messages": messages})
+
     def claim(self, runner_id: str, paused_agents: list[str] | None = None) -> dict | None:
         # paused_agents (per-agent pause) → server skips those agents' queued turns.
         path = f"/runners/{runner_id}/claim"

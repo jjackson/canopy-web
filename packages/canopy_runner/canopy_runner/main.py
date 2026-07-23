@@ -310,6 +310,30 @@ def _sync_session_streams(cfg: Config, client: Client) -> None:
                 logger.debug("stream post failed (non-fatal)", exc_info=True)
 
 
+def _drain_backfills(cfg: Config, client: Client) -> None:
+    """Ship full transcript history for each session the server asked to backfill.
+    Best-effort — a missing transcript or a client hiccup is skipped, not fatal."""
+    try:
+        backfills = client.sync_backfills(cfg.runner_id)
+    except Exception:  # noqa: BLE001
+        logger.debug("backfill sync failed (non-fatal)", exc_info=True)
+        return
+    home = Path.home()
+    claude_home = home / ".claude" / "projects"
+    for b in backfills:
+        sid = b.get("session_id")
+        path = transcript.resolve_transcript(
+            b.get("project") or "", b.get("session_key") or "", home=home, claude_home=claude_home
+        )
+        if not (sid and path):
+            continue  # transcript not resolvable -> leave it; server keeps showing the tail
+        messages = chat_bridge.transcript_messages(chat_bridge.read_records(path))
+        try:
+            client.post_session_backfill(cfg.runner_id, sid, messages)
+        except Exception:  # noqa: BLE001
+            logger.debug("backfill post failed (non-fatal)", exc_info=True)
+
+
 def run_once(cfg: Config, client: Client) -> str:
     """One loop iteration: preflight emdash's CDP health → heartbeat (with macOS host, for
     reuse ownership) → claim one turn → route it to an emdash session (reuse or create).
@@ -358,6 +382,7 @@ def run_once(cfg: Config, client: Client) -> str:
 
     _maybe_report_sessions(cfg, client)
     _sync_session_streams(cfg, client)
+    _drain_backfills(cfg, client)
     paused = _paused_agents(cfg)
     # Inbound triggers run whether or not CDP is up, so inbound work still ENQUEUES while
     # emdash is down (it just waits, queued, until emdash is back). Only the claim is gated.
