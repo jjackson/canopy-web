@@ -417,7 +417,7 @@ export function RunPackage({ runId }: { runId: string }) {
       >
         {run.narrative?.review_id && (
           <a
-            href={`/review/${run.narrative.review_id}`}
+            href={withBase(`/review/${run.narrative.review_id}`)}
             className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary transition-colors hover:bg-primary/20"
           >
             Edit narrative in review
