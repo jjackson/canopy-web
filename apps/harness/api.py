@@ -35,6 +35,9 @@ from .schemas import (
     ScheduleFireIn,
     ScheduleOut,
     SessionReportOut,
+    SessionStreamIn,
+    StreamPostOut,
+    StreamSyncOut,
     TurnEventCountOut,
     TurnEventsIn,
     TurnEventsOut,
@@ -359,6 +362,50 @@ def report_sessions(request: HttpRequest, runner_id: uuid.UUID, payload: ReportS
         raise HttpError(404, "runner has no workspace")
     count = services.replace_reported_sessions(runner, ws, payload.sessions)
     return SessionReportOut(count=count)
+
+
+@router.get("/runners/{runner_id}/streams", response=StreamSyncOut)
+def list_streams(request: HttpRequest, runner_id: uuid.UUID):
+    """The sessions this runner should be tailing live (a viewer is attached). The
+    observable half of attach/detach — the runner syncs this each tick and starts/
+    stops tailers; the WS runner.stream frame is only a latency optimization."""
+    from apps.canopy_sessions.models import RunnerBinding
+
+    runner = _runner_or_404(request, runner_id)
+    bindings = (
+        RunnerBinding.objects.select_related("session")
+        .filter(runner=runner, stream_desired=True)
+        .exclude(session_key="")
+    )
+    return {"streams": [
+        {"session_id": str(b.session_id), "session_key": b.session_key,
+         "project": b.session.project}
+        for b in bindings
+    ]}
+
+
+@router.post("/runners/{runner_id}/session-stream", response=StreamPostOut)
+def post_session_stream(request: HttpRequest, runner_id: uuid.UUID, payload: SessionStreamIn):
+    """The runner ships live assistant events for a session it backs; the server fans
+    them to the session group as the same chat.turn_event frames the chat path uses
+    (turn-less -> the consumer derives seq:<n> message ids). Live view only — no
+    Message rows (that is the on-demand backfill, POST /session-backfill)."""
+    from apps.canopy_sessions.models import RunnerBinding
+    from apps.realtime import groups
+
+    runner = _runner_or_404(request, runner_id)
+    if not RunnerBinding.objects.filter(session_id=payload.session_id, runner=runner).exists():
+        raise HttpError(404, "session not bound to this runner")
+    sgroup = groups.session_group(payload.session_id)
+    n = 0
+    for e in payload.events:
+        groups.publish(sgroup, {
+            "type": "chat.turn_event",
+            "event": {"kind": e.kind, "seq": e.seq, "payload": e.payload},
+            "turn_id": None,
+        })
+        n += 1
+    return {"count": n}
 
 
 @router.post("/turns/", response={200: TurnOut, 201: TurnOut})

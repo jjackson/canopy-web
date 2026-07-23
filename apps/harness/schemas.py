@@ -384,6 +384,36 @@ class ScheduleFireIn(Schema):
 
 
 # ---------------------------------------------------------------------------
+# Runner streams — the poll-fallback sync + live-event fan-out (SP3 Task 4)
+# ---------------------------------------------------------------------------
+
+
+class StreamDescriptorOut(Schema):
+    session_id: str
+    session_key: str
+    project: str
+
+
+class StreamSyncOut(Schema):
+    streams: list[StreamDescriptorOut] = []
+
+
+class LiveEventIn(Schema):
+    kind: str
+    seq: int
+    payload: dict = {}
+
+
+class SessionStreamIn(Schema):
+    session_id: uuid.UUID
+    events: list[LiveEventIn] = []
+
+
+class StreamPostOut(Schema):
+    count: int
+
+
+# ---------------------------------------------------------------------------
 # Items — the supervisor's queue (the dual of Turn)
 # ---------------------------------------------------------------------------
 

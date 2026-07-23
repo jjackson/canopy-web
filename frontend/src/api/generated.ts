@@ -1901,6 +1901,51 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/harness/runners/{runner_id}/streams": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List Streams
+         * @description The sessions this runner should be tailing live (a viewer is attached). The
+         *     observable half of attach/detach — the runner syncs this each tick and starts/
+         *     stops tailers; the WS runner.stream frame is only a latency optimization.
+         */
+        readonly get: operations["apps_harness_api_list_streams"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/harness/runners/{runner_id}/session-stream": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Post Session Stream
+         * @description The runner ships live assistant events for a session it backs; the server fans
+         *     them to the session group as the same chat.turn_event frames the chat path uses
+         *     (turn-less -> the consumer derives seq:<n> message ids). Live view only — no
+         *     Message rows (that is the on-demand backfill, POST /session-backfill).
+         */
+        readonly post: operations["apps_harness_api_post_session_stream"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/harness/turns/": {
         readonly parameters: {
             readonly query?: never;
@@ -6033,6 +6078,55 @@ export interface components {
              */
             readonly recent_messages: readonly unknown[];
         };
+        /** StreamDescriptorOut */
+        readonly StreamDescriptorOut: {
+            /** Session Id */
+            readonly session_id: string;
+            /** Session Key */
+            readonly session_key: string;
+            /** Project */
+            readonly project: string;
+        };
+        /** StreamSyncOut */
+        readonly StreamSyncOut: {
+            /**
+             * Streams
+             * @default []
+             */
+            readonly streams: readonly components["schemas"]["StreamDescriptorOut"][];
+        };
+        /** StreamPostOut */
+        readonly StreamPostOut: {
+            /** Count */
+            readonly count: number;
+        };
+        /** LiveEventIn */
+        readonly LiveEventIn: {
+            /** Kind */
+            readonly kind: string;
+            /** Seq */
+            readonly seq: number;
+            /**
+             * Payload
+             * @default {}
+             */
+            readonly payload: {
+                readonly [key: string]: unknown;
+            };
+        };
+        /** SessionStreamIn */
+        readonly SessionStreamIn: {
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            readonly session_id: string;
+            /**
+             * Events
+             * @default []
+             */
+            readonly events: readonly components["schemas"]["LiveEventIn"][];
+        };
         /** TurnIn */
         readonly TurnIn: {
             /**
@@ -9503,6 +9597,54 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["SessionReportOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_list_streams: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["StreamSyncOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_post_session_stream: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly runner_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SessionStreamIn"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["StreamPostOut"];
                 };
             };
         };
