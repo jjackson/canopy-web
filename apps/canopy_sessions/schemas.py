@@ -44,6 +44,13 @@ class SessionOut(Schema):
     title: str
     status: str
     created_at: dt.datetime
+    # Liveness (Plan 4) — computed from the RunnerBinding; a web session with no
+    # binding is origin="web", running=False, runner_name=None.
+    origin: str = "web"
+    running: bool = False
+    runner_name: str | None = None
+    runner_location: str | None = None
+    session_key: str = ""
 
 
 class SessionDetailOut(SessionOut):
