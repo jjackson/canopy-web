@@ -1036,6 +1036,27 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/agents/{slug}/syncs/{sync_id}/": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /**
+         * Delete a sync (wrong period / stray record)
+         * @description POST upserts per (period, source), so re-posting only corrects a sync for the
+         *     SAME window — a sync filed under the wrong period is otherwise unreachable.
+         */
+        readonly delete: operations["apps_agents_api_delete_sync"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/agents/{slug}/turns/": {
         readonly parameters: {
             readonly query?: never;
@@ -8360,6 +8381,27 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["AgentSyncOut"];
                 };
+            };
+        };
+    };
+    readonly apps_agents_api_delete_sync: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly slug: string;
+                readonly sync_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description No Content */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -179,6 +179,18 @@ def create_sync(request: HttpRequest, slug: str, payload: AgentSyncIn) -> Status
     return Status(201, AgentSyncOut.model_validate(sync))
 
 
+@router.delete("/{slug}/syncs/{sync_id}/", response={204: None},
+               summary="Delete a sync (wrong period / stray record)",
+               openapi_extra={"x-mcp-expose": True})
+def delete_sync(request: HttpRequest, slug: str, sync_id: int) -> Status:
+    """POST upserts per (period, source), so re-posting only corrects a sync for the
+    SAME window — a sync filed under the wrong period is otherwise unreachable."""
+    agent = _get_agent_or_404(request, slug)
+    if not services.delete_sync(agent, sync_id):
+        raise HttpError(404, f"sync {sync_id} not found for agent '{slug}'")
+    return Status(204, None)
+
+
 # ---- turns (a packaged unit of work + optional transcript link) ----
 @router.get("/{slug}/turns/", response=Page[AgentTurnOut], summary="List the agent's turns",
             openapi_extra={"x-mcp-expose": True})
