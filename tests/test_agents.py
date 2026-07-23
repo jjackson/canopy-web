@@ -46,6 +46,31 @@ def test_sync_is_idempotent_per_period_and_source():
     assert AgentSync.objects.get(agent=agent).self_grades["work"] == "C+"
 
 
+def test_delete_sync_removes_only_the_targeted_row():
+    agent = _agent()
+    other = _agent("eva")
+    payload = SimpleNamespace(
+        period_start=dt.datetime(2026, 6, 3, tzinfo=dt.timezone.utc),
+        period_end=dt.datetime(2026, 6, 17, tzinfo=dt.timezone.utc),
+        title="Sync 1", summary="s", doc_url="https://docs.google.com/document/d/abc/edit",
+        self_grades={}, source="manager-sync",
+    )
+    keep = services.upsert_sync(agent, payload)
+    payload.period_start = dt.datetime(2026, 7, 1, tzinfo=dt.timezone.utc)
+    payload.period_end = dt.datetime(2026, 7, 8, tzinfo=dt.timezone.utc)
+    payload.title = "Wrong period"
+    doomed = services.upsert_sync(agent, payload)
+    theirs = services.upsert_sync(other, payload)
+
+    assert services.delete_sync(agent, doomed.pk) is True
+    assert set(AgentSync.objects.filter(agent=agent).values_list("pk", flat=True)) == {keep.pk}
+    # gone → False (so the API can 404 rather than silently succeed)
+    assert services.delete_sync(agent, doomed.pk) is False
+    # another agent's sync is not reachable through this agent
+    assert services.delete_sync(agent, theirs.pk) is False
+    assert AgentSync.objects.filter(pk=theirs.pk).exists()
+
+
 def _turn(**kw):
     base = dict(cli_session_id="sess-1", title="Turn 1", summary="did stuff",
                 task_ext_ids=["t1"], work_product_urls=[], session_slug="", share_token="",

@@ -107,6 +107,17 @@ def list_syncs(agent: Agent, limit: int = 100) -> list[AgentSync]:
     return list(agent.syncs.select_related("agent")[:limit])
 
 
+def delete_sync(agent: Agent, sync_id: int) -> bool:
+    """Delete ONE sync by id, scoped to the agent. True if a row was removed.
+
+    upsert_sync is idempotent per (period_start, period_end, source), so re-posting
+    only ever corrects a sync for the SAME window. A sync posted with the wrong
+    period (or a stray test row) is otherwise unreachable — this is the escape hatch.
+    """
+    deleted, _ = AgentSync.objects.filter(agent=agent, pk=sync_id).delete()
+    return bool(deleted)
+
+
 # ---- turns (a packaged unit of work + optional transcript link) ----
 def upsert_turn(agent: Agent, data) -> AgentTurn:
     """Idempotent per (agent, cli_session_id): one turn per Claude session, so
