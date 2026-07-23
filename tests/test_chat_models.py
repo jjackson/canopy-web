@@ -47,3 +47,22 @@ def test_message_index_unique_per_session():
     Message.objects.create(session=session, turn_index=0, role=Message.USER)
     with pytest.raises(IntegrityError):
         Message.objects.create(session=session, turn_index=0, role=Message.ASSISTANT)
+
+
+def test_session_project_field_and_xor_constraint():
+    ws, user = _ws_user()
+
+    # project-only session is allowed
+    s = Session.objects.create(workspace=ws, created_by=user, project="canopy-web")
+    assert s.project == "canopy-web"
+    assert s.agent_id is None
+
+    # agentless + projectless still allowed (existing behavior)
+    Session.objects.create(workspace=ws, created_by=user)
+
+    # agent + project together is rejected by the DB constraint
+    agent = Agent.objects.create(slug="echo", name="Echo", workspace=ws, owner=user)
+    with pytest.raises(IntegrityError):
+        from django.db import transaction
+        with transaction.atomic():
+            Session.objects.create(workspace=ws, created_by=user, agent=agent, project="canopy-web")
