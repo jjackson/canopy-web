@@ -190,8 +190,7 @@ export default function SupervisorPage(): JSX.Element {
           )}
         </TabsContent>
 
-        {/* Sessions — your chats with agents (live, continue from any device);
-            quick dispatch below. */}
+        {/* Sessions — your chats with agents (live, continue from any device). */}
         <TabsContent value="sessions" className="flex flex-col gap-4">
           <ChatSessionsPanel agents={agents ?? undefined} heading="Chats" />
         </TabsContent>

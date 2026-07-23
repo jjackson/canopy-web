@@ -281,8 +281,9 @@ class Turn(models.Model):
     def target(self) -> str:
         """The emdash project to drive — an agent's slug or a repo's name. The CDP
         layer underneath takes a project name either way. A session turn drives its
-        session's agent when it has one, else a session marker (the cloud runner,
-        SP2b, resolves the session directly)."""
+        session's agent when it has one, else the session's project (an agentless
+        project chat), else a session marker (the cloud runner, SP2b, resolves the
+        session directly)."""
         if self.agent_id:
             return self.agent.slug
         if self.chat_session_id:

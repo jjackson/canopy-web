@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from django.apps import apps
 from django.contrib.auth.models import User
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 from apps.agents.models import Agent
 from apps.chat.models import Message, Session
@@ -63,6 +63,5 @@ def test_session_project_field_and_xor_constraint():
     # agent + project together is rejected by the DB constraint
     agent = Agent.objects.create(slug="echo", name="Echo", workspace=ws, owner=user)
     with pytest.raises(IntegrityError):
-        from django.db import transaction
         with transaction.atomic():
             Session.objects.create(workspace=ws, created_by=user, agent=agent, project="canopy-web")
