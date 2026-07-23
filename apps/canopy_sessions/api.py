@@ -28,6 +28,7 @@ from .schemas import (
     SessionCreateIn,
     SessionDetailOut,
     SessionOut,
+    StreamStateOut,
 )
 
 router = Router(auth=session_auth, tags=["chat"])
@@ -144,3 +145,15 @@ def send(request: HttpRequest, session_id: uuid.UUID, payload: SendIn):
     # Dev/test: run the stub inline. Production: leave it queued for a cloud runner.
     services.maybe_execute_inline(turn)
     return {"turn_id": turn.id if turn else None, "message": MessageOut.from_orm(message)}
+
+
+@router.post("/{session_id}/attach", response=StreamStateOut, summary="Attach a viewer (start live streaming)")
+def attach_session(request: HttpRequest, session_id: uuid.UUID):
+    session = _session_or_404(request, session_id)
+    return {"streaming": services.attach_session(session)}
+
+
+@router.post("/{session_id}/detach", response=StreamStateOut, summary="Detach a viewer (stop when last leaves)")
+def detach_session(request: HttpRequest, session_id: uuid.UUID):
+    session = _session_or_404(request, session_id)
+    return {"streaming": services.detach_session(session)}

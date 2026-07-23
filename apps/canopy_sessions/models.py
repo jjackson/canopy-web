@@ -183,6 +183,9 @@ class RunnerBinding(models.Model):
     host = models.CharField(max_length=200, blank=True, default="")
     # Durable board-task context carried for rehydration (was SessionLink.agent_task_ext_id).
     agent_task_ext_id = models.CharField(max_length=255, blank=True, default="")
+    # Liveness: a viewer is attached, so the bound runner should stream this
+    # session's events up live. Toggled by the attach registry on the 0<->1 edge.
+    stream_desired = models.BooleanField(default=False)
     tail = models.JSONField(default=list)          # last N conversational messages
     summary = models.TextField(blank=True, default="")
     status = models.CharField(max_length=40, blank=True, default="")

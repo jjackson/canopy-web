@@ -58,3 +58,8 @@ class SessionDetailOut(SessionOut):
 class SendOut(Schema):
     turn_id: uuid.UUID | None
     message: MessageOut
+
+
+class StreamStateOut(Schema):
+    """Whether the bound runner is being asked to stream this session live."""
+    streaming: bool

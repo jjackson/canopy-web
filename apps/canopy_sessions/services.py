@@ -15,6 +15,7 @@ from django.db.models import Max
 from apps.harness import services as harness_services
 from apps.harness.models import Turn
 
+from . import attach
 from .models import Message, Session
 
 # Ledger kinds we surface as transcript rows, and the Message role each maps to.
@@ -75,6 +76,49 @@ def all_messages(session: Session):
     if not messages:
         return [], False, None
     return messages, False, messages[0].turn_index
+
+
+def _set_stream_desired(session, desired: bool) -> bool:
+    """Flip the bound binding's stream_desired and, on a real change, signal the
+    bound runner over its control channel. Returns the resulting desired state
+    (False when the session has no binding to stream)."""
+    from apps.canopy_sessions.models import RunnerBinding
+
+    binding = RunnerBinding.objects.filter(session=session).first()
+    if binding is None:
+        return False
+    if binding.stream_desired != desired:
+        binding.stream_desired = desired
+        binding.save(update_fields=["stream_desired", "updated_at"])
+    if binding.runner_id:
+        from apps.realtime import groups
+        groups.publish(groups.runner_group(binding.runner_id), {
+            "type": "runner.stream",
+            "session_id": str(session.id),
+            "session_key": binding.session_key,
+            "desired": desired,
+        })
+    return desired
+
+
+def attach_session(session) -> bool:
+    """A viewer attached. On the 0->1 edge, mark streaming desired + signal the runner."""
+    n = attach.attach(session.id)
+    if n == 1:
+        return _set_stream_desired(session, True)
+    from apps.canopy_sessions.models import RunnerBinding
+    b = RunnerBinding.objects.filter(session=session).first()
+    return bool(b and b.stream_desired)
+
+
+def detach_session(session) -> bool:
+    """A viewer detached. On the 1->0 edge, stop streaming + signal the runner."""
+    n = attach.detach(session.id)
+    if n == 0:
+        return _set_stream_desired(session, False)
+    from apps.canopy_sessions.models import RunnerBinding
+    b = RunnerBinding.objects.filter(session=session).first()
+    return bool(b and b.stream_desired)
 
 
 def create_session(*, workspace, created_by, agent=None, project: str = "", title: str = "", metadata: dict | None = None) -> Session:

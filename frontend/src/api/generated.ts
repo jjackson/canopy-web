@@ -1764,7 +1764,7 @@ export interface paths {
          *
          *     Capabilities are set at pairing and were otherwise immutable — the only way to
          *     add `projects` to an existing runner was to re-pair, which mints a NEW runner
-         *     and orphans the old one's SessionLinks. This lets a paired runner opt into
+         *     and orphans the old one's RunnerBindings. This lets a paired runner opt into
          *     driving repos (or new agents) in place. capabilities is a routing hint, not a
          *     security boundary (the workspace gates), so replacing it changes what the
          *     runner PULLS, never what it may reach.
@@ -2195,6 +2195,40 @@ export interface paths {
         readonly put?: never;
         /** Send a message */
         readonly post: operations["apps_canopy_sessions_api_send"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/chat/{session_id}/attach": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Attach a viewer (start live streaming) */
+        readonly post: operations["apps_canopy_sessions_api_attach_session"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/chat/{session_id}/detach": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Detach a viewer (stop when last leaves) */
+        readonly post: operations["apps_canopy_sessions_api_detach_session"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6246,6 +6280,14 @@ export interface components {
              */
             readonly client_id: string;
         };
+        /**
+         * StreamStateOut
+         * @description Whether the bound runner is being asked to stream this session live.
+         */
+        readonly StreamStateOut: {
+            /** Streaming */
+            readonly streaming: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -9918,6 +9960,50 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["SendOut"];
+                };
+            };
+        };
+    };
+    readonly apps_canopy_sessions_api_attach_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly session_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["StreamStateOut"];
+                };
+            };
+        };
+    };
+    readonly apps_canopy_sessions_api_detach_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly session_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["StreamStateOut"];
                 };
             };
         };

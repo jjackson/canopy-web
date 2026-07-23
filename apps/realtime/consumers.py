@@ -196,6 +196,18 @@ class RunnerConsumer(AsyncJsonWebsocketConsumer):
             "message": message.get("message"),
         })
 
+    async def runner_stream(self, message):
+        # runner.{id} group_send type="runner.stream" — start/stop live streaming a
+        # session this runner backs. Forwarded to the runner socket; the runner also
+        # syncs desired-streaming via GET /runners/{id}/streams, so a missed frame
+        # only costs latency (like the wake channel).
+        await self.send_json({
+            "type": "stream",
+            "session_id": message.get("session_id"),
+            "session_key": message.get("session_key"),
+            "desired": message.get("desired"),
+        })
+
     async def receive_json(self, content, **kwargs):
         action = content.get("action")
         if action == "claim":

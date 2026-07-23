@@ -46,6 +46,7 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         await self.channel_layer.group_add(self.group, self.channel_name)
         await self.accept()
         await database_sync_to_async(presence.touch)(session.id, user.id)
+        await database_sync_to_async(chat_services.attach_session)(session)
         await self.send_json(await self._snapshot())
         await self._broadcast({"type": "presence.joined", "user_id": user.id})
 
@@ -54,6 +55,7 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         if not group:
             return
         await database_sync_to_async(presence.leave)(self.session.id, self.user.id)
+        await database_sync_to_async(chat_services.detach_session)(self.session)
         await self._broadcast({"type": "presence.left", "user_id": self.user.id})
         await self.channel_layer.group_discard(group, self.channel_name)
 
