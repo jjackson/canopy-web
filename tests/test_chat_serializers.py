@@ -61,3 +61,24 @@ def test_session_state_dto_keys():
     assert state["presence_user_ids"] == [u.pk]
     assert state["participants"][0]["email"] == u.email
     assert state["participants"][0]["role"] == "owner"
+
+
+def test_turnout_surfaces_project_session_target_and_workspace():
+    from django.contrib.auth.models import User
+    from apps.chat.models import Session
+    from apps.harness import services
+    from apps.harness.models import Turn
+    from apps.harness.schemas import TurnOut
+    from apps.workspaces.models import Workspace
+
+    user = User.objects.create_user("jj", "jj@dimagi.com", "pw")
+    ws = Workspace.objects.create(slug="canopy", display_name="Canopy", created_by=user)
+    s = Session.objects.create(workspace=ws, created_by=user, project="canopy-web")
+    turn, _ = services.enqueue_turn(
+        session=s, origin=Turn.ORIGIN_API, idempotency_key="pk", prompt="hi"
+    )
+    out = TurnOut.model_validate(turn)
+    assert out.agent_slug is None
+    assert out.project == "canopy-web"
+    assert out.workspace_slug == "canopy"
+    assert out.target == "canopy-web"

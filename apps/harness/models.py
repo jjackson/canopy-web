@@ -286,11 +286,11 @@ class Turn(models.Model):
         if self.agent_id:
             return self.agent.slug
         if self.chat_session_id:
-            return (
-                self.chat_session.agent.slug
-                if self.chat_session.agent_id
-                else f"session:{self.chat_session_id.hex[:8]}"
-            )
+            if self.chat_session.agent_id:
+                return self.chat_session.agent.slug
+            if self.chat_session.project:
+                return self.chat_session.project
+            return f"session:{self.chat_session_id.hex[:8]}"
         return self.project
 
     def __str__(self) -> str:  # pragma: no cover
