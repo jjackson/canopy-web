@@ -226,7 +226,9 @@ function SessionRow({ session }: { session: EmdashSessionOut }): JSX.Element {
   )
 }
 
-export function OpenSessions(): JSX.Element {
+export function OpenSessions(
+  { liveSessions }: { liveSessions?: EmdashSessionOut[] | null } = {},
+): JSX.Element {
   const [sessions, setSessions] = useState<EmdashSessionOut[] | null>(null)
   // Distinct from `sessions === []` (genuinely zero) — a flaky fetch must not
   // collapse into "No open sessions." with no error signal. Mirrors
@@ -252,18 +254,21 @@ export function OpenSessions(): JSX.Element {
         })
     }
     load()
-    // Poll so tails + last-active times stay live. The runner now re-reports the
-    // instant a session's transcript grows (change-driven, ~1 poll tick), so a short
-    // refresh here surfaces live emdash activity — a message you (or the agent) type
-    // directly in emdash shows within a few seconds, not just on a website send.
-    const id = window.setInterval(load, 4_000)
+    // The live path is now the WebSocket push (liveSessions): the runner re-reports
+    // the instant a session's transcript grows, and the server fans it to every
+    // connected device at once — so this poll is just a slow fallback for when the
+    // socket is down. The initial load above gives immediate data before the first push.
+    const id = window.setInterval(load, 20_000)
     return () => {
       cancelled = true
       window.clearInterval(id)
     }
   }, [])
 
-  if (sessions === null) return <p className="text-[12px] text-muted-foreground">Loading sessions…</p>
+  // Prefer the live WebSocket push once it has arrived; fall back to the fetched list.
+  const displaySessions = liveSessions ?? sessions
+
+  if (displaySessions === null) return <p className="text-[12px] text-muted-foreground">Loading sessions…</p>
   if (error) {
     return (
       <p
@@ -274,7 +279,7 @@ export function OpenSessions(): JSX.Element {
       </p>
     )
   }
-  if (sessions.length === 0) {
+  if (displaySessions.length === 0) {
     return (
       <p className="text-[12px] text-muted-foreground" data-testid="sessions-empty">
         No open sessions.
@@ -284,7 +289,7 @@ export function OpenSessions(): JSX.Element {
   // Group by project (a header per project), projects alphabetical, sessions within
   // each group left in the server's most-recently-active order.
   const groups = new Map<string, EmdashSessionOut[]>()
-  for (const s of sessions) {
+  for (const s of displaySessions) {
     const key = s.project || '(no project)'
     const arr = groups.get(key)
     if (arr) arr.push(s)

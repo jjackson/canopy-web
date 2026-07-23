@@ -46,4 +46,21 @@ describe('applyFrame', () => {
     expect(next.waiting).toEqual({ echo: 4, ada: 1 })
     expect(next.totalWaiting).toBe(5)
   })
+
+  it('sets sessions from a sessions push and preserves them across a snapshot', () => {
+    const withSessions = applyFrame(EMPTY_SUPERVISOR_STATE, {
+      type: 'supervisor.sessions',
+      sessions: [{ emdash_task: 'echo-1', project: 'echo' }],
+    })
+    expect(withSessions.sessions).toHaveLength(1)
+    // a later snapshot (runners/waiting) must not clobber the live sessions list
+    const afterSnap = applyFrame(withSessions, {
+      type: 'supervisor.snapshot',
+      runners: [],
+      waiting: {},
+      total_waiting: 0,
+    })
+    expect(afterSnap.sessions).toHaveLength(1)
+  })
+
 })

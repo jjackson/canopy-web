@@ -699,6 +699,16 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
                 None, f"emdash:{s.emdash_task}", runner=runner, project=s.project,
                 workspace=workspace, emdash_task_id=s.emdash_task,
             )
+
+    # Fire AFTER commit so apps/realtime fans the durable rows (never racing the DB)
+    # to the runner-owner's supervisor group — the WS push that makes live emdash
+    # activity reach every connected viewer at once. Local import avoids a cycle.
+    def _fire_reported():
+        from apps.harness.signals import sessions_reported
+
+        sessions_reported.send(sender=Runner, runner=runner)
+
+    transaction.on_commit(_fire_reported)
     return len(deduped)
 
 

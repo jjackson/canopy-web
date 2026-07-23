@@ -196,7 +196,7 @@ export default function SupervisorPage(): JSX.Element {
             runner (laptop + cloud), grouped by project, with the emdash task tag. */}
         <TabsContent value="sessions" className="flex flex-col gap-4">
           <ChatSessionsPanel agents={agents ?? undefined} heading="Start a chat" showList={false} />
-          <OpenSessions />
+          <OpenSessions liveSessions={live.sessions} />
           {agents && agents.length > 0 && <Composer agents={agents} />}
         </TabsContent>
 

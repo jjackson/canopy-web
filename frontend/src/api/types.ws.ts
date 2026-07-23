@@ -34,7 +34,15 @@ export interface SupervisorWaitingFrame {
   waiting_count: number
 }
 
+export interface SupervisorSessionsFrame {
+  type: 'supervisor.sessions'
+  // EmdashSessionOut[] — kept loose here to avoid a cross-module type import; the
+  // consumer casts to the OpenSessions shape.
+  sessions: Record<string, unknown>[]
+}
+
 export type SupervisorFrame =
   | SupervisorSnapshotFrame
   | SupervisorRunnerFrame
   | SupervisorWaitingFrame
+  | SupervisorSessionsFrame
