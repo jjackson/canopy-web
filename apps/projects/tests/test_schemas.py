@@ -103,5 +103,6 @@ def test_project_slug_out():
         "name": "canopy-web",
         "status": "active",
         "visibility": "public",
+        "workspace": None,
     })
     assert parsed.slug == "canopy-web"

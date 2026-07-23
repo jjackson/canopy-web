@@ -12,7 +12,9 @@ import {
 } from 'canopy-ui/ui'
 import { createSession, listSessions, type ChatSession } from '@/api/chat'
 import { listAgents, type AgentOut } from '@/api/agents'
+import { projectsApi, type ProjectSlug } from '@/api/projects'
 import { relativeTime } from '@/components/activity/turnLog'
+import { sessionTargetLabel } from './sessionTargetLabel'
 
 /**
  * Reusable, CROSS-WORKSPACE chat session surface: a findable list of your chat
@@ -35,6 +37,7 @@ export function ChatSessionsPanel({
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [agents, setAgents] = useState<AgentOut[]>(agentsProp ?? [])
+  const [projects, setProjects] = useState<ProjectSlug[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -46,8 +49,12 @@ export function ChatSessionsPanel({
   useEffect(() => {
     let live = true
     setLoading(true)
+    // Sessions load only when we render the list; projects always load (they
+    // feed the "+ New chat" dropdown, not the list — supervisor hides the list
+    // but still starts project chats); agents load unless provided by a prop.
     const jobs: Promise<unknown>[] = []
     if (showList) jobs.push(listSessions())
+    jobs.push(projectsApi.listSlugs())
     if (!agentsProp) jobs.push(listAgents({ limit: 100 }))
     Promise.allSettled(jobs).then((results) => {
       if (!live) return
@@ -58,6 +65,8 @@ export function ChatSessionsPanel({
         else if (s && s.status === 'rejected')
           setError(s.reason instanceof Error ? s.reason.message : 'failed to load sessions')
       }
+      const p = results[idx++]
+      if (p && p.status === 'fulfilled') setProjects(p.value as ProjectSlug[])
       const a = results[idx]
       if (!agentsProp && a && a.status === 'fulfilled') {
         setAgents((a.value as { items: AgentOut[] }).items)
@@ -87,6 +96,19 @@ export function ChatSessionsPanel({
     [navigate],
   )
 
+  const startProjectChat = useCallback(
+    (project: ProjectSlug) => {
+      setCreating(true)
+      createSession({ project: project.slug, workspace: project.workspace ?? undefined })
+        .then((s) => navigate(`/w/${s.workspace}/chat/${s.id}`))
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : 'could not start chat')
+          setCreating(false)
+        })
+    },
+    [navigate],
+  )
+
   const now = new Date()
 
   return (
@@ -94,20 +116,33 @@ export function ChatSessionsPanel({
       <div className="flex items-center justify-between gap-2 pb-2">
         <h2 className="text-sm font-semibold text-foreground">{heading}</h2>
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button size="sm" disabled={creating || agents.length === 0} />}>
+          <DropdownMenuTrigger
+            render={<Button size="sm" disabled={creating || (agents.length === 0 && projects.length === 0)} />}
+          >
             <Plus className="mr-1 h-4 w-4" />
             New chat
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
             <DropdownMenuLabel>New chat with…</DropdownMenuLabel>
-            {agents.length === 0 && <DropdownMenuItem disabled>No agents available</DropdownMenuItem>}
+            {agents.length === 0 && projects.length === 0 && <DropdownMenuItem disabled>No agents available</DropdownMenuItem>}
             {agents.map((a) => (
               <DropdownMenuItem key={`${a.workspace}/${a.slug}`} onClick={() => startChat(a)}>
                 {a.name}
                 {a.workspace ? <span className="ml-2 text-xs text-muted-foreground">{a.workspace}</span> : null}
               </DropdownMenuItem>
             ))}
-            <DropdownMenuSeparator />
+            {projects.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Projects</DropdownMenuLabel>
+                {projects.map((p) => (
+                  <DropdownMenuItem key={`${p.workspace}/${p.slug}`} onClick={() => startProjectChat(p)}>
+                    {p.name}
+                    {p.workspace ? <span className="ml-2 text-xs text-muted-foreground">{p.workspace}</span> : null}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -123,7 +158,7 @@ export function ChatSessionsPanel({
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {sessions.map((s) => {
-            const who = agentName(s.agent_slug)
+            const label = sessionTargetLabel(agentName(s.agent_slug), s.project ?? '')
             return (
               <li key={s.id}>
                 <Link
@@ -135,7 +170,7 @@ export function ChatSessionsPanel({
                       {s.title?.trim() || 'Untitled chat'}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {who ? `with ${who}` : 'no agent'} · {s.workspace}
+                      {label} · {s.workspace}
                       {s.status !== 'active' ? ` · ${s.status}` : ''}
                     </div>
                   </div>

@@ -127,6 +127,7 @@ class ProjectSlugOut(StrictModel):
     name: str
     status: ProjectStatus
     visibility: ProjectVisibility
+    workspace: str | None
 
 
 class ProjectContextLatestOut(StrictModel):

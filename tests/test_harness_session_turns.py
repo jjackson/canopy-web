@@ -90,3 +90,12 @@ def test_check_constraint_rejects_agent_plus_session():
         Turn.objects.create(
             agent=agent, chat_session=s, origin=Turn.ORIGIN_API, idempotency_key="k"
         )
+
+
+def test_session_turn_target_falls_back_to_project():
+    ws, user = _ws_user()
+    s = Session.objects.create(workspace=ws, created_by=user, project="canopy-web")
+    turn, _ = services.enqueue_turn(
+        session=s, origin=Turn.ORIGIN_API, idempotency_key="proj1", prompt="hi"
+    )
+    assert turn.target == "canopy-web"  # not the session:<hex> marker

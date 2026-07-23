@@ -27,7 +27,7 @@ _ROLE_FOR_KIND = {
 }
 
 
-def create_session(*, workspace, created_by, agent=None, title: str = "", metadata: dict | None = None) -> Session:
+def create_session(*, workspace, created_by, agent=None, project: str = "", title: str = "", metadata: dict | None = None) -> Session:
     # The creator is the owner (SP3 multiplayer). Atomic so a session never exists
     # without its owner participant. Local imports avoid a cycle.
     from .models import SessionParticipant
@@ -35,7 +35,7 @@ def create_session(*, workspace, created_by, agent=None, title: str = "", metada
 
     with transaction.atomic():
         session = Session.objects.create(
-            workspace=workspace, agent=agent, created_by=created_by,
+            workspace=workspace, agent=agent, project=project, created_by=created_by,
             title=title, metadata=metadata or {},
         )
         ensure_participant(session, created_by, SessionParticipant.OWNER)
