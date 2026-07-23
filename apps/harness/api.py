@@ -20,6 +20,8 @@ from . import services
 from .models import AgentSchedule, Runner, Turn
 from .schedule_services import serialize_schedule
 from .schemas import (
+    BackfillSyncOut,
+    BackfillWriteOut,
     EmdashSessionOut,
     HeartbeatIn,
     RecordSessionIn,
@@ -34,6 +36,7 @@ from .schemas import (
     RunnerOut,
     ScheduleFireIn,
     ScheduleOut,
+    SessionBackfillIn,
     SessionReportOut,
     SessionStreamIn,
     StreamPostOut,
@@ -406,6 +409,41 @@ def post_session_stream(request: HttpRequest, runner_id: uuid.UUID, payload: Ses
         })
         n += 1
     return {"count": n}
+
+
+@router.get("/runners/{runner_id}/backfills", response=BackfillSyncOut)
+def list_backfills(request: HttpRequest, runner_id: uuid.UUID):
+    """Sessions this runner has been asked to ship full history for."""
+    from apps.canopy_sessions.models import RunnerBinding
+
+    runner = _runner_or_404(request, runner_id)
+    bindings = (
+        RunnerBinding.objects.select_related("session")
+        .filter(runner=runner, backfill_requested=True)
+    )
+    return {"backfills": [
+        {"session_id": str(b.session_id), "session_key": b.session_key,
+         "project": b.session.project}
+        for b in bindings
+    ]}
+
+
+@router.post("/runners/{runner_id}/session-backfill", response=BackfillWriteOut)
+def post_session_backfill(request: HttpRequest, runner_id: uuid.UUID, payload: SessionBackfillIn):
+    """The runner ships a session's full transcript; the server writes Message rows
+    once and clears the request. Runner-owned-binding gated."""
+    from apps.canopy_sessions import services as chat_services
+    from apps.canopy_sessions.models import RunnerBinding, Session
+
+    runner = _runner_or_404(request, runner_id)
+    binding = RunnerBinding.objects.filter(session_id=payload.session_id, runner=runner).first()
+    if binding is None:
+        raise HttpError(404, "session not bound to this runner")
+    session = Session.objects.get(pk=payload.session_id)
+    written = chat_services.write_backfill(session, [m.dict() for m in payload.messages])
+    binding.backfill_requested = False
+    binding.save(update_fields=["backfill_requested", "updated_at"])
+    return {"written": written}
 
 
 @router.post("/turns/", response={200: TurnOut, 201: TurnOut})

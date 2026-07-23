@@ -63,3 +63,8 @@ class SendOut(Schema):
 class StreamStateOut(Schema):
     """Whether the bound runner is being asked to stream this session live."""
     streaming: bool
+
+
+class BackfillStateOut(Schema):
+    """ready = already server-full; requested = runner asked; unavailable = offline."""
+    status: str

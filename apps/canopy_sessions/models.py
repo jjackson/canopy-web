@@ -186,6 +186,11 @@ class RunnerBinding(models.Model):
     # Liveness: a viewer is attached, so the bound runner should stream this
     # session's events up live. Toggled by the attach registry on the 0<->1 edge.
     stream_desired = models.BooleanField(default=False)
+    # On-demand history promotion: the client asked for full history on a local
+    # session with no Message rows. The bound runner ships its transcript, the
+    # server writes rows once, and clears this. (Server-full is then inferred from
+    # Message existence — no second flag.)
+    backfill_requested = models.BooleanField(default=False)
     tail = models.JSONField(default=list)          # last N conversational messages
     summary = models.TextField(blank=True, default="")
     status = models.CharField(max_length=40, blank=True, default="")

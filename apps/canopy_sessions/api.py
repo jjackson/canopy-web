@@ -21,6 +21,7 @@ from apps.workspaces import services as wsvc
 from . import services
 from .models import Session
 from .schemas import (
+    BackfillStateOut,
     MessageOut,
     MessagePageOut,
     SendIn,
@@ -157,3 +158,9 @@ def attach_session(request: HttpRequest, session_id: uuid.UUID):
 def detach_session(request: HttpRequest, session_id: uuid.UUID):
     session = _session_or_404(request, session_id)
     return {"streaming": services.detach_session(session)}
+
+
+@router.post("/{session_id}/backfill", response=BackfillStateOut, summary="Request full history from the runner")
+def request_backfill(request: HttpRequest, session_id: uuid.UUID):
+    session = _session_or_404(request, session_id)
+    return {"status": services.request_backfill(session)}

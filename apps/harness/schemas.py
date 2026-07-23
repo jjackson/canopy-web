@@ -414,6 +414,35 @@ class StreamPostOut(Schema):
 
 
 # ---------------------------------------------------------------------------
+# On-demand backfill — the runner-facing half (Plan 3 Task 6)
+# ---------------------------------------------------------------------------
+
+
+class BackfillDescriptorOut(Schema):
+    session_id: str
+    session_key: str
+    project: str
+
+
+class BackfillSyncOut(Schema):
+    backfills: list[BackfillDescriptorOut] = []
+
+
+class BackfillMessageIn(Schema):
+    role: str
+    text: str = ""
+
+
+class SessionBackfillIn(Schema):
+    session_id: uuid.UUID
+    messages: list[BackfillMessageIn] = []
+
+
+class BackfillWriteOut(Schema):
+    written: int
+
+
+# ---------------------------------------------------------------------------
 # Items — the supervisor's queue (the dual of Turn)
 # ---------------------------------------------------------------------------
 
