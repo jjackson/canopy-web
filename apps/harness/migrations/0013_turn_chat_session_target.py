@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('agents', '0010_agenttask_review_agenttask_score'),
-        ('chat', '0001_initial'),
+        ('canopy_sessions', '0001_initial'),
         ('harness', '0012_emdashsession'),
         ('workspaces', '0001_initial'),
     ]
@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='turn',
             name='chat_session',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='turns', to='chat.session'),
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='turns', to='canopy_sessions.session'),
         ),
         migrations.AddConstraint(
             model_name='turn',

@@ -98,7 +98,7 @@ INSTALLED_APPS = [
     "apps.system",
     "apps.harness",
     "apps.realtime",
-    "apps.chat",
+    "apps.canopy_sessions",
 ]
 
 MIDDLEWARE = [
@@ -304,7 +304,7 @@ VAPID_SUBJECT = env("VAPID_SUBJECT", default="mailto:jjackson@dimagi.com")
 AI_BACKEND = env("AI_BACKEND", default="api")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 
-# --- Chat execution (apps/chat, SP2b) ---
+# --- Chat execution (apps/canopy_sessions, SP2b) ---
 # When True (dev/test default), a chat "send" runs the stub executor INLINE so the
 # turn completes with no runner present. When False (production, connectlabs), the
 # send just enqueues the session turn and a session-capable cloud runner claims +

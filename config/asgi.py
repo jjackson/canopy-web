@@ -31,7 +31,7 @@ from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E40
 from starlette.applications import Starlette  # noqa: E402
 from starlette.routing import Mount  # noqa: E402
 
-from apps.chat.routing import websocket_urlpatterns as chat_ws_urlpatterns  # noqa: E402
+from apps.canopy_sessions.routing import websocket_urlpatterns as chat_ws_urlpatterns  # noqa: E402
 from apps.mcp.server import build_http_app  # noqa: E402
 from apps.realtime.channels_auth import RealtimeAuthMiddleware  # noqa: E402
 from apps.realtime.routing import websocket_urlpatterns as realtime_ws_urlpatterns  # noqa: E402

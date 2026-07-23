@@ -191,8 +191,8 @@ async def test_interject_frame_reaches_the_runner():
 
 
 async def test_send_message_interjects_the_running_runner():
-    from apps.chat.models import Session
-    from apps.chat.services import send_message
+    from apps.canopy_sessions.models import Session
+    from apps.canopy_sessions.services import send_message
 
     @database_sync_to_async
     def _running():

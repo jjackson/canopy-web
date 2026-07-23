@@ -19,6 +19,12 @@ class Session(models.Model):
     ACTIVE, ARCHIVED = "active", "archived"
     STATUS_CHOICES = [(ACTIVE, "Active"), (ARCHIVED, "Archived")]
 
+    # Provenance: was the session started in-app (web) or discovered on a
+    # runner (runner)? Independent of which runner backs it.
+    ORIGIN_WEB = "web"
+    ORIGIN_RUNNER = "runner"
+    ORIGIN_CHOICES = [(ORIGIN_WEB, "Web"), (ORIGIN_RUNNER, "Runner")]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # You chat WITH an agent (nullable — a session can be agent-agnostic).
     agent = models.ForeignKey(
@@ -37,6 +43,7 @@ class Session(models.Model):
     project = models.CharField(max_length=100, blank=True, default="")
     title = models.CharField(max_length=200, blank=True, default="")
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=ACTIVE)
+    origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES, default=ORIGIN_WEB)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+",
     )
@@ -101,7 +108,7 @@ class Message(models.Model):
 
 class SessionParticipant(models.Model):
     """Durable membership + role in a session (SP3 multiplayer). Presence — who is
-    here *right now* — is ephemeral and lives in the cache (apps/chat/presence.py);
+    here *right now* — is ephemeral and lives in the cache (apps/canopy_sessions/presence.py);
     this row is the authority for access and role."""
 
     OWNER, EDITOR, VIEWER = "owner", "editor", "viewer"
@@ -150,3 +157,31 @@ class Draft(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"draft:{self.session_id.hex[:8]}:v{self.version}"
+
+
+class RunnerBinding(models.Model):
+    """The live pointer from a Session to the runner currently backing it, plus
+    the cheap tail read-model. Absorbs the old harness.EmdashSession. Null when
+    nothing is live for the session."""
+
+    session = models.OneToOneField(
+        Session, on_delete=models.CASCADE, related_name="runner_binding"
+    )
+    runner = models.ForeignKey(
+        "harness.Runner", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="session_bindings",
+    )
+    # Engine-agnostic handle the runner uses to resume/inject (was emdash_task).
+    session_key = models.CharField(max_length=255)
+    tail = models.JSONField(default=list)          # last N conversational messages
+    summary = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=40, blank=True, default="")
+    last_interacted_at = models.DateTimeField(null=True, blank=True)
+    live_seen_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-last_interacted_at"]
+
+    def __str__(self) -> str:
+        return f"binding<{self.session_key}>"

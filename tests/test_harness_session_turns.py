@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError
 
 from apps.agents.models import Agent
-from apps.chat.models import Session
+from apps.canopy_sessions.models import Session
 from apps.harness import services
 from apps.harness.models import Turn
 from apps.workspaces.models import Workspace

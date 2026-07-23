@@ -156,7 +156,7 @@ from apps.harness.items_api import (  # noqa: E402
     items_router,
 )
 from apps.push.api import router as push_router  # noqa: E402
-from apps.chat.api import router as chat_router  # noqa: E402
+from apps.canopy_sessions.api import router as chat_router  # noqa: E402
 
 api.add_router("/projects", projects_router)
 api.add_router("/issues", issues_router)

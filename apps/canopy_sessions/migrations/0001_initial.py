@@ -46,7 +46,7 @@ class Migration(migrations.Migration):
                 ('plaintext', models.TextField(blank=True, default='')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('turn', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='messages', to='harness.turn')),
-                ('session', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='chat.session')),
+                ('session', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='canopy_sessions.session')),
             ],
             options={
                 'ordering': ['turn_index'],

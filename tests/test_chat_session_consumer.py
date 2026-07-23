@@ -11,9 +11,9 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser, User
 
 from apps.agents.models import Agent
-from apps.chat import services as chat
-from apps.chat.consumers import SessionConsumer
-from apps.chat.models import SessionParticipant
+from apps.canopy_sessions import services as chat
+from apps.canopy_sessions.consumers import SessionConsumer
+from apps.canopy_sessions.models import SessionParticipant
 from apps.harness.models import Turn
 from apps.workspaces.models import Workspace, WorkspaceMembership
 

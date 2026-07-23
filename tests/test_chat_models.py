@@ -7,7 +7,7 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 
 from apps.agents.models import Agent
-from apps.chat.models import Message, Session
+from apps.canopy_sessions.models import Message, Session
 from apps.workspaces.models import Workspace
 
 pytestmark = pytest.mark.django_db
@@ -20,7 +20,7 @@ def _ws_user():
 
 
 def test_chat_app_installed():
-    assert apps.is_installed("apps.chat")
+    assert apps.is_installed("apps.canopy_sessions")
 
 
 def test_session_and_message_roundtrip():
@@ -65,3 +65,9 @@ def test_session_project_field_and_xor_constraint():
     with pytest.raises(IntegrityError):
         with transaction.atomic():
             Session.objects.create(workspace=ws, created_by=user, agent=agent, project="canopy-web")
+
+
+def test_session_origin_defaults_web():
+    ws, user = _ws_user()
+    s = Session.objects.create(workspace=ws, title="t")
+    assert s.origin == Session.ORIGIN_WEB

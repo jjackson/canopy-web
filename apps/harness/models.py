@@ -26,6 +26,13 @@ class Runner(models.Model):
     EMDASH, CLOUD, REMOTE = "emdash", "cloud", "remote"
     KIND_CHOICES = [(EMDASH, "Emdash"), (CLOUD, "Cloud"), (REMOTE, "Remote")]
 
+    # Environment (first-class; the persistence tier derives from `location`).
+    LOCAL = "local"
+    CLOUD = "cloud"
+    LOCATION_CHOICES = [(LOCAL, "Local"), (CLOUD, "Cloud")]
+    ENGINE_EMDASH = "emdash"
+    ENGINE_CHOICES = [(ENGINE_EMDASH, "emdash")]
+
     ONLINE, STALE, DISCONNECTED, DEGRADED, RETIRED = (
         "online", "stale", "disconnected", "degraded", "retired",
     )
@@ -37,6 +44,14 @@ class Runner(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
     kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    location = models.CharField(
+        max_length=16, choices=LOCATION_CHOICES, default=LOCAL,
+        help_text="Where the runner runs. Drives the session persistence tier.",
+    )
+    engine = models.CharField(
+        max_length=32, choices=ENGINE_CHOICES, default=ENGINE_EMDASH,
+        help_text="The agent engine this runner drives (not assumed to be emdash).",
+    )
     capabilities = models.JSONField(default=dict, help_text='e.g. {"agents": ["echo"]}')
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=DISCONNECTED)
     status_note = models.CharField(max_length=255, blank=True, default="")
@@ -190,9 +205,9 @@ class Turn(models.Model):
     # agent) so two conversations with the same agent don't block each other.
     # Named chat_session (not session) — Turn already has a session_id CharField
     # (the emdash/claude live-session hint). String ref avoids an import cycle
-    # (chat.services imports harness.services).
+    # (canopy_sessions.services imports harness.services).
     chat_session = models.ForeignKey(
-        "chat.Session", on_delete=models.CASCADE, null=True, blank=True,
+        "canopy_sessions.Session", on_delete=models.CASCADE, null=True, blank=True,
         related_name="turns",
     )
     # Tenancy is DERIVED for agent turns (turn.agent.workspace) and session turns
@@ -436,38 +451,6 @@ class SessionLink(models.Model):
             and self.live_host
             and self.live_host == runner.host
         )
-
-
-class EmdashSession(models.Model):
-    """A snapshot of one OPEN emdash session, reported by the runner that can see it.
-
-    Ephemeral by design: the runner replaces its whole set every report tick, so this
-    is "what emdash shows right now on that laptop", not a durable record. The durable
-    half of continuing a session lives in SessionLink (the report upserts one too); this
-    model is purely the phone's read model (list + recent messages).
-    """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    runner = models.ForeignKey(Runner, on_delete=models.CASCADE, related_name="emdash_sessions")
-    # Tenant, first-class (defaults to dimagi at the reporting edge). PROTECT mirrors
-    # the project-turn workspace: a tenant with live sessions should not vanish under them.
-    workspace = models.ForeignKey(
-        "workspaces.Workspace", on_delete=models.PROTECT, related_name="emdash_sessions"
-    )
-    emdash_task = models.CharField(max_length=200, help_text="The emdash task NAME — what open_and_send targets.")
-    project = models.CharField(max_length=100, blank=True, default="")
-    status = models.CharField(max_length=40, blank=True, default="")
-    last_interacted_at = models.DateTimeField(null=True, blank=True)
-    recent_messages = models.JSONField(default=list, blank=True)  # Phase B fills this; [] in Phase A
-    reported_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-last_interacted_at"]
-        constraints = [
-            models.UniqueConstraint(fields=["runner", "emdash_task"], name="emdashsession_unique_per_runner_task"),
-        ]
-
-    def __str__(self) -> str:  # pragma: no cover
-        return f"emdash-session:{self.runner_id}:{self.emdash_task}"
 
 
 def _default_notify() -> list:
