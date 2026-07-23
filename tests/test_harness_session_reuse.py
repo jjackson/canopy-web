@@ -113,3 +113,33 @@ def test_project_reuse_is_workspace_scoped():
 def test_sessionlink_is_gone():
     import apps.harness.models as m
     assert not hasattr(m, "SessionLink")
+
+
+def test_report_does_not_clobber_agent_thread_reuse():
+    """The runner's ambient session-report sweep reports EVERY open emdash task
+    (agent- or project-driven, no filter) within ~10s of record_session binding
+    a phone/agent thread. replace_reported_sessions finds that SAME binding via
+    (runner, session_key) and must NOT stamp over its thread_key/host — doing so
+    orphans the agent thread's binding, so the next resolve_session forks a
+    duplicate session instead of reusing the live one (regression)."""
+    from types import SimpleNamespace
+
+    ws = _ws("w1")
+    a = _agent(ws)
+    r = Runner.objects.create(name="laptop", workspace=ws, host="jj@air", location=Runner.LOCAL)
+
+    # The agent chat/phone thread's binding is created first by record_session.
+    services.record_session(a, "phone:jj:echo", runner=r, emdash_task_id="echo-1234")
+
+    # The runner's ambient sweep then reports the SAME emdash task (no agent/
+    # project filter) as part of its ordinary open-session report.
+    reported = SimpleNamespace(
+        emdash_task="echo-1234", project="echo", status="in_progress",
+        last_interacted_at=None, recent_messages=[],
+    )
+    services.replace_reported_sessions(r, ws, [reported])
+
+    plan = services.resolve_session(a, "phone:jj:echo", r)
+    assert plan["reuse"] is True
+    assert plan["new_thread"] is False
+    assert plan["emdash_task_id"] == "echo-1234"

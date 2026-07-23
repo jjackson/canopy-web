@@ -682,9 +682,17 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
 
     The SAME binding this writes doubles as the reuse target for a phone-
     dispatched "Continue" turn (`origin_ref.thread_key = "emdash:<task>"`,
-    e.g. `OpenSessions.tsx`) — `thread_key` + `host` are stamped here so
-    `_binding_for_thread` finds this exact row. Pre-fold (SessionLink era) a
-    SECOND row existed purely for that lookup; now there is only ever one."""
+    e.g. `OpenSessions.tsx`) — `thread_key` + `host` are stamped ONLY when the
+    binding is freshly created here, so `_binding_for_thread` can find a
+    project-Continue row that has no other origin. Pre-fold (SessionLink era)
+    a SECOND row existed purely for that lookup; now there is only one row,
+    but an existing binding's durable identity (thread_key/host) is left
+    untouched on update — the runner's ambient sweep reports EVERY open
+    emdash task (agent- or project-driven, no filter), so a session already
+    bound by `record_session` to an agent/phone thread must not have that
+    binding's thread_key silently reassigned to `emdash:<task>` underneath it
+    (that would orphan the agent thread's reuse lookup and fork a duplicate
+    session on its next turn)."""
     from apps.canopy_sessions.models import RunnerBinding, Session
 
     # emdash task NAMES are not unique — two un-archived tasks can share a name
@@ -715,9 +723,13 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
                 title=s.emdash_task,
             )
             binding = RunnerBinding(session=session, session_key=s.emdash_task)
+            # thread_key/host are the binding's durable IDENTITY — stamp them
+            # only at creation. An existing binding may already be owned by an
+            # agent/phone thread (record_session), and this report loop must
+            # not steal it: see the docstring above.
+            binding.thread_key = f"emdash:{s.emdash_task}"
+            binding.host = runner.host
         binding.runner = runner
-        binding.host = runner.host
-        binding.thread_key = f"emdash:{s.emdash_task}"
         binding.status = s.status or ""
         binding.last_interacted_at = _aware(s.last_interacted_at)
         binding.live_seen_at = timezone.now()
