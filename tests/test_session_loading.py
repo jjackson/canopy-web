@@ -130,6 +130,23 @@ def test_scrollback_before_zero_is_empty():
     assert body["has_more_before"] is False
 
 
+def test_scrollback_limit_is_clamped():
+    c, s = _api_ctx(50)
+    # limit=-1 used to hit `queryset[:limit]` -> ValueError -> 500. Now clamped to 1.
+    body = c.get(f"/api/chat/{s.id}/messages?before=30&limit=-1").json()
+    assert len(body["messages"]) == 1
+    assert [m["turn_index"] for m in body["messages"]] == [29]
+    # limit=0 clamps up to the floor of 1, same as above.
+    body = c.get(f"/api/chat/{s.id}/messages?before=30&limit=0").json()
+    assert len(body["messages"]) == 1
+    # A huge limit is capped, not passed through uncapped to the ORM.
+    resp = c.get(f"/api/chat/{s.id}/messages?before=30&limit=100000")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["messages"]) <= 500
+    assert [m["turn_index"] for m in body["messages"]] == list(range(0, 30))
+
+
 def test_scrollback_tenant_gated():
     c, s = _api_ctx(5)
     other = User.objects.create_user("no", "no@dimagi.com", "pw")

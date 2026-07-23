@@ -15,6 +15,7 @@ from ninja.errors import HttpError
 
 from apps.agents import services as agent_services
 from apps.api.auth import session_auth
+from apps.api.pagination import clamp_limit
 from apps.workspaces import services as wsvc
 
 from . import services
@@ -120,7 +121,11 @@ def list_messages(
 ):
     # Cursor-based backward paging: the window of `limit` messages immediately
     # older than `before` (a turn_index), chronological, + whether older exists.
+    # Clamp here (not in services.messages_before, which stays a pure helper) —
+    # an unclamped `?limit=-1`/`0` hits `queryset[:limit]` and raises
+    # ValueError("Negative indexing is not supported"), surfacing as a 500.
     session = _session_or_404(request, session_id)
+    limit = clamp_limit(limit)
     rows, has_more = services.messages_before(session, before=before, limit=limit)
     return {
         "messages": [MessageOut.from_orm(m) for m in rows],
