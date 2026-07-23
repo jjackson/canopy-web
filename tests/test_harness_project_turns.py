@@ -126,68 +126,20 @@ def test_turn_out_still_serializes_an_agent_turn():
     assert out.target == "hal"
 
 
-# ---- SessionLink: the same agent-XOR-project treatment ----
-def test_two_session_links_for_the_same_project_thread_are_rejected():
-    """The NULL trap. Making `agent` nullable silently guts
-    UniqueConstraint(["agent", "thread_key"]) for project rows: their agent is
-    NULL, NULL never equals NULL, so the same (project, workspace, thread_key)
-    inserts twice. Every phone message would fork a new session — the exact
-    duplicate-session failure the reuse path exists to prevent.
-
-    Hence two PARTIAL constraints. This test fails against the naive one.
-    """
-    from apps.harness.models import SessionLink
-
-    ws = _ws()
-    SessionLink.objects.create(project="canopy-web", workspace=ws, thread_key="phone:jj:canopy-web")
-    with pytest.raises(IntegrityError):
-        SessionLink.objects.create(project="canopy-web", workspace=ws, thread_key="phone:jj:canopy-web")
-
-
-def test_the_same_thread_key_on_different_projects_is_fine():
-    from apps.harness.models import SessionLink
-
-    ws = _ws()
-    SessionLink.objects.create(project="canopy-web", workspace=ws, thread_key="phone:jj:t")
-    SessionLink.objects.create(project="ace-web", workspace=ws, thread_key="phone:jj:t")  # no raise
-
-
-def test_the_same_project_thread_in_different_workspaces_does_not_collide():
-    """Tenant isolation by construction. A guessed thread_key from another
-    workspace makes a SEPARATE row — it cannot find, and so cannot hijack, the
-    victim's link. This is why workspace is in the project link's identity."""
-    from apps.harness.models import SessionLink
-
-    a, b = _ws("canopy"), _ws("dimagi")
-    SessionLink.objects.create(project="canopy-web", workspace=a, thread_key="phone:jj:canopy-web")
-    SessionLink.objects.create(project="canopy-web", workspace=b, thread_key="phone:jj:canopy-web")  # no raise
-    assert SessionLink.objects.filter(project="canopy-web").count() == 2
-
-
-def test_a_project_session_link_must_carry_a_workspace():
-    """The unique constraint only dedupes when workspace is non-NULL, so a
-    workspace-less project link would silently allow the duplicates the whole
-    design prevents. The check constraint forbids it."""
-    from apps.harness.models import SessionLink
-
-    with pytest.raises(IntegrityError):
-        SessionLink.objects.create(project="canopy-web", thread_key="phone:jj:x")  # no workspace
-
-
-def test_agent_session_links_still_unique_per_thread():
-    from apps.harness.models import SessionLink
-
-    a = _agent()
-    SessionLink.objects.create(agent=a, thread_key="phone:jj:echo")
-    with pytest.raises(IntegrityError):
-        SessionLink.objects.create(agent=a, thread_key="phone:jj:echo")
-
-
-def test_a_session_link_cannot_target_both():
-    from apps.harness.models import SessionLink
-
-    with pytest.raises(IntegrityError):
-        SessionLink.objects.create(agent=_agent(), project="canopy-web", thread_key="t")
+# ---- RunnerBinding-backed reuse: the same agent-XOR-project treatment ----
+#
+# The direct SessionLink model-constraint tests that used to live here
+# (two-link-for-the-same-thread rejected, thread-key-collision-across-projects
+# is fine, workspace-scoped tenant isolation, the CheckConstraint pairs) tested
+# a DB shape that no longer exists: RunnerBinding has no unique-per-thread_key
+# constraint at all — thread identity is enforced at the SERVICE layer
+# (`_binding_for_thread` finds-before-creates), not by a DB constraint, because
+# a binding's real identity is its OneToOne `session`, not `thread_key`. Those
+# constraint tests are pruned rather than ported onto a schema they don't
+# apply to; the underlying BEHAVIOUR they protected (idempotent-per-thread,
+# workspace-scoped project reuse) is covered by
+# tests/test_harness_session_reuse.py::test_record_is_idempotent_per_thread and
+# ::test_project_reuse_is_workspace_scoped.
 
 
 def test_record_then_resolve_a_project_session_reuses_it():
@@ -240,8 +192,9 @@ def test_resolving_a_project_thread_in_the_wrong_workspace_finds_nothing():
 def test_recording_the_same_project_thread_twice_updates_one_link():
     """get_or_create must find the existing row, not trip the unique constraint
     or spawn a second link (which would mean a second session)."""
+    from apps.canopy_sessions.models import RunnerBinding
     from apps.harness import services
-    from apps.harness.models import Runner, SessionLink
+    from apps.harness.models import Runner
 
     ws = _ws()
     r = Runner.objects.create(name="jj-mbp", kind=Runner.EMDASH, host="jj-mac")
@@ -250,8 +203,8 @@ def test_recording_the_same_project_thread_twice_updates_one_link():
     services.record_session(None, "phone:jj:canopy-web", runner=r, project="canopy-web",
                             workspace=ws, emdash_task_id="task-2")
 
-    assert SessionLink.objects.filter(project="canopy-web").count() == 1
-    assert SessionLink.objects.get(project="canopy-web").live_emdash_task_id == "task-2"
+    assert RunnerBinding.objects.filter(session__project="canopy-web").count() == 1
+    assert RunnerBinding.objects.get(session__project="canopy-web").session_key == "task-2"
 
 
 def test_a_session_link_target_must_be_exactly_one_thing():

@@ -19,7 +19,8 @@ from canopy_runner.client import Client  # noqa: E402
 from canopy_runner.config import Config  # noqa: E402
 from canopy_runner.main import drain_one  # noqa: E402
 
-from apps.harness.models import Runner, SessionLink, Turn  # noqa: E402
+from apps.canopy_sessions.models import RunnerBinding  # noqa: E402
+from apps.harness.models import Runner, Turn  # noqa: E402
 from apps.tokens.models import PersonalToken  # noqa: E402
 from apps.workspaces.models import Workspace, WorkspaceMembership  # noqa: E402
 
@@ -76,14 +77,17 @@ def test_continue_reuses_the_exact_session_end_to_end(live_server, monkeypatch, 
     dc = DjangoClient()
     dc.force_login(user)
 
-    # The runner reported this open session (creates the display row + the continue SessionLink).
+    # The runner reported this open session (creates the display row, which
+    # doubles as the continue RunnerBinding — thread_key stamped by the report).
     r = dc.post(
         f"/api/harness/runners/{runner.id}/sessions",
         {"sessions": [{"emdash_task": "cloud-runner", "project": "canopy-web", "status": "in_progress"}]},
         content_type="application/json",
     )
     assert r.status_code == 200, r.content
-    assert SessionLink.objects.filter(project="canopy-web", thread_key="emdash:cloud-runner").exists()
+    assert RunnerBinding.objects.filter(
+        session__project="canopy-web", thread_key="emdash:cloud-runner"
+    ).exists()
 
     # The phone dispatched a Continue into that session.
     d = dc.post(
@@ -110,7 +114,7 @@ def test_continue_with_no_prior_session_creates_end_to_end(live_server, monkeypa
     dc = DjangoClient()
     dc.force_login(user)
 
-    # No report → no SessionLink for this thread. Dispatch a fresh Continue.
+    # No report → no RunnerBinding for this thread. Dispatch a fresh Continue.
     d = dc.post(
         "/api/harness/turns/",
         {"project": "canopy-web", "origin": "manual", "idempotency_key": "e2e-create",

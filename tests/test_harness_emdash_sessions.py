@@ -37,9 +37,8 @@ def _report(client, runner_id, sessions):
     )
 
 
-def test_report_is_wholesale_and_upserts_a_sessionlink_for_continue():
+def test_report_is_wholesale_and_upserts_a_binding_for_continue():
     from django.test import Client
-    from apps.harness.models import SessionLink
 
     jj = _user("jj")
     ws = _ws("dimagi", jj)
@@ -57,11 +56,11 @@ def test_report_is_wholesale_and_upserts_a_sessionlink_for_continue():
     assert RunnerBinding.objects.filter(runner=runner).count() == 2
     binding = RunnerBinding.objects.get(runner=runner, session_key="cloud-runner")
     assert binding.session.origin == Session.ORIGIN_RUNNER
-    # The continue substrate: a SessionLink per session, keyed emdash:{task}.
-    link = SessionLink.objects.get(project="canopy-web", thread_key="emdash:cloud-runner")
-    assert link.live_emdash_task_id == "cloud-runner"
-    assert link.live_runner_id == runner.id
-    assert link.workspace_id == "dimagi"
+    # The RunnerBinding IS the continue substrate now (SessionLink fold, Plan 3
+    # Task 2): this SAME row carries thread_key="emdash:<task>" + host, so a
+    # phone-dispatched Continue resolves onto it directly — no second row.
+    assert binding.thread_key == "emdash:cloud-runner"
+    assert binding.host == runner.host
 
     # A re-report with one session gone clears its live binding (durable, not deleted).
     r2 = _report(c, runner.id, [

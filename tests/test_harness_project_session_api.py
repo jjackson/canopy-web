@@ -11,7 +11,8 @@ from django.contrib.auth.models import User
 from django.test import Client
 from django.utils import timezone
 
-from apps.harness.models import Runner, SessionLink
+from apps.canopy_sessions.models import RunnerBinding
+from apps.harness.models import Runner
 from apps.workspaces.models import Workspace, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
@@ -54,8 +55,8 @@ def test_member_records_and_resolves_a_project_session(owner_client, runner, can
     )
     assert rec.status_code == 200, rec.content
 
-    link = SessionLink.objects.get(project="canopy-web")
-    assert link.workspace_id == canopy.slug  # stamped from the caller's tenant
+    binding = RunnerBinding.objects.get(session__project="canopy-web")
+    assert binding.session.workspace_id == canopy.slug  # stamped from the caller's tenant
 
     res = owner_client.post(
         f"/api/harness/runners/{runner.id}/resolve-session",
@@ -83,7 +84,7 @@ def test_a_caller_with_no_workspace_cannot_record_a_project_session(owner):
         content_type="application/json",
     )
     assert resp.status_code == 404
-    assert not SessionLink.objects.filter(project="canopy-web").exists()
+    assert not RunnerBinding.objects.filter(session__project="canopy-web").exists()
 
 
 def test_another_tenant_cannot_resolve_a_project_thread_it_guesses(owner_client, runner, canopy):

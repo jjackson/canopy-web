@@ -1,0 +1,115 @@
+"""RunnerBinding as the reuse authority (SessionLink fold, Plan 3 Task 2).
+
+Replaces tests/test_harness_session_link.py: SessionLink is gone, and its
+DB-constraint tests (unique-per-agent-thread, the agent-XOR-project
+CheckConstraint) tested a schema RunnerBinding does not have — a binding's
+identity is its OneToOne `session`, not a unique `thread_key` column, so
+"one binding per thread" is a SERVICE-layer guarantee (`_binding_for_thread`
+finds-before-creates) exercised here through resolve_session/record_session,
+not a constraint test. See services._binding_for_thread / _thread_session.
+"""
+from __future__ import annotations
+
+import pytest
+
+from apps.harness import services
+from apps.harness.models import Runner
+from apps.canopy_sessions.models import RunnerBinding, Session
+from apps.workspaces.models import Workspace
+
+pytestmark = pytest.mark.django_db
+
+
+def _user(name="jj"):
+    from django.contrib.auth import get_user_model
+
+    return get_user_model().objects.create_user(username=name, email=f"{name}@dimagi.com")
+
+
+def _ws(slug="w1"):
+    return Workspace.objects.create(slug=slug, display_name=slug.upper(), created_by=_user(f"u-{slug}"))
+
+
+def _agent(ws, slug="echo"):
+    from apps.agents.models import Agent
+
+    return Agent.objects.create(slug=slug, name=slug.title(), workspace=ws)
+
+
+def test_resolve_new_thread_when_no_binding():
+    ws = _ws("w1")
+    a = _agent(ws)
+    r = Runner.objects.create(name="laptop", workspace=ws, host="jj@air", location=Runner.LOCAL)
+    plan = services.resolve_session(a, "phone:jj:echo", r)
+    assert plan["new_thread"] is True
+    assert plan["reuse"] is False
+    assert plan["link_id"] is None
+
+
+def test_record_then_resolve_reuses_for_same_runner_host():
+    ws = _ws("w1")
+    a = _agent(ws)
+    r = Runner.objects.create(name="laptop", workspace=ws, host="jj@air", location=Runner.LOCAL)
+    services.record_session(a, "phone:jj:echo", runner=r,
+                            emdash_task_id="echo-1234", summary="rolling ctx",
+                            agent_task_ext_id="T-9")
+    plan = services.resolve_session(a, "phone:jj:echo", r)
+    assert plan["reuse"] is True
+    assert plan["emdash_task_id"] == "echo-1234"
+    assert plan["summary"] == "rolling ctx"
+    assert plan["agent_task_ext_id"] == "T-9"
+    # exactly one durable Session was created for the thread
+    assert Session.objects.filter(agent=a, origin=Session.ORIGIN_RUNNER).count() == 1
+
+
+def test_record_is_idempotent_per_thread():
+    ws = _ws("w1")
+    a = _agent(ws)
+    r = Runner.objects.create(name="laptop", workspace=ws, host="jj@air", location=Runner.LOCAL)
+    services.record_session(a, "phone:jj:echo", runner=r, emdash_task_id="echo-1")
+    services.record_session(a, "phone:jj:echo", runner=r, emdash_task_id="echo-2")
+    assert Session.objects.filter(agent=a).count() == 1
+    b = RunnerBinding.objects.get(thread_key="phone:jj:echo")
+    assert b.session_key == "echo-2"  # re-pointed at the newest live task
+
+
+def test_record_binds_existing_chat_session_by_uuid_thread_key():
+    ws = _ws("w1")
+    a = _agent(ws)
+    r = Runner.objects.create(name="laptop", workspace=ws, host="jj@air", location=Runner.LOCAL)
+    chat = Session.objects.create(workspace=ws, agent=a, origin=Session.ORIGIN_WEB, title="web chat")
+    services.record_session(a, str(chat.id), runner=r, emdash_task_id="echo-9")
+    # binds the EXISTING web session, does not fork a new runner session
+    assert Session.objects.filter(agent=a).count() == 1
+    b = RunnerBinding.objects.get(session=chat)
+    assert b.session_key == "echo-9"
+    assert b.thread_key == str(chat.id)
+
+
+def test_reuse_denied_for_different_host():
+    ws = _ws("w1")
+    a = _agent(ws)
+    r = Runner.objects.create(name="laptop", workspace=ws, host="jj@air", location=Runner.LOCAL)
+    services.record_session(a, "phone:jj:echo", runner=r, emdash_task_id="echo-1")
+    r.host = "jj@studio"  # other macOS account claims the same runner id
+    plan = services.resolve_session(a, "phone:jj:echo", r)
+    assert plan["reuse"] is False
+    assert plan["emdash_task_id"] == "echo-1"  # hint still returned for rehydration context
+
+
+def test_project_reuse_is_workspace_scoped():
+    ws = _ws("w1")
+    ws2 = _ws("w2")
+    r = Runner.objects.create(name="laptop", workspace=ws, host="jj@air", location=Runner.LOCAL)
+    services.record_session(None, "phone:jj:canopy-web", runner=r, project="canopy-web",
+                            workspace=ws, emdash_task_id="cw-1")
+    # a guessed thread_key from another workspace must NOT hijack the link
+    other = services.resolve_session(None, "phone:jj:canopy-web", r, project="canopy-web", workspace=ws2)
+    assert other["new_thread"] is True
+    same = services.resolve_session(None, "phone:jj:canopy-web", r, project="canopy-web", workspace=ws)
+    assert same["reuse"] is True
+
+
+def test_sessionlink_is_gone():
+    import apps.harness.models as m
+    assert not hasattr(m, "SessionLink")
