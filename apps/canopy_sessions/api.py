@@ -15,11 +15,20 @@ from ninja.errors import HttpError
 
 from apps.agents import services as agent_services
 from apps.api.auth import session_auth
+from apps.api.pagination import clamp_limit
 from apps.workspaces import services as wsvc
 
 from . import services
 from .models import Session
-from .schemas import MessageOut, SendIn, SendOut, SessionCreateIn, SessionDetailOut, SessionOut
+from .schemas import (
+    MessageOut,
+    MessagePageOut,
+    SendIn,
+    SendOut,
+    SessionCreateIn,
+    SessionDetailOut,
+    SessionOut,
+)
 
 router = Router(auth=session_auth, tags=["chat"])
 
@@ -82,14 +91,46 @@ def list_sessions(request: HttpRequest):
     return [_out(s) for s in rows]
 
 
-@router.get("/{session_id}", response=SessionDetailOut, summary="Get a session + transcript")
-def get_session(request: HttpRequest, session_id: uuid.UUID):
+@router.get("/{session_id}", response=SessionDetailOut, summary="Get a session + transcript tail")
+def get_session(request: HttpRequest, session_id: uuid.UUID, full: bool = False):
+    # Tail-first: never ship the whole transcript by default. The client gets the
+    # last SESSION_TAIL_DEFAULT messages + a backward cursor; ?full=true is the
+    # explicit escape hatch. Scroll-back pages via GET /{id}/messages?before=.
     session = _session_or_404(request, session_id)
     data = _out(session)
-    data["messages"] = [
-        MessageOut.from_orm(m) for m in session.messages.order_by("turn_index")
-    ]
+    if full:
+        rows, has_more, oldest = services.all_messages(session)
+    else:
+        rows, has_more, oldest = services.tail_messages(session)
+    data["messages"] = [MessageOut.from_orm(m) for m in rows]
+    data["has_more_before"] = has_more
+    data["oldest_loaded_turn_index"] = oldest
     return data
+
+
+@router.get(
+    "/{session_id}/messages",
+    response=MessagePageOut,
+    summary="Load earlier transcript (scroll-back)",
+)
+def list_messages(
+    request: HttpRequest,
+    session_id: uuid.UUID,
+    before: int,
+    limit: int = services.SCROLLBACK_PAGE_DEFAULT,
+):
+    # Cursor-based backward paging: the window of `limit` messages immediately
+    # older than `before` (a turn_index), chronological, + whether older exists.
+    # Clamp here (not in services.messages_before, which stays a pure helper) —
+    # an unclamped `?limit=-1`/`0` hits `queryset[:limit]` and raises
+    # ValueError("Negative indexing is not supported"), surfacing as a 500.
+    session = _session_or_404(request, session_id)
+    limit = clamp_limit(limit)
+    rows, has_more = services.messages_before(session, before=before, limit=limit)
+    return {
+        "messages": [MessageOut.from_orm(m) for m in rows],
+        "has_more_before": has_more,
+    }
 
 
 @router.post("/{session_id}/send", response=SendOut, summary="Send a message")

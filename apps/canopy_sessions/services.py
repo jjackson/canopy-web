@@ -26,6 +26,56 @@ _ROLE_FOR_KIND = {
     "tool_result": Message.TOOL_RESULT,
 }
 
+# --- Tail-first loading contract (Plan 2) ---------------------------------
+# The server never ships a full transcript by default. SESSION_TAIL_DEFAULT is
+# the single home for the tail size, shared by the REST handler and the WS
+# snapshot so the two can't drift; SCROLLBACK_PAGE_DEFAULT is the "Load earlier"
+# page size (aligned with apps/realtime's cursor-paging conventions).
+SESSION_TAIL_DEFAULT = 20
+SCROLLBACK_PAGE_DEFAULT = 50
+
+
+def tail_messages(session: Session, limit: int | None = None):
+    """The last `limit` messages, chronological, plus a backward cursor.
+
+    Returns (messages, has_more_before, oldest_loaded_turn_index). This is what
+    a client gets by default — enough to continue, never the whole history.
+    """
+    limit = SESSION_TAIL_DEFAULT if limit is None else limit
+    newest_first = list(session.messages.order_by("-turn_index")[:limit])
+    messages = list(reversed(newest_first))
+    if not messages:
+        return [], False, None
+    oldest = messages[0].turn_index
+    has_more = session.messages.filter(turn_index__lt=oldest).exists()
+    return messages, has_more, oldest
+
+
+def messages_before(session: Session, before: int, limit: int | None = None):
+    """The window of up to `limit` messages immediately older than `before`
+    (exclusive), chronological, plus whether anything older still exists.
+
+    Returns (messages, has_more_before). Drives the scroll-back endpoint.
+    """
+    limit = SCROLLBACK_PAGE_DEFAULT if limit is None else limit
+    newest_first = list(
+        session.messages.filter(turn_index__lt=before).order_by("-turn_index")[:limit]
+    )
+    messages = list(reversed(newest_first))
+    if not messages:
+        return [], False
+    has_more = session.messages.filter(turn_index__lt=messages[0].turn_index).exists()
+    return messages, has_more
+
+
+def all_messages(session: Session):
+    """Every message, chronological — the explicit "load full session" escape
+    hatch. Returns (messages, has_more_before=False, oldest_turn_index)."""
+    messages = list(session.messages.order_by("turn_index"))
+    if not messages:
+        return [], False, None
+    return messages, False, messages[0].turn_index
+
 
 def create_session(*, workspace, created_by, agent=None, project: str = "", title: str = "", metadata: dict | None = None) -> Session:
     # The creator is the owner (SP3 multiplayer). Atomic so a session never exists
