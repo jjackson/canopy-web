@@ -251,15 +251,10 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         # SESSION_TAIL_DEFAULT the REST load uses), never the head. Scroll-back
         # for earlier history is REST (GET /{id}/messages?before=); Plan 4 wires
         # it into the panel. The session.state frame shape is otherwise frozen.
-        messages, _has_more, _oldest = chat_services.tail_messages(self.session)
-        if not messages:
-            # A local runner session has NO Message rows until a backfill lands, but
-            # the binding carries a rolling tail. ChatPage's transcript comes from THIS
-            # snapshot (getSession only supplies meta.title), so without this the panel
-            # opened blank on every discovered session. TailMessage quacks like a
-            # Message row, so message_dto below needs no special-casing.
-            binding = getattr(self.session, "runner_binding", None)
-            messages = chat_services.tail_as_messages(self.session, binding)
+        # ONE policy for both transports (services.visible_transcript): tail-first,
+        # falling back to the binding tail for a local session with no Message rows.
+        # REST and this snapshot MUST agree — see tests/test_transcript_parity.py.
+        messages, _has_more, _oldest = chat_services.visible_transcript(self.session)
         return {
             "event": "session.state",
             "data": serializers.session_state_dto(
