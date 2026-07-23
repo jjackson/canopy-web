@@ -64,3 +64,20 @@ def test_non_member_gets_404(client):
     foreign = Session.objects.create(workspace=ws2, created_by=other)
     r = client.get(f"/api/chat/{foreign.id}")
     assert r.status_code == 404
+
+
+def test_create_project_session(client):
+    r = client.post("/api/chat/", data={"project": "canopy-web"}, content_type="application/json")
+    assert r.status_code == 200, r.content
+    body = r.json()
+    assert body["agent_slug"] is None
+    assert body["project"] == "canopy-web"
+
+
+def test_create_rejects_agent_and_project_together(client):
+    r = client.post(
+        "/api/chat/",
+        data={"agent_slug": "echo", "project": "canopy-web"},
+        content_type="application/json",
+    )
+    assert r.status_code == 422, r.content

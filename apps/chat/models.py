@@ -30,6 +30,11 @@ class Session(models.Model):
     workspace = models.ForeignKey(
         "workspaces.Workspace", on_delete=models.PROTECT, related_name="chat_sessions",
     )
+    # The repo checkout this session drives (the emdash project name), for an
+    # agentless PROJECT chat. A bare string mirroring Turn.project — NOT a FK to
+    # projects.Project, so this framework-tier app never imports product code. A
+    # session targets an agent XOR a project (or neither).
+    project = models.CharField(max_length=100, blank=True, default="")
     title = models.CharField(max_length=200, blank=True, default="")
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=ACTIVE)
     created_by = models.ForeignKey(
@@ -45,6 +50,13 @@ class Session(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                # Never both — you chat WITH an agent, or IN a project, not both.
+                condition=models.Q(agent__isnull=True) | models.Q(project=""),
+                name="chat_session_not_agent_and_project",
+            ),
+        ]
 
     def __str__(self) -> str:  # pragma: no cover
         return f"session:{self.id.hex[:8]}:{self.status}"

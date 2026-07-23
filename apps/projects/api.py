@@ -300,7 +300,7 @@ def get_project_slugs(request: HttpRequest) -> list[ProjectSlugOut]:
         _scoped_project_queryset(request)
         .filter(status="active")
         .order_by("slug")
-        .values("slug", "name", "status", "visibility")
+        .values("slug", "name", "status", "visibility", "workspace")
     )
     return [ProjectSlugOut.model_validate(p) for p in projects]
 

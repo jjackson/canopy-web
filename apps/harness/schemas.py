@@ -200,9 +200,25 @@ class TurnOut(Schema):
         return cs.agent.slug if cs and cs.agent_id else None
 
     @staticmethod
+    def resolve_project(obj) -> str:
+        # A project turn stores its repo on the column; a PROJECT chat session
+        # carries it on the session (the Turn.project column stays empty — the
+        # agent XOR project XOR session constraint forbids setting it there).
+        if obj.project:
+            return obj.project
+        cs = getattr(obj, "chat_session", None)
+        return cs.project if cs is not None else ""
+
+    @staticmethod
     def resolve_workspace_slug(obj) -> str | None:
-        # Agent turns derive tenancy via the agent; project turns store their own.
-        return obj.agent.workspace_id if obj.agent_id else obj.workspace_id
+        # Agent turns derive tenancy via the agent; project turns store their own;
+        # a session turn (agent-backed or project-backed) derives it from the session.
+        if obj.agent_id:
+            return obj.agent.workspace_id
+        cs = getattr(obj, "chat_session", None)
+        if cs is not None:
+            return cs.workspace_id
+        return obj.workspace_id
 
     @staticmethod
     def resolve_claimed_by_name(obj) -> str | None:
