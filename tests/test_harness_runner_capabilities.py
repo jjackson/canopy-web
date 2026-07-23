@@ -1,7 +1,7 @@
 """PATCH /api/harness/runners/{id} — update a paired runner's capabilities.
 
 The only prior way to add `projects` to a runner was to re-pair, which mints a
-new runner and orphans the old one's SessionLinks. This lets a runner opt into
+new runner and orphans the old one's RunnerBindings. This lets a runner opt into
 driving repos in place.
 """
 from __future__ import annotations

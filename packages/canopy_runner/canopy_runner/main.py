@@ -25,7 +25,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import emdash, transcript
+from . import chat_bridge, emdash, transcript
 from .client import Client, ClientError
 from .tail import TailReader
 from .config import Config
@@ -187,6 +187,13 @@ def _claim_and_execute(cfg: Config, client: Client, paused: set) -> str:
 # signal that makes the phone reflect live emdash activity (see _session_changed).
 _tail_readers: dict[str, "TailReader | None"] = {}
 
+# Per-session live-stream tailers, keyed by session_id — active only while a viewer
+# is attached (stream_desired on the server). Distinct from _tail_readers (the idle
+# tail read-model that fills RunnerBinding.tail); this is the live push to attached
+# viewers. Each entry: {"reader": TailReader|None, "seq": int, "session_key": str,
+# "project": str}.
+_stream_readers: dict[str, dict] = {}
+
 
 def _session_changed(cfg: Config, sessions: list[dict]) -> bool:
     """True if any SHOWN session's transcript grew, or a new session appeared, since
@@ -249,6 +256,84 @@ def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -
         logger.debug("session report failed (non-fatal)", exc_info=True)
 
 
+def _sync_session_streams(cfg: Config, client: Client) -> None:
+    """Tail each session a viewer is watching and post new assistant text up as live
+    events. Change-driven off TailReader (only newly-appended bytes), so it stays
+    cheap. Best-effort — a client hiccup never breaks a tick."""
+    try:
+        streams = client.sync_streams(cfg.runner_id)
+    except Exception:  # noqa: BLE001
+        logger.debug("stream sync failed (non-fatal)", exc_info=True)
+        return
+    desired = {s["session_id"]: s for s in streams if s.get("session_id")}
+    home = Path.home()
+    claude_home = home / ".claude" / "projects"
+
+    for sid, s in desired.items():
+        if sid in _stream_readers:
+            continue
+        path = transcript.resolve_transcript(
+            s.get("project") or "", s.get("session_key") or "", home=home, claude_home=claude_home
+        )
+        reader = TailReader(str(path)) if path else None
+        if reader is not None:
+            reader.seek_end()  # stream only NEW activity; history is loaded elsewhere
+        _stream_readers[sid] = {
+            "reader": reader, "seq": 0,
+            "session_key": s.get("session_key") or "", "project": s.get("project") or "",
+        }
+
+    for sid in list(_stream_readers):  # drop tailers for sessions no longer watched
+        if sid not in desired:
+            _stream_readers.pop(sid, None)
+
+    for sid, st in _stream_readers.items():
+        reader = st["reader"]
+        if reader is None:  # transcript wasn't there yet — retry resolving it
+            path = transcript.resolve_transcript(
+                st["project"], st["session_key"], home=home, claude_home=claude_home
+            )
+            if path:
+                reader = TailReader(str(path)); reader.seek_end(); st["reader"] = reader
+            continue
+        records = reader.read_new()
+        if not records:
+            continue
+        events = []
+        for text in chat_bridge.new_assistant_texts(records, 0):
+            events.append({"kind": "assistant", "seq": st["seq"], "payload": {"text": text}})
+            st["seq"] += 1
+        if events:
+            try:
+                client.post_session_stream(cfg.runner_id, sid, events)
+            except Exception:  # noqa: BLE001
+                logger.debug("stream post failed (non-fatal)", exc_info=True)
+
+
+def _drain_backfills(cfg: Config, client: Client) -> None:
+    """Ship full transcript history for each session the server asked to backfill.
+    Best-effort — a missing transcript or a client hiccup is skipped, not fatal."""
+    try:
+        backfills = client.sync_backfills(cfg.runner_id)
+    except Exception:  # noqa: BLE001
+        logger.debug("backfill sync failed (non-fatal)", exc_info=True)
+        return
+    home = Path.home()
+    claude_home = home / ".claude" / "projects"
+    for b in backfills:
+        sid = b.get("session_id")
+        path = transcript.resolve_transcript(
+            b.get("project") or "", b.get("session_key") or "", home=home, claude_home=claude_home
+        )
+        if not (sid and path):
+            continue  # transcript not resolvable -> leave it; server keeps showing the tail
+        messages = chat_bridge.transcript_messages(chat_bridge.read_records(path))
+        try:
+            client.post_session_backfill(cfg.runner_id, sid, messages)
+        except Exception:  # noqa: BLE001
+            logger.debug("backfill post failed (non-fatal)", exc_info=True)
+
+
 def run_once(cfg: Config, client: Client) -> str:
     """One loop iteration: preflight emdash's CDP health → heartbeat (with macOS host, for
     reuse ownership) → claim one turn → route it to an emdash session (reuse or create).
@@ -296,6 +381,8 @@ def run_once(cfg: Config, client: Client) -> str:
             _cdp_down_signalled = True
 
     _maybe_report_sessions(cfg, client)
+    _sync_session_streams(cfg, client)
+    _drain_backfills(cfg, client)
     paused = _paused_agents(cfg)
     # Inbound triggers run whether or not CDP is up, so inbound work still ENQUEUES while
     # emdash is down (it just waits, queued, until emdash is back). Only the claim is gated.

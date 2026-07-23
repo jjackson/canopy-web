@@ -26,7 +26,6 @@ from .models import (
     AgentSchedule,
     Item,
     Runner,
-    SessionLink,
     Turn,
     TurnEvent,
 )
@@ -540,32 +539,55 @@ def release_stale_occurrence_turns_all(*, now: dt.datetime | None = None) -> int
 
 
 # --------------------------------------------------------------------------------------
-# SessionLink — durable thread↔session mapping (cross-account); see models.SessionLink
+# RunnerBinding reuse — durable thread↔session mapping (cross-account); see
+# apps.canopy_sessions.models.RunnerBinding
 # --------------------------------------------------------------------------------------
 
-def _link_target(agent, project: str, workspace=None) -> dict:
-    """Lookup kwargs for a link's target, enforcing the agent-XOR-project rule in
-    Python as well as in the DB.
+def _binding_for_thread(agent, project, workspace, thread_key):
+    """The RunnerBinding for a (target, thread_key), or None. Enforces the
+    agent-XOR-project rule the way _link_target used to: an agent thread matches on
+    session.agent and ignores workspace (derived via the agent); a project thread
+    matches on session.project AND session.workspace (its identity, so a guessed
+    thread_key from another tenant lands on its own row, never the victim's)."""
+    from apps.canopy_sessions.models import RunnerBinding
 
-    Both agent/project keys are always present and one is always the empty/NULL
-    sentinel. That is deliberate: `filter(agent=a)` alone would match a project row
-    whose agent is NULL only by accident of the query, and `get_or_create(agent=
-    None)` would otherwise omit `project` and create a row the CheckConstraint
-    rejects.
-
-    For a PROJECT, `workspace` is part of the IDENTITY, not just a stored field:
-    it goes in the get_or_create/filter lookup so a link is scoped to the caller's
-    tenant by construction. Without it, one runner's get_or_create on a guessed
-    thread_key would FIND (and hijack) another tenant's link. With it, the guess
-    lands in the guesser's own workspace and never touches the victim's row.
-    """
     if bool(agent) == bool(project):
-        raise ValueError("a session link targets an agent XOR a project")
+        raise ValueError("a session reuse lookup targets an agent XOR a project")
+    qs = RunnerBinding.objects.select_related("session", "runner").filter(thread_key=thread_key)
     if agent:
-        return {"agent": agent, "project": ""}
+        return qs.filter(session__agent=agent).first()
     if workspace is None:
-        raise ValueError("a project session link needs a workspace")
-    return {"agent": None, "project": project, "workspace": workspace}
+        raise ValueError("a project session reuse lookup needs a workspace")
+    return qs.filter(
+        session__agent__isnull=True, session__project=project, session__workspace=workspace
+    ).first()
+
+
+def _thread_session(agent, project, workspace, thread_key):
+    """Find-or-create the durable Session a thread maps to. A chat thread_key is
+    str(session.id) — bind that exact existing Session. Otherwise create a durable
+    origin=runner Session for the phone/agent/project thread.
+
+    Session.workspace is required (not nullable) but Agent.workspace IS nullable
+    ("migration safety" per apps/agents/models.py) — an agent thread with no
+    workspace of its own falls back to the tenancy default, mirroring every other
+    app's `wsvc.ensure_default_workspace()` fallback (apps/projects/api.py et al),
+    rather than crashing the record-session call with a NOT NULL violation."""
+    from apps.canopy_sessions.models import Session
+
+    try:
+        existing = Session.objects.filter(pk=uuid.UUID(str(thread_key))).first()
+    except (ValueError, TypeError):
+        existing = None
+    if existing is not None:
+        return existing
+    return Session.objects.create(
+        agent=agent,
+        project=project or "",
+        workspace=workspace or (agent.workspace if agent else None) or wsvc.ensure_default_workspace(),
+        origin=Session.ORIGIN_RUNNER,
+        title=thread_key[:200],
+    )
 
 
 def resolve_session(agent, thread_key: str, runner: Runner, *, project: str = "", workspace=None) -> dict:
@@ -579,22 +601,21 @@ def resolve_session(agent, thread_key: str, runner: Runner, *, project: str = ""
       - emdash_task_id: the task to reuse (only meaningful when reuse=True).
       - agent_task_ext_id / summary: durable context for rehydration when reuse=False
         (fresh session under this account) or for a brand-new thread.
-      - link_id: the SessionLink id (None if no link exists yet — brand-new thread).
+      - link_id: the RunnerBinding's session id (None if no binding exists yet — brand-new
+        thread).
 
     Never assumes the live session is reachable: reuse is only proposed when the hint's
     runner + macOS host match the caller (the two-account failover invariant)."""
-    link = SessionLink.objects.filter(
-        thread_key=thread_key, **_link_target(agent, project, workspace)
-    ).first()
-    if link is None:
+    binding = _binding_for_thread(agent, project, workspace, thread_key)
+    if binding is None:
         return {"reuse": False, "emdash_task_id": "", "agent_task_ext_id": "",
                 "summary": "", "link_id": None, "new_thread": True}
     return {
-        "reuse": link.reusable_by(runner),
-        "emdash_task_id": link.live_emdash_task_id,
-        "agent_task_ext_id": link.agent_task_ext_id,
-        "summary": link.summary,
-        "link_id": str(link.id),
+        "reuse": binding.reusable_by(runner),
+        "emdash_task_id": binding.session_key,
+        "agent_task_ext_id": binding.agent_task_ext_id,
+        "summary": binding.summary,
+        "link_id": str(binding.session_id),
         "new_thread": False,
     }
 
@@ -619,44 +640,59 @@ def record_session(
     project: str = "",
     workspace=None,
     emdash_task_id: str = "",
-    session_id: str = "",
+    session_id: str = "",  # accepted for wire-compat; the binding keys on session_key
     agent_task_ext_id: str | None = None,
     summary: str | None = None,
-) -> SessionLink:
-    """Upsert the durable link and re-point its live-session hint at THIS runner/host.
+):
+    """Upsert the thread's durable Session + RunnerBinding and re-point the live-session
+    hint at THIS runner/host. Only overwrites agent_task_ext_id/summary when passed,
+    preserving accumulated context. The API caller has already gated the runner's
+    pairer against `workspace` — this stores, it does not authorize."""
+    from apps.canopy_sessions.models import RunnerBinding
 
-    Called after a session is created or reused so the next inbound event on the thread
-    resolves to the right session (or, from the other account, knows to rehydrate). Only
-    overwrites agent_task_ext_id/summary when a value is passed — otherwise preserves the
-    durable context accumulated so far.
-
-    `workspace` stamps a PROJECT link's tenant (agent links derive it via the
-    agent). The API caller must have already gated the runner's pairer against
-    this workspace — the service stores, it does not authorize."""
-    # workspace is part of a project link's identity (see _link_target), so it is
-    # set by get_or_create's lookup — no separate assignment needed.
     with transaction.atomic():
-        link, _ = SessionLink.objects.select_for_update().get_or_create(
-            thread_key=thread_key, **_link_target(agent, project, workspace)
-        )
-        link.live_runner = runner
-        link.live_host = runner.host
-        link.live_emdash_task_id = emdash_task_id
-        link.live_session_id = session_id
-        link.live_seen_at = timezone.now()
+        binding = _binding_for_thread(agent, project, workspace, thread_key)
+        if binding is None:
+            session = _thread_session(agent, project, workspace, thread_key)
+            binding = (
+                RunnerBinding.objects.select_for_update()
+                .filter(session=session)
+                .first()
+            )
+            if binding is None:
+                binding = RunnerBinding(session=session)
+        binding.thread_key = thread_key
+        binding.runner = runner
+        binding.host = runner.host
+        binding.session_key = emdash_task_id
+        binding.live_seen_at = timezone.now()
         if agent_task_ext_id is not None:
-            link.agent_task_ext_id = agent_task_ext_id
+            binding.agent_task_ext_id = agent_task_ext_id
         if summary is not None:
-            link.summary = summary
-        link.save()
-    return link
+            binding.summary = summary
+        binding.save()
+    return binding
 
 
 @transaction.atomic
 def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     """Upsert a durable Session(origin=runner) + RunnerBinding per reported
     session. Sessions that fell off the report keep their Session row but have
-    their live binding cleared."""
+    their live binding cleared.
+
+    The SAME binding this writes doubles as the reuse target for a phone-
+    dispatched "Continue" turn (`origin_ref.thread_key = "emdash:<task>"`,
+    e.g. `OpenSessions.tsx`) — `thread_key` + `host` are stamped ONLY when the
+    binding is freshly created here, so `_binding_for_thread` can find a
+    project-Continue row that has no other origin. Pre-fold (SessionLink era)
+    a SECOND row existed purely for that lookup; now there is only one row,
+    but an existing binding's durable identity (thread_key/host) is left
+    untouched on update — the runner's ambient sweep reports EVERY open
+    emdash task (agent- or project-driven, no filter), so a session already
+    bound by `record_session` to an agent/phone thread must not have that
+    binding's thread_key silently reassigned to `emdash:<task>` underneath it
+    (that would orphan the agent thread's reuse lookup and fork a duplicate
+    session on its next turn)."""
     from apps.canopy_sessions.models import RunnerBinding, Session
 
     # emdash task NAMES are not unique — two un-archived tasks can share a name
@@ -687,6 +723,12 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
                 title=s.emdash_task,
             )
             binding = RunnerBinding(session=session, session_key=s.emdash_task)
+            # thread_key/host are the binding's durable IDENTITY — stamp them
+            # only at creation. An existing binding may already be owned by an
+            # agent/phone thread (record_session), and this report loop must
+            # not steal it: see the docstring above.
+            binding.thread_key = f"emdash:{s.emdash_task}"
+            binding.host = runner.host
         binding.runner = runner
         binding.status = s.status or ""
         binding.last_interacted_at = _aware(s.last_interacted_at)
@@ -698,17 +740,6 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     RunnerBinding.objects.filter(runner=runner).exclude(session_key__in=now_keys).update(
         runner=None
     )
-
-    # Keep the durable SessionLink upsert (runner-reuse path) unchanged.
-    for s in deduped:
-        if s.project:
-            # live_session_id intentionally left blank here — a session report has
-            # no session_id to give; reuse keys on live_emdash_task_id +
-            # live_runner + live_host instead.
-            record_session(
-                None, f"emdash:{s.emdash_task}", runner=runner, project=s.project,
-                workspace=workspace, emdash_task_id=s.emdash_task,
-            )
 
     # Fire AFTER commit so apps/realtime fans the durable rows (never racing the DB)
     # to the runner-owner's supervisor group — the WS push that makes live emdash

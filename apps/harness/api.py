@@ -20,6 +20,8 @@ from . import services
 from .models import AgentSchedule, Runner, Turn
 from .schedule_services import serialize_schedule
 from .schemas import (
+    BackfillSyncOut,
+    BackfillWriteOut,
     EmdashSessionOut,
     HeartbeatIn,
     RecordSessionIn,
@@ -34,7 +36,11 @@ from .schemas import (
     RunnerOut,
     ScheduleFireIn,
     ScheduleOut,
+    SessionBackfillIn,
     SessionReportOut,
+    SessionStreamIn,
+    StreamPostOut,
+    StreamSyncOut,
     TurnEventCountOut,
     TurnEventsIn,
     TurnEventsOut,
@@ -233,7 +239,7 @@ def update_runner_capabilities(request: HttpRequest, runner_id: uuid.UUID, paylo
 
     Capabilities are set at pairing and were otherwise immutable — the only way to
     add `projects` to an existing runner was to re-pair, which mints a NEW runner
-    and orphans the old one's SessionLinks. This lets a paired runner opt into
+    and orphans the old one's RunnerBindings. This lets a paired runner opt into
     driving repos (or new agents) in place. capabilities is a routing hint, not a
     security boundary (the workspace gates), so replacing it changes what the
     runner PULLS, never what it may reach.
@@ -359,6 +365,85 @@ def report_sessions(request: HttpRequest, runner_id: uuid.UUID, payload: ReportS
         raise HttpError(404, "runner has no workspace")
     count = services.replace_reported_sessions(runner, ws, payload.sessions)
     return SessionReportOut(count=count)
+
+
+@router.get("/runners/{runner_id}/streams", response=StreamSyncOut)
+def list_streams(request: HttpRequest, runner_id: uuid.UUID):
+    """The sessions this runner should be tailing live (a viewer is attached). The
+    observable half of attach/detach — the runner syncs this each tick and starts/
+    stops tailers; the WS runner.stream frame is only a latency optimization."""
+    from apps.canopy_sessions.models import RunnerBinding
+
+    runner = _runner_or_404(request, runner_id)
+    bindings = (
+        RunnerBinding.objects.select_related("session")
+        .filter(runner=runner, stream_desired=True)
+        .exclude(session_key="")
+    )
+    return {"streams": [
+        {"session_id": str(b.session_id), "session_key": b.session_key,
+         "project": b.session.project}
+        for b in bindings
+    ]}
+
+
+@router.post("/runners/{runner_id}/session-stream", response=StreamPostOut)
+def post_session_stream(request: HttpRequest, runner_id: uuid.UUID, payload: SessionStreamIn):
+    """The runner ships live assistant events for a session it backs; the server fans
+    them to the session group as the same chat.turn_event frames the chat path uses
+    (turn-less -> the consumer derives seq:<n> message ids). Live view only — no
+    Message rows (that is the on-demand backfill, POST /session-backfill)."""
+    from apps.canopy_sessions.models import RunnerBinding
+    from apps.realtime import groups
+
+    runner = _runner_or_404(request, runner_id)
+    if not RunnerBinding.objects.filter(session_id=payload.session_id, runner=runner).exists():
+        raise HttpError(404, "session not bound to this runner")
+    sgroup = groups.session_group(payload.session_id)
+    n = 0
+    for e in payload.events:
+        groups.publish(sgroup, {
+            "type": "chat.turn_event",
+            "event": {"kind": e.kind, "seq": e.seq, "payload": e.payload},
+            "turn_id": None,
+        })
+        n += 1
+    return {"count": n}
+
+
+@router.get("/runners/{runner_id}/backfills", response=BackfillSyncOut)
+def list_backfills(request: HttpRequest, runner_id: uuid.UUID):
+    """Sessions this runner has been asked to ship full history for."""
+    from apps.canopy_sessions.models import RunnerBinding
+
+    runner = _runner_or_404(request, runner_id)
+    bindings = (
+        RunnerBinding.objects.select_related("session")
+        .filter(runner=runner, backfill_requested=True)
+    )
+    return {"backfills": [
+        {"session_id": str(b.session_id), "session_key": b.session_key,
+         "project": b.session.project}
+        for b in bindings
+    ]}
+
+
+@router.post("/runners/{runner_id}/session-backfill", response=BackfillWriteOut)
+def post_session_backfill(request: HttpRequest, runner_id: uuid.UUID, payload: SessionBackfillIn):
+    """The runner ships a session's full transcript; the server writes Message rows
+    once and clears the request. Runner-owned-binding gated."""
+    from apps.canopy_sessions import services as chat_services
+    from apps.canopy_sessions.models import RunnerBinding, Session
+
+    runner = _runner_or_404(request, runner_id)
+    binding = RunnerBinding.objects.filter(session_id=payload.session_id, runner=runner).first()
+    if binding is None:
+        raise HttpError(404, "session not bound to this runner")
+    session = Session.objects.get(pk=payload.session_id)
+    written = chat_services.write_backfill(session, [m.dict() for m in payload.messages])
+    binding.backfill_requested = False
+    binding.save(update_fields=["backfill_requested", "updated_at"])
+    return {"written": written}
 
 
 @router.post("/turns/", response={200: TurnOut, 201: TurnOut})

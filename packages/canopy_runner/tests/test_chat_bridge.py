@@ -1,5 +1,5 @@
 """The emdash-response bridge: tail assistant text + idle-based completion."""
-from canopy_runner.chat_bridge import bridge_response, new_assistant_texts
+from canopy_runner.chat_bridge import bridge_response, new_assistant_texts, transcript_messages
 
 
 def _asst(text):
@@ -57,3 +57,12 @@ def test_bridge_times_out_without_assistant():
     )
     assert events == []
     assert result == ""
+
+
+def test_transcript_messages_maps_user_and_assistant():
+    recs = [_user("q1"), _asst("a1"), _tool(), _asst("a2")]
+    assert transcript_messages(recs) == [
+        {"role": "user", "text": "q1"},
+        {"role": "assistant", "text": "a1"},
+        {"role": "assistant", "text": "a2"},  # tool_use block skipped (no text)
+    ]

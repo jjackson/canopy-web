@@ -172,7 +172,25 @@ class RunnerBinding(models.Model):
         related_name="session_bindings",
     )
     # Engine-agnostic handle the runner uses to resume/inject (was emdash_task).
-    session_key = models.CharField(max_length=255)
+    session_key = models.CharField(max_length=255, blank=True, default="")
+    # Durable thread identity (absorbed from SessionLink). For a chat session this
+    # is str(session.id); for a phone/agent/project thread it's the topic key
+    # (e.g. "phone:jj:canopy-web" or "<target>:<turn_id>"). The reuse lookup keys on
+    # (session's target, thread_key).
+    thread_key = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    # The macOS host that owns the live session — emdash is per-macOS-account, so a
+    # session is reusable ONLY by the runner whose host matches (two-account failover).
+    host = models.CharField(max_length=200, blank=True, default="")
+    # Durable board-task context carried for rehydration (was SessionLink.agent_task_ext_id).
+    agent_task_ext_id = models.CharField(max_length=255, blank=True, default="")
+    # Liveness: a viewer is attached, so the bound runner should stream this
+    # session's events up live. Toggled by the attach registry on the 0<->1 edge.
+    stream_desired = models.BooleanField(default=False)
+    # On-demand history promotion: the client asked for full history on a local
+    # session with no Message rows. The bound runner ships its transcript, the
+    # server writes rows once, and clears this. (Server-full is then inferred from
+    # Message existence — no second flag.)
+    backfill_requested = models.BooleanField(default=False)
     tail = models.JSONField(default=list)          # last N conversational messages
     summary = models.TextField(blank=True, default="")
     status = models.CharField(max_length=40, blank=True, default="")
@@ -182,6 +200,25 @@ class RunnerBinding(models.Model):
 
     class Meta:
         ordering = ["-last_interacted_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["runner", "session_key"],
+                condition=models.Q(runner__isnull=False) & ~models.Q(session_key=""),
+                name="one_binding_per_runner_session_key",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"binding<{self.session_key}>"
+
+    def reusable_by(self, runner) -> bool:
+        """True if this runner owns the live session (same runner + same macOS host)
+        and a concrete session_key is recorded. The runner STILL verifies the task
+        exists in its own emdash before driving it — this is the server-side gate.
+        Ported verbatim from the retired SessionLink.reusable_by."""
+        return bool(
+            self.session_key
+            and self.runner_id == runner.id
+            and self.host
+            and self.host == runner.host
+        )

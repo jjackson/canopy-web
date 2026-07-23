@@ -15,6 +15,7 @@ from django.db.models import Max
 from apps.harness import services as harness_services
 from apps.harness.models import Turn
 
+from . import attach
 from .models import Message, Session
 
 # Ledger kinds we surface as transcript rows, and the Message role each maps to.
@@ -75,6 +76,97 @@ def all_messages(session: Session):
     if not messages:
         return [], False, None
     return messages, False, messages[0].turn_index
+
+
+_BACKFILL_ROLES = {Message.USER, Message.ASSISTANT, Message.TOOL_USE, Message.TOOL_RESULT, Message.SYSTEM}
+
+
+def request_backfill(session) -> str:
+    """The client asked for full history. 'ready' if already server-full; 'requested'
+    if a live runner is bound (signal it); 'unavailable' otherwise (tail still shows)."""
+    from apps.canopy_sessions.models import RunnerBinding
+    from apps.harness.models import Runner
+
+    if session.messages.exists():
+        return "ready"
+    binding = RunnerBinding.objects.select_related("runner").filter(session=session).first()
+    if binding is None or binding.runner_id is None or binding.runner.live_status != Runner.ONLINE:
+        return "unavailable"
+    if not binding.backfill_requested:
+        binding.backfill_requested = True
+        binding.save(update_fields=["backfill_requested", "updated_at"])
+    from apps.realtime import groups
+    groups.publish(groups.runner_group(binding.runner_id), {
+        "type": "runner.stream",  # reuse the control frame; desired=None marks a backfill ask
+        "session_id": str(session.id), "session_key": binding.session_key, "desired": None,
+    })
+    return "requested"
+
+
+def write_backfill(session, messages) -> int:
+    """Write a runner's shipped transcript as Message rows — ONCE. No-op if the
+    session already has rows (server-full). messages: [{"role","text"}] chronological."""
+    with transaction.atomic():
+        locked = Session.objects.select_for_update().get(pk=session.pk)
+        if Message.objects.filter(session=locked).exists():
+            return 0
+        index = _next_index(locked)
+        written = 0
+        for msg in messages:
+            role = msg.get("role")
+            if role not in _BACKFILL_ROLES:
+                continue
+            Message.objects.create(
+                session=locked, turn_index=index, role=role,
+                content={"text": msg.get("text", ""), "backfill": True},
+                plaintext=str(msg.get("text", "")),
+            )
+            index += 1
+            written += 1
+    return written
+
+
+def _set_stream_desired(session, desired: bool) -> bool:
+    """Flip the bound binding's stream_desired and, on a real change, signal the
+    bound runner over its control channel. Returns the resulting desired state
+    (False when the session has no binding to stream)."""
+    from apps.canopy_sessions.models import RunnerBinding
+
+    binding = RunnerBinding.objects.filter(session=session).first()
+    if binding is None:
+        return False
+    if binding.stream_desired != desired:
+        binding.stream_desired = desired
+        binding.save(update_fields=["stream_desired", "updated_at"])
+    if binding.runner_id:
+        from apps.realtime import groups
+        groups.publish(groups.runner_group(binding.runner_id), {
+            "type": "runner.stream",
+            "session_id": str(session.id),
+            "session_key": binding.session_key,
+            "desired": desired,
+        })
+    return desired
+
+
+def attach_session(session) -> bool:
+    """A viewer attached. On the 0->1 edge, mark streaming desired + signal the runner."""
+    n = attach.attach(session.id)
+    if n == 1:
+        return _set_stream_desired(session, True)
+    from apps.canopy_sessions.models import RunnerBinding
+    b = RunnerBinding.objects.filter(session=session).first()
+    return bool(b and b.stream_desired)
+
+
+def detach_session(session) -> bool:
+    """A viewer detached. On the 1->0 edge, stop streaming + signal the runner."""
+    n = attach.detach(session.id)
+    if n == 0:
+        return _set_stream_desired(session, False)
+    from apps.canopy_sessions.models import RunnerBinding
+    b = RunnerBinding.objects.filter(session=session).first()
+    return bool(b and b.stream_desired)
 
 
 def create_session(*, workspace, created_by, agent=None, project: str = "", title: str = "", metadata: dict | None = None) -> Session:

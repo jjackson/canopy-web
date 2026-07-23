@@ -384,6 +384,65 @@ class ScheduleFireIn(Schema):
 
 
 # ---------------------------------------------------------------------------
+# Runner streams — the poll-fallback sync + live-event fan-out (SP3 Task 4)
+# ---------------------------------------------------------------------------
+
+
+class StreamDescriptorOut(Schema):
+    session_id: str
+    session_key: str
+    project: str
+
+
+class StreamSyncOut(Schema):
+    streams: list[StreamDescriptorOut] = []
+
+
+class LiveEventIn(Schema):
+    kind: str
+    seq: int
+    payload: dict = {}
+
+
+class SessionStreamIn(Schema):
+    session_id: uuid.UUID
+    events: list[LiveEventIn] = []
+
+
+class StreamPostOut(Schema):
+    count: int
+
+
+# ---------------------------------------------------------------------------
+# On-demand backfill — the runner-facing half (Plan 3 Task 6)
+# ---------------------------------------------------------------------------
+
+
+class BackfillDescriptorOut(Schema):
+    session_id: str
+    session_key: str
+    project: str
+
+
+class BackfillSyncOut(Schema):
+    backfills: list[BackfillDescriptorOut] = []
+
+
+class BackfillMessageIn(Schema):
+    role: str
+    text: str = ""
+
+
+class SessionBackfillIn(Schema):
+    session_id: uuid.UUID
+    messages: list[BackfillMessageIn] = []
+
+
+class BackfillWriteOut(Schema):
+    written: int
+
+
+# ---------------------------------------------------------------------------
 # Items — the supervisor's queue (the dual of Turn)
 # ---------------------------------------------------------------------------
 
