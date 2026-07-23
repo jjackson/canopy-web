@@ -82,6 +82,16 @@ class Client:
         """Report the open emdash sessions this runner can see (wholesale)."""
         self._call("POST", f"/runners/{runner_id}/sessions", {"sessions": sessions})
 
+    def sync_streams(self, runner_id: str) -> list[dict]:
+        """The sessions a viewer is watching, which this runner should tail live."""
+        _, payload = self._call("GET", f"/runners/{runner_id}/streams")
+        return (payload or {}).get("streams", [])
+
+    def post_session_stream(self, runner_id: str, session_id: str, events: list[dict]) -> None:
+        """Ship live assistant events for a session this runner backs."""
+        self._call("POST", f"/runners/{runner_id}/session-stream",
+                   {"session_id": session_id, "events": events})
+
     def claim(self, runner_id: str, paused_agents: list[str] | None = None) -> dict | None:
         # paused_agents (per-agent pause) → server skips those agents' queued turns.
         path = f"/runners/{runner_id}/claim"
