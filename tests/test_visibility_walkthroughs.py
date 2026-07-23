@@ -87,6 +87,18 @@ def test_private_content_404s_anonymous(owner):
 
 
 @override_settings(REQUIRE_AUTH=True)
+def test_malformed_content_id_is_a_bare_404_not_the_spa(owner):
+    # The content route accepts <str:wid>, so a non-UUID id is handled by the
+    # view (bare 404) instead of falling through to the SPA catch-all and
+    # painting the whole app inside a failed embed (issue #345). Authed, so this
+    # proves the id itself 404s — not the anonymous gate.
+    client = Client()
+    client.force_login(owner)
+    resp = client.get("/walkthrough/not-a-uuid/content")
+    assert resp.status_code == 404
+
+
+@override_settings(REQUIRE_AUTH=True)
 def test_owner_sees_private_content(owner):
     w = _make(owner, visibility="private")
     client = Client()
