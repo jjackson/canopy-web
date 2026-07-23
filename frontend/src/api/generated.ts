@@ -2225,7 +2225,7 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** List my chat sessions */
+        /** List sessions (web + runner-discovered) */
         readonly get: operations["apps_canopy_sessions_api_list_sessions"];
         readonly put?: never;
         /** Create a chat session */
@@ -4085,6 +4085,25 @@ export interface components {
              * Format: date-time
              */
             readonly created_at: string;
+            /**
+             * Origin
+             * @default web
+             */
+            readonly origin: string;
+            /**
+             * Running
+             * @default false
+             */
+            readonly running: boolean;
+            /** Runner Name */
+            readonly runner_name?: string | null;
+            /** Runner Location */
+            readonly runner_location?: string | null;
+            /**
+             * Session Key
+             * @default
+             */
+            readonly session_key: string;
             /** Messages */
             readonly messages: readonly components["schemas"]["MessageOut"][];
             /**
@@ -6410,6 +6429,25 @@ export interface components {
              * Format: date-time
              */
             readonly created_at: string;
+            /**
+             * Origin
+             * @default web
+             */
+            readonly origin: string;
+            /**
+             * Running
+             * @default false
+             */
+            readonly running: boolean;
+            /** Runner Name */
+            readonly runner_name?: string | null;
+            /** Runner Location */
+            readonly runner_location?: string | null;
+            /**
+             * Session Key
+             * @default
+             */
+            readonly session_key: string;
         };
         /** SessionCreateIn */
         readonly SessionCreateIn: {

@@ -8,9 +8,12 @@ serializes a conversation, turn_index assignment never races within a session.
 """
 from __future__ import annotations
 
+import datetime as _dt
+
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Max
+from django.utils import timezone
 
 from apps.harness import services as harness_services
 from apps.harness.models import Turn
@@ -76,6 +79,24 @@ def all_messages(session: Session):
     if not messages:
         return [], False, None
     return messages, False, messages[0].turn_index
+
+
+# A binding is "running" when its runner is live and it was interacted with very
+# recently — the same signal OpenSessions derived client-side from the transcript
+# tail's freshness, now computed once server-side.
+RUNNING_WINDOW = _dt.timedelta(seconds=120)
+
+
+def is_session_running(binding) -> bool:
+    """True when a live runner is actively working this session right now."""
+    from apps.harness.models import Runner  # framework->framework; lazy to avoid import cycle
+
+    if binding is None or binding.runner_id is None:
+        return False
+    if binding.runner.live_status != Runner.ONLINE:
+        return False
+    ts = binding.last_interacted_at
+    return bool(ts and (timezone.now() - ts) <= RUNNING_WINDOW)
 
 
 _BACKFILL_ROLES = {Message.USER, Message.ASSISTANT, Message.TOOL_USE, Message.TOOL_RESULT, Message.SYSTEM}

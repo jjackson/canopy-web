@@ -15,7 +15,7 @@ from apps.harness import services as harness_services
 from apps.harness.models import Turn
 from apps.realtime.groups import session_group
 
-from . import drafts, participants, presence, serializers, stream_map
+from . import attach, drafts, participants, presence, serializers, stream_map
 from . import services as chat_services
 from .models import Message, Session, SessionParticipant
 
@@ -64,6 +64,9 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         data = content.get("data") or {}
         if action == "presence.heartbeat":
             await database_sync_to_async(presence.touch)(self.session.id, self.user.id)
+            # Keep the attach count alive for as long as the socket is open, so a
+            # >1h session doesn't lose it and miscount the detach edge (Plan 4 Task 1).
+            await database_sync_to_async(attach.renew)(self.session.id)
             return
         if action == "chat.stop":
             await self._chat_stop(data)

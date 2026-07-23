@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { SessionState, WsEvent } from "./protocol";
+import type { Message, SessionState, WsEvent } from "./protocol";
+import { prependHistory } from "./history";
 import { sessionReducer } from "./sessionReducer";
 
 const HEARTBEAT_INTERVAL_MS = 20_000;
@@ -40,6 +41,7 @@ export interface UseSessionSocketResult {
   updateDraft: (body: string) => void;
   takeOverDraft: () => void;
   discardDraft: () => void;
+  prependMessages: (older: Message[]) => void;
   lastError: string | null;
 }
 
@@ -243,6 +245,16 @@ export function useSessionSocket({
     send({ action: "draft.discard", data: {} });
   }, [send]);
 
+  const prependMessages = useCallback((older: Message[]) => {
+    // Apply a REST "Load earlier" page into the live socket state. A later
+    // session.state snapshot (e.g. reconnect) resets to the tail — acceptable;
+    // the user re-loads earlier if needed.
+    setState((prev) => {
+      const merged = prependHistory(prev.messages, older);
+      return merged === prev.messages ? prev : { ...prev, messages: merged };
+    });
+  }, []);
+
   return {
     state,
     connected,
@@ -251,6 +263,7 @@ export function useSessionSocket({
     updateDraft,
     takeOverDraft,
     discardDraft,
+    prependMessages,
     lastError,
   };
 }

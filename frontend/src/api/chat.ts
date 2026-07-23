@@ -2,10 +2,12 @@
  * Client for the live chat surface (/api/chat).
  *
  * Plain fetch (mirrors src/api/sessions.ts) rather than the generated
- * openapi-fetch client — the ChatPage only needs create/get/list, and the
- * live transcript arrives over the WebSocket (apps/chat consumer), not REST.
- * CSRF is attached for mutating calls; response shapes reuse the generated
- * OpenAPI schema so the two can't drift.
+ * openapi-fetch client — the live transcript's steady-state arrives over the
+ * WebSocket (apps/canopy_sessions consumer), not REST. REST covers session
+ * meta/create/list, scroll-back paging (`listMessages`), the viewer liveness
+ * pair (`attachSession`/`detachSession`), and the runner backfill request
+ * (`requestBackfill`). CSRF is attached for mutating calls; response shapes
+ * reuse the generated OpenAPI schema so the two can't drift.
  */
 
 import type { components } from "./generated";
@@ -13,6 +15,9 @@ import { apiUrl, getCsrfToken } from "./base";
 
 export type ChatSession = components["schemas"]["SessionOut"];
 export type ChatSessionDetail = components["schemas"]["SessionDetailOut"];
+export type MessagePage = components["schemas"]["MessagePageOut"];
+export type StreamState = components["schemas"]["StreamStateOut"];
+export type BackfillState = components["schemas"]["BackfillStateOut"];
 
 export class ChatApiError extends Error {
   code: string;
@@ -80,10 +85,47 @@ export function createSession(
   });
 }
 
-export function getSession(id: string): Promise<ChatSessionDetail> {
-  return request<ChatSessionDetail>(`/api/chat/${encodeURIComponent(id)}`);
+export function getSession(
+  id: string,
+  opts: { full?: boolean } = {},
+): Promise<ChatSessionDetail> {
+  const q = opts.full ? "?full=true" : "";
+  return request<ChatSessionDetail>(`/api/chat/${encodeURIComponent(id)}${q}`);
 }
 
 export function listSessions(): Promise<ChatSession[]> {
   return request<ChatSession[]>("/api/chat/");
+}
+
+/** One backward page of transcript, for "Load earlier" scroll-back. */
+export function listMessages(
+  id: string,
+  before: number,
+  limit?: number,
+): Promise<MessagePage> {
+  const q = limit != null ? `&limit=${limit}` : "";
+  return request<MessagePage>(
+    `/api/chat/${encodeURIComponent(id)}/messages?before=${before}${q}`,
+  );
+}
+
+/** Register this viewer as attached (starts live streaming for a bound runner). */
+export function attachSession(id: string): Promise<StreamState> {
+  return request<StreamState>(`/api/chat/${encodeURIComponent(id)}/attach`, {
+    method: "POST",
+  });
+}
+
+/** Detach this viewer (stops streaming once the last viewer leaves). */
+export function detachSession(id: string): Promise<StreamState> {
+  return request<StreamState>(`/api/chat/${encodeURIComponent(id)}/detach`, {
+    method: "POST",
+  });
+}
+
+/** Ask the bound runner to ship the full transcript ("Load full session"). */
+export function requestBackfill(id: string): Promise<BackfillState> {
+  return request<BackfillState>(`/api/chat/${encodeURIComponent(id)}/backfill`, {
+    method: "POST",
+  });
 }

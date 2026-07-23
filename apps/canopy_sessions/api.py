@@ -36,6 +36,8 @@ router = Router(auth=session_auth, tags=["chat"])
 
 
 def _out(session: Session) -> dict:
+    binding = getattr(session, "runner_binding", None)  # reverse 1:1 -> None when absent
+    runner = binding.runner if (binding and binding.runner_id) else None
     return {
         "id": session.id,
         "agent_slug": session.agent.slug if session.agent_id else None,
@@ -44,6 +46,12 @@ def _out(session: Session) -> dict:
         "title": session.title,
         "status": session.status,
         "created_at": session.created_at,
+        # --- liveness (Plan 4): one shape, computed from the binding ---
+        "origin": session.origin,
+        "running": services.is_session_running(binding),
+        "runner_name": runner.name if runner else None,
+        "runner_location": runner.location if runner else None,
+        "session_key": binding.session_key if binding else "",
     }
 
 
@@ -54,7 +62,10 @@ def _visible_slugs(request: HttpRequest) -> set[str]:
 
 
 def _session_or_404(request: HttpRequest, session_id: uuid.UUID) -> Session:
-    session = get_object_or_404(Session.objects.select_related("agent"), pk=session_id)
+    session = get_object_or_404(
+        Session.objects.select_related("agent", "runner_binding", "runner_binding__runner"),
+        pk=session_id,
+    )
     if session.workspace_id not in _visible_slugs(request):
         raise HttpError(404, "session not found")  # wrong tenant / non-member
     return session
@@ -80,17 +91,25 @@ def create_session(request: HttpRequest, payload: SessionCreateIn):
     return _out(session)
 
 
-@router.get("/", response=list[SessionOut], summary="List my chat sessions")
+@router.get("/", response=list[SessionOut], summary="List sessions (web + runner-discovered)")
 def list_sessions(request: HttpRequest):
-    # "My" sessions — scoped to the caller (session sharing across a workspace is
-    # SP3 multiplayer). Still tenant-bounded so a stale membership can't leak.
+    # The ONE unified list (Plan 4): every session the caller can see in their
+    # workspaces — their own web sessions UNION any session that has a
+    # RunnerBinding (runner-discovered or live). Deduped, running-first, then
+    # newest. Replaces the creator-only list + the harness OpenSessions projection.
+    from django.db.models import Q
+
     slugs = _visible_slugs(request)
     rows = (
-        Session.objects.select_related("agent")
-        .filter(workspace_id__in=slugs, created_by=request.user)
+        Session.objects.select_related("agent", "runner_binding", "runner_binding__runner")
+        .filter(workspace_id__in=slugs)
+        .filter(Q(created_by=request.user) | Q(runner_binding__isnull=False))
+        .distinct()
         .order_by("-created_at")
     )
-    return [_out(s) for s in rows]
+    out = [_out(s) for s in rows]
+    out.sort(key=lambda r: (not r["running"], ))  # stable: running first, created-desc within
+    return out
 
 
 @router.get("/{session_id}", response=SessionDetailOut, summary="Get a session + transcript tail")

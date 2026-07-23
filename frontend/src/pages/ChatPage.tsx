@@ -1,9 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ChatPanel, useSessionSocket } from 'canopy-ui/chat'
 import { Markdown } from '@/components/Markdown'
 import { wsUrl } from '@/lib/wsUrl'
-import { getSession, type ChatSessionDetail } from '@/api/chat'
+import {
+  getSession,
+  listMessages,
+  attachSession,
+  detachSession,
+  requestBackfill,
+  type ChatSessionDetail,
+} from '@/api/chat'
+import { backfillAction, restToKitMessage } from './chatPageLogic'
 
 /** Render assistant/system message text through canopy's shared Markdown (the
  *  same renderer used across every AI-output surface — so it picks up remark-gfm
@@ -14,31 +22,130 @@ function renderMarkdown(text: string) {
   return <Markdown className="text-sm leading-relaxed">{text}</Markdown>
 }
 
+const BACKFILL_SETTLE_DELAY_MS = 1200
+
 /**
  * Standalone live-chat route (/w/:workspace/chat/:id). Wires canopy's
- * WebSocket URL + REST session-meta + react-markdown into the reusable
- * `canopy-ui/chat` ChatPanel. All chat state lives in `useSessionSocket`;
- * this page only supplies seams + a minimal title shell.
+ * WebSocket URL + REST session-meta/history/liveness + react-markdown into the
+ * reusable `canopy-ui/chat` ChatPanel. All live chat state lives in
+ * `useSessionSocket`; this page supplies seams (attach/detach, scroll-back,
+ * full backfill, running/idle) + a minimal title shell.
  */
 export function ChatPage() {
   const { id = '' } = useParams()
   const [meta, setMeta] = useState<ChatSessionDetail | null>(null)
   const [metaError, setMetaError] = useState<string | null>(null)
+  // Scroll-back cursor, seeded from the REST detail (the WS `session.state`
+  // snapshot doesn't carry it — it's frozen to the tail page it was built from).
+  const [hasMoreBefore, setHasMoreBefore] = useState(false)
+  const [oldestTurn, setOldestTurn] = useState<number | null>(null)
+  const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const [loadingFull, setLoadingFull] = useState(false)
+  const [historyUnavailable, setHistoryUnavailable] = useState(false)
 
   const socket = useSessionSocket({ sessionId: id, wsUrl })
 
+  // Session meta + scroll-back cursor seed.
   useEffect(() => {
     if (!id) return
     setMeta(null)
     setMetaError(null)
+    setHistoryUnavailable(false)
     getSession(id)
-      .then(setMeta)
+      .then((m) => {
+        setMeta(m)
+        setHasMoreBefore(m.has_more_before)
+        setOldestTurn(m.oldest_loaded_turn_index ?? null)
+      })
       .catch((err: unknown) => {
         setMetaError(err instanceof Error ? err.message : 'session not found')
       })
   }, [id])
 
-  const emptyState = useCallback(
+  // Attach-on-open / detach-on-unmount. The server's attach counter floors at
+  // 0 rather than going negative, so a detach that lands BEFORE its paired
+  // attach is silently absorbed — the attach then still increments, leaving
+  // the count stuck net +1 and a runner-bound session's `stream_desired`
+  // never clears. These are fire-and-forget HTTP calls with no other
+  // ordering guarantee, so we chain the detach off the attach promise
+  // (`.finally`, not `.then`/`.catch`, so a failed attach still detaches):
+  // the detach request is never even issued until the attach one has
+  // settled, which makes the wrong-order race structurally impossible.
+  // React StrictMode's mount/unmount/remount double-invoke is fine here —
+  // each attach/detach pair is still strictly ordered within itself.
+  useEffect(() => {
+    if (!id) return
+    const attached = attachSession(id).catch(() => {
+      /* non-fatal: a failed attach just means no bound runner to notify */
+    })
+    return () => {
+      void attached.finally(() => {
+        void detachSession(id).catch(() => {
+          /* non-fatal */
+        })
+      })
+    }
+  }, [id])
+
+  const loadEarlier = useCallback(async () => {
+    if (oldestTurn == null || loadingEarlier) return
+    // Capture the session this call was made for. Belt-and-suspenders on top
+    // of the route-level `key={id}` remount (router.tsx): even if this
+    // component instance somehow outlives the session it was fetching for,
+    // a stale response can never splice into whatever session is current.
+    const requestedId = id
+    setLoadingEarlier(true)
+    try {
+      const page = await listMessages(requestedId, oldestTurn)
+      if (requestedId !== id) return
+      if (page.messages.length > 0) {
+        socket.prependMessages(page.messages.map(restToKitMessage))
+        setOldestTurn(page.messages[0].turn_index)
+      }
+      // A local (origin=runner) session with no server rows yet returns an
+      // empty page with has_more_before=false — history lives on the runner,
+      // so fall through to offering the full backfill instead.
+      setHasMoreBefore(page.messages.length > 0 ? page.has_more_before : false)
+    } catch {
+      /* keep what's shown; the button stays available to retry */
+    } finally {
+      if (requestedId === id) setLoadingEarlier(false)
+    }
+  }, [id, oldestTurn, loadingEarlier, socket])
+
+  const loadFull = useCallback(async () => {
+    if (loadingFull) return
+    // See loadEarlier: capture the session this call was made for so a
+    // stale response can never apply to a different session.
+    const requestedId = id
+    setHistoryUnavailable(false)
+    setLoadingFull(true)
+    try {
+      const res = await requestBackfill(requestedId)
+      if (requestedId !== id) return
+      const action = backfillAction(res.status)
+      if (action === 'unavailable') {
+        setHistoryUnavailable(true)
+        return
+      }
+      // reload-now = already server-full; reload-after-delay = the runner is
+      // shipping it — give it a beat to land before pulling the full session.
+      if (action === 'reload-after-delay') {
+        await new Promise((r) => setTimeout(r, BACKFILL_SETTLE_DELAY_MS))
+      }
+      const full = await getSession(requestedId, { full: true })
+      if (requestedId !== id) return
+      socket.prependMessages(full.messages.map(restToKitMessage))
+      setHasMoreBefore(false)
+      setOldestTurn(full.oldest_loaded_turn_index ?? null)
+    } catch {
+      if (requestedId === id) setHistoryUnavailable(true)
+    } finally {
+      if (requestedId === id) setLoadingFull(false)
+    }
+  }, [id, loadingFull, socket])
+
+  const emptyState = useMemo(
     () => (
       <div className="flex h-full flex-col items-center justify-center gap-1 p-8 text-center text-sm text-muted-foreground">
         <div className="text-foreground">Start the conversation</div>
@@ -48,15 +155,60 @@ export function ChatPage() {
     [],
   )
 
+  const showLoadFull =
+    !hasMoreBefore &&
+    !historyUnavailable &&
+    meta?.origin === 'runner' &&
+    socket.state.messages.length > 0
+
+  const historySlot = (
+    <div className="flex flex-col items-center gap-1 py-2">
+      {historyUnavailable && (
+        <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-1.5 text-[12px] text-warning">
+          Full history unavailable — runner offline. Showing the latest messages.
+        </p>
+      )}
+      {hasMoreBefore && (
+        <button
+          type="button"
+          onClick={() => void loadEarlier()}
+          disabled={loadingEarlier}
+          className="rounded-md border border-border bg-card px-3 py-1 text-[12px] text-foreground-secondary hover:bg-muted disabled:opacity-50"
+        >
+          {loadingEarlier ? 'Loading…' : 'Load earlier'}
+        </button>
+      )}
+      {showLoadFull && (
+        <button
+          type="button"
+          onClick={() => void loadFull()}
+          disabled={loadingFull}
+          className="rounded-md border border-border bg-card px-3 py-1 text-[12px] text-foreground-secondary hover:bg-muted disabled:opacity-50"
+        >
+          {loadingFull ? 'Loading…' : 'Load full session'}
+        </button>
+      )}
+    </div>
+  )
+
   const title = meta?.title?.trim() || 'Chat'
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-border bg-background px-4 py-2">
         <h1 className="truncate text-sm font-semibold text-foreground">{title}</h1>
-        {metaError && (
-          <span className="text-xs text-muted-foreground">· {metaError}</span>
-        )}
+        {/* Running/idle indicator, from the unified session's liveness fields. */}
+        {meta?.running ? (
+          <span className="flex shrink-0 items-center gap-1 text-[12px] font-medium text-success">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
+            running{meta.runner_name ? ` · ${meta.runner_name}` : ''}
+          </span>
+        ) : meta?.runner_name ? (
+          <span className="shrink-0 text-[12px] text-muted-foreground">
+            idle · {meta.runner_name}
+          </span>
+        ) : null}
+        {metaError && <span className="text-xs text-muted-foreground">· {metaError}</span>}
       </div>
       <div className="min-h-0 flex-1">
         <ChatPanel
@@ -69,7 +221,8 @@ export function ChatPage() {
           onTakeOver={socket.takeOverDraft}
           onDiscard={socket.discardDraft}
           renderMarkdown={renderMarkdown}
-          emptyState={emptyState()}
+          emptyState={emptyState}
+          historySlot={historySlot}
         />
       </div>
     </div>

@@ -21,18 +21,15 @@ import { sessionTargetLabel } from './sessionTargetLabel'
  * sessions (continue any from any device) + "New chat with <agent>". Each session
  * links to ITS OWN workspace's chat route, and a new chat is created in the chosen
  * agent's workspace — the fleet spans workspaces. Used by the standalone chat home
- * (/w/:ws/chat) and by the root-scoped supervisor Sessions tab.
+ * (/w/:ws/chat) and by the root-scoped supervisor Sessions tab, which embeds this
+ * as its single unified session list (no separate grouped-by-project view).
  */
 export function ChatSessionsPanel({
   agents: agentsProp,
   heading = 'Chats',
-  showList = true,
 }: {
   agents?: AgentOut[]
   heading?: string
-  // When false, render only the "New chat with <agent>" control (no session list) —
-  // supervisor pairs this with the grouped-by-project OpenSessions view instead.
-  showList?: boolean
 }) {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<ChatSession[]>([])
@@ -49,25 +46,16 @@ export function ChatSessionsPanel({
   useEffect(() => {
     let live = true
     setLoading(true)
-    // Sessions load only when we render the list; projects always load (they
-    // feed the "+ New chat" dropdown, not the list — supervisor hides the list
-    // but still starts project chats); agents load unless provided by a prop.
-    const jobs: Promise<unknown>[] = []
-    if (showList) jobs.push(listSessions())
-    jobs.push(projectsApi.listSlugs())
+    // Sessions + projects always load (projects feed the "+ New chat" dropdown);
+    // agents load unless provided by a prop.
+    const jobs: Promise<unknown>[] = [listSessions(), projectsApi.listSlugs()]
     if (!agentsProp) jobs.push(listAgents({ limit: 100 }))
     Promise.allSettled(jobs).then((results) => {
       if (!live) return
-      let idx = 0
-      if (showList) {
-        const s = results[idx++]
-        if (s && s.status === 'fulfilled') setSessions(s.value as ChatSession[])
-        else if (s && s.status === 'rejected')
-          setError(s.reason instanceof Error ? s.reason.message : 'failed to load sessions')
-      }
-      const p = results[idx++]
-      if (p && p.status === 'fulfilled') setProjects(p.value as ProjectSlug[])
-      const a = results[idx]
+      const [s, p, a] = results
+      if (s.status === 'fulfilled') setSessions(s.value as ChatSession[])
+      else setError(s.reason instanceof Error ? s.reason.message : 'failed to load sessions')
+      if (p.status === 'fulfilled') setProjects(p.value as ProjectSlug[])
       if (!agentsProp && a && a.status === 'fulfilled') {
         setAgents((a.value as { items: AgentOut[] }).items)
       }
@@ -76,7 +64,18 @@ export function ChatSessionsPanel({
     return () => {
       live = false
     }
-  }, [agentsProp, showList])
+  }, [agentsProp])
+
+  // A slow REST refresh keeps the unified list current (the live push into the
+  // list is a deferred follow-up; per-row liveness is live inside ChatPanel).
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      listSessions()
+        .then(setSessions)
+        .catch(() => { /* keep last-good; the mount fetch owns first-error surfacing */ })
+    }, 20_000)
+    return () => window.clearInterval(id)
+  }, [])
 
   const agentName = useMemo(() => {
     const by = new Map(agents.map((a) => [a.slug, a.name]))
@@ -147,8 +146,8 @@ export function ChatSessionsPanel({
         </DropdownMenu>
       </div>
 
-      {showList && error && <div className="py-2 text-sm text-destructive">{error}</div>}
-      {showList && (loading ? (
+      {error && <div className="py-2 text-sm text-destructive">{error}</div>}
+      {loading ? (
         <div className="py-6 text-sm text-muted-foreground">Loading sessions…</div>
       ) : sessions.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-1 py-12 text-center">
@@ -171,18 +170,32 @@ export function ChatSessionsPanel({
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
                       {label} · {s.workspace}
+                      {s.origin === 'runner' ? ' · discovered' : ''}
                       {s.status !== 'active' ? ` · ${s.status}` : ''}
                     </div>
                   </div>
-                  <div className="shrink-0 text-xs text-muted-foreground">
-                    {relativeTime(s.created_at, now)}
+                  <div className="flex shrink-0 flex-col items-end gap-0.5 text-xs">
+                    {s.running ? (
+                      <span className="flex items-center gap-1 font-medium text-success">
+                        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
+                        running
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">{relativeTime(s.created_at, now)}</span>
+                    )}
+                    {s.runner_name && (
+                      <span className="text-muted-foreground">
+                        {s.runner_name}
+                        {s.runner_location ? ` · ${s.runner_location}` : ''}
+                      </span>
+                    )}
                   </div>
                 </Link>
               </li>
             )
           })}
         </ul>
-      ))}
+      )}
     </div>
   )
 }

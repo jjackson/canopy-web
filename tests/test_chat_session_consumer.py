@@ -11,6 +11,7 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser, User
 
 from apps.agents.models import Agent
+from apps.canopy_sessions import attach as attach_registry
 from apps.canopy_sessions import services as chat
 from apps.canopy_sessions.consumers import SessionConsumer
 from apps.canopy_sessions.models import Message, SessionParticipant
@@ -227,4 +228,20 @@ async def test_assistant_event_streams_canonical_frames():
     await _recv_match(comm, lambda f: f.get("event") == "chat.stream_start")
     done = await _recv_match(comm, lambda f: f.get("event") == "chat.stream_complete")
     assert "plaintext" in done["data"]
+    await comm.disconnect()
+
+
+async def test_heartbeat_renews_attach_count(monkeypatch):
+    owner, _t, session = await database_sync_to_async(_seed)()
+    renewed = []
+    monkeypatch.setattr(attach_registry, "renew", lambda sid: renewed.append(sid) or 1)
+    comm = await _connect(session, owner)
+    connected, _ = await comm.connect()
+    assert connected is True
+    await comm.receive_json_from()  # drain the session.state snapshot
+    await comm.send_json_to({"action": "presence.heartbeat", "data": {}})
+    # Give the consumer a tick to process, then assert renew fired for this session.
+    import asyncio
+    await asyncio.sleep(0.05)
+    assert str(session.id) in [str(s) for s in renewed]
     await comm.disconnect()
