@@ -42,6 +42,11 @@ class SessionOut(Schema):
 
 class SessionDetailOut(SessionOut):
     messages: list[MessageOut]
+    # Tail-first cursor: the transcript ships the last N messages by default;
+    # these tell the client whether earlier history exists and where the loaded
+    # window starts, for scroll-back / "load full". See services.SESSION_TAIL_DEFAULT.
+    has_more_before: bool = False
+    oldest_loaded_turn_index: int | None = None
 
 
 class SendOut(Schema):

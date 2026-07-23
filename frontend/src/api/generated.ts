@@ -2157,7 +2157,7 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** Get a session + transcript */
+        /** Get a session + transcript tail */
         readonly get: operations["apps_canopy_sessions_api_get_session"];
         readonly put?: never;
         readonly post?: never;
@@ -3933,6 +3933,13 @@ export interface components {
             readonly created_at: string;
             /** Messages */
             readonly messages: readonly components["schemas"]["MessageOut"][];
+            /**
+             * Has More Before
+             * @default false
+             */
+            readonly has_more_before: boolean;
+            /** Oldest Loaded Turn Index */
+            readonly oldest_loaded_turn_index?: number | null;
         };
         /** SessionMessageOut */
         readonly SessionMessageOut: {
@@ -9815,7 +9822,9 @@ export interface operations {
     };
     readonly apps_canopy_sessions_api_get_session: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly full?: boolean;
+            };
             readonly header?: never;
             readonly path: {
                 readonly session_id: string;

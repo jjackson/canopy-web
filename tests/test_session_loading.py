@@ -1,9 +1,10 @@
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import Client
 
 from apps.canopy_sessions import services
 from apps.canopy_sessions.models import Message, Session
-from apps.workspaces.models import Workspace
+from apps.workspaces.models import Workspace, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db
 
@@ -67,3 +68,43 @@ def test_all_messages_returns_everything():
     assert len(msgs) == 50
     assert has_more is False
     assert oldest == 0
+
+
+def _api_ctx(n: int):
+    # Workspace.created_by is a required FK, and the authed handler gates on
+    # WorkspaceMembership (see apps/canopy_sessions/api.py::_visible_slugs) —
+    # matching the pattern already used in tests/test_chat_api.py.
+    user = get_user_model().objects.create_user("jj", "jj@dimagi.com", "pw")
+    ws = Workspace.objects.create(slug="apictx", display_name="ApiCtx", created_by=user)
+    WorkspaceMembership.objects.create(user=user, workspace=ws, role=WorkspaceMembership.OWNER)
+    s = Session.objects.create(workspace=ws, created_by=user, title="t")
+    for i in range(n):
+        Message.objects.create(session=s, turn_index=i, role=Message.USER, plaintext=f"m{i}")
+    c = Client()
+    c.force_login(user)
+    return c, s
+
+
+def test_get_session_returns_tail_not_full():
+    c, s = _api_ctx(50)
+    body = c.get(f"/api/chat/{s.id}").json()
+    assert len(body["messages"]) == 20
+    assert [m["turn_index"] for m in body["messages"]] == list(range(30, 50))
+    assert body["has_more_before"] is True
+    assert body["oldest_loaded_turn_index"] == 30
+
+
+def test_get_session_full_returns_everything():
+    c, s = _api_ctx(50)
+    body = c.get(f"/api/chat/{s.id}?full=true").json()
+    assert len(body["messages"]) == 50
+    assert body["has_more_before"] is False
+    assert body["oldest_loaded_turn_index"] == 0
+
+
+def test_get_empty_session_cursor_is_null():
+    c, s = _api_ctx(0)
+    body = c.get(f"/api/chat/{s.id}").json()
+    assert body["messages"] == []
+    assert body["has_more_before"] is False
+    assert body["oldest_loaded_turn_index"] is None

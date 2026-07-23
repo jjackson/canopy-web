@@ -82,13 +82,20 @@ def list_sessions(request: HttpRequest):
     return [_out(s) for s in rows]
 
 
-@router.get("/{session_id}", response=SessionDetailOut, summary="Get a session + transcript")
-def get_session(request: HttpRequest, session_id: uuid.UUID):
+@router.get("/{session_id}", response=SessionDetailOut, summary="Get a session + transcript tail")
+def get_session(request: HttpRequest, session_id: uuid.UUID, full: bool = False):
+    # Tail-first: never ship the whole transcript by default. The client gets the
+    # last SESSION_TAIL_DEFAULT messages + a backward cursor; ?full=true is the
+    # explicit escape hatch. Scroll-back pages via GET /{id}/messages?before=.
     session = _session_or_404(request, session_id)
     data = _out(session)
-    data["messages"] = [
-        MessageOut.from_orm(m) for m in session.messages.order_by("turn_index")
-    ]
+    if full:
+        rows, has_more, oldest = services.all_messages(session)
+    else:
+        rows, has_more, oldest = services.tail_messages(session)
+    data["messages"] = [MessageOut.from_orm(m) for m in rows]
+    data["has_more_before"] = has_more
+    data["oldest_loaded_turn_index"] = oldest
     return data
 
 
