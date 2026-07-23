@@ -2140,10 +2140,10 @@ export interface paths {
             readonly cookie?: never;
         };
         /** List my chat sessions */
-        readonly get: operations["apps_chat_api_list_sessions"];
+        readonly get: operations["apps_canopy_sessions_api_list_sessions"];
         readonly put?: never;
         /** Create a chat session */
-        readonly post: operations["apps_chat_api_create_session"];
+        readonly post: operations["apps_canopy_sessions_api_create_session"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -2158,7 +2158,7 @@ export interface paths {
             readonly cookie?: never;
         };
         /** Get a session + transcript */
-        readonly get: operations["apps_chat_api_get_session"];
+        readonly get: operations["apps_canopy_sessions_api_get_session"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -2177,7 +2177,7 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /** Send a message */
-        readonly post: operations["apps_chat_api_send"];
+        readonly post: operations["apps_canopy_sessions_api_send"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -9769,7 +9769,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_chat_api_list_sessions: {
+    readonly apps_canopy_sessions_api_list_sessions: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -9789,7 +9789,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_chat_api_create_session: {
+    readonly apps_canopy_sessions_api_create_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -9813,7 +9813,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_chat_api_get_session: {
+    readonly apps_canopy_sessions_api_get_session: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -9835,7 +9835,7 @@ export interface operations {
             };
         };
     };
-    readonly apps_chat_api_send: {
+    readonly apps_canopy_sessions_api_send: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
