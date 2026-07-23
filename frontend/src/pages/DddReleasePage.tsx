@@ -120,20 +120,11 @@ function Release({ data }: { data: DddRunRelease }) {
           </div>
         )}
 
-        {/* The story — the complete narrative, read as one piece (the opening
-            background that frames the whole demo). */}
-        {data.narrative?.story && (
-          <Section title="The story" subtitle="the whole demo, start to finish">
-            <p className="whitespace-pre-line text-[15px] leading-relaxed text-foreground-secondary">
-              {data.narrative.story}
-            </p>
-          </Section>
-        )}
-
-        {/* Scene by scene — the same narrative, broken into the beats the video
-            walks through. */}
+        {/* The narration — the per-scene voiceover, opening on the overview
+            scene. There is intentionally NO separate top-level "story": the
+            overview scene serves that role and is what's actually in the video. */}
         {data.narrative && data.narrative.narration.length > 0 && (
-          <Section title="Scene by scene" subtitle="the narrative, beat by beat">
+          <Section title="The walkthrough" subtitle="what the video narrates, scene by scene">
             <ol className="flex flex-col gap-2">
               {data.narrative.narration.map((n, i) => {
                 const persona = n.persona ? data.narrative?.personas?.[n.persona] : undefined
@@ -176,20 +167,6 @@ function Release({ data }: { data: DddRunRelease }) {
           </Section>
         )}
 
-        {/* Read more — the written docs page, if one was produced */}
-        {data.documentation && (
-          <Section title="Read more">
-            <a
-              href={withBase(data.documentation.viewer_url)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-[13px] text-foreground transition-colors hover:border-input hover:text-primary"
-            >
-              <span>Open the full write-up</span>
-              <span aria-hidden>↗</span>
-            </a>
-          </Section>
-        )}
 
 
         {/* Footer */}
@@ -202,7 +179,7 @@ function Release({ data }: { data: DddRunRelease }) {
               href={withBase(data.build_url)}
               className="text-muted-foreground transition-colors hover:text-primary"
             >
-              Open the full build view →
+              Open the full DDD view →
             </a>
           )}
         </footer>
