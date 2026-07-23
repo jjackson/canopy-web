@@ -10,6 +10,14 @@ class Migration(migrations.Migration):
 
     initial = True
 
+    # This app was renamed from `chat` (PR #350). On a fresh DB these migrations
+    # run directly; on a DB where the old `chat` app was already applied (labs),
+    # `replaces` tells the loader the applied `chat.*` records satisfy these, so
+    # check_consistent_history passes (harness.0013 depends on this migration).
+    # The physical `chat_*` tables are renamed to `canopy_sessions_*` by
+    # 0006_rename_legacy_chat_tables (guarded, so it's a no-op on fresh DBs).
+    replaces = [('chat', '0001_initial')]
+
     dependencies = [
         ('agents', '0010_agenttask_review_agenttask_score'),
         ('harness', '0011_remove_sessionlink_sessionlink_unique_per_project_thread_and_more'),
