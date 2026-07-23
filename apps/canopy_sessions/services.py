@@ -9,6 +9,7 @@ serializes a conversation, turn_index assignment never races within a session.
 from __future__ import annotations
 
 import datetime as _dt
+from dataclasses import dataclass
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -117,8 +118,27 @@ def last_activity_at(session, binding):
     return getattr(session, "_last_msg_at", None) or session.created_at
 
 
-def tail_as_messages(session, binding) -> list[dict]:
-    """A local runner session's reported tail, shaped like MessageOut rows.
+@dataclass(frozen=True)
+class TailMessage:
+    """A binding-tail entry shaped like a `Message` row.
+
+    Quacks like the real model on purpose: the REST path serializes it with
+    `MessageOut.from_orm` and the WebSocket path with `serializers.message_dto`,
+    so BOTH transports render a local session's tail through their normal code
+    with no special-casing. (ChatPage's transcript actually arrives over the WS
+    snapshot — patching only REST left the panel blank.)
+    """
+
+    pk: str
+    turn_index: int
+    role: str
+    plaintext: str
+    content: dict
+    created_at: object
+
+
+def tail_as_messages(session, binding) -> list[TailMessage]:
+    """A local runner session's reported tail, as Message-like rows.
 
     Local sessions hold NO `Message` rows until a backfill lands — the recent
     history lives on `RunnerBinding.tail` (what the retired OpenSessions used to
@@ -141,13 +161,11 @@ def tail_as_messages(session, binding) -> list[dict]:
         if role not in _BACKFILL_ROLES:
             role = Message.ASSISTANT
         text = m.get("text") or ""
-        rows.append({
-            "turn_index": i - n,
-            "role": role,
-            "plaintext": text,
-            "content": {"text": text},
-            "created_at": ts,
-        })
+        idx = i - n
+        rows.append(TailMessage(
+            pk=f"tail:{idx}", turn_index=idx, role=role,
+            plaintext=text, content={"text": text}, created_at=ts,
+        ))
     return rows
 
 
