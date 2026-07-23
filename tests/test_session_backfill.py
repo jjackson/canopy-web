@@ -1,3 +1,4 @@
+import datetime as dt
 import pytest
 from django.contrib.auth.models import User
 from django.test import Client
@@ -26,6 +27,49 @@ def _ctx(runner_online=True, has_runner=True):
     RunnerBinding.objects.create(session=s, runner=r, session_key="echo-1")
     c = Client(); c.force_login(user)
     return user, ws, s, r, c
+
+
+def test_backfill_requested_when_runner_is_degraded(monkeypatch):
+    """A DEGRADED runner is still reporting — it just isn't claiming turns.
+
+    Regression (found on prod): emdash's CDP port was unreachable, so the runner
+    self-reported DEGRADED and stopped claiming, but its poll loop kept running
+    and backfill only reads a transcript FILE. Gating on ONLINE made history
+    permanently 'unavailable' for history the runner could ship.
+    """
+    published = []
+    monkeypatch.setattr("apps.realtime.groups.publish", lambda g, m: published.append((g, m)))
+    user = User.objects.create_user("jj", "jj@dimagi.com", "pw")
+    ws = Workspace.objects.create(slug="w1", display_name="W1", created_by=user)
+    WorkspaceMembership.objects.create(user=user, workspace=ws, role=WorkspaceMembership.OWNER)
+    s = Session.objects.create(workspace=ws, created_by=user, origin=Session.ORIGIN_RUNNER, title="t")
+    r = Runner.objects.create(
+        name="laptop", workspace=ws, location=Runner.LOCAL, paired_by=user,
+        status=Runner.DEGRADED, last_heartbeat_at=timezone.now(),  # fresh => live_status == degraded
+    )
+    RunnerBinding.objects.create(session=s, runner=r, session_key="echo-1")
+    c = Client(); c.force_login(user)
+
+    assert r.live_status == Runner.DEGRADED
+    assert c.post(f"/api/canopy-sessions/{s.id}/backfill").json() == {"status": "requested"}
+    assert published, "a degraded (but reachable) runner must still be signalled"
+
+
+def test_backfill_unavailable_when_runner_heartbeat_is_stale():
+    """Stale heartbeat => live_status STALE => genuinely unreachable, so unavailable."""
+    user = User.objects.create_user("jj", "jj@dimagi.com", "pw")
+    ws = Workspace.objects.create(slug="w1", display_name="W1", created_by=user)
+    WorkspaceMembership.objects.create(user=user, workspace=ws, role=WorkspaceMembership.OWNER)
+    s = Session.objects.create(workspace=ws, created_by=user, origin=Session.ORIGIN_RUNNER, title="t")
+    r = Runner.objects.create(
+        name="laptop", workspace=ws, location=Runner.LOCAL, paired_by=user,
+        status=Runner.DEGRADED, last_heartbeat_at=timezone.now() - dt.timedelta(hours=1),
+    )
+    RunnerBinding.objects.create(session=s, runner=r, session_key="echo-1")
+    c = Client(); c.force_login(user)
+
+    assert r.live_status == Runner.STALE
+    assert c.post(f"/api/canopy-sessions/{s.id}/backfill").json() == {"status": "unavailable"}
 
 
 def test_backfill_ready_when_rows_exist():

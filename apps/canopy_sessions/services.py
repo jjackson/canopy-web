@@ -111,7 +111,17 @@ def request_backfill(session) -> str:
     if session.messages.exists():
         return "ready"
     binding = RunnerBinding.objects.select_related("runner").filter(session=session).first()
-    if binding is None or binding.runner_id is None or binding.runner.live_status != Runner.ONLINE:
+    # A runner only has to be REACHABLE to ship a transcript — not ready to run
+    # turns. `live_status` returns the self-reported status ONLY while the
+    # heartbeat is fresh (a quiet runner is demoted to STALE/DISCONNECTED), so
+    # ONLINE and DEGRADED are exactly the "still reporting" states.
+    # Gating on ONLINE alone made backfill impossible whenever emdash's CDP port
+    # was down: the runner marks itself DEGRADED and stops CLAIMING, but its poll
+    # loop keeps running and `_drain_backfills` reads the transcript FILE, which
+    # never needed CDP. Found on prod — a degraded runner answered "unavailable"
+    # for history it was perfectly able to ship.
+    reachable = {Runner.ONLINE, Runner.DEGRADED}
+    if binding is None or binding.runner_id is None or binding.runner.live_status not in reachable:
         return "unavailable"
     if not binding.backfill_requested:
         binding.backfill_requested = True
