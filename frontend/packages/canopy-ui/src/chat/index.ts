@@ -18,6 +18,7 @@ export type {
 
 // Reducer (pure)
 export { sessionReducer } from "./sessionReducer";
+export { prependHistory } from "./history";
 
 // Hooks
 export {

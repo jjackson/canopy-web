@@ -25,6 +25,8 @@ export interface ChatPanelProps {
   emptyState?: ReactNode;
   /** When set, sending is disabled and this reason is shown. */
   disabledReason?: string;
+  /** Rendered at the top of the scroll container (e.g. a "Load earlier" button / offline banner). */
+  historySlot?: ReactNode;
 }
 
 /**
@@ -46,6 +48,7 @@ export function ChatPanel({
   banner,
   emptyState,
   disabledReason,
+  historySlot,
 }: ChatPanelProps) {
   // `onDiscard` is part of the public surface (co-edit teardown) even though
   // the default composer doesn't render a discard button. Referenced to keep
@@ -105,6 +108,7 @@ export function ChatPanel({
         </div>
       </div>
       <div ref={containerRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
+        {historySlot}
         <MessageList
           messages={state.messages}
           emptyState={emptyState}
