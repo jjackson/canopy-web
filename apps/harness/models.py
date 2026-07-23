@@ -205,9 +205,9 @@ class Turn(models.Model):
     # agent) so two conversations with the same agent don't block each other.
     # Named chat_session (not session) — Turn already has a session_id CharField
     # (the emdash/claude live-session hint). String ref avoids an import cycle
-    # (chat.services imports harness.services).
+    # (canopy_sessions.services imports harness.services).
     chat_session = models.ForeignKey(
-        "chat.Session", on_delete=models.CASCADE, null=True, blank=True,
+        "canopy_sessions.Session", on_delete=models.CASCADE, null=True, blank=True,
         related_name="turns",
     )
     # Tenancy is DERIVED for agent turns (turn.agent.workspace) and session turns

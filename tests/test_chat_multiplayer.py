@@ -4,9 +4,9 @@ from __future__ import annotations
 import pytest
 from django.contrib.auth.models import User
 
-from apps.chat import drafts, participants, presence
-from apps.chat import services as chat
-from apps.chat.models import SessionParticipant
+from apps.canopy_sessions import drafts, participants, presence
+from apps.canopy_sessions import services as chat
+from apps.canopy_sessions.models import SessionParticipant
 from apps.workspaces.models import Workspace, WorkspaceMembership
 
 pytestmark = pytest.mark.django_db

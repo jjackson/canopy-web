@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 
 from apps.harness.services import replace_reported_sessions
 from apps.harness.models import Runner
-from apps.chat.models import Session, RunnerBinding
+from apps.canopy_sessions.models import Session, RunnerBinding
 from apps.workspaces.models import Workspace
 
 pytestmark = pytest.mark.django_db

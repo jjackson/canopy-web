@@ -108,7 +108,7 @@ class Message(models.Model):
 
 class SessionParticipant(models.Model):
     """Durable membership + role in a session (SP3 multiplayer). Presence — who is
-    here *right now* — is ephemeral and lives in the cache (apps/chat/presence.py);
+    here *right now* — is ephemeral and lives in the cache (apps/canopy_sessions/presence.py);
     this row is the authority for access and role."""
 
     OWNER, EDITOR, VIEWER = "owner", "editor", "viewer"

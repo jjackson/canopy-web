@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('chat', '0001_initial'),
+        ('canopy_sessions', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -23,7 +23,7 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('last_editor', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
-                ('session', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='drafts', to='chat.session')),
+                ('session', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='drafts', to='canopy_sessions.session')),
             ],
             options={
                 'constraints': [models.UniqueConstraint(condition=models.Q(('slot', 'next')), fields=('session',), name='one_open_draft_per_session')],
@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
                 ('role', models.CharField(choices=[('owner', 'Owner'), ('editor', 'Editor'), ('viewer', 'Viewer')], default='editor', max_length=10)),
                 ('last_seen_at', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('session', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='participants', to='chat.session')),
+                ('session', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='participants', to='canopy_sessions.session')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='+', to=settings.AUTH_USER_MODEL)),
             ],
             options={

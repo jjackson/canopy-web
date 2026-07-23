@@ -1,7 +1,7 @@
 """TurnEvent -> canonical chat.* frame translation (pure)."""
 from __future__ import annotations
 
-from apps.chat.stream_map import turn_event_to_frames
+from apps.canopy_sessions.stream_map import turn_event_to_frames
 
 
 def _rid(seq):

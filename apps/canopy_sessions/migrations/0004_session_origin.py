@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('chat', '0003_session_project_and_more'),
+        ('canopy_sessions', '0003_session_project_and_more'),
     ]
 
     operations = [

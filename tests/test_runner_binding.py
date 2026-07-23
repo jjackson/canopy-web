@@ -1,7 +1,7 @@
 import pytest
 from django.contrib.auth import get_user_model
 
-from apps.chat.models import Session, RunnerBinding
+from apps.canopy_sessions.models import Session, RunnerBinding
 from apps.harness.models import Runner
 from apps.workspaces.models import Workspace
 

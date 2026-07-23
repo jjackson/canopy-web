@@ -4,8 +4,8 @@ from __future__ import annotations
 import pytest
 from django.contrib.auth.models import User
 
-from apps.chat import serializers
-from apps.chat.models import Draft, Message, Session, SessionParticipant
+from apps.canopy_sessions import serializers
+from apps.canopy_sessions.models import Draft, Message, Session, SessionParticipant
 from apps.workspaces.models import Workspace
 
 pytestmark = pytest.mark.django_db
@@ -65,7 +65,7 @@ def test_session_state_dto_keys():
 
 def test_turnout_surfaces_project_session_target_and_workspace():
     from django.contrib.auth.models import User
-    from apps.chat.models import Session
+    from apps.canopy_sessions.models import Session
     from apps.harness import services
     from apps.harness.models import Turn
     from apps.harness.schemas import TurnOut

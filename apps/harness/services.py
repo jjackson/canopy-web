@@ -657,7 +657,7 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     """Upsert a durable Session(origin=runner) + RunnerBinding per reported
     session. Sessions that fell off the report keep their Session row but have
     their live binding cleared."""
-    from apps.chat.models import RunnerBinding, Session
+    from apps.canopy_sessions.models import RunnerBinding, Session
 
     # emdash task NAMES are not unique — two un-archived tasks can share a name
     # (see task_state's "Names aren't unique in emdash's schema" note). Collapse
@@ -749,7 +749,7 @@ def list_visible_sessions(user) -> list[SessionView]:
     WorkspaceMembership row and user_workspace_slugs(user) returns empty,
     silently hiding their workspace's sessions instead of listing them.
     """
-    from apps.chat.models import RunnerBinding
+    from apps.canopy_sessions.models import RunnerBinding
 
     wsvc.auto_join_workspaces(user)
     ws_slugs = wsvc.user_workspace_slugs(user)

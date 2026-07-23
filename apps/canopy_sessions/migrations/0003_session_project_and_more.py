@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('agents', '0012_agent_runner_preference'),
-        ('chat', '0002_draft_sessionparticipant'),
+        ('canopy_sessions', '0002_draft_sessionparticipant'),
         ('workspaces', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]

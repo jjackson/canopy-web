@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('chat', '0004_session_origin'),
+        ('canopy_sessions', '0004_session_origin'),
         ('harness', '0021_runnerbinding'),
     ]
 
@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
                 ('live_seen_at', models.DateTimeField(blank=True, null=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('runner', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='session_bindings', to='harness.runner')),
-                ('session', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='runner_binding', to='chat.session')),
+                ('session', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='runner_binding', to='canopy_sessions.session')),
             ],
             options={
                 'ordering': ['-last_interacted_at'],

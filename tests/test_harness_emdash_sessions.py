@@ -5,7 +5,7 @@ import pytest
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from apps.chat.models import RunnerBinding, Session
+from apps.canopy_sessions.models import RunnerBinding, Session
 from apps.harness.models import Runner
 from apps.workspaces.models import Workspace, WorkspaceMembership
 
