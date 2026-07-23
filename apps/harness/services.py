@@ -723,12 +723,21 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
                 title=s.emdash_task,
             )
             binding = RunnerBinding(session=session, session_key=s.emdash_task)
-            # thread_key/host are the binding's durable IDENTITY — stamp them
-            # only at creation. An existing binding may already be owned by an
-            # agent/phone thread (record_session), and this report loop must
-            # not steal it: see the docstring above.
             binding.thread_key = f"emdash:{s.emdash_task}"
             binding.host = runner.host
+        else:
+            # thread_key/host are the binding's durable IDENTITY. NEVER overwrite a
+            # non-empty one — an existing binding may be owned by an agent/phone
+            # thread (record_session) and this report loop must not steal it (see
+            # the docstring above). But DO fill an EMPTY one: bindings predating the
+            # SessionLink fold have host="" and can never satisfy
+            # RunnerBinding.reusable_by (which requires runner AND host), so a chat
+            # sent to one spawned a fresh emdash session forever instead of reusing
+            # the live one. Fill-if-empty heals those without clobbering anything.
+            if not binding.thread_key:
+                binding.thread_key = f"emdash:{s.emdash_task}"
+            if not binding.host:
+                binding.host = runner.host
         binding.runner = runner
         binding.status = s.status or ""
         binding.last_interacted_at = _aware(s.last_interacted_at)

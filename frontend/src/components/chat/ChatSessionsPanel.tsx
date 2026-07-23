@@ -15,6 +15,7 @@ import { listAgents, type AgentOut } from '@/api/agents'
 import { projectsApi, type ProjectSlug } from '@/api/projects'
 import { relativeTime } from '@/components/activity/turnLog'
 import { sessionTargetLabel } from './sessionTargetLabel'
+import { projectHeader, sortSessions, type SessionSort } from './sessionSort'
 
 /**
  * Reusable, CROSS-WORKSPACE chat session surface: a findable list of your chat
@@ -36,6 +37,7 @@ export function ChatSessionsPanel({
   const [agents, setAgents] = useState<AgentOut[]>(agentsProp ?? [])
   const [projects, setProjects] = useState<ProjectSlug[]>([])
   const [loading, setLoading] = useState(true)
+  const [sort, setSort] = useState<SessionSort>('time')
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -146,6 +148,27 @@ export function ChatSessionsPanel({
         </DropdownMenu>
       </div>
 
+      {sessions.length > 1 && (
+        <div className="flex items-center gap-1 pb-2 text-xs">
+          <span className="mr-1 text-muted-foreground">Sort</span>
+          {(['time', 'project'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setSort(m)}
+              aria-pressed={sort === m}
+              className={
+                sort === m
+                  ? 'rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 font-medium text-primary'
+                  : 'rounded-md border border-border px-2 py-0.5 text-muted-foreground hover:bg-muted'
+              }
+            >
+              {m === 'time' ? 'Recent' : 'Project'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {error && <div className="py-2 text-sm text-destructive">{error}</div>}
       {loading ? (
         <div className="py-6 text-sm text-muted-foreground">Loading sessions…</div>
@@ -156,10 +179,16 @@ export function ChatSessionsPanel({
         </div>
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
-          {sessions.map((s) => {
+          {sortSessions(sessions, sort).map((s, i, rows) => {
             const label = sessionTargetLabel(agentName(s.agent_slug), s.project ?? '')
+            const header = projectHeader(rows, i, sort)
             return (
               <li key={s.id}>
+                {header && (
+                  <div className="bg-muted/40 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {header}
+                  </div>
+                )}
                 <Link
                   to={`/w/${s.workspace}/chat/${s.id}`}
                   className="flex items-center justify-between gap-3 px-3 py-2.5 hover:bg-muted"
@@ -181,7 +210,7 @@ export function ChatSessionsPanel({
                         running
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">{relativeTime(s.created_at, now)}</span>
+                      <span className="text-muted-foreground">{relativeTime(s.last_activity_at, now)}</span>
                     )}
                     {s.runner_name && (
                       <span className="text-muted-foreground">

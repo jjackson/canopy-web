@@ -4107,6 +4107,11 @@ export interface components {
              */
             readonly created_at: string;
             /**
+             * Last Activity At
+             * Format: date-time
+             */
+            readonly last_activity_at: string;
+            /**
              * Origin
              * @default web
              */
@@ -6450,6 +6455,11 @@ export interface components {
              * Format: date-time
              */
             readonly created_at: string;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            readonly last_activity_at: string;
             /**
              * Origin
              * @default web
