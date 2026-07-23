@@ -129,20 +129,8 @@ def get_session(request: HttpRequest, session_id: uuid.UUID, full: bool = False)
     # explicit escape hatch. Scroll-back pages via GET /{id}/messages?before=.
     session = _session_or_404(request, session_id)
     data = _out(session)
-    if full:
-        rows, has_more, oldest = services.all_messages(session)
-    else:
-        rows, has_more, oldest = services.tail_messages(session)
+    rows, has_more, oldest = services.visible_transcript(session, full=full)
     data["messages"] = [MessageOut.from_orm(m) for m in rows]
-    if not data["messages"]:
-        # A local runner session holds NO Message rows until a backfill lands, but
-        # the runner reports a rolling tail we already store on the binding. Render
-        # it so the panel opens with recent context instead of blank; "Load full
-        # session" still pulls the real history, and a live stream layers on top.
-        binding = getattr(session, "runner_binding", None)
-        data["messages"] = [
-            MessageOut.from_orm(m) for m in services.tail_as_messages(session, binding)
-        ]
     data["has_more_before"] = has_more
     data["oldest_loaded_turn_index"] = oldest
     return data

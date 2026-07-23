@@ -169,6 +169,27 @@ def tail_as_messages(session, binding) -> list[TailMessage]:
     return rows
 
 
+def visible_transcript(session, *, full: bool = False):
+    """THE answer to "what transcript rows should a client see?" — used by every
+    transport, so REST and the WebSocket can never disagree.
+
+    Both transports previously reimplemented this. When the binding-tail fallback
+    was added to the REST detail endpoint only, `GET` correctly returned 8 rows
+    while the panel — which reads the `session.state` WS snapshot — stayed blank.
+    The shared SESSION_TAIL_DEFAULT constant wasn't enough: the POLICY has to be
+    shared too. `tests/test_transcript_parity.py` asserts the two agree.
+
+    Returns (rows, has_more_before, oldest_loaded_turn_index). Rows are `Message`
+    instances or `TailMessage`s, which serialize identically on both paths.
+    """
+    rows, has_more, oldest = (all_messages if full else tail_messages)(session)
+    if not rows:
+        # No server-side rows yet (a local runner session before backfill) — show
+        # the binding's rolling tail rather than an empty panel.
+        rows = tail_as_messages(session, getattr(session, "runner_binding", None))
+    return rows, has_more, oldest
+
+
 def request_backfill(session) -> str:
     """The client asked for full history. 'ready' if already server-full; 'requested'
     if a live runner is bound (signal it); 'unavailable' otherwise (tail still shows)."""
