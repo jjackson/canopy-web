@@ -37,9 +37,18 @@ def test_backfill_ready_when_rows_exist():
 def test_backfill_requested_when_runner_live(monkeypatch):
     published = []
     monkeypatch.setattr("apps.realtime.groups.publish", lambda g, m: published.append((g, m)))
-    _u, _w, s, _r, c = _ctx(runner_online=True)
+    _u, _w, s, r, c = _ctx(runner_online=True)
     assert c.post(f"/api/chat/{s.id}/backfill").json() == {"status": "requested"}
     assert RunnerBinding.objects.get(session=s).backfill_requested is True
+    assert len(published) == 1
+    group, frame = published[0]
+    assert group.endswith(r.id.hex)                 # the bound runner's control group
+    assert frame == {
+        "type": "runner.stream",
+        "session_id": str(s.id),
+        "session_key": "echo-1",
+        "desired": None,                            # None marks a backfill ask (not a stream toggle)
+    }
 
 
 def test_backfill_unavailable_when_no_live_runner():
@@ -73,3 +82,17 @@ def test_runner_backfill_endpoints(monkeypatch):
     assert resp == {"written": 2}
     assert RunnerBinding.objects.get(session=s).backfill_requested is False
     assert s.messages.count() == 2
+
+
+def test_session_backfill_rejects_unbound_runner():
+    _u, ws, s, _r, c = _ctx()
+    # a DIFFERENT runner (not the one bound to the session) tries to ship history
+    other = Runner.objects.create(name="other", workspace=ws, location=Runner.LOCAL, paired_by=_u)
+    resp = c.post(
+        f"/api/harness/runners/{other.id}/session-backfill",
+        data={"session_id": str(s.id),
+              "messages": [{"role": "user", "text": "q"}, {"role": "assistant", "text": "a"}]},
+        content_type="application/json",
+    )
+    assert resp.status_code == 404
+    assert s.messages.count() == 0
