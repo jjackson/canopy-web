@@ -141,3 +141,46 @@ def test_report_fills_empty_identity_but_never_overwrites():
     assert healed.thread_key == "emdash:legacy" and healed.host == runner.host  # filled
     assert healed.reusable_by(runner) is True                                   # now reusable
     assert RunnerBinding.objects.get(session=owned).thread_key == "phone:jj:echo"  # NOT stolen
+
+
+# --- session naming: the emdash task, not a thread_key hash ---------------
+
+def test_display_name_prefers_the_emdash_task_over_a_hash_title():
+    """Regression: an agent turn with no explicit thread_key gets an opaque hash
+    thread_key; _thread_session titled the row with it, so the Sessions list showed
+    '19f91250349ec91b' instead of the task the human sees in emdash."""
+    _u, ws, runner, c = _ctx()
+    s = Session.objects.create(workspace=ws, origin=Session.ORIGIN_RUNNER, title="19f91250349ec91b")
+    RunnerBinding.objects.create(
+        session=s, runner=runner, session_key="echo-manager-sync-0723-1649",
+        thread_key="19f91250349ec91b", host=runner.host,
+    )
+    row = next(r for r in c.get("/api/canopy-sessions/").json() if r["id"] == str(s.id))
+    assert row["title"] == "echo-manager-sync-0723-1649"
+
+
+def test_record_session_retitles_a_hash_named_session():
+    from apps.harness.services import record_session
+    _u, ws, runner, _c = _ctx()
+    # _binding_for_thread matches a PROJECT thread on session.project + workspace
+    s = Session.objects.create(workspace=ws, origin=Session.ORIGIN_RUNNER,
+                               project="echo", title="19f91250349ec91b")
+    RunnerBinding.objects.create(session=s, runner=runner, session_key="",
+                                thread_key="19f91250349ec91b", host=runner.host)
+    record_session(None, "19f91250349ec91b", runner=runner, project="echo",
+                   workspace=ws, emdash_task_id="echo-manager-sync-0723-1649")
+    s.refresh_from_db()
+    assert s.title == "echo-manager-sync-0723-1649"
+
+
+def test_record_session_never_clobbers_a_human_chat_title():
+    from apps.harness.services import record_session
+    user, ws, runner, _c = _ctx()
+    s = Session.objects.create(workspace=ws, created_by=user, origin=Session.ORIGIN_WEB,
+                               project="echo", title="labs chat smoke")
+    RunnerBinding.objects.create(session=s, runner=runner, session_key="",
+                                 thread_key="19f91250349ec91b", host=runner.host)
+    record_session(None, "19f91250349ec91b", runner=runner, project="echo", workspace=ws,
+                   emdash_task_id="some-emdash-task")
+    s.refresh_from_db()
+    assert s.title == "labs chat smoke"

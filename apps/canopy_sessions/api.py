@@ -45,7 +45,10 @@ def _out(session: Session) -> dict:
         "agent_slug": session.agent.slug if session.agent_id else None,
         "project": session.project,
         "workspace": session.workspace_id,
-        "title": session.title,
+        # The name a human recognises for a runner-bound session is the emdash
+        # task (what they see in emdash), not a thread_key hash a fallback title
+        # may have captured. Web chats keep their own title.
+        "title": (binding.session_key if (binding and binding.session_key) else session.title),
         "status": session.status,
         "created_at": session.created_at,
         # When it last DID something (binding > newest message > created).

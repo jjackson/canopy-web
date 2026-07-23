@@ -665,6 +665,14 @@ def record_session(
         binding.runner = runner
         binding.host = runner.host
         binding.session_key = emdash_task_id
+        # Name the row after the emdash task the human actually sees.
+        # _thread_session titles a BRAND-NEW session with the raw thread_key,
+        # which for an agent turn is an opaque hash (a real one leaked into the
+        # Sessions list as "19f91250349ec91b"). Only retitle when the title is
+        # still that fallback — never clobber a human-set chat title.
+        if emdash_task_id and binding.session.title == thread_key:
+            binding.session.title = emdash_task_id[:200]
+            binding.session.save(update_fields=["title"])
         binding.live_seen_at = timezone.now()
         if agent_task_ext_id is not None:
             binding.agent_task_ext_id = agent_task_ext_id
