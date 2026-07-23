@@ -80,7 +80,9 @@ def test_running_sorts_first():
     RunnerBinding.objects.create(session=live, runner=runner, session_key="echo-1",
                                  last_interacted_at=timezone.now())
     body = c.get("/api/chat/").json()
+    ids = [r["id"] for r in body]
     assert body[0]["id"] == str(live.id)         # running row floats to the top
+    assert str(idle.id) in ids                   # the idle web session is still listed, below it
 
 
 def test_dedup_web_session_with_live_binding_appears_once():
