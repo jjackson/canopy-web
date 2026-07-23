@@ -30,6 +30,12 @@ class MessageOut(Schema):
     created_at: dt.datetime
 
 
+class MessagePageOut(Schema):
+    """One backward page of transcript for scroll-back ("Load earlier")."""
+    messages: list[MessageOut]
+    has_more_before: bool
+
+
 class SessionOut(Schema):
     id: uuid.UUID
     agent_slug: str | None
@@ -42,6 +48,11 @@ class SessionOut(Schema):
 
 class SessionDetailOut(SessionOut):
     messages: list[MessageOut]
+    # Tail-first cursor: the transcript ships the last N messages by default;
+    # these tell the client whether earlier history exists and where the loaded
+    # window starts, for scroll-back / "load full". See services.SESSION_TAIL_DEFAULT.
+    has_more_before: bool = False
+    oldest_loaded_turn_index: int | None = None
 
 
 class SendOut(Schema):

@@ -13,7 +13,7 @@ from django.contrib.auth.models import AnonymousUser, User
 from apps.agents.models import Agent
 from apps.canopy_sessions import services as chat
 from apps.canopy_sessions.consumers import SessionConsumer
-from apps.canopy_sessions.models import SessionParticipant
+from apps.canopy_sessions.models import Message, SessionParticipant
 from apps.harness.models import Turn
 from apps.workspaces.models import Workspace, WorkspaceMembership
 
@@ -191,6 +191,28 @@ async def test_send_broadcasts_draft_committed():
     await comm.send_json_to({"action": "chat.send", "data": {}})
     committed = await _recv_match(comm, lambda f: f.get("event") == "draft.committed")
     assert "user_message_id" in committed["data"]
+    await comm.disconnect()
+
+
+async def test_snapshot_ships_tail_not_head():
+    owner, _t, session = await database_sync_to_async(_seed)()
+
+    @database_sync_to_async
+    def _fill():
+        for i in range(chat.SESSION_TAIL_DEFAULT + 15):  # 35 messages
+            Message.objects.create(
+                session=session, turn_index=i, role=Message.USER, plaintext=f"m{i}",
+            )
+
+    await _fill()
+    comm = await _connect(session, owner)
+    connected, _ = await comm.connect()
+    assert connected is True
+    snap = await _recv_match(comm, lambda f: f.get("event") == "session.state")
+    msgs = snap["data"]["messages"]
+    assert len(msgs) == chat.SESSION_TAIL_DEFAULT
+    # The LAST N, chronological — i.e. the tail, not messages[:200] (the head).
+    assert [m["turn_index"] for m in msgs] == list(range(15, 35))
     await comm.disconnect()
 
 
