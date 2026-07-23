@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { backfillAction, restToKitMessage } from "./chatPageLogic";
+import {
+  backfillAction,
+  restToKitMessage,
+  shouldShowLoadFull,
+} from "./chatPageLogic";
 import type { ChatSessionDetail } from "@/api/chat";
 
 describe("restToKitMessage", () => {
@@ -54,5 +58,42 @@ describe("backfillAction", () => {
 
   it("degrades an unrecognized status to an immediate reload", () => {
     expect(backfillAction("something-new")).toBe("reload-now");
+  });
+});
+
+describe("shouldShowLoadFull", () => {
+  const base = { hasMoreBefore: false, historyUnavailable: false };
+
+  // REGRESSION (found on prod): a runner-discovered session whose history is
+  // still on the laptop has ZERO server Message rows, so it rendered "Start the
+  // conversation" with no way to pull its transcript. The offer must NOT depend
+  // on messages already being on screen.
+  it("offers Load full for a runner session with no messages yet", () => {
+    expect(shouldShowLoadFull({ ...base, origin: "runner" })).toBe(true);
+  });
+
+  it("does not offer it for a web session", () => {
+    expect(shouldShowLoadFull({ ...base, origin: "web" })).toBe(false);
+  });
+
+  it("defers to Load earlier when the server holds more than the window", () => {
+    expect(
+      shouldShowLoadFull({ ...base, origin: "runner", hasMoreBefore: true }),
+    ).toBe(false);
+  });
+
+  it("stays hidden once history is known unavailable", () => {
+    expect(
+      shouldShowLoadFull({
+        ...base,
+        origin: "runner",
+        historyUnavailable: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("is hidden before the session meta loads (origin null/undefined)", () => {
+    expect(shouldShowLoadFull({ ...base, origin: null })).toBe(false);
+    expect(shouldShowLoadFull({ ...base, origin: undefined })).toBe(false);
   });
 });

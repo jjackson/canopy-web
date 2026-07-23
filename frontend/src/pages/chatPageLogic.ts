@@ -45,3 +45,28 @@ export function backfillAction(status: string): BackfillAction {
   if (status === "requested") return "reload-after-delay";
   return "reload-now";
 }
+
+/**
+ * Whether to offer "Load full session".
+ *
+ * A local (origin=runner) session's history lives on the runner, not the
+ * server — until a backfill lands the server may hold ZERO `Message` rows. So
+ * the offer must NOT depend on messages already being on screen: an empty
+ * discovered session is precisely the case that needs it (found in prod: an
+ * `origin=runner` session rendered "Start the conversation" with no way to pull
+ * its transcript). Gate only on:
+ *  - `hasMoreBefore` — the server holds more than the loaded window, so
+ *    "Load earlier" is the right control instead;
+ *  - `historyUnavailable` — we already asked and the runner wasn't reachable.
+ * Clicking when the server happens to be complete is a harmless no-op (the
+ * backend answers `ready` and we just reload the same rows).
+ */
+export function shouldShowLoadFull(args: {
+  origin: string | null | undefined;
+  hasMoreBefore: boolean;
+  historyUnavailable: boolean;
+}): boolean {
+  return (
+    args.origin === "runner" && !args.hasMoreBefore && !args.historyUnavailable
+  );
+}

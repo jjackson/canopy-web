@@ -11,7 +11,7 @@ import {
   requestBackfill,
   type ChatSessionDetail,
 } from '@/api/chat'
-import { backfillAction, restToKitMessage } from './chatPageLogic'
+import { backfillAction, restToKitMessage, shouldShowLoadFull } from './chatPageLogic'
 
 /** Render assistant/system message text through canopy's shared Markdown (the
  *  same renderer used across every AI-output surface — so it picks up remark-gfm
@@ -155,11 +155,11 @@ export function ChatPage() {
     [],
   )
 
-  const showLoadFull =
-    !hasMoreBefore &&
-    !historyUnavailable &&
-    meta?.origin === 'runner' &&
-    socket.state.messages.length > 0
+  const showLoadFull = shouldShowLoadFull({
+    origin: meta?.origin,
+    hasMoreBefore,
+    historyUnavailable,
+  })
 
   const historySlot = (
     <div className="flex flex-col items-center gap-1 py-2">
