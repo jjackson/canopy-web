@@ -2413,6 +2413,8 @@ export interface components {
              * @enum {string}
              */
             readonly visibility: "public" | "private";
+            /** Workspace */
+            readonly workspace: string | null;
         };
         /**
          * BatchContextIn
@@ -3916,6 +3918,8 @@ export interface components {
             readonly id: string;
             /** Agent Slug */
             readonly agent_slug: string | null;
+            /** Project */
+            readonly project: string;
             /** Workspace */
             readonly workspace: string;
             /** Title */
@@ -6138,6 +6142,8 @@ export interface components {
             readonly id: string;
             /** Agent Slug */
             readonly agent_slug: string | null;
+            /** Project */
+            readonly project: string;
             /** Workspace */
             readonly workspace: string;
             /** Title */
@@ -6154,6 +6160,11 @@ export interface components {
         readonly SessionCreateIn: {
             /** Agent Slug */
             readonly agent_slug?: string | null;
+            /**
+             * Project
+             * @default
+             */
+            readonly project: string;
             /**
              * Title
              * @default
