@@ -55,9 +55,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export interface CreateSessionInput {
   title?: string;
   agentSlug?: string;
-  // Create in this workspace (the chosen agent's) via the tenant route; omit to
-  // use the caller's default. Needed cross-workspace — "new chat with <agent>"
-  // must land in that agent's tenant, not the caller's default.
+  // Start an agentless PROJECT chat in this repo (the emdash project name).
+  // Mutually exclusive with agentSlug.
+  project?: string;
+  // Create in this workspace (the chosen agent's OR project's) via the tenant
+  // route; omit to use the caller's default.
   workspace?: string;
   metadata?: Record<string, unknown>;
 }
@@ -72,6 +74,7 @@ export function createSession(
     body: JSON.stringify({
       title: input.title ?? "",
       agent_slug: input.agentSlug ?? null,
+      project: input.project ?? "",
       metadata: input.metadata ?? {},
     }),
   });

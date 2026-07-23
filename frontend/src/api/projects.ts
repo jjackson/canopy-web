@@ -5,12 +5,18 @@ export type Project = components["schemas"]["ProjectListOut"];
 export type ProjectDetail = components["schemas"]["ProjectDetailOut"];
 export type ProjectContextEntry = components["schemas"]["ProjectContextEntryOut"];
 export type ProjectContext = components["schemas"]["ProjectContextOut"];
+export type ProjectSlug = components["schemas"]["ProjectSlugOut"];
 
 export const projectsApi = {
   list: async (): Promise<Project[]> => {
     const { data, error } = await apiV2.GET("/api/projects/");
     if (error) throw new Error("Failed to load projects");
     return data.items as Project[];
+  },
+  listSlugs: async (): Promise<ProjectSlug[]> => {
+    const { data, error } = await apiV2.GET("/api/projects/slugs/");
+    if (error) throw new Error("Failed to load project slugs");
+    return Array.from(data) as ProjectSlug[];
   },
   get: async (slug: string): Promise<ProjectDetail> => {
     const { data, error } = await apiV2.GET("/api/projects/{slug}/", {
