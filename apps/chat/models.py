@@ -19,6 +19,12 @@ class Session(models.Model):
     ACTIVE, ARCHIVED = "active", "archived"
     STATUS_CHOICES = [(ACTIVE, "Active"), (ARCHIVED, "Archived")]
 
+    # Provenance: was the session started in-app (web) or discovered on a
+    # runner (runner)? Independent of which runner backs it.
+    ORIGIN_WEB = "web"
+    ORIGIN_RUNNER = "runner"
+    ORIGIN_CHOICES = [(ORIGIN_WEB, "Web"), (ORIGIN_RUNNER, "Runner")]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     # You chat WITH an agent (nullable — a session can be agent-agnostic).
     agent = models.ForeignKey(
@@ -37,6 +43,7 @@ class Session(models.Model):
     project = models.CharField(max_length=100, blank=True, default="")
     title = models.CharField(max_length=200, blank=True, default="")
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=ACTIVE)
+    origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES, default=ORIGIN_WEB)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+",
     )

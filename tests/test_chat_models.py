@@ -65,3 +65,9 @@ def test_session_project_field_and_xor_constraint():
     with pytest.raises(IntegrityError):
         with transaction.atomic():
             Session.objects.create(workspace=ws, created_by=user, agent=agent, project="canopy-web")
+
+
+def test_session_origin_defaults_web():
+    ws, user = _ws_user()
+    s = Session.objects.create(workspace=ws, title="t")
+    assert s.origin == Session.ORIGIN_WEB
