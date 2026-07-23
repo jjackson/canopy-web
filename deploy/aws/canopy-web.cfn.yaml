@@ -150,6 +150,15 @@ Resources:
             - { Name: DJANGO_SETTINGS_MODULE, Value: config.settings.connectlabs }
             - { Name: FORCE_SCRIPT_NAME, Value: /canopy }
             - { Name: ALLOWED_HOSTS, Value: labs.connect.dimagi.com }
+            # OAuth login allowlist (comma-separated). This Environment block is
+            # the SINGLE source of truth for the container's non-secret env: every
+            # deploy re-asserts it onto the live task def via render_taskdef.py, so
+            # editing it here (and merging to main) is what changes the running
+            # value — no separate stack update needed. Keep in sync with
+            # .env.example. Without this entry the container falls back to the
+            # base.py default of just `dimagi.com`, locking out dimagi-associate.com
+            # / dimagi-ai.com logins.
+            - { Name: AUTH_ALLOWED_EMAIL_DOMAIN, Value: "dimagi.com,dimagi-ai.com,dimagi-associate.com" }
             - { Name: AWS_REGION, Value: !Ref "AWS::Region" }
             - { Name: PORT, Value: !Ref ContainerPort }
             # Google Drive root folder for walkthrough storage. Not a secret
