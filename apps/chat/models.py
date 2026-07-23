@@ -157,3 +157,31 @@ class Draft(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"draft:{self.session_id.hex[:8]}:v{self.version}"
+
+
+class RunnerBinding(models.Model):
+    """The live pointer from a Session to the runner currently backing it, plus
+    the cheap tail read-model. Absorbs the old harness.EmdashSession. Null when
+    nothing is live for the session."""
+
+    session = models.OneToOneField(
+        Session, on_delete=models.CASCADE, related_name="runner_binding"
+    )
+    runner = models.ForeignKey(
+        "harness.Runner", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="session_bindings",
+    )
+    # Engine-agnostic handle the runner uses to resume/inject (was emdash_task).
+    session_key = models.CharField(max_length=255)
+    tail = models.JSONField(default=list)          # last N conversational messages
+    summary = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=40, blank=True, default="")
+    last_interacted_at = models.DateTimeField(null=True, blank=True)
+    live_seen_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-last_interacted_at"]
+
+    def __str__(self) -> str:
+        return f"binding<{self.session_key}>"
