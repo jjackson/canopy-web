@@ -1,4 +1,4 @@
-"""Django Ninja router for /api/chat — live chat sessions.
+"""Django Ninja router for /api/canopy-sessions — live chat sessions.
 
 Session-authed + workspace-membership gated. A "send" enqueues a session Turn;
 in SP2a the stub executor runs it inline (the SP2b cloud runner will claim it

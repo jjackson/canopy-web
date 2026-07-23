@@ -2218,7 +2218,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/chat/": {
+    readonly "/api/canopy-sessions/": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -2236,7 +2236,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/chat/{session_id}": {
+    readonly "/api/canopy-sessions/{session_id}": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -2253,7 +2253,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/chat/{session_id}/messages": {
+    readonly "/api/canopy-sessions/{session_id}/messages": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -2270,7 +2270,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/chat/{session_id}/send": {
+    readonly "/api/canopy-sessions/{session_id}/send": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -2287,7 +2287,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/chat/{session_id}/attach": {
+    readonly "/api/canopy-sessions/{session_id}/attach": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -2304,7 +2304,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/chat/{session_id}/detach": {
+    readonly "/api/canopy-sessions/{session_id}/detach": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -2321,7 +2321,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/api/chat/{session_id}/backfill": {
+    readonly "/api/canopy-sessions/{session_id}/backfill": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;

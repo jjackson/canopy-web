@@ -1,5 +1,5 @@
 /**
- * Client for the live chat surface (/api/chat).
+ * Client for the live chat surface (/api/canopy-sessions).
  *
  * Plain fetch (mirrors src/api/sessions.ts) rather than the generated
  * openapi-fetch client — the live transcript's steady-state arrives over the
@@ -72,7 +72,9 @@ export interface CreateSessionInput {
 export function createSession(
   input: CreateSessionInput = {},
 ): Promise<ChatSession> {
-  const path = input.workspace ? `/api/w/${input.workspace}/chat/` : "/api/chat/";
+  const path = input.workspace
+    ? `/api/w/${input.workspace}/canopy-sessions/`
+    : "/api/canopy-sessions/";
   return request<ChatSession>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -90,11 +92,13 @@ export function getSession(
   opts: { full?: boolean } = {},
 ): Promise<ChatSessionDetail> {
   const q = opts.full ? "?full=true" : "";
-  return request<ChatSessionDetail>(`/api/chat/${encodeURIComponent(id)}${q}`);
+  return request<ChatSessionDetail>(
+    `/api/canopy-sessions/${encodeURIComponent(id)}${q}`,
+  );
 }
 
 export function listSessions(): Promise<ChatSession[]> {
-  return request<ChatSession[]>("/api/chat/");
+  return request<ChatSession[]>("/api/canopy-sessions/");
 }
 
 /** One backward page of transcript, for "Load earlier" scroll-back. */
@@ -105,27 +109,27 @@ export function listMessages(
 ): Promise<MessagePage> {
   const q = limit != null ? `&limit=${limit}` : "";
   return request<MessagePage>(
-    `/api/chat/${encodeURIComponent(id)}/messages?before=${before}${q}`,
+    `/api/canopy-sessions/${encodeURIComponent(id)}/messages?before=${before}${q}`,
   );
 }
 
 /** Register this viewer as attached (starts live streaming for a bound runner). */
 export function attachSession(id: string): Promise<StreamState> {
-  return request<StreamState>(`/api/chat/${encodeURIComponent(id)}/attach`, {
+  return request<StreamState>(`/api/canopy-sessions/${encodeURIComponent(id)}/attach`, {
     method: "POST",
   });
 }
 
 /** Detach this viewer (stops streaming once the last viewer leaves). */
 export function detachSession(id: string): Promise<StreamState> {
-  return request<StreamState>(`/api/chat/${encodeURIComponent(id)}/detach`, {
+  return request<StreamState>(`/api/canopy-sessions/${encodeURIComponent(id)}/detach`, {
     method: "POST",
   });
 }
 
 /** Ask the bound runner to ship the full transcript ("Load full session"). */
 export function requestBackfill(id: string): Promise<BackfillState> {
-  return request<BackfillState>(`/api/chat/${encodeURIComponent(id)}/backfill`, {
+  return request<BackfillState>(`/api/canopy-sessions/${encodeURIComponent(id)}/backfill`, {
     method: "POST",
   });
 }

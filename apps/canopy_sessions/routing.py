@@ -5,5 +5,5 @@ from django.urls import re_path
 from .consumers import SessionConsumer
 
 websocket_urlpatterns = [
-    re_path(r"^ws/chat/(?P<session_id>[0-9a-fA-F-]+)/$", SessionConsumer.as_asgi()),
+    re_path(r"^ws/canopy-sessions/(?P<session_id>[0-9a-fA-F-]+)/$", SessionConsumer.as_asgi()),
 ]

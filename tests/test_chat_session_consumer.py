@@ -33,7 +33,7 @@ def _seed():
 
 
 async def _connect(session, user):
-    comm = WebsocketCommunicator(SessionConsumer.as_asgi(), f"/ws/chat/{session.id}/")
+    comm = WebsocketCommunicator(SessionConsumer.as_asgi(), f"/ws/canopy-sessions/{session.id}/")
     comm.scope["user"] = user
     comm.scope["url_route"] = {"kwargs": {"session_id": str(session.id)}}
     return comm
