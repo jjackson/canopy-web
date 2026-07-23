@@ -28,6 +28,7 @@ def _out(session: Session) -> dict:
     return {
         "id": session.id,
         "agent_slug": session.agent.slug if session.agent_id else None,
+        "project": session.project,
         "workspace": session.workspace_id,
         "title": session.title,
         "status": session.status,
@@ -50,6 +51,8 @@ def _session_or_404(request: HttpRequest, session_id: uuid.UUID) -> Session:
 
 @router.post("/", response=SessionOut, summary="Create a chat session")
 def create_session(request: HttpRequest, payload: SessionCreateIn):
+    if payload.agent_slug and payload.project:
+        raise HttpError(422, "a session targets an agent or a project, not both")
     try:
         workspace = wsvc.current_workspace(request.user, getattr(request, "workspace_slug", None))
     except ValueError as exc:
@@ -61,7 +64,7 @@ def create_session(request: HttpRequest, payload: SessionCreateIn):
             raise HttpError(404, f"agent '{payload.agent_slug}' not found in this workspace")
     session = services.create_session(
         workspace=workspace, created_by=request.user, agent=agent,
-        title=payload.title, metadata=payload.metadata,
+        project=payload.project, title=payload.title, metadata=payload.metadata,
     )
     return _out(session)
 

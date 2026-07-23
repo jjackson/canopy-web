@@ -9,6 +9,9 @@ from ninja import Schema
 
 class SessionCreateIn(Schema):
     agent_slug: str | None = None
+    # An agentless PROJECT chat: the repo checkout to drive. Mutually exclusive
+    # with agent_slug.
+    project: str = ""
     title: str = ""
     metadata: dict = {}
 
@@ -30,6 +33,7 @@ class MessageOut(Schema):
 class SessionOut(Schema):
     id: uuid.UUID
     agent_slug: str | None
+    project: str
     workspace: str
     title: str
     status: str
