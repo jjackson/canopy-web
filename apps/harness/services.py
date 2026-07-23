@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import uuid
+from dataclasses import dataclass
 
 from django.db import IntegrityError, transaction
 from django.db.models import Max, Q
@@ -721,7 +722,22 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     return len(deduped)
 
 
-def list_visible_sessions(user) -> list:
+@dataclass
+class SessionView:
+    """The wire projection of a live runner session — the fields EmdashSessionOut
+    reads. Derived from Session + RunnerBinding; preserves the frozen shape."""
+
+    id: str
+    emdash_task: str
+    project: str
+    status: str
+    last_interacted_at: object
+    recent_messages: list
+    workspace_id: str
+    runner_name: str
+
+
+def list_visible_sessions(user) -> list[SessionView]:
     """Open sessions in the caller's workspaces whose runner is LIVE. Runner liveness
     (not deletion) is what suppresses a briefly-offline runner's stale rows — see
     Runner.live_status. Newest-first.
@@ -733,16 +749,34 @@ def list_visible_sessions(user) -> list:
     WorkspaceMembership row and user_workspace_slugs(user) returns empty,
     silently hiding their workspace's sessions instead of listing them.
     """
-    from .models import EmdashSession
+    from apps.chat.models import RunnerBinding
 
     wsvc.auto_join_workspaces(user)
     ws_slugs = wsvc.user_workspace_slugs(user)
-    rows = (
-        EmdashSession.objects.filter(workspace_id__in=ws_slugs)
-        .select_related("runner")
+    bindings = (
+        RunnerBinding.objects.filter(
+            runner__isnull=False, session__workspace_id__in=ws_slugs
+        )
+        .select_related("runner", "session")
         .order_by("-last_interacted_at")
     )
-    return [s for s in rows if s.runner.live_status == Runner.ONLINE]
+    out = []
+    for b in bindings:
+        if b.runner.live_status != Runner.ONLINE:
+            continue
+        out.append(
+            SessionView(
+                id=str(b.session_id),
+                emdash_task=b.session_key,
+                project=b.session.project,
+                status=b.status,
+                last_interacted_at=b.last_interacted_at,
+                recent_messages=b.tail,
+                workspace_id=b.session.workspace_id,
+                runner_name=b.runner.name,
+            )
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------

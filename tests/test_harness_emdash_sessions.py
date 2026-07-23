@@ -121,23 +121,31 @@ def test_a_non_owner_cannot_report_for_another_users_runner():
     assert RunnerBinding.objects.filter(runner=runner).count() == 0
 
 
-@pytest.mark.skip(reason="list_visible_sessions rewritten in unified-sessions Plan 1 Task 5")
+def _reported(task, **kw):
+    from types import SimpleNamespace
+
+    defaults = dict(project="canopy-web", status="in_progress", last_interacted_at=None,
+                     recent_messages=[])
+    defaults.update(kw)
+    return SimpleNamespace(emdash_task=task, **defaults)
+
+
 def test_list_is_tenant_scoped_and_hides_offline_runners():
     from datetime import timedelta
     from django.test import Client
+    from apps.harness.services import replace_reported_sessions
 
     jj = _user("jj")
     ws = _ws("dimagi", jj)
     live = _runner(jj, ws)
-    EmdashSession.objects.create(runner=live, workspace=ws, emdash_task="cloud-runner",
-                                 project="canopy-web", status="in_progress")
+    replace_reported_sessions(live, ws, [_reported("cloud-runner")])
 
     # An offline runner's session is hidden (not deleted).
     stale = Runner.objects.create(
         name="old-mbp", kind=Runner.EMDASH, host="old", paired_by=jj, workspace=ws,
         status=Runner.ONLINE, last_heartbeat_at=timezone.now() - timedelta(hours=2),
     )
-    EmdashSession.objects.create(runner=stale, workspace=ws, emdash_task="ghost", project="canopy-web")
+    replace_reported_sessions(stale, ws, [_reported("ghost")])
 
     c = Client()
     c.force_login(jj)
@@ -153,7 +161,6 @@ def test_list_is_tenant_scoped_and_hides_offline_runners():
     assert mc.get("/api/harness/sessions").json() == []
 
 
-@pytest.mark.skip(reason="list_visible_sessions rewritten in unified-sessions Plan 1 Task 5")
 def test_list_auto_joins_a_domain_matching_user_with_no_membership_row():
     """A @dimagi.com user who has never hit any other endpoint has NO explicit
     WorkspaceMembership row yet. The flat GET /api/harness/sessions path is
@@ -163,14 +170,14 @@ def test_list_auto_joins_a_domain_matching_user_with_no_membership_row():
     domain-matching teammate gets an empty list instead of their workspace's
     sessions."""
     from django.test import Client
+    from apps.harness.services import replace_reported_sessions
 
     owner = _user("owner")
     ws = _ws("dimagi", owner)
     ws.auto_join_domains = ["dimagi.com"]
     ws.save(update_fields=["auto_join_domains"])
     runner = _runner(owner, ws)
-    EmdashSession.objects.create(runner=runner, workspace=ws, emdash_task="cloud-runner",
-                                 project="canopy-web", status="in_progress")
+    replace_reported_sessions(runner, ws, [_reported("cloud-runner")])
 
     newcomer = _user("newcomer")  # newcomer@dimagi.com, no WorkspaceMembership row
     assert not WorkspaceMembership.objects.filter(user=newcomer).exists()
@@ -182,22 +189,18 @@ def test_list_auto_joins_a_domain_matching_user_with_no_membership_row():
     assert tasks == {"cloud-runner"}
 
 
-@pytest.mark.skip(reason="list_visible_sessions rewritten in unified-sessions Plan 1 Task 5")
 def test_list_is_newest_first_by_last_interacted_at():
     from datetime import timedelta
     from django.test import Client
+    from apps.harness.services import replace_reported_sessions
 
     jj = _user("jj")
     ws = _ws("dimagi", jj)
     runner = _runner(jj, ws)
-    EmdashSession.objects.create(
-        runner=runner, workspace=ws, emdash_task="older", project="canopy-web",
-        status="in_progress", last_interacted_at=timezone.now() - timedelta(hours=1),
-    )
-    EmdashSession.objects.create(
-        runner=runner, workspace=ws, emdash_task="newer", project="canopy-web",
-        status="in_progress", last_interacted_at=timezone.now(),
-    )
+    replace_reported_sessions(runner, ws, [
+        _reported("older", last_interacted_at=timezone.now() - timedelta(hours=1)),
+        _reported("newer", last_interacted_at=timezone.now()),
+    ])
 
     c = Client()
     c.force_login(jj)
