@@ -18,7 +18,10 @@ urlpatterns = [
     path("api/csrf/", csrf_view, name="csrf"),
     path("api/debug/", include("apps.common.urls_debug")),
     path("auth/cli/authorize/", views_cli_authorize, name="cli_authorize"),
-    path("walkthrough/<uuid:wid>/content", views_walkthrough_content, name="walkthrough-content"),
+    # <str:> (not <uuid:>) so a malformed id is handled by the view (bare 404)
+    # instead of falling through to the SPA catch-all and painting the whole app
+    # inside a failed content embed. The view 404s any id it can't resolve.
+    path("walkthrough/<str:wid>/content", views_walkthrough_content, name="walkthrough-content"),
     # Back-compat: the pre-reclaim stream URL is baked into already-rendered
     # artifacts (DDD decks, review embeds). Redirect, don't fall to the SPA.
     path(

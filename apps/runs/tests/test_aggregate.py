@@ -50,6 +50,26 @@ def test_build_run_surfaces_video_slides_and_documentation_as_first_class():
     assert run["video"]["content_url"] == f"/walkthrough/{hero.id}/content"
 
 
+def test_build_run_tokenizes_link_visibility_console_embeds():
+    """The DDD console embeds artifacts via <iframe src=content_url>. A public
+    (visibility=link) artifact must carry ?t=<share_token> so the iframe streams
+    even when its workspace differs from the viewer's — parity with the release
+    page (issue #345). Private artifacts stay tokenless (session-member auth)."""
+    u = make_user()
+    rid = "tok-2026-06-02-001"
+    pub = make_walkthrough(
+        u, kind="html", run_id=rid, role="deck",
+        visibility="link", share_token="sekret",
+    )
+    priv = make_walkthrough(u, kind="video", run_id=rid, role="hero_video")
+
+    run = aggregate.build_run(rid)
+    assert run["slides"]["content_url"] == f"/walkthrough/{pub.id}/content?t=sekret"
+    assert run["slides"]["viewer_url"] == f"/walkthrough/{pub.id}?t=sekret"
+    # Private artifact: no token appended.
+    assert run["video"]["content_url"] == f"/walkthrough/{priv.id}/content"
+
+
 def test_build_run_unroled_html_falls_back_to_documentation():
     u = make_user()
     rid = "calendar-2026-06-01-002"

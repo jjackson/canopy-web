@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 
@@ -37,9 +38,12 @@ def _parse_range(header: str, total: int) -> tuple[int, int] | None:
 
 
 def _get_or_404(wid):
+    # ValidationError: the route now accepts <str:wid>, so a non-UUID id reaches
+    # the UUIDField pk lookup and raises ValidationError (not ValueError) — treat
+    # it as "not found" so a malformed content URL 404s instead of 500ing.
     try:
         return Walkthrough.objects.get(pk=wid)
-    except (Walkthrough.DoesNotExist, ValueError):
+    except (Walkthrough.DoesNotExist, ValueError, ValidationError):
         return None
 
 

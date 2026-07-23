@@ -4,6 +4,10 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
+import {
+  NAVIGATE_FALLBACK_ALLOWLIST,
+  NAVIGATE_FALLBACK_DENYLIST,
+} from './src/pwa/navigation-fallback'
 
 export default defineConfig({
   // Path prefix when deployed as a labs tenant (labs.connect.dimagi.com/canopy).
@@ -54,23 +58,15 @@ export default defineConfig({
         // no notification). importScripts (not injectManifest) keeps the
         // plugin's own precaching intact while adding push handling.
         importScripts: ['sw-push.js'],
-        // navigateFallback defaults to index.html, so the SW answers EVERY
-        // navigation with the cached SPA shell unless the path is denylisted
-        // here. That must exclude Django-owned routes — above all /accounts/
-        // (OAuth): without it the SW swallows the `me → 401 → redirect to
-        // /accounts/google/login/` navigation and re-serves the shell, so a
-        // lapsed session can never re-login and the app spins forever (the
-        // server sees the me-401 churn with zero /accounts/ hits). /api/, /admin/,
-        // /static/, /auth/ (CLI authorize) and /health/ are backend too. The
-        // optional (canopy/) prefix covers both the labs tenant mount and root.
-        navigateFallbackDenylist: [
-          /^\/(canopy\/)?api\//,
-          /^\/(canopy\/)?accounts\//,
-          /^\/(canopy\/)?admin\//,
-          /^\/(canopy\/)?static\//,
-          /^\/(canopy\/)?auth\//,
-          /^\/(canopy\/)?health\/?$/,
-        ],
+        // Fail-safe navigate-fallback ownership (issue #345): the SW serves the
+        // cached SPA shell ONLY for allowlisted SPA route prefixes; every other
+        // navigation (unknown paths, Django routes, the /walkthrough/<id>/content
+        // streams) goes to the network. Inverting the old "shell for everything
+        // minus a denylist" default means a NEW server route can't be silently
+        // swallowed. The rule + both lists live in — and are unit-tested in —
+        // src/pwa/navigation-fallback.ts.
+        navigateFallbackAllowlist: NAVIGATE_FALLBACK_ALLOWLIST,
+        navigateFallbackDenylist: NAVIGATE_FALLBACK_DENYLIST,
         // No runtimeCaching routes registered: all non-precached fetches bypass the SW and hit
         // the network. This keeps the API uncached (stale "0 waiting" is worse than a spinner).
         // When adding entries here, take care not to match /api/ — nothing else guards against that.

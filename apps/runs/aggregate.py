@@ -157,14 +157,28 @@ def _narrative_slug_map(walkthroughs) -> dict[str, str]:
     return m
 
 
+def _tok(base: str, w: Walkthrough) -> str:
+    """Append ?t=<share_token> when the artifact is public + tokened, so an
+    anonymous browser can stream it (each artifact self-checks its OWN token in
+    Walkthrough.readable_by). Members stream tokenlessly via session; the token
+    is harmless for them. A no-op for private/member artifacts (no token minted)."""
+    if w.visibility == Walkthrough.VISIBILITY_LINK and w.share_token:
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}t={w.share_token}"
+    return base
+
+
 def _content_url(w: Walkthrough) -> str:
     """In-app viewer stream. Session auth covers private artifacts; public
-    (visibility=link) artifacts stream tokenlessly to anyone with the URL."""
-    return f"/walkthrough/{w.id}/content"
+    (visibility=link) artifacts carry ?t=<share_token> so they stream to anyone
+    with the URL — parity with the release page, and it keeps the DDD console's
+    <iframe> embed readable even when the artifact's workspace differs from the
+    viewer's active one."""
+    return _tok(f"/walkthrough/{w.id}/content", w)
 
 
 def _viewer_url(w: Walkthrough) -> str:
-    return f"/walkthrough/{w.id}"
+    return _tok(f"/walkthrough/{w.id}", w)
 
 
 def _artifact_payload(w: Walkthrough | None) -> dict | None:
@@ -354,31 +368,6 @@ def _is_member(w: Walkthrough, request) -> bool:
     return w.workspace_id in wsvc.request_workspace_slugs(request)
 
 
-def _tok(base: str, w: Walkthrough) -> str:
-    """Append ?t=<share_token> when the artifact is public + tokened, so an
-    anonymous browser can stream it (each artifact self-checks its OWN token in
-    Walkthrough.readable_by). Members stream tokenlessly via session; the token
-    is harmless for them."""
-    if w.visibility == Walkthrough.VISIBILITY_LINK and w.share_token:
-        sep = "&" if "?" in base else "?"
-        return f"{base}{sep}t={w.share_token}"
-    return base
-
-
-def _release_artifact(w: Walkthrough | None) -> dict | None:
-    if w is None:
-        return None
-    return {
-        "id": w.id,
-        "title": w.title,
-        "kind": w.kind,
-        "role": w.role,
-        "content_url": _tok(f"/walkthrough/{w.id}/content", w),
-        "viewer_url": _tok(f"/walkthrough/{w.id}", w),
-        "duration_sec": w.duration_sec,
-    }
-
-
 def _humanize_slug(slug: str) -> str:
     return (slug or "").replace("-", " ").replace("_", " ").strip().title()
 
@@ -542,8 +531,8 @@ def build_release(run_id: str, request) -> dict | None:
         "narrative_slug": narrative_slug,
         "title": title,
         "lede": lede,
-        "video": _release_artifact(video),
-        "documentation": _release_artifact(documentation),
+        "video": _artifact_payload(video),
+        "documentation": _artifact_payload(documentation),
         "narrative": narrative_payload,
         "product_links": product_links,
         "related_links": related_links,
