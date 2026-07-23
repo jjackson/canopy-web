@@ -8,7 +8,6 @@ import { RunnerStatus } from '@/components/supervisor/RunnerStatus'
 import { RunnerDetail } from '@/components/supervisor/RunnerDetail'
 import { AgentKpiCard } from '@/components/supervisor/AgentKpiCard'
 import { ItemInbox } from '@/components/supervisor/ItemInbox'
-import { Composer } from '@/components/supervisor/Composer'
 import { ChatSessionsPanel } from '@/components/chat/ChatSessionsPanel'
 import { InstallPrompt } from '@/pwa/InstallPrompt'
 import { PushToggle } from '@/pwa/PushToggle'
@@ -195,7 +194,6 @@ export default function SupervisorPage(): JSX.Element {
             quick dispatch below. */}
         <TabsContent value="sessions" className="flex flex-col gap-4">
           <ChatSessionsPanel agents={agents ?? undefined} heading="Chats" />
-          {agents && agents.length > 0 && <Composer agents={agents} />}
         </TabsContent>
 
         {/* Agents — fleet KPIs + the one-time setup prompts. */}
