@@ -75,9 +75,9 @@ def test_attach_rest_endpoints_tenant_gated():
     r = Runner.objects.create(name="laptop", workspace=ws, location=Runner.LOCAL)
     RunnerBinding.objects.create(session=s, runner=r, session_key="feat-x")
     c = Client(); c.force_login(user)
-    assert c.post(f"/api/chat/{s.id}/attach").json() == {"streaming": True}
-    assert c.post(f"/api/chat/{s.id}/detach").json() == {"streaming": False}
+    assert c.post(f"/api/canopy-sessions/{s.id}/attach").json() == {"streaming": True}
+    assert c.post(f"/api/canopy-sessions/{s.id}/detach").json() == {"streaming": False}
     # a non-member 404s
     other = User.objects.create_user("no", "no@dimagi.com", "pw")
     c2 = Client(); c2.force_login(other)
-    assert c2.post(f"/api/chat/{s.id}/attach").status_code == 404
+    assert c2.post(f"/api/canopy-sessions/{s.id}/attach").status_code == 404

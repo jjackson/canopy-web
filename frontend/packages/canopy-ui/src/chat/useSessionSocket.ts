@@ -22,7 +22,7 @@ export interface UseSessionSocketOptions {
   /**
    * App-injected WebSocket URL builder. The kit never imports app routing/base
    * helpers; the container passes one (e.g. canopy's `wsUrl`). Called with the
-   * relative path `ws/chat/${sessionId}/`.
+   * relative path `ws/canopy-sessions/${sessionId}/`.
    */
   wsUrl: (path: string) => string;
   /**
@@ -117,7 +117,7 @@ export function useSessionSocket({
 
   const connect = useCallback(() => {
     if (closedByUserRef.current) return;
-    const ws = new WebSocket(wsUrl(`ws/chat/${sessionId}/`));
+    const ws = new WebSocket(wsUrl(`ws/canopy-sessions/${sessionId}/`));
     socketRef.current = ws;
 
     ws.onopen = () => {

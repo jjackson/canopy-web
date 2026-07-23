@@ -31,14 +31,14 @@ def _ctx(runner_online=True, has_runner=True):
 def test_backfill_ready_when_rows_exist():
     _u, _w, s, _r, c = _ctx()
     Message.objects.create(session=s, turn_index=0, role=Message.USER, plaintext="hi")
-    assert c.post(f"/api/chat/{s.id}/backfill").json() == {"status": "ready"}
+    assert c.post(f"/api/canopy-sessions/{s.id}/backfill").json() == {"status": "ready"}
 
 
 def test_backfill_requested_when_runner_live(monkeypatch):
     published = []
     monkeypatch.setattr("apps.realtime.groups.publish", lambda g, m: published.append((g, m)))
     _u, _w, s, r, c = _ctx(runner_online=True)
-    assert c.post(f"/api/chat/{s.id}/backfill").json() == {"status": "requested"}
+    assert c.post(f"/api/canopy-sessions/{s.id}/backfill").json() == {"status": "requested"}
     assert RunnerBinding.objects.get(session=s).backfill_requested is True
     assert len(published) == 1
     group, frame = published[0]
@@ -53,7 +53,7 @@ def test_backfill_requested_when_runner_live(monkeypatch):
 
 def test_backfill_unavailable_when_no_live_runner():
     _u, _w, s, _r, c = _ctx(has_runner=False)
-    assert c.post(f"/api/chat/{s.id}/backfill").json() == {"status": "unavailable"}
+    assert c.post(f"/api/canopy-sessions/{s.id}/backfill").json() == {"status": "unavailable"}
 
 
 def test_write_backfill_writes_rows_once():

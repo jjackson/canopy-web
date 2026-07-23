@@ -54,7 +54,7 @@ async def test_authenticated_chat_socket_connects_and_snapshots():
         return session, _make_session_cookie(owner)
 
     session, headers = await database_sync_to_async(setup)()
-    comm = WebsocketCommunicator(_ws_app(), f"/ws/chat/{session.id}/", headers=headers)
+    comm = WebsocketCommunicator(_ws_app(), f"/ws/canopy-sessions/{session.id}/", headers=headers)
     connected, _ = await comm.connect()
     assert connected is True
     # first frame is the session snapshot
@@ -85,7 +85,7 @@ async def test_canonical_round_trip():
         return session, _make_session_cookie(owner), owner.pk
 
     session, headers, uid = await database_sync_to_async(setup)()
-    comm = WebsocketCommunicator(_ws_app(), f"/ws/chat/{session.id}/", headers=headers)
+    comm = WebsocketCommunicator(_ws_app(), f"/ws/canopy-sessions/{session.id}/", headers=headers)
     assert (await comm.connect())[0]
     snap = await _recv_until(comm, "session.state")
     assert snap["data"]["current_user_id"] == uid
@@ -111,7 +111,7 @@ async def test_anonymous_chat_socket_rejected_through_stack():
         return session
 
     session = await database_sync_to_async(setup)()
-    comm = WebsocketCommunicator(_ws_app(), f"/ws/chat/{session.id}/")
+    comm = WebsocketCommunicator(_ws_app(), f"/ws/canopy-sessions/{session.id}/")
     connected, code = await comm.connect()
     assert connected is False
     assert code == 4001

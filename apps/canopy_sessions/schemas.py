@@ -1,4 +1,4 @@
-"""Pydantic schemas for /api/chat."""
+"""Pydantic schemas for /api/canopy-sessions."""
 from __future__ import annotations
 
 import datetime as dt
