@@ -252,6 +252,14 @@ class SessionConsumer(AsyncJsonWebsocketConsumer):
         # for earlier history is REST (GET /{id}/messages?before=); Plan 4 wires
         # it into the panel. The session.state frame shape is otherwise frozen.
         messages, _has_more, _oldest = chat_services.tail_messages(self.session)
+        if not messages:
+            # A local runner session has NO Message rows until a backfill lands, but
+            # the binding carries a rolling tail. ChatPage's transcript comes from THIS
+            # snapshot (getSession only supplies meta.title), so without this the panel
+            # opened blank on every discovered session. TailMessage quacks like a
+            # Message row, so message_dto below needs no special-casing.
+            binding = getattr(self.session, "runner_binding", None)
+            messages = chat_services.tail_as_messages(self.session, binding)
         return {
             "event": "session.state",
             "data": serializers.session_state_dto(

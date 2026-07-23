@@ -140,7 +140,9 @@ def get_session(request: HttpRequest, session_id: uuid.UUID, full: bool = False)
         # it so the panel opens with recent context instead of blank; "Load full
         # session" still pulls the real history, and a live stream layers on top.
         binding = getattr(session, "runner_binding", None)
-        data["messages"] = services.tail_as_messages(session, binding)
+        data["messages"] = [
+            MessageOut.from_orm(m) for m in services.tail_as_messages(session, binding)
+        ]
     data["has_more_before"] = has_more
     data["oldest_loaded_turn_index"] = oldest
     return data
