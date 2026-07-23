@@ -98,3 +98,29 @@ def test_waiting_fanout_to_members():
     assert msg["type"] == "supervisor.waiting"
     assert msg["agent"] == agent.slug
     assert msg["waiting_count"] == 3
+
+
+def test_sessions_fanout_to_pairer():
+    """A runner's session report pushes the owner's visible sessions to their
+    supervisor group — the WS broadcast that replaces per-client polling."""
+    from django.utils import timezone
+
+    from apps.harness.schemas import ReportedSessionIn
+
+    user, ws, _agent = _fixtures()
+    runner = Runner.objects.create(
+        name="laptop", kind=Runner.EMDASH, paired_by=user, workspace=ws,
+        status=Runner.ONLINE, last_heartbeat_at=timezone.now(),
+    )
+    layer = get_channel_layer()
+    async_to_sync(layer.group_add)(groups.supervisor_user_group(user.id), "sup-chan")
+
+    services.replace_reported_sessions(
+        runner, ws,
+        [ReportedSessionIn(emdash_task="echo-1", project="echo", status="in_progress",
+                           recent_messages=[{"role": "user", "text": "hi"}])],
+    )
+
+    msg = async_to_sync(layer.receive)("sup-chan")
+    assert msg["type"] == "supervisor.sessions"
+    assert "echo-1" in [s["emdash_task"] for s in msg["sessions"]]

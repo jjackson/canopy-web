@@ -447,14 +447,17 @@ def test_cdp_recovery_logs_once_and_rearms(monkeypatch, tmp_path, caplog):
 
 
 def test_maybe_report_sessions_throttled(db, tmp_path, monkeypatch):
-    """The session report (up to session_tail_count transcript reads) runs at most
-    every session_report_seconds, even though the claim tick polls far faster."""
+    """When nothing changes, the EXPENSIVE session report (up to session_tail_count
+    transcript reads + POST) runs at most every session_report_seconds — the cheap
+    change-check (list_open_sessions) runs every tick, but the report is heartbeat-only
+    absent a real change. (A transcript that GREW would report immediately — that's the
+    live path, covered in test_session_report_live.)"""
     from canopy_runner import main as m
     from canopy_runner import transcript
     cfg = _cfg(db, tmp_path)  # session_report_seconds defaults to 10
     calls = []
-    monkeypatch.setattr(emdash, "list_open_sessions", lambda p: calls.append(1) or [])
-    monkeypatch.setattr(transcript, "attach_recent_tail", lambda *a, **k: None)
+    monkeypatch.setattr(emdash, "list_open_sessions", lambda p: [])  # no sessions -> no change
+    monkeypatch.setattr(transcript, "attach_recent_tail", lambda *a, **k: calls.append(1))
     m._last_session_report = 0.0
     clock = [1000.0]
     now = lambda: clock[0]

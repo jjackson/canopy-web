@@ -26,9 +26,13 @@ import { sessionTargetLabel } from './sessionTargetLabel'
 export function ChatSessionsPanel({
   agents: agentsProp,
   heading = 'Chats',
+  showList = true,
 }: {
   agents?: AgentOut[]
   heading?: string
+  // When false, render only the "New chat with <agent>" control (no session list) —
+  // supervisor pairs this with the grouped-by-project OpenSessions view instead.
+  showList?: boolean
 }) {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<ChatSession[]>([])
@@ -45,23 +49,34 @@ export function ChatSessionsPanel({
   useEffect(() => {
     let live = true
     setLoading(true)
-    const jobs: Promise<unknown>[] = [listSessions(), projectsApi.listSlugs()]
+    // Sessions load only when we render the list; projects always load (they
+    // feed the "+ New chat" dropdown, not the list — supervisor hides the list
+    // but still starts project chats); agents load unless provided by a prop.
+    const jobs: Promise<unknown>[] = []
+    if (showList) jobs.push(listSessions())
+    jobs.push(projectsApi.listSlugs())
     if (!agentsProp) jobs.push(listAgents({ limit: 100 }))
     Promise.allSettled(jobs).then((results) => {
       if (!live) return
-      const s = results[0]
-      if (s.status === 'fulfilled') setSessions(s.value as ChatSession[])
-      else setError(s.reason instanceof Error ? s.reason.message : 'failed to load sessions')
-      if (results[1]?.status === 'fulfilled') setProjects(results[1].value as ProjectSlug[])
-      if (!agentsProp && results[2]?.status === 'fulfilled') {
-        setAgents((results[2].value as { items: AgentOut[] }).items)
+      let idx = 0
+      if (showList) {
+        const s = results[idx++]
+        if (s && s.status === 'fulfilled') setSessions(s.value as ChatSession[])
+        else if (s && s.status === 'rejected')
+          setError(s.reason instanceof Error ? s.reason.message : 'failed to load sessions')
+      }
+      const p = results[idx++]
+      if (p && p.status === 'fulfilled') setProjects(p.value as ProjectSlug[])
+      const a = results[idx]
+      if (!agentsProp && a && a.status === 'fulfilled') {
+        setAgents((a.value as { items: AgentOut[] }).items)
       }
       setLoading(false)
     })
     return () => {
       live = false
     }
-  }, [agentsProp])
+  }, [agentsProp, showList])
 
   const agentName = useMemo(() => {
     const by = new Map(agents.map((a) => [a.slug, a.name]))
@@ -132,8 +147,8 @@ export function ChatSessionsPanel({
         </DropdownMenu>
       </div>
 
-      {error && <div className="py-2 text-sm text-destructive">{error}</div>}
-      {loading ? (
+      {showList && error && <div className="py-2 text-sm text-destructive">{error}</div>}
+      {showList && (loading ? (
         <div className="py-6 text-sm text-muted-foreground">Loading sessions…</div>
       ) : sessions.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-1 py-12 text-center">
@@ -167,7 +182,7 @@ export function ChatSessionsPanel({
             )
           })}
         </ul>
-      )}
+      ))}
     </div>
   )
 }

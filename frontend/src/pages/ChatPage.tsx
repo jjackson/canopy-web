@@ -1,36 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { ChatPanel, useSessionSocket } from 'canopy-ui/chat'
+import { Markdown } from '@/components/Markdown'
 import { wsUrl } from '@/lib/wsUrl'
 import { getSession, type ChatSessionDetail } from '@/api/chat'
 
-/** Render assistant/system markdown with the same token-based prose styling
- *  used elsewhere in canopy (see ShareoutsPage). Injected into the kit so the
- *  kit itself stays free of react-markdown. */
+/** Render assistant/system message text through canopy's shared Markdown (the
+ *  same renderer used across every AI-output surface — so it picks up remark-gfm
+ *  AND remark-breaks, i.e. single newlines become line breaks instead of
+ *  collapsing). Injected into the kit via its `renderMarkdown` seam so the kit
+ *  itself stays free of react-markdown. */
 function renderMarkdown(text: string) {
-  return (
-    <div
-      className="
-        text-sm leading-relaxed
-        [&_p]:my-1.5 [&_p]:text-inherit
-        [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1
-        [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1
-        [&_li]:pl-0.5
-        [&_h1]:text-base [&_h1]:font-semibold [&_h1]:mt-2 [&_h1]:mb-1
-        [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-2 [&_h2]:mb-1
-        [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1
-        [&_strong]:font-semibold
-        [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2
-        [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-2 [&_pre]:text-xs
-        [&_code]:rounded [&_code]:bg-background/60 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em]
-        [&_pre_code]:bg-transparent [&_pre_code]:p-0
-      "
-    >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-    </div>
-  )
+  return <Markdown className="text-sm leading-relaxed">{text}</Markdown>
 }
 
 /**

@@ -205,7 +205,7 @@ function VersionBlock({
           )}
           {version.review_id && (
             <a
-              href={`/review/${version.review_id}`}
+              href={withBase(`/review/${version.review_id}`)}
               className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-1 text-xs text-primary transition-colors hover:bg-primary/20"
             >
               Edit narrative <span aria-hidden>→</span>

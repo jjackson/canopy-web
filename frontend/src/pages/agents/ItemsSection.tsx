@@ -1,6 +1,7 @@
 import { useEffect, useState, type JSX } from 'react'
 import { useOutletContext, useSearchParams } from 'react-router-dom'
 import { listItems, decideItem, type ItemOut, type ItemDecision } from '@/api/items'
+import { Markdown } from '@/components/Markdown'
 import type { AgentOutletContext } from '@/pages/AgentWorkspacePage'
 
 // A batch of Items reviewed in one sitting — Ada's fleet audit's home. It belongs
@@ -51,7 +52,9 @@ function ItemCard({
       </div>
 
       {item.body && (
-        <p className="mt-2 text-[13px] leading-snug text-foreground-secondary">{item.body}</p>
+        <Markdown className="mt-2 text-[13px] leading-snug text-foreground-secondary">
+          {item.body}
+        </Markdown>
       )}
 
       {targets.length > 0 && (
