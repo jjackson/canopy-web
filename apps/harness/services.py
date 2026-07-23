@@ -653,43 +653,52 @@ def record_session(
 
 @transaction.atomic
 def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
-    """Wholesale-replace this runner's reported EmdashSessions, and upsert a
-    SessionLink per session so `continue` rides the existing reuse path.
-
-    Wholesale: a session that vanished from emdash simply stops being reported and
-    disappears here. The SessionLinks are NOT deleted on drop — a durable link that
-    revives when the session reappears is harmless, and deleting them would fight the
-    reuse machinery; a stale link only ever resolves to reuse if its live hint still
-    matches, which the next real report refreshes.
-    """
-    from .models import EmdashSession
+    """Upsert a durable Session(origin=runner) + RunnerBinding per reported
+    session. Sessions that fell off the report keep their Session row but have
+    their live binding cleared."""
+    from apps.chat.models import RunnerBinding, Session
 
     # emdash task NAMES are not unique — two un-archived tasks can share a name
-    # (see task_state's "Names aren't unique in emdash's schema" note) — but
-    # (runner, emdash_task) is UNIQUE here. Collapse duplicates before the wholesale
-    # insert, or bulk_create raises IntegrityError and the ENTIRE report 500s. That
-    # failure is silent (the runner's report call is best-effort) and strands the
-    # whole session list, not just the dup — observed 2026-07-20 with two "mobile"
-    # tasks. The runner sends newest-first, so the first occurrence is the live
-    # session; an older namesake is stale and correctly dropped.
-    deduped: list = []
-    seen: set[str] = set()
+    # (see task_state's "Names aren't unique in emdash's schema" note). Collapse
+    # duplicates before upserting; the runner sends newest-first, so the first
+    # occurrence is the live session and an older namesake is stale and correctly
+    # dropped (observed 2026-07-20 with two "mobile" tasks).
+    deduped, seen = [], set()
     for s in sessions:
         if s.emdash_task in seen:
             continue
         seen.add(s.emdash_task)
         deduped.append(s)
 
-    EmdashSession.objects.filter(runner=runner).delete()
-    EmdashSession.objects.bulk_create([
-        EmdashSession(
-            runner=runner, workspace=workspace, emdash_task=s.emdash_task,
-            project=s.project, status=s.status,
-            last_interacted_at=_aware(s.last_interacted_at),
-            recent_messages=list(s.recent_messages or []),
+    now_keys = {s.emdash_task for s in deduped}
+
+    for s in deduped:
+        binding = (
+            RunnerBinding.objects.select_for_update()
+            .filter(runner=runner, session_key=s.emdash_task)
+            .first()
         )
-        for s in deduped
-    ])
+        if binding is None:
+            session = Session.objects.create(
+                workspace=workspace,
+                origin=Session.ORIGIN_RUNNER,
+                project=s.project or "",
+                title=s.emdash_task,
+            )
+            binding = RunnerBinding(session=session, session_key=s.emdash_task)
+        binding.runner = runner
+        binding.status = s.status or ""
+        binding.last_interacted_at = _aware(s.last_interacted_at)
+        binding.live_seen_at = timezone.now()
+        binding.tail = list(s.recent_messages or [])
+        binding.save()
+
+    # Clear the live pointer on this runner's bindings that were NOT re-reported.
+    RunnerBinding.objects.filter(runner=runner).exclude(session_key__in=now_keys).update(
+        runner=None
+    )
+
+    # Keep the durable SessionLink upsert (runner-reuse path) unchanged.
     for s in deduped:
         if s.project:
             # live_session_id intentionally left blank here — a session report has
