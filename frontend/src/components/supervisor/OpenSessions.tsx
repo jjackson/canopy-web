@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type JSX } from 'react'
 import { listOpenSessions, enqueueTurn, getTurn, type EmdashSessionOut } from '@/api/harness'
 import { normalizeRecentMessages, type RecentMessage } from '@/lib/recentMessages'
 import { relTime, isRunning } from '@/lib/relTime'
+import { Markdown } from '@/components/Markdown'
 
 // The open emdash sessions the runner reported — glance at what each is doing (the
 // recent-message tail), and drop a prompt into a specific one. Continue dispatches a
@@ -35,12 +36,21 @@ function RoleChip({ role }: { role: string }): JSX.Element {
 }
 
 function MessageBubble({ msg }: { msg: RecentMessage }): JSX.Element {
+  // These rows are interactive chat, not a passive tail — render the agent's
+  // messages as markdown (same shared renderer as every other chat surface).
+  // Your own messages stay plain, matching the native chat bubbles.
   return (
     <div className="flex items-start gap-2 rounded-md bg-muted/40 p-2">
       <RoleChip role={msg.role} />
-      <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[12px] leading-snug text-foreground-secondary">
-        {msg.text}
-      </p>
+      {msg.role === 'assistant' ? (
+        <Markdown className="min-w-0 flex-1 break-words text-[12px] leading-snug text-foreground-secondary">
+          {msg.text}
+        </Markdown>
+      ) : (
+        <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[12px] leading-snug text-foreground-secondary">
+          {msg.text}
+        </p>
+      )}
     </div>
   )
 }
