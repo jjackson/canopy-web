@@ -40,6 +40,7 @@ export function ChatPage() {
   const [hasMoreBefore, setHasMoreBefore] = useState(false)
   const [oldestTurn, setOldestTurn] = useState<number | null>(null)
   const [loadingEarlier, setLoadingEarlier] = useState(false)
+  const [loadingFull, setLoadingFull] = useState(false)
   const [historyUnavailable, setHistoryUnavailable] = useState(false)
 
   const socket = useSessionSocket({ sessionId: id, wsUrl })
@@ -61,29 +62,42 @@ export function ChatPage() {
       })
   }, [id])
 
-  // Attach-on-open / detach-on-unmount. Composes safely with the WS-lifecycle
-  // attach the consumer already does on connect/disconnect (see the task brief
-  // note): the viewer registry counts both, 0<->1 edges are idempotent, and a
-  // web session with no bound runner sees this as a safe no-op
-  // ({streaming: false}). React StrictMode's mount/unmount/remount double-invoke
-  // is fine here — attach and detach are each individually idempotent.
+  // Attach-on-open / detach-on-unmount. The server's attach counter floors at
+  // 0 rather than going negative, so a detach that lands BEFORE its paired
+  // attach is silently absorbed — the attach then still increments, leaving
+  // the count stuck net +1 and a runner-bound session's `stream_desired`
+  // never clears. These are fire-and-forget HTTP calls with no other
+  // ordering guarantee, so we chain the detach off the attach promise
+  // (`.finally`, not `.then`/`.catch`, so a failed attach still detaches):
+  // the detach request is never even issued until the attach one has
+  // settled, which makes the wrong-order race structurally impossible.
+  // React StrictMode's mount/unmount/remount double-invoke is fine here —
+  // each attach/detach pair is still strictly ordered within itself.
   useEffect(() => {
     if (!id) return
-    void attachSession(id).catch(() => {
+    const attached = attachSession(id).catch(() => {
       /* non-fatal: a failed attach just means no bound runner to notify */
     })
     return () => {
-      void detachSession(id).catch(() => {
-        /* non-fatal */
+      void attached.finally(() => {
+        void detachSession(id).catch(() => {
+          /* non-fatal */
+        })
       })
     }
   }, [id])
 
   const loadEarlier = useCallback(async () => {
     if (oldestTurn == null || loadingEarlier) return
+    // Capture the session this call was made for. Belt-and-suspenders on top
+    // of the route-level `key={id}` remount (router.tsx): even if this
+    // component instance somehow outlives the session it was fetching for,
+    // a stale response can never splice into whatever session is current.
+    const requestedId = id
     setLoadingEarlier(true)
     try {
-      const page = await listMessages(id, oldestTurn)
+      const page = await listMessages(requestedId, oldestTurn)
+      if (requestedId !== id) return
       if (page.messages.length > 0) {
         socket.prependMessages(page.messages.map(restToKitMessage))
         setOldestTurn(page.messages[0].turn_index)
@@ -95,14 +109,20 @@ export function ChatPage() {
     } catch {
       /* keep what's shown; the button stays available to retry */
     } finally {
-      setLoadingEarlier(false)
+      if (requestedId === id) setLoadingEarlier(false)
     }
   }, [id, oldestTurn, loadingEarlier, socket])
 
   const loadFull = useCallback(async () => {
+    if (loadingFull) return
+    // See loadEarlier: capture the session this call was made for so a
+    // stale response can never apply to a different session.
+    const requestedId = id
     setHistoryUnavailable(false)
+    setLoadingFull(true)
     try {
-      const res = await requestBackfill(id)
+      const res = await requestBackfill(requestedId)
+      if (requestedId !== id) return
       const action = backfillAction(res.status)
       if (action === 'unavailable') {
         setHistoryUnavailable(true)
@@ -113,14 +133,17 @@ export function ChatPage() {
       if (action === 'reload-after-delay') {
         await new Promise((r) => setTimeout(r, BACKFILL_SETTLE_DELAY_MS))
       }
-      const full = await getSession(id, { full: true })
+      const full = await getSession(requestedId, { full: true })
+      if (requestedId !== id) return
       socket.prependMessages(full.messages.map(restToKitMessage))
       setHasMoreBefore(false)
       setOldestTurn(full.oldest_loaded_turn_index ?? null)
     } catch {
-      setHistoryUnavailable(true)
+      if (requestedId === id) setHistoryUnavailable(true)
+    } finally {
+      if (requestedId === id) setLoadingFull(false)
     }
-  }, [id, socket])
+  }, [id, loadingFull, socket])
 
   const emptyState = useMemo(
     () => (
@@ -159,9 +182,10 @@ export function ChatPage() {
         <button
           type="button"
           onClick={() => void loadFull()}
-          className="rounded-md border border-border bg-card px-3 py-1 text-[12px] text-foreground-secondary hover:bg-muted"
+          disabled={loadingFull}
+          className="rounded-md border border-border bg-card px-3 py-1 text-[12px] text-foreground-secondary hover:bg-muted disabled:opacity-50"
         >
-          Load full session
+          {loadingFull ? 'Loading…' : 'Load full session'}
         </button>
       )}
     </div>
