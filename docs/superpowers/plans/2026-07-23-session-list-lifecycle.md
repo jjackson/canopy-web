@@ -14,7 +14,8 @@
 
 - **Framework/product boundary:** `canopy_sessions`, `harness`, and `realtime` are **framework** tier. They must never import product apps (`projects`, `walkthroughs`, `reviews`, `shareouts`, `runs`). Enforced by `tests/test_architecture_boundary.py`.
 - **`packages/canopy_runner` is stdlib-only.** No third-party imports, ever.
-- **Staleness window is exactly 3 days**, defined once as `SESSION_STALE_AFTER = datetime.timedelta(days=3)` in `apps/canopy_sessions/services.py`. Never re-literal it.
+- **Staleness window is exactly 3 days**, defined once as `SESSION_STALE_AFTER = datetime.timedelta(days=3)` in `apps/canopy_sessions/staleness.py`. Never re-literal it — `services.py` re-exports it and the backfill migration imports it.
+- **Never add a non-migration module to a `migrations/` package.** Django's loader treats every module there whose name does not start with `_` as a migration and raises `BadMigrationError` if it has no `Migration` class — which breaks every `migrate` call, not just the new one.
 - **Nothing is ever deleted.** Archive is reversible; there is no delete route.
 - **Backend commands run from the repo root with `uv run`** (e.g. `uv run pytest`). Runner tests run with `uv run pytest packages/canopy_runner/tests`.
 - **Any change to `apps/**/schemas.py` or `apps/**/api.py` requires regenerating `frontend/src/api/generated.ts`** (Task 8). The `regen-openapi.yml` workflow fails the PR if it is stale.
@@ -826,13 +827,14 @@ null the runner FK the scoping depends on."
 ### Task 5: Server — `state` and `limit` on the sessions list
 
 **Files:**
-- Modify: `apps/canopy_sessions/services.py` (add `SESSION_STALE_AFTER`, `stale_cutoff`)
+- Create: `apps/canopy_sessions/staleness.py` (owns the window + cutoff)
+- Modify: `apps/canopy_sessions/services.py` (re-export both)
 - Modify: `apps/canopy_sessions/api.py:102-125` (`list_sessions`)
 - Test: `tests/test_session_list_state.py` (create)
 
 **Interfaces:**
 - Consumes: `Session.status` as written by Task 4.
-- Produces: `apps.canopy_sessions.services.SESSION_STALE_AFTER: datetime.timedelta` and `stale_cutoff(now=None) -> datetime`. `GET /api/canopy-sessions/?state=active|archived|all&limit=<n>`.
+- Produces: `apps.canopy_sessions.staleness.SESSION_STALE_AFTER: datetime.timedelta` and `stale_cutoff(now=None) -> datetime`, both re-exported from `apps.canopy_sessions.services` so existing `services.`-qualified callers and tests keep working. `GET /api/canopy-sessions/?state=active|archived|all&limit=<n>`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -948,17 +950,30 @@ def test_limit_applies_after_the_running_first_sort():
 Run: `uv run pytest tests/test_session_list_state.py -v`
 Expected: FAIL — `ImportError: cannot import name 'SESSION_STALE_AFTER' from 'apps.canopy_sessions.services'`
 
-- [ ] **Step 3: Add the constant and cutoff helper**
+- [ ] **Step 3: Add the staleness leaf module**
 
-In `apps/canopy_sessions/services.py`, add immediately after the existing `RUNNING_WINDOW = _dt.timedelta(seconds=120)`:
+Create `apps/canopy_sessions/staleness.py`. It lives apart from `services.py` because the backfill migration (Task 7) must import the window too, and a migration importing the full service layer — which imports models, signals, and the realtime bridge — is how migrations rot. This module imports nothing from the app.
 
 ```python
+"""The staleness window, defined once.
+
+Separate from services.py so the backfill migration can import it without dragging
+in models, signals, and the realtime bridge. Nothing in here imports app code, so it
+is safe for a migration to depend on it long after the rest of the app has moved on.
+"""
+from __future__ import annotations
+
+import datetime as dt
+
+from django.db.models import Q
+from django.utils import timezone
+
 # How long a runner-discovered session survives with no runner sighting before it
 # drops out of `state=active`. NOT "idle for 3 days": live_seen_at is stamped on
 # every reported session each tick, and the runner reports every OPEN emdash task
 # regardless of activity — so this measures "fell off the report", i.e. archived,
 # deleted, truncated, or the runner was down. An open-but-idle task never expires.
-SESSION_STALE_AFTER = _dt.timedelta(days=3)
+SESSION_STALE_AFTER = dt.timedelta(days=3)
 
 
 def stale_cutoff(now=None):
@@ -966,6 +981,24 @@ def stale_cutoff(now=None):
     treated as archived — derived, never written, so it un-archives itself the moment
     the task is reported again."""
     return (now or timezone.now()) - SESSION_STALE_AFTER
+
+
+def unseen_q() -> Q:
+    """Runner-origin sessions with no recent sighting. A session with NO binding at
+    all counts as unseen, not as fresh. Web sessions never match — no runner reports
+    them, so only an explicit archive ends one."""
+    return Q(origin="runner") & (
+        Q(runner_binding__live_seen_at__lt=stale_cutoff())
+        | Q(runner_binding__live_seen_at__isnull=True)
+    )
+```
+
+Then re-export from `apps/canopy_sessions/services.py`, immediately after the existing `RUNNING_WINDOW = _dt.timedelta(seconds=120)`, so `services.stale_cutoff()` and `from apps.canopy_sessions.services import SESSION_STALE_AFTER` keep working for every existing caller:
+
+```python
+# Re-exported so callers keep one import surface; DEFINED in staleness.py, which the
+# backfill migration also imports (see the module docstring there).
+from .staleness import SESSION_STALE_AFTER, stale_cutoff, unseen_q  # noqa: E402,F401
 ```
 
 - [ ] **Step 4: Filter the list**
@@ -1000,11 +1033,7 @@ def list_sessions(request: HttpRequest, state: str = "active", limit: int = 200)
         .distinct()
         .order_by("-created_at")
     )
-    # A runner session with NO binding at all counts as unseen, not as fresh.
-    unseen = Q(origin=Session.ORIGIN_RUNNER) & (
-        Q(runner_binding__live_seen_at__lt=services.stale_cutoff())
-        | Q(runner_binding__live_seen_at__isnull=True)
-    )
+    unseen = services.unseen_q()   # defined once in staleness.py; see Step 3
     if state == "active":
         rows = rows.filter(status=Session.ACTIVE).exclude(unseen)
     elif state == "archived":
@@ -1178,12 +1207,13 @@ destructive — there is deliberately no delete."
 ### Task 7: Migration — collapse the existing backlog
 
 **Files:**
+- Modify: `apps/canopy_sessions/staleness.py` (add `archive_stale_sessions`)
 - Create: `apps/canopy_sessions/migrations/0009_archive_stale_sessions.py`
 - Test: `tests/test_session_archive_backfill.py` (create)
 
 **Interfaces:**
-- Consumes: `Session.status`, `Session.origin`, `RunnerBinding.live_seen_at`.
-- Produces: nothing importable — a one-shot data migration.
+- Consumes: `apps.canopy_sessions.staleness.unseen_q()` (Task 5); `Session.status`, `Session.origin`, `RunnerBinding.live_seen_at`.
+- Produces: `staleness.archive_stale_sessions(session_model) -> int` — takes the model class as an argument so the migration can pass its historical model and the test can pass the real one.
 
 - [ ] **Step 1: Confirm the migration leaf**
 
@@ -1222,7 +1252,7 @@ def _ctx():
 
 
 def test_backfill_archives_only_stale_runner_sessions():
-    from apps.canopy_sessions.migrations.helpers import archive_stale_sessions
+    from apps.canopy_sessions.staleness import archive_stale_sessions
 
     user, ws, runner = _ctx()
     fresh = Session.objects.create(workspace=ws, origin=Session.ORIGIN_RUNNER, title="live")
@@ -1245,42 +1275,29 @@ def test_backfill_archives_only_stale_runner_sessions():
 - [ ] **Step 3: Run it to verify it fails**
 
 Run: `uv run pytest tests/test_session_archive_backfill.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'apps.canopy_sessions.migrations.helpers'`
+Expected: FAIL — `ImportError: cannot import name 'archive_stale_sessions' from 'apps.canopy_sessions.staleness'`
 
-- [ ] **Step 4: Write the shared helper**
+- [ ] **Step 4: Add the backfill helper to the staleness module**
 
-Create `apps/canopy_sessions/migrations/helpers.py`:
+Append to `apps/canopy_sessions/staleness.py` (created in Task 5). It takes the model class as an argument because a data migration receives *historical* models via `apps.get_model` — those have no custom managers or methods, so the rule cannot live on the model itself.
 
 ```python
-"""Logic shared between the 0009 data migration and its test.
-
-A data migration receives historical models via `apps.get_model`, which have no
-custom methods — so the rule lives here as a plain function taking the model class,
-and both the migration and the test call it with their own.
-"""
-from __future__ import annotations
-
-import datetime as dt
-
-from django.db.models import Q
-from django.utils import timezone
-
-# Must match apps.canopy_sessions.services.SESSION_STALE_AFTER. Duplicated rather
-# than imported because a migration must not depend on live application code, which
-# is free to change after this migration has already run.
-STALE_AFTER = dt.timedelta(days=3)
-
-
 def archive_stale_sessions(session_model) -> int:
-    """Archive runner-origin sessions with no recent runner sighting. Web sessions are
-    exempt (no runner reports them). Returns the number of rows changed."""
-    cutoff = timezone.now() - STALE_AFTER
+    """Archive runner-origin sessions with no recent runner sighting. The one-shot
+    backfill for rows that predate any means of retiring them. Web sessions are exempt
+    (no runner reports them). Returns the number of rows changed.
+
+    Takes the model class so the migration can pass its historical model and the test
+    can pass the real one — the rule itself is identical for both.
+    """
     return (
-        session_model.objects.filter(origin="runner", status="active")
-        .filter(Q(runner_binding__live_seen_at__lt=cutoff) | Q(runner_binding__isnull=True))
+        session_model.objects.filter(status="active")
+        .filter(unseen_q())
         .update(status="archived")
     )
 ```
+
+String literals (`"runner"`, `"active"`, `"archived"`) rather than `Session.ACTIVE` — a historical model has the fields but not the class constants.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -1303,7 +1320,7 @@ report, so the reverse is a genuine no-op rather than lost information.
 """
 from django.db import migrations
 
-from apps.canopy_sessions.migrations.helpers import archive_stale_sessions
+from apps.canopy_sessions.staleness import archive_stale_sessions
 
 
 def forwards(apps, schema_editor):
@@ -1332,7 +1349,7 @@ Expected: `No changes detected` (this migration adds no schema change)
 - [ ] **Step 8: Commit**
 
 ```bash
-git add apps/canopy_sessions/migrations/helpers.py apps/canopy_sessions/migrations/0009_archive_stale_sessions.py tests/test_session_archive_backfill.py
+git add apps/canopy_sessions/staleness.py apps/canopy_sessions/migrations/0009_archive_stale_sessions.py tests/test_session_archive_backfill.py
 git commit -m "feat(sessions): backfill — archive the pre-lifecycle stale backlog
 
 Every row on labs predates any means of retiring one. Apply the staleness rule
