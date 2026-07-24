@@ -34,3 +34,18 @@ def unseen_q() -> Q:
         Q(runner_binding__live_seen_at__lt=stale_cutoff())
         | Q(runner_binding__live_seen_at__isnull=True)
     )
+
+
+def archive_stale_sessions(session_model) -> int:
+    """Archive runner-origin sessions with no recent runner sighting. The one-shot
+    backfill for rows that predate any means of retiring them. Web sessions are exempt
+    (no runner reports them). Returns the number of rows changed.
+
+    Takes the model class so the migration can pass its historical model and the test
+    can pass the real one — the rule itself is identical for both.
+    """
+    return (
+        session_model.objects.filter(status="active")
+        .filter(unseen_q())
+        .update(status="archived")
+    )
