@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'canopy-ui/ui'
-import { createSession, listSessions, type ChatSession } from '@/api/chat'
+import { createSession, listSessions, type ChatSession, type SessionState } from '@/api/chat'
 import { listAgents, type AgentOut } from '@/api/agents'
 import { projectsApi, type ProjectSlug } from '@/api/projects'
 import { relativeTime } from '@/components/activity/turnLog'
@@ -38,6 +38,7 @@ export function ChatSessionsPanel({
   const [projects, setProjects] = useState<ProjectSlug[]>([])
   const [loading, setLoading] = useState(true)
   const [sort, setSort] = useState<SessionSort>('time')
+  const [showArchived, setShowArchived] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -50,7 +51,7 @@ export function ChatSessionsPanel({
     setLoading(true)
     // Sessions + projects always load (projects feed the "+ New chat" dropdown);
     // agents load unless provided by a prop.
-    const jobs: Promise<unknown>[] = [listSessions(), projectsApi.listSlugs()]
+    const jobs: Promise<unknown>[] = [listSessions(showArchived ? 'all' : 'active'), projectsApi.listSlugs()]
     if (!agentsProp) jobs.push(listAgents({ limit: 100 }))
     Promise.allSettled(jobs).then((results) => {
       if (!live) return
@@ -66,18 +67,19 @@ export function ChatSessionsPanel({
     return () => {
       live = false
     }
-  }, [agentsProp])
+  }, [agentsProp, showArchived])
 
   // A slow REST refresh keeps the unified list current (the live push into the
   // list is a deferred follow-up; per-row liveness is live inside ChatPanel).
   useEffect(() => {
+    const state: SessionState = showArchived ? 'all' : 'active'
     const id = window.setInterval(() => {
-      listSessions()
+      listSessions(state)
         .then(setSessions)
         .catch(() => { /* keep last-good; the mount fetch owns first-error surfacing */ })
     }, 20_000)
     return () => window.clearInterval(id)
-  }, [])
+  }, [showArchived])
 
   const agentName = useMemo(() => {
     const by = new Map(agents.map((a) => [a.slug, a.name]))
@@ -148,7 +150,7 @@ export function ChatSessionsPanel({
         </DropdownMenu>
       </div>
 
-      {sessions.length > 1 && (
+      {(sessions.length > 1 || showArchived) && (
         <div className="flex items-center gap-1 pb-2 text-xs">
           <span className="mr-1 text-muted-foreground">Sort</span>
           {(['time', 'project'] as const).map((m) => (
@@ -166,6 +168,18 @@ export function ChatSessionsPanel({
               {m === 'time' ? 'Recent' : 'Project'}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setShowArchived((v) => !v)}
+            aria-pressed={showArchived}
+            className={
+              showArchived
+                ? 'ml-2 rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 font-medium text-primary'
+                : 'ml-2 rounded-md border border-border px-2 py-0.5 text-muted-foreground hover:bg-muted'
+            }
+          >
+            Show archived
+          </button>
         </div>
       )}
 
