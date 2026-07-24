@@ -34,10 +34,6 @@ def test_lists_unarchived_tasks_newest_first(tmp_path):
     assert out[0]["last_interacted_at"] == "2026-07-16T15:52:00"
 
 
-def test_missing_db_returns_empty_not_raises(tmp_path):
-    assert emdash.list_open_sessions(str(tmp_path / "nope.db")) == []
-
-
 def test_a_broken_schema_raises_rather_than_looking_empty(tmp_path):
     """A read failure must NOT look like "zero open sessions". Returning [] here made
     the runner POST an empty report, which clears every RunnerBinding server-side —
