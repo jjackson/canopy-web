@@ -332,6 +332,17 @@ export function RunPackage({ runId }: { runId: string }) {
     return <div className="p-8 text-sm text-destructive/90">Error: {error}</div>
   if (!run) return <div className="p-8 text-sm text-muted-foreground">Loading run…</div>
 
+  // The clean, shareable RELEASE (summary) page for this run. It resolves for a
+  // member whenever the run has at least one rendered artifact (build_release
+  // picks a primary walkthrough from video/deck/docs) — so only offer the link
+  // when one exists.
+  const hasSummary = Boolean(
+    run.video || run.slides || run.documentation || run.all_artifacts.length > 0,
+  )
+  const summaryHref = withBase(
+    `/ddd-release/${encodeURIComponent(run.narrative_slug)}/${encodeURIComponent(run.run_id)}`,
+  )
+
   return (
     <div className="mx-auto max-w-4xl px-8 py-6">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
@@ -347,6 +358,17 @@ export function RunPackage({ runId }: { runId: string }) {
           </h1>
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          {hasSummary && (
+            <a
+              href={summaryHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open the clean, shareable summary page for this run"
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-3 py-1 text-primary transition-colors hover:bg-primary/20"
+            >
+              View summary page <span aria-hidden>↗</span>
+            </a>
+          )}
           {run.phase && (
             <span className="rounded border border-input bg-muted/60 px-2 py-0.5 text-foreground-secondary">
               {run.phase}
