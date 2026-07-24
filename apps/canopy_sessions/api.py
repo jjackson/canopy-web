@@ -100,12 +100,23 @@ def create_session(request: HttpRequest, payload: SessionCreateIn):
 
 
 @router.get("/", response=list[SessionOut], summary="List sessions (web + runner-discovered)")
-def list_sessions(request: HttpRequest):
+def list_sessions(request: HttpRequest, state: str = "active", limit: int = 200):
     # The ONE unified list (Plan 4): every session the caller can see in their
     # workspaces — their own web sessions UNION any session that has a
     # RunnerBinding (runner-discovered or live). Deduped, running-first, then
     # newest. Replaces the creator-only list + the harness OpenSessions projection.
+    #
+    # `state` gives that list an END. Two rules combine into "archived":
+    #   - WRITTEN: status == archived (the runner saw the emdash task archived, or
+    #     a human called /archive). Durable.
+    #   - DERIVED: a RUNNER-origin session whose binding has not been seen within
+    #     SESSION_STALE_AFTER. Computed here, never stored, so it reverses itself
+    #     the moment the task is reported again. Web sessions are exempt — they
+    #     have no runner to be seen by, so only an explicit archive ends them.
     from django.db.models import Max, Q
+
+    if state not in ("active", "archived", "all"):
+        raise HttpError(422, "state must be one of: active, archived, all")
 
     slugs = _visible_slugs(request)
     rows = (
@@ -116,13 +127,22 @@ def list_sessions(request: HttpRequest):
         .distinct()
         .order_by("-created_at")
     )
+    unseen = services.unseen_q()   # defined once in staleness.py; see Step 3
+    if state == "active":
+        rows = rows.filter(status=Session.ACTIVE).exclude(unseen)
+    elif state == "archived":
+        rows = rows.filter(Q(status=Session.ARCHIVED) | unseen)
+
     out = [_out(s) for s in rows]
     # Running first, then genuinely-most-recent. Sorting by created_at made a
     # dead repo and a live one interleave arbitrarily (both "created" in the
     # same report sweep); last_activity_at is the real signal. The client can
     # re-group by project — this is the default order.
     out.sort(key=lambda r: (not r["running"], -(r["last_activity_at"].timestamp())))
-    return out
+    # Clamp AFTER the sort, never as a queryset slice: the queryset is ordered by
+    # -created_at, so slicing it could drop the running session this sort exists to
+    # float. `state=active` already bounds the set; this is a payload backstop.
+    return out[: clamp_limit(limit)]
 
 
 @router.get("/{session_id}", response=SessionDetailOut, summary="Get a session + transcript tail")
