@@ -154,7 +154,9 @@ export default function SupervisorPage(): JSX.Element {
           className="rounded-lg border-2 border-warning bg-warning/15 p-3 text-warning"
         >
           <p className="text-[13px] font-bold uppercase tracking-wide">
-            ⚠ {stuck.length} queued turn{stuck.length === 1 ? '' : 's'} no runner can claim
+            {stuck.every((t) => t.kind === 'offline')
+              ? `⚠ ${stuck.length} queued turn${stuck.length === 1 ? '' : 's'} waiting on an unreachable runner`
+              : `⚠ ${stuck.length} queued turn${stuck.length === 1 ? '' : 's'} no runner can claim`}
           </p>
           <ul className="mt-1 space-y-1">
             {stuck.slice(0, 5).map((t) => (
@@ -166,7 +168,9 @@ export default function SupervisorPage(): JSX.Element {
             ))}
           </ul>
           <p className="mt-1.5 text-[12px] leading-snug opacity-90">
-            Declare it on a runner (Runners tab) or cancel the turn — it will not run otherwise.
+            {stuck.every((t) => t.kind === 'offline')
+              ? 'These will run as soon as a runner reconnects — no action needed unless it stays.'
+              : 'Declare it on a runner (Runners tab) or cancel the turn — it will not run otherwise.'}
           </p>
         </div>
       )}
