@@ -735,10 +735,15 @@ def replace_reported_sessions(
         # matching if we keyed on host alone), and the null branch recovers a row
         # THIS runner previously released — scoped by host, because emdash task
         # names collide across machines and one laptop must never claim another's.
+        # The null branch requires a NON-BLANK host: a legacy binding with host=""
+        # would otherwise be recoverable by any runner whose own host is "" (two
+        # un-heartbeated runners would fuse). `runner=runner` still covers a
+        # host="" binding this runner currently owns, so that case is unaffected.
+        host_match = Q(runner__isnull=True) & Q(host=runner.host) & ~Q(host="")
         binding = (
             RunnerBinding.objects.select_for_update()
             .filter(session_key=s.emdash_task)
-            .filter(Q(runner=runner) | (Q(runner__isnull=True) & Q(host=runner.host)))
+            .filter(Q(runner=runner) | host_match)
             .first()
         )
         if binding is None:

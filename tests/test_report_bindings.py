@@ -100,6 +100,35 @@ def test_recovery_of_a_released_binding_is_host_scoped():
     assert RunnerBinding.objects.get(host="jj@air", session_key="feat-x").runner_id is None
 
 
+def test_recovery_does_not_fuse_two_runners_with_blank_host():
+    """Two distinct runners that both have host="" (legacy/unheartbeated) each
+    report the same task name and then release it. Runner B's fresh report must
+    NOT recover runner A's released binding — the null-recovery branch requires a
+    non-blank host, so a blank host never matches. Runner B gets its OWN session."""
+    jj = _user()
+    ws = Workspace.objects.create(slug="w1", display_name="W1", created_by=jj)
+    a = Runner.objects.create(name="a", workspace=ws, location=Runner.LOCAL, host="")
+    b = Runner.objects.create(name="b", workspace=ws, location=Runner.LOCAL, host="")
+
+    replace_reported_sessions(a, ws, [_reported("feat-x", [])])
+    binding_a = RunnerBinding.objects.get(runner=a, session_key="feat-x")
+    session_a = binding_a.session_id
+
+    replace_reported_sessions(a, ws, [])  # a releases it (runner FK nulled)
+
+    replace_reported_sessions(b, ws, [_reported("feat-x", [])])
+
+    assert Session.objects.count() == 2  # no fusion: b got its own session
+
+    binding_a.refresh_from_db()
+    assert binding_a.runner_id is None
+    assert binding_a.session_id == session_a  # a's binding/session untouched
+
+    binding_b = RunnerBinding.objects.get(runner=b, session_key="feat-x")
+    assert binding_b.pk != binding_a.pk
+    assert binding_b.session_id != session_a
+
+
 def test_list_visible_sessions_maps_to_wire_shape():
     from django.utils import timezone
 
