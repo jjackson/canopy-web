@@ -87,6 +87,10 @@ def all_messages(session: Session):
 # tail's freshness, now computed once server-side.
 RUNNING_WINDOW = _dt.timedelta(seconds=120)
 
+# Re-exported so callers keep one import surface; DEFINED in staleness.py, which the
+# backfill migration also imports (see the module docstring there).
+from .staleness import SESSION_STALE_AFTER, stale_cutoff, unseen_q  # noqa: E402,F401
+
 
 def is_session_running(binding) -> bool:
     """True when a live runner is actively working this session right now."""

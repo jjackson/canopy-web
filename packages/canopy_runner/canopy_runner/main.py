@@ -238,7 +238,18 @@ def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -
     read of emdash's DB (runs even while CDP is down); best-effort — never stops a tick."""
     global _last_session_report
     try:
-        sessions = emdash.list_open_sessions(cfg.emdash_db)
+        sessions = emdash.list_open_sessions(cfg.emdash_db, cfg.session_report_limit)
+    except emdash.EmdashReadError:
+        # WARNING, not debug: this is the silent-degradation class verify-emdash
+        # exists for. Skip the report entirely — an empty one would clear every
+        # RunnerBinding server-side, which is the opposite of what we observed.
+        logger.warning(
+            "emdash session read FAILED — skipping this report so the server keeps the "
+            "sessions it already knows. Run `canopy-runner verify-emdash` to check for "
+            "schema drift.",
+            exc_info=True,
+        )
+        return
     except Exception:  # noqa: BLE001
         logger.debug("session list failed (non-fatal)", exc_info=True)
         return
@@ -247,11 +258,21 @@ def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -
     if not changed and not heartbeat:
         return
     _last_session_report = now_fn()
+    # Read the closing signal only on a tick we're actually going to report on.
+    # Fail-soft in the opposite direction to the open-session read: losing the
+    # archived list must not cost us the report, so omit the field and carry on.
+    try:
+        archived = emdash.list_recently_archived_tasks(
+            cfg.emdash_db, cfg.session_report_limit
+        )
+    except emdash.EmdashReadError:
+        logger.debug("archived-task read failed (non-fatal, omitting)", exc_info=True)
+        archived = []
     try:
         transcript.attach_recent_tail(
             sessions, count=cfg.session_tail_count, limit=cfg.session_tail_limit
         )
-        client.report_sessions(cfg.runner_id, sessions)
+        client.report_sessions(cfg.runner_id, sessions, archived)
     except Exception:  # noqa: BLE001
         logger.debug("session report failed (non-fatal)", exc_info=True)
 

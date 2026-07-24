@@ -43,6 +43,10 @@ def _discovered(ws, runner, *, key="ace-demo", tail=None, last=None, thread_key=
         thread_key=(f"emdash:{key}" if thread_key is None else thread_key),
         host=(runner.host if host is None else host),
         tail=tail or [], last_interacted_at=last,
+        # The report sweep stamps live_seen_at every tick regardless of activity
+        # (see staleness.py) — a real reported binding is always "seen just now",
+        # independent of how stale its last_interacted_at is.
+        live_seen_at=timezone.now(),
     )
     return s
 
@@ -153,7 +157,7 @@ def test_display_name_prefers_the_emdash_task_over_a_hash_title():
     s = Session.objects.create(workspace=ws, origin=Session.ORIGIN_RUNNER, title="19f91250349ec91b")
     RunnerBinding.objects.create(
         session=s, runner=runner, session_key="echo-manager-sync-0723-1649",
-        thread_key="19f91250349ec91b", host=runner.host,
+        thread_key="19f91250349ec91b", host=runner.host, live_seen_at=timezone.now(),
     )
     row = next(r for r in c.get("/api/canopy-sessions/").json() if r["id"] == str(s.id))
     assert row["title"] == "echo-manager-sync-0723-1649"

@@ -2312,6 +2312,50 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/canopy-sessions/{session_id}/archive": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Archive a session
+         * @description Retire a session by hand. The escape hatch for a web chat — no runner will ever
+         *     report it archived — and for force-retiring a row without touching emdash.
+         *     Idempotent, and never destructive: /unarchive brings it straight back.
+         */
+        readonly post: operations["apps_canopy_sessions_api_archive_session"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/canopy-sessions/{session_id}/unarchive": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Unarchive a session
+         * @description Undo an archive. Note this clears only the WRITTEN half: a runner session that
+         *     is also past SESSION_STALE_AFTER stays out of `state=active` until its runner
+         *     reports it again, because that half is derived on every read.
+         */
+        readonly post: operations["apps_canopy_sessions_api_unarchive_session"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/canopy-sessions/{session_id}/send": {
         readonly parameters: {
             readonly query?: never;
@@ -6179,6 +6223,11 @@ export interface components {
              * @default []
              */
             readonly sessions: readonly components["schemas"]["ReportedSessionIn"][];
+            /**
+             * Archived
+             * @default []
+             */
+            readonly archived: readonly string[];
         };
         /** ReportedSessionIn */
         readonly ReportedSessionIn: {
@@ -10303,7 +10352,10 @@ export interface operations {
     };
     readonly apps_canopy_sessions_api_list_sessions: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly state?: string;
+                readonly limit?: number;
+            };
             readonly header?: never;
             readonly path?: never;
             readonly cookie?: never;
@@ -10390,6 +10442,50 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["MessagePageOut"];
+                };
+            };
+        };
+    };
+    readonly apps_canopy_sessions_api_archive_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly session_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+        };
+    };
+    readonly apps_canopy_sessions_api_unarchive_session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly session_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionOut"];
                 };
             };
         };

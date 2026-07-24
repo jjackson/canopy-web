@@ -774,10 +774,18 @@ def record_session(
 
 
 @transaction.atomic
-def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
+def replace_reported_sessions(
+    runner: Runner, workspace, sessions: list, archived: list[str] | None = None
+) -> int:
     """Upsert a durable Session(origin=runner) + RunnerBinding per reported
     session. Sessions that fell off the report keep their Session row but have
     their live binding cleared.
+
+    `archived` is the CLOSING signal — emdash task names this runner has seen
+    archived. Absence from `sessions` is ambiguous (archived? runner down?
+    truncated?), so it can never retire a row on its own; an explicit name here can.
+    Scoped to THIS runner's bindings, because a task name is not unique across
+    machines and one laptop must never retire another's session.
 
     The SAME binding this writes doubles as the reuse target for a phone-
     dispatched "Continue" turn (`origin_ref.thread_key = "emdash:<task>"`,
@@ -809,9 +817,24 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
     now_keys = {s.emdash_task for s in deduped}
 
     for s in deduped:
+        # Find this runner's binding for the task WITHOUT depending on the live
+        # `runner` FK — the clear step below nulls it for anything that fell off the
+        # report, and a lookup keyed on it would then miss the row and fork a
+        # DUPLICATE Session when the task reappears. The two branches are
+        # asymmetric on purpose: `runner=runner` preserves today's behaviour
+        # exactly while the FK is set (legacy bindings carry host="" and would stop
+        # matching if we keyed on host alone), and the null branch recovers a row
+        # THIS runner previously released — scoped by host, because emdash task
+        # names collide across machines and one laptop must never claim another's.
+        # The null branch requires a NON-BLANK host: a legacy binding with host=""
+        # would otherwise be recoverable by any runner whose own host is "" (two
+        # un-heartbeated runners would fuse). `runner=runner` still covers a
+        # host="" binding this runner currently owns, so that case is unaffected.
+        host_match = Q(runner__isnull=True) & Q(host=runner.host) & ~Q(host="")
         binding = (
             RunnerBinding.objects.select_for_update()
-            .filter(runner=runner, session_key=s.emdash_task)
+            .filter(session_key=s.emdash_task)
+            .filter(Q(runner=runner) | host_match)
             .first()
         )
         if binding is None:
@@ -844,7 +867,30 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
         binding.tail = list(s.recent_messages or [])
         binding.save()
 
-    # Clear the live pointer on this runner's bindings that were NOT re-reported.
+    # Un-archive anything re-reported as open. The DERIVED staleness half of
+    # `state=active` recomputes on every read, but this WRITTEN half does not heal
+    # itself — without this, a task you reopened in emdash stays archived forever.
+    if now_keys:
+        Session.objects.filter(
+            runner_binding__runner=runner,
+            runner_binding__session_key__in=now_keys,
+            status=Session.ARCHIVED,
+        ).update(status=Session.ACTIVE)
+
+    # Apply the closing signal. `now_keys` wins over `archived`: emdash task names are
+    # not unique, so an open task must never be retired by an archived namesake.
+    closed = [k for k in (archived or []) if k and k not in now_keys]
+    if closed:
+        Session.objects.filter(
+            runner_binding__runner=runner,
+            runner_binding__session_key__in=closed,
+        ).update(status=Session.ARCHIVED)
+
+    # Clear the live pointer on this runner's bindings that were NOT re-reported —
+    # archived ones included, so `runner=None` keeps meaning exactly "not live on any
+    # runner" (which is what keeps archived rows out of list_visible_sessions). Safe
+    # because the upsert lookup above no longer depends on this FK: it recovers a
+    # released binding by (session_key, host), so nulling it costs nothing.
     RunnerBinding.objects.filter(runner=runner).exclude(session_key__in=now_keys).update(
         runner=None
     )
