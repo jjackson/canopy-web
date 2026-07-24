@@ -683,10 +683,18 @@ def record_session(
 
 
 @transaction.atomic
-def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
+def replace_reported_sessions(
+    runner: Runner, workspace, sessions: list, archived: list[str] | None = None
+) -> int:
     """Upsert a durable Session(origin=runner) + RunnerBinding per reported
     session. Sessions that fell off the report keep their Session row but have
     their live binding cleared.
+
+    `archived` is the CLOSING signal — emdash task names this runner has seen
+    archived. Absence from `sessions` is ambiguous (archived? runner down?
+    truncated?), so it can never retire a row on its own; an explicit name here can.
+    Scoped to THIS runner's bindings, because a task name is not unique across
+    machines and one laptop must never retire another's session.
 
     The SAME binding this writes doubles as the reuse target for a phone-
     dispatched "Continue" turn (`origin_ref.thread_key = "emdash:<task>"`,
@@ -753,10 +761,37 @@ def replace_reported_sessions(runner: Runner, workspace, sessions: list) -> int:
         binding.tail = list(s.recent_messages or [])
         binding.save()
 
+    from apps.canopy_sessions.models import Session as _Session
+
+    # Un-archive anything re-reported as open. The DERIVED staleness half of
+    # `state=active` recomputes on every read, but this WRITTEN half does not heal
+    # itself — without this, a task you reopened in emdash stays archived forever.
+    if now_keys:
+        _Session.objects.filter(
+            runner_binding__runner=runner,
+            runner_binding__session_key__in=now_keys,
+            status=_Session.ARCHIVED,
+        ).update(status=_Session.ACTIVE)
+
+    # Apply the closing signal. `now_keys` wins over `archived`: emdash task names are
+    # not unique, so an open task must never be retired by an archived namesake.
+    closed = [k for k in (archived or []) if k and k not in now_keys]
+    if closed:
+        _Session.objects.filter(
+            runner_binding__runner=runner,
+            runner_binding__session_key__in=closed,
+        ).update(status=_Session.ARCHIVED)
+
     # Clear the live pointer on this runner's bindings that were NOT re-reported.
-    RunnerBinding.objects.filter(runner=runner).exclude(session_key__in=now_keys).update(
-        runner=None
-    )
+    # `closed` is deliberately carved OUT of this clear (not just `now_keys`): the
+    # upsert loop above finds an existing binding via `runner=runner`, so nulling
+    # a just-archived binding's runner FK here would orphan it from that lookup —
+    # the next report of the same task name would then create a DUPLICATE Session
+    # instead of reviving this one, and the un-archive block above (which also
+    # keys off `runner_binding__runner=runner`) would never find it again either.
+    RunnerBinding.objects.filter(runner=runner).exclude(
+        session_key__in=now_keys | set(closed)
+    ).update(runner=None)
 
     # Fire AFTER commit so apps/realtime fans the durable rows (never racing the DB)
     # to the runner-owner's supervisor group — the WS push that makes live emdash

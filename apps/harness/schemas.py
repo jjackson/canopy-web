@@ -117,6 +117,9 @@ class ReportedSessionIn(Schema):
 
 class ReportSessionsIn(Schema):
     sessions: list[ReportedSessionIn] = []
+    # emdash task names this runner has seen ARCHIVED. Defaulted so an older runner
+    # (which does not send it) keeps working unchanged — it simply never closes a row.
+    archived: list[str] = []
 
 
 class EmdashSessionOut(Schema):
