@@ -51,3 +51,33 @@ def test_a_broken_schema_raises_rather_than_looking_empty(tmp_path):
 def test_missing_db_still_returns_empty(tmp_path):
     """A MISSING file is "no emdash here", not a failure — that stays fail-soft."""
     assert emdash.list_open_sessions(str(tmp_path / "nope.db")) == []
+
+
+def test_lists_recently_archived_task_names_newest_first(tmp_path):
+    """The CLOSING signal: without it the server cannot tell "you archived this" from
+    "I lost sight of it", so it can never retire a row."""
+    db = tmp_path / "emdash4.db"
+    _make_db(str(db))
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "INSERT INTO tasks VALUES ('t5','p1','older','done','2026-07-01T00:00:00',"
+        "'2026-07-01T00:00:00','task')"
+    )
+    # an archived AUTOMATION-RUN must not leak in either — it was never a session
+    conn.execute(
+        "INSERT INTO tasks VALUES ('t6','p1','auto-gone','done','2026-07-20T00:00:00',"
+        "'2026-07-20T00:00:00','automation-run')"
+    )
+    conn.commit()
+    conn.close()
+
+    names = emdash.list_recently_archived_tasks(str(db))
+    assert names == ["old", "older"]          # newest-archived first; open tasks absent
+
+
+def test_archived_list_is_fail_soft_on_a_missing_db_and_loud_on_a_bad_one(tmp_path):
+    assert emdash.list_recently_archived_tasks(str(tmp_path / "nope.db")) == []
+    bad = tmp_path / "bad.db"
+    sqlite3.connect(str(bad)).execute("CREATE TABLE tasks (id TEXT)")
+    with pytest.raises(emdash.EmdashReadError):
+        emdash.list_recently_archived_tasks(str(bad))

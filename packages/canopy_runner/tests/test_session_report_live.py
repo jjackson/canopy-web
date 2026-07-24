@@ -18,10 +18,12 @@ class _Client:
     def __init__(self):
         self.reports = 0
         self.sessions_seen = []
+        self.archived_seen = []
 
-    def report_sessions(self, runner_id, sessions):
+    def report_sessions(self, runner_id, sessions, archived=None):
         self.reports += 1
         self.sessions_seen.append(sessions)
+        self.archived_seen.append(archived)
 
 
 def _asst(text):
@@ -93,3 +95,32 @@ def test_report_honours_the_configured_limit(tmp_path, monkeypatch):
     monkeypatch.setattr(m.transcript, "attach_recent_tail", lambda _s, **_k: None)
     m._maybe_report_sessions(_Cfg(), _Client(), now_fn=lambda: 100.0)
     assert seen["limit"] == 100
+
+
+def test_report_carries_archived_task_names(tmp_path, monkeypatch):
+    m._tail_readers.clear()
+    m._last_session_report = 0.0
+    monkeypatch.setattr(m.emdash, "list_open_sessions", lambda _db, _l=100: [])
+    monkeypatch.setattr(m.emdash, "list_recently_archived_tasks", lambda _db, _l=100: ["gone"])
+    monkeypatch.setattr(m.transcript, "attach_recent_tail", lambda _s, **_k: None)
+    c = _Client()
+    m._maybe_report_sessions(_Cfg(), c, now_fn=lambda: 100.0)
+    assert c.archived_seen[-1] == ["gone"]
+
+
+def test_a_failed_archived_read_still_reports_open_sessions(tmp_path, monkeypatch):
+    """Fail-soft in the other direction: losing the closing signal must not cost us
+    the open-session report."""
+    m._tail_readers.clear()
+    m._last_session_report = 0.0
+
+    def _boom(_db, _l=100):
+        raise m.emdash.EmdashReadError("drift")
+
+    monkeypatch.setattr(m.emdash, "list_open_sessions", lambda _db, _l=100: [])
+    monkeypatch.setattr(m.emdash, "list_recently_archived_tasks", _boom)
+    monkeypatch.setattr(m.transcript, "attach_recent_tail", lambda _s, **_k: None)
+    c = _Client()
+    m._maybe_report_sessions(_Cfg(), c, now_fn=lambda: 100.0)
+    assert c.reports == 1
+    assert c.archived_seen[-1] == []

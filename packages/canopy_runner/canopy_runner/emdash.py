@@ -170,3 +170,35 @@ def list_open_sessions(db_path: str, limit: int = 30) -> list[dict]:
         return [dict(r) for r in rows]
     except sqlite3.Error as exc:
         raise EmdashReadError(f"emdash open-session read failed: {exc}") from exc
+
+
+def list_recently_archived_tasks(db_path: str, limit: int = 100) -> list[str]:
+    """READ-ONLY: the NAMES of recently-archived emdash tasks, newest-archived first.
+
+    The closing signal. `list_open_sessions` tells the server what IS open; absence
+    from it is ambiguous (archived? runner dead? truncated? DB unreadable?), so the
+    server cannot retire a session on absence alone. This read makes "you archived
+    it" observable, leaving only the genuinely-vanished residue to a staleness rule.
+
+    `type='task'` for the same reason as the open read: an archived automation-run was
+    never a session. Same contract as the reads above — missing file returns [], a
+    real read failure raises EmdashReadError (the caller omits the field rather than
+    asserting "nothing was archived", which would un-archive every closed task).
+    """
+    if not Path(db_path).exists():
+        return []
+    try:
+        with _db(db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT t.name AS emdash_task
+                FROM tasks t
+                WHERE t.archived_at IS NOT NULL AND t.type = 'task'
+                ORDER BY t.archived_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [r["emdash_task"] for r in rows]
+    except sqlite3.Error as exc:
+        raise EmdashReadError(f"emdash archived-task read failed: {exc}") from exc

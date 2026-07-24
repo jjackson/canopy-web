@@ -258,11 +258,21 @@ def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -
     if not changed and not heartbeat:
         return
     _last_session_report = now_fn()
+    # Read the closing signal only on a tick we're actually going to report on.
+    # Fail-soft in the opposite direction to the open-session read: losing the
+    # archived list must not cost us the report, so omit the field and carry on.
+    try:
+        archived = emdash.list_recently_archived_tasks(
+            cfg.emdash_db, cfg.session_report_limit
+        )
+    except emdash.EmdashReadError:
+        logger.debug("archived-task read failed (non-fatal, omitting)", exc_info=True)
+        archived = []
     try:
         transcript.attach_recent_tail(
             sessions, count=cfg.session_tail_count, limit=cfg.session_tail_limit
         )
-        client.report_sessions(cfg.runner_id, sessions)
+        client.report_sessions(cfg.runner_id, sessions, archived)
     except Exception:  # noqa: BLE001
         logger.debug("session report failed (non-fatal)", exc_info=True)
 
