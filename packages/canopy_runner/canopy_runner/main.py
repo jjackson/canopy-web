@@ -239,6 +239,17 @@ def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -
     global _last_session_report
     try:
         sessions = emdash.list_open_sessions(cfg.emdash_db)
+    except emdash.EmdashReadError:
+        # WARNING, not debug: this is the silent-degradation class verify-emdash
+        # exists for. Skip the report entirely — an empty one would clear every
+        # RunnerBinding server-side, which is the opposite of what we observed.
+        logger.warning(
+            "emdash session read FAILED — skipping this report so the server keeps the "
+            "sessions it already knows. Run `canopy-runner verify-emdash` to check for "
+            "schema drift.",
+            exc_info=True,
+        )
+        return
     except Exception:  # noqa: BLE001
         logger.debug("session list failed (non-fatal)", exc_info=True)
         return

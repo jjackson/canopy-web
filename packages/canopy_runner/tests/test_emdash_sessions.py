@@ -1,4 +1,7 @@
 import sqlite3
+
+import pytest
+
 from canopy_runner import emdash
 
 
@@ -35,7 +38,16 @@ def test_missing_db_returns_empty_not_raises(tmp_path):
     assert emdash.list_open_sessions(str(tmp_path / "nope.db")) == []
 
 
-def test_a_broken_schema_returns_empty_not_raises(tmp_path):
+def test_a_broken_schema_raises_rather_than_looking_empty(tmp_path):
+    """A read failure must NOT look like "zero open sessions". Returning [] here made
+    the runner POST an empty report, which clears every RunnerBinding server-side —
+    a schema drift silently blanked the supervisor."""
     db = tmp_path / "bad.db"
     sqlite3.connect(str(db)).execute("CREATE TABLE tasks (id TEXT)")  # missing columns
-    assert emdash.list_open_sessions(str(db)) == []
+    with pytest.raises(emdash.EmdashReadError):
+        emdash.list_open_sessions(str(db))
+
+
+def test_missing_db_still_returns_empty(tmp_path):
+    """A MISSING file is "no emdash here", not a failure — that stays fail-soft."""
+    assert emdash.list_open_sessions(str(tmp_path / "nope.db")) == []

@@ -16,9 +16,11 @@ class _Cfg:
 class _Client:
     def __init__(self):
         self.reports = 0
+        self.sessions_seen = []
 
     def report_sessions(self, runner_id, sessions):
         self.reports += 1
+        self.sessions_seen.append(sessions)
 
 
 def _asst(text):
@@ -59,3 +61,19 @@ def test_reports_on_growth_skips_idle_and_heartbeats(tmp_path, monkeypatch):
     clock[0] = 120.0
     m._maybe_report_sessions(_Cfg(), c, now_fn=now)
     assert c.reports == 3
+
+
+def test_a_failed_emdash_read_skips_the_report_entirely(tmp_path, monkeypatch):
+    """An empty report CLEARS every binding server-side. When we could not read, we
+    must say nothing at all rather than assert emptiness."""
+    m._tail_readers.clear()
+    m._last_session_report = 0.0
+
+    def _boom(_db, *_a, **_k):
+        raise m.emdash.EmdashReadError("schema drift")
+
+    monkeypatch.setattr(m.emdash, "list_open_sessions", _boom)
+    c = _Client()
+    m._maybe_report_sessions(_Cfg(), c, now_fn=lambda: 100.0)
+    assert c.reports == 0            # nothing posted
+    assert c.sessions_seen == []     # and certainly not an empty list
