@@ -70,3 +70,46 @@ def test_sync_streams_survives_client_error(monkeypatch):
 
     m._sync_session_streams(_Cfg(), _Boom())  # must not raise
     assert m._stream_readers == {}
+
+
+def test_reattach_resumes_instead_of_skipping_what_you_missed(tmp_path, monkeypatch):
+    """The phone-misses-messages bug.
+
+    Detaching dropped the tailer; re-attaching called seek_end() and skipped
+    EVERYTHING written while the viewer was away, and reset seq to 0 so the
+    replayed ids collided with older ones and got deduped away.
+    """
+    m._stream_readers.clear()
+    m._stream_state.clear()
+    p = tmp_path / "echo.jsonl"
+    p.write_text(_asst("old history"))
+    monkeypatch.setattr(m.transcript, "resolve_transcript", lambda _proj, _task, **_k: p)
+
+    watching = [{"session_id": "s1", "session_key": "echo-1", "project": "echo"}]
+    c = _Client(watching)
+
+    m._sync_session_streams(_Cfg(), c)          # attach (skips pre-existing history)
+    with open(p, "a") as f:
+        f.write(_asst("while watching"))
+    m._sync_session_streams(_Cfg(), c)
+    assert [e["payload"]["text"] for _s, ev in c.posted for e in ev] == ["while watching"]
+    first_seq = c.posted[-1][1][-1]["seq"]
+
+    # viewer closes the chat -> tailer dropped
+    c._streams = []
+    m._sync_session_streams(_Cfg(), c)
+    assert "s1" not in m._stream_readers
+
+    # the agent keeps working while nobody is watching
+    with open(p, "a") as f:
+        f.write(_asst("missed while away"))
+
+    # viewer re-opens -> the missed message must arrive, with a NON-colliding seq
+    c._streams = watching
+    m._sync_session_streams(_Cfg(), c)          # re-attach resumes at the saved offset
+    m._sync_session_streams(_Cfg(), c)          # ...and reads the appended bytes
+    texts = [e["payload"]["text"] for _s, ev in c.posted for e in ev]
+    assert "missed while away" in texts, "re-attach skipped what was written while away"
+    seqs = [e["seq"] for _s, ev in c.posted for e in ev]
+    assert len(seqs) == len(set(seqs)), f"seq restarted and collided: {seqs}"
+    assert seqs[-1] > first_seq

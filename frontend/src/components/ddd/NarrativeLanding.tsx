@@ -63,6 +63,12 @@ function RunCard({
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const href = `/ddd/${encodeURIComponent(slug)}/${encodeURIComponent(run.run_id)}`
+  // The clean, shareable RELEASE (summary) page for this run. Offered only when
+  // the run rendered something (video/deck) that the release page can show.
+  const hasSummary = run.has_video || run.has_deck
+  const summaryHref = withBase(
+    `/ddd-release/${encodeURIComponent(slug)}/${encodeURIComponent(run.run_id)}`,
+  )
 
   async function onDelete(e: React.MouseEvent) {
     e.stopPropagation()
@@ -97,6 +103,18 @@ function RunCard({
             <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[9px] text-primary">
               latest
             </span>
+          )}
+          {hasSummary && (
+            <a
+              href={summaryHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title="Open the clean, shareable summary page for this run"
+              className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-primary transition-colors hover:bg-primary/10"
+            >
+              Summary ↗
+            </a>
           )}
           <DeleteButton label="Delete run" busy={busy} onClick={onDelete} />
         </div>

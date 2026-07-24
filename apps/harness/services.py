@@ -168,6 +168,99 @@ def _preference_allows(runner: Runner, turn: Turn, now) -> bool:
 EXECUTING = [Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
 
 
+def runner_target_q(slugs, projects, session_capable) -> Q:
+    """Which queued turns a runner's declared capabilities can TARGET.
+
+    Shared by claim_next_turn and unclaimable_queued_turns so the "can anyone run
+    this?" warning can never disagree with what claiming actually does — the same
+    class of drift that made REST and the WebSocket show different transcripts.
+    """
+    q = Q(agent__slug__in=slugs) | Q(project__in=projects)
+    if session_capable:
+        # A chat send targets no specific agent/repo — any session-capable runner
+        # in the tenant may take it (this is why continuing on your phone works
+        # regardless of the runner's declared `projects`).
+        q = q | Q(chat_session__isnull=False)
+    return q
+
+
+# A turn is not "stuck" the instant it is enqueued — it is queued for a few seconds
+# on every normal send while a runner polls (5s) or the WS wake fires. And a runner
+# whose heartbeat lapses (>90s) reads STALE, so a flaky laptop network briefly looks
+# like "no runners at all". Both made the warning fire on healthy traffic: a phone
+# chat send was flagged during a DNS blip, then claimed and answered seconds later.
+# Wait longer than a heartbeat window + a claim poll before calling anything stuck.
+UNCLAIMABLE_GRACE = dt.timedelta(seconds=150)
+
+
+def unclaimable_queued_turns(user) -> list[dict]:
+    """Queued turns that look genuinely stuck — otherwise a silent stall.
+
+    enqueue_turn accepts a turn addressed to an agent/repo nothing declares, and it
+    then sits QUEUED forever with no signal (observed: a project=ace turn sat 12h).
+
+    Two DIFFERENT causes, reported differently because they need different actions:
+      * config    — no runner declares this target at all. It will never run.
+      * offline   — a runner does declare it, but none are reachable right now.
+                    Usually transient (network blip, deploy, laptop asleep).
+    Returns [{turn_id, target, prompt, created_at, reason, kind}].
+    """
+    ws_slugs = wsvc.user_workspace_slugs(user)
+    if not ws_slugs:
+        return []
+    cutoff = timezone.now() - UNCLAIMABLE_GRACE
+    queued = list(
+        Turn.objects.filter(status=Turn.QUEUED, created_at__lte=cutoff)
+        .filter(
+            (Q(agent__isnull=False) & (Q(agent__workspace_id__in=ws_slugs) | Q(agent__workspace_id__isnull=True)))
+            | (Q(agent__isnull=True) & Q(chat_session__isnull=True) & Q(workspace_id__in=ws_slugs))
+            | (Q(chat_session__isnull=False) & Q(chat_session__workspace_id__in=ws_slugs))
+        )
+        .select_related("agent")
+        .order_by("created_at")
+    )
+    if not queued:
+        return []
+    runners = list(Runner.objects.filter(paired_by=user).exclude(status=Runner.RETIRED))
+    ids = {t.id for t in queued}
+
+    def _covered_by(rs) -> set:
+        out: set = set()
+        for r in rs:
+            q = runner_target_q(r.agent_slugs(), r.project_names(), r.session_capable())
+            out |= set(Turn.objects.filter(pk__in=ids).filter(q).values_list("pk", flat=True))
+        return out
+
+    reachable = [r for r in runners if r.live_status in (Runner.ONLINE, Runner.DEGRADED)]
+    claimable_now = _covered_by(reachable)
+    # Would ANY paired runner take it if it were up? Separates "misconfigured" from
+    # "temporarily unreachable" — the difference between "fix your capabilities" and
+    # "wait, or check the runner".
+    claimable_ever = _covered_by(runners)
+
+    out = []
+    for t in queued:
+        if t.pk in claimable_now:
+            continue
+        if t.chat_session_id:
+            target, what = "session", "is session-capable"
+        elif t.agent_id:
+            target, what = f"agent {t.agent.slug}", f"declares the agent '{t.agent.slug}'"
+        else:
+            target, what = f"project {t.project}", f"declares the repo '{t.project}'"
+        if t.pk in claimable_ever:
+            kind = "offline"
+            reason = f"a runner {what}, but none are reachable right now (offline or heartbeat lapsed)"
+        else:
+            kind = "config"
+            reason = f"no runner {what}"
+        out.append({
+            "turn_id": str(t.pk), "target": target, "prompt": (t.prompt or "")[:120],
+            "created_at": t.created_at, "reason": reason, "kind": kind,
+        })
+    return out
+
+
 def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECONDS,
                     exclude_slugs: list[str] | None = None) -> Turn | None:
     if runner.live_status != Runner.ONLINE:
@@ -263,9 +356,7 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     # Target match: this runner's declared agents/projects, plus every session
     # turn when it is session-capable (a chat send targets no specific agent — any
     # session-capable runner in the tenant may take it).
-    target_q = Q(agent__slug__in=slugs) | Q(project__in=projects)
-    if session_capable:
-        target_q = target_q | Q(chat_session__isnull=False)
+    target_q = runner_target_q(slugs, projects, session_capable)
     candidates = (
         Turn.objects.filter(status=Turn.QUEUED)
         .filter(target_q)

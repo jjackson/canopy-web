@@ -277,6 +277,16 @@ def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -
         logger.debug("session report failed (non-fatal)", exc_info=True)
 
 
+# Survives a tailer being dropped when you stop watching a session. Without it a
+# re-attach called seek_end() and silently skipped EVERYTHING written while you
+# weren't looking (a phone that closed the chat missed every message until it
+# re-opened), and `seq` restarted at 0 so fresh events reused old message ids and
+# the client deduped them away. Keyed by session id: {"offset": int, "seq": int}.
+# In-memory only — a runner RESTART still resets to seek_end(); the durable
+# recovery for that is "Load full session" (backfill).
+_stream_state: dict[str, dict] = {}
+
+
 def _sync_session_streams(cfg: Config, client: Client) -> None:
     """Tail each session a viewer is watching and post new assistant text up as live
     events. Change-driven off TailReader (only newly-appended bytes), so it stays
@@ -296,17 +306,26 @@ def _sync_session_streams(cfg: Config, client: Client) -> None:
         path = transcript.resolve_transcript(
             s.get("project") or "", s.get("session_key") or "", home=home, claude_home=claude_home
         )
+        remembered = _stream_state.get(sid)
         reader = TailReader(str(path)) if path else None
         if reader is not None:
-            reader.seek_end()  # stream only NEW activity; history is loaded elsewhere
+            if remembered is not None:
+                # RESUME where this session left off, so anything written while the
+                # viewer was away is posted on re-attach rather than skipped.
+                reader.offset = remembered["offset"]
+            else:
+                reader.seek_end()  # first ever attach: don't replay the whole history
         _stream_readers[sid] = {
-            "reader": reader, "seq": 0,
+            "reader": reader, "seq": (remembered or {}).get("seq", 0),
             "session_key": s.get("session_key") or "", "project": s.get("project") or "",
         }
 
     for sid in list(_stream_readers):  # drop tailers for sessions no longer watched
         if sid not in desired:
-            _stream_readers.pop(sid, None)
+            gone = _stream_readers.pop(sid, None)
+            if gone and gone.get("reader") is not None:
+                # Remember where we stopped so re-attaching resumes here.
+                _stream_state[sid] = {"offset": gone["reader"].offset, "seq": gone["seq"]}
 
     for sid, st in _stream_readers.items():
         reader = st["reader"]
@@ -315,7 +334,13 @@ def _sync_session_streams(cfg: Config, client: Client) -> None:
                 st["project"], st["session_key"], home=home, claude_home=claude_home
             )
             if path:
-                reader = TailReader(str(path)); reader.seek_end(); st["reader"] = reader
+                reader = TailReader(str(path))
+                remembered = _stream_state.get(sid)
+                if remembered is not None:
+                    reader.offset = remembered["offset"]
+                else:
+                    reader.seek_end()
+                st["reader"] = reader
             continue
         records = reader.read_new()
         if not records:
@@ -329,6 +354,9 @@ def _sync_session_streams(cfg: Config, client: Client) -> None:
                 client.post_session_stream(cfg.runner_id, sid, events)
             except Exception:  # noqa: BLE001
                 logger.debug("stream post failed (non-fatal)", exc_info=True)
+        # Checkpoint after every read, posted or not, so a detach at any moment
+        # resumes from the right byte with a non-colliding seq.
+        _stream_state[sid] = {"offset": reader.offset, "seq": st["seq"]}
 
 
 def _drain_backfills(cfg: Config, client: Client) -> None:
