@@ -55,13 +55,30 @@ def test_missing_db_still_returns_empty(tmp_path):
 
 def test_lists_recently_archived_task_names_newest_first(tmp_path):
     """The CLOSING signal: without it the server cannot tell "you archived this" from
-    "I lost sight of it", so it can never retire a row."""
+    "I lost sight of it", so it can never retire a row.
+
+    Row-insertion order here is deliberately the OPPOSITE of the asserted result: the
+    older-archived row ('older', archived 2026-07-01) goes in BEFORE the newer-archived
+    one ('old', archived 2026-07-15, re-inserted after `_make_db`'s copy is deleted). With
+    no `ORDER BY` at all, sqlite's natural (rowid) order would yield ["older", "old"] —
+    the WRONG order — so the asserted ["old", "older"] can only pass via a real
+    `ORDER BY t.archived_at DESC`. (An earlier version of this test inserted 'old' before
+    'older', which matched insertion order too, so the assertion passed even with no
+    ORDER BY clause at all — vacuous.)"""
     db = tmp_path / "emdash4.db"
     _make_db(str(db))
     conn = sqlite3.connect(str(db))
+    # Remove _make_db's 'old' row so we control its insertion position below.
+    conn.execute("DELETE FROM tasks WHERE name='old'")
+    # OLDER-archived row inserted FIRST...
     conn.execute(
         "INSERT INTO tasks VALUES ('t5','p1','older','done','2026-07-01T00:00:00',"
         "'2026-07-01T00:00:00','task')"
+    )
+    # ...NEWER-archived row inserted SECOND — reversed vs. the expected output order.
+    conn.execute(
+        "INSERT INTO tasks VALUES ('t3','p1','old','done','2026-07-15T00:00:00',"
+        "'2026-07-15T00:00:00','task')"
     )
     # an archived AUTOMATION-RUN must not leak in either — it was never a session
     conn.execute(
