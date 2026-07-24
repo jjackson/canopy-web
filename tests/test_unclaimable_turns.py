@@ -7,6 +7,8 @@ and nothing ever said the turn was unrunnable.
 The detector shares `runner_target_q` with `claim_next_turn`, so "can anyone run
 this?" cannot disagree with what claiming actually does.
 """
+import datetime as dt
+
 import pytest
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -32,11 +34,21 @@ def _ctx(*, agents=(), projects=(), sessions=False, online=True):
     return user, ws
 
 
-def _project_turn(ws, project, key="k1"):
-    return services.enqueue_turn(
+def _project_turn(ws, project, key="k1", *, aged=True):
+    t = services.enqueue_turn(
         project=project, workspace=ws, origin=Turn.ORIGIN_API,
         idempotency_key=key, prompt="Go",
     )[0]
+    if aged:
+        _age(t)
+    return t
+
+
+def _age(turn):
+    """Push a turn past UNCLAIMABLE_GRACE — a just-enqueued turn is NOT stuck."""
+    Turn.objects.filter(pk=turn.pk).update(
+        created_at=timezone.now() - services.UNCLAIMABLE_GRACE - dt.timedelta(seconds=5)
+    )
 
 
 def test_flags_a_project_turn_no_runner_declares():
@@ -59,7 +71,7 @@ def test_silent_when_the_runner_declares_the_repo():
 def test_flags_an_agent_turn_no_runner_declares():
     user, ws = _ctx(agents=["ace"], projects=["canopy-web"])
     other = Agent.objects.create(slug="ghost", name="Ghost", workspace=ws)
-    services.enqueue_turn(agent=other, origin=Turn.ORIGIN_API, idempotency_key="k2", prompt="hi")
+    _age(services.enqueue_turn(agent=other, origin=Turn.ORIGIN_API, idempotency_key="k2", prompt="hi")[0])
     rows = services.unclaimable_queued_turns(user)
     assert [r["target"] for r in rows] == ["agent ghost"]
 
@@ -84,7 +96,7 @@ def test_session_turns_need_a_session_capable_runner():
     from apps.canopy_sessions.models import Session
     user, ws = _ctx(agents=["ace"], projects=["canopy-web"], sessions=False)
     s = Session.objects.create(workspace=ws, created_by=user, title="chat")
-    services.enqueue_turn(session=s, origin=Turn.ORIGIN_API, idempotency_key="k3", prompt="hi")
+    _age(services.enqueue_turn(session=s, origin=Turn.ORIGIN_API, idempotency_key="k3", prompt="hi")[0])
     assert [r["target"] for r in services.unclaimable_queued_turns(user)] == ["session"]
 
     Runner.objects.update(capabilities={"agents": [], "projects": [], "sessions": True})
@@ -97,3 +109,36 @@ def test_endpoint_returns_the_rows(client):
     client.force_login(user)
     body = client.get("/api/harness/turns/unclaimable").json()
     assert [r["target"] for r in body] == ["project ace"]
+
+
+# --- false positives that fired on healthy traffic ------------------------
+
+def test_a_just_enqueued_turn_is_not_stuck():
+    """Every normal send is queued for a few seconds while a runner polls.
+
+    Regression: a phone chat send was flagged instantly, then claimed and answered
+    seconds later — the banner cried wolf on healthy traffic.
+    """
+    user, ws = _ctx(agents=["ace"], projects=["canopy-web"])
+    _project_turn(ws, "ace", aged=False)
+    assert services.unclaimable_queued_turns(user) == []
+
+
+def test_a_stale_heartbeat_reports_OFFLINE_not_misconfiguration():
+    """A flaky laptop network (555 DNS failures in 3h) lapses the heartbeat, so the
+    runner reads STALE. That is transient — it must not look like a config error."""
+    user, ws = _ctx(agents=["ace"], projects=["ace"])          # runner DOES declare it
+    Runner.objects.update(last_heartbeat_at=timezone.now() - dt.timedelta(minutes=10))
+    _project_turn(ws, "ace")
+    rows = services.unclaimable_queued_turns(user)
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "offline"
+    assert "none are reachable" in rows[0]["reason"]
+
+
+def test_a_genuinely_undeclared_target_still_reports_CONFIG():
+    user, ws = _ctx(agents=["ace"], projects=["canopy-web"])
+    _project_turn(ws, "ace")
+    rows = services.unclaimable_queued_turns(user)
+    assert rows[0]["kind"] == "config"
+    assert rows[0]["reason"] == "no runner declares the repo 'ace'"

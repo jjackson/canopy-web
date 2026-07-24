@@ -34,6 +34,9 @@ class UnclaimableTurnOut(Schema):
     prompt: str
     created_at: dt.datetime
     reason: str
+    # "config" = nothing declares this target (needs a fix); "offline" = something
+    # does, but no runner is reachable right now (usually transient).
+    kind: str = "config"
 
 
 class RunnerCapabilitiesIn(Schema):
