@@ -79,6 +79,14 @@ def _session_or_404(request: HttpRequest, session_id: uuid.UUID) -> Session:
     return session
 
 
+def _set_status(request: HttpRequest, session_id: uuid.UUID, status: str) -> dict:
+    session = _session_or_404(request, session_id)   # membership gate: non-member -> 404
+    if session.status != status:
+        session.status = status
+        session.save(update_fields=["status", "updated_at"])
+    return _out(session)
+
+
 @router.post("/", response=SessionOut, summary="Create a chat session")
 def create_session(request: HttpRequest, payload: SessionCreateIn):
     if payload.agent_slug and payload.project:
@@ -182,6 +190,22 @@ def list_messages(
         "messages": [MessageOut.from_orm(m) for m in rows],
         "has_more_before": has_more,
     }
+
+
+@router.post("/{session_id}/archive", response=SessionOut, summary="Archive a session")
+def archive_session(request: HttpRequest, session_id: uuid.UUID):
+    """Retire a session by hand. The escape hatch for a web chat — no runner will ever
+    report it archived — and for force-retiring a row without touching emdash.
+    Idempotent, and never destructive: /unarchive brings it straight back."""
+    return _set_status(request, session_id, Session.ARCHIVED)
+
+
+@router.post("/{session_id}/unarchive", response=SessionOut, summary="Unarchive a session")
+def unarchive_session(request: HttpRequest, session_id: uuid.UUID):
+    """Undo an archive. Note this clears only the WRITTEN half: a runner session that
+    is also past SESSION_STALE_AFTER stays out of `state=active` until its runner
+    reports it again, because that half is derived on every read."""
+    return _set_status(request, session_id, Session.ACTIVE)
 
 
 @router.post("/{session_id}/send", response=SendOut, summary="Send a message")
