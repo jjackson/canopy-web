@@ -168,6 +168,75 @@ def _preference_allows(runner: Runner, turn: Turn, now) -> bool:
 EXECUTING = [Turn.CLAIMED, Turn.RUNNING, Turn.NEEDS_HUMAN]
 
 
+def runner_target_q(slugs, projects, session_capable) -> Q:
+    """Which queued turns a runner's declared capabilities can TARGET.
+
+    Shared by claim_next_turn and unclaimable_queued_turns so the "can anyone run
+    this?" warning can never disagree with what claiming actually does — the same
+    class of drift that made REST and the WebSocket show different transcripts.
+    """
+    q = Q(agent__slug__in=slugs) | Q(project__in=projects)
+    if session_capable:
+        # A chat send targets no specific agent/repo — any session-capable runner
+        # in the tenant may take it (this is why continuing on your phone works
+        # regardless of the runner's declared `projects`).
+        q = q | Q(chat_session__isnull=False)
+    return q
+
+
+def unclaimable_queued_turns(user) -> list[dict]:
+    """Queued turns that NO online runner can claim — otherwise a silent stall.
+
+    enqueue_turn happily accepts a turn addressed to an agent/repo nothing
+    declares, and it then sits QUEUED forever with no signal (observed: a
+    project=ace turn sat 12h because every runner declared only canopy-web).
+    Returns [{turn_id, target, prompt, created_at, reason}] for the UI to surface.
+    """
+    ws_slugs = wsvc.user_workspace_slugs(user)
+    if not ws_slugs:
+        return []
+    queued = list(
+        Turn.objects.filter(status=Turn.QUEUED)
+        .filter(
+            (Q(agent__isnull=False) & (Q(agent__workspace_id__in=ws_slugs) | Q(agent__workspace_id__isnull=True)))
+            | (Q(agent__isnull=True) & Q(chat_session__isnull=True) & Q(workspace_id__in=ws_slugs))
+            | (Q(chat_session__isnull=False) & Q(chat_session__workspace_id__in=ws_slugs))
+        )
+        .select_related("agent")
+        .order_by("created_at")
+    )
+    if not queued:
+        return []
+    online = [
+        r for r in Runner.objects.filter(paired_by=user).exclude(status=Runner.RETIRED)
+        if r.live_status in (Runner.ONLINE, Runner.DEGRADED)
+    ]
+    ids = {t.id for t in queued}
+    claimable: set = set()
+    for r in online:
+        q = runner_target_q(r.agent_slugs(), r.project_names(), r.session_capable())
+        claimable |= set(
+            Turn.objects.filter(pk__in=ids).filter(q).values_list("pk", flat=True)
+        )
+    out = []
+    for t in queued:
+        if t.pk in claimable:
+            continue
+        if t.chat_session_id:
+            target, reason = "session", "no online runner is session-capable"
+        elif t.agent_id:
+            target = f"agent {t.agent.slug}"
+            reason = f"no online runner declares the agent '{t.agent.slug}'"
+        else:
+            target = f"project {t.project}"
+            reason = f"no online runner declares the repo '{t.project}'"
+        out.append({
+            "turn_id": str(t.pk), "target": target, "prompt": (t.prompt or "")[:120],
+            "created_at": t.created_at, "reason": reason,
+        })
+    return out
+
+
 def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECONDS,
                     exclude_slugs: list[str] | None = None) -> Turn | None:
     if runner.live_status != Runner.ONLINE:
@@ -263,9 +332,7 @@ def claim_next_turn(runner: Runner, *, lease_seconds: int = DEFAULT_LEASE_SECOND
     # Target match: this runner's declared agents/projects, plus every session
     # turn when it is session-capable (a chat send targets no specific agent — any
     # session-capable runner in the tenant may take it).
-    target_q = Q(agent__slug__in=slugs) | Q(project__in=projects)
-    if session_capable:
-        target_q = target_q | Q(chat_session__isnull=False)
+    target_q = runner_target_q(slugs, projects, session_capable)
     candidates = (
         Turn.objects.filter(status=Turn.QUEUED)
         .filter(target_q)

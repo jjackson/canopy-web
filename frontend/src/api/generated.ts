@@ -2008,6 +2008,27 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/harness/turns/unclaimable": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Queued turns no online runner can claim
+         * @description A queued turn addressed to an agent/repo nothing declares sits forever with
+         *     no signal (one sat 12h). Surfacing it turns a silent stall into a warning.
+         */
+        readonly get: operations["apps_harness_api_list_unclaimable_turns"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/harness/turns/": {
         readonly parameters: {
             readonly query?: never;
@@ -6275,6 +6296,25 @@ export interface components {
              */
             readonly messages: readonly components["schemas"]["BackfillMessageIn"][];
         };
+        /**
+         * UnclaimableTurnOut
+         * @description A queued turn no online runner can claim — surfaced so a stall is loud.
+         */
+        readonly UnclaimableTurnOut: {
+            /** Turn Id */
+            readonly turn_id: string;
+            /** Target */
+            readonly target: string;
+            /** Prompt */
+            readonly prompt: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Reason */
+            readonly reason: string;
+        };
         /** TurnIn */
         readonly TurnIn: {
             /**
@@ -9894,6 +9934,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["BackfillWriteOut"];
+                };
+            };
+        };
+    };
+    readonly apps_harness_api_list_unclaimable_turns: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["UnclaimableTurnOut"][];
                 };
             };
         };

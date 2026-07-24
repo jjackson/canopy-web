@@ -23,6 +23,7 @@ from .schemas import (
     BackfillSyncOut,
     BackfillWriteOut,
     EmdashSessionOut,
+    UnclaimableTurnOut,
     HeartbeatIn,
     RecordSessionIn,
     ReportSessionsIn,
@@ -444,6 +445,14 @@ def post_session_backfill(request: HttpRequest, runner_id: uuid.UUID, payload: S
     binding.backfill_requested = False
     binding.save(update_fields=["backfill_requested", "updated_at"])
     return {"written": written}
+
+
+@router.get("/turns/unclaimable", response=list[UnclaimableTurnOut],
+            summary="Queued turns no online runner can claim")
+def list_unclaimable_turns(request: HttpRequest):
+    """A queued turn addressed to an agent/repo nothing declares sits forever with
+    no signal (one sat 12h). Surfacing it turns a silent stall into a warning."""
+    return services.unclaimable_queued_turns(request.user)
 
 
 @router.post("/turns/", response={200: TurnOut, 201: TurnOut})
