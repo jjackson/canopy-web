@@ -65,13 +65,20 @@ def test_a_runner_cannot_archive_another_runners_session():
         last_heartbeat_at=timezone.now(), paired_by=user,
     )
     services.replace_reported_sessions(runner_a, ws, [_Reported("ddd")])
+    binding_a = RunnerBinding.objects.get(runner=runner_a, session_key="ddd")
     services.replace_reported_sessions(runner_b, ws, [_Reported("ddd")])
+    binding_b = RunnerBinding.objects.get(runner=runner_b, session_key="ddd")
     assert Session.objects.count() == 2
+    assert binding_a.pk != binding_b.pk
 
+    # Capture the two rows BEFORE the archive: the clear step nulls runner_id on
+    # anything not re-reported, so keying the assertion on runner_id would test the
+    # clear, not the cross-runner scoping this test is about.
     services.replace_reported_sessions(runner_b, ws, [], archived=["ddd"])
-    statuses = {b.runner_id: b.session.status for b in RunnerBinding.objects.select_related("session")}
-    assert statuses[runner_a.id] == Session.ACTIVE      # untouched
-    assert statuses[runner_b.id] == Session.ARCHIVED
+    binding_a.refresh_from_db()
+    assert Session.objects.get(pk=binding_a.session_id).status == Session.ACTIVE  # A untouched
+    assert Session.objects.get(pk=binding_b.session_id).status == Session.ARCHIVED
+    assert binding_a.runner_id == runner_a.id  # A never reported, so A's live pointer stands
 
 
 def test_an_unknown_archived_name_is_ignored():
@@ -81,7 +88,7 @@ def test_an_unknown_archived_name_is_ignored():
     assert Session.objects.get().status == Session.ACTIVE
 
 
-def test_the_route_applies_the_archive_signal(client_and_token=None):
+def test_the_route_applies_the_archive_signal():
     """End-to-end through the runner-authed route, not just the service."""
     from django.test import Client as DjangoClient
 
@@ -101,3 +108,20 @@ def test_the_route_applies_the_archive_signal(client_and_token=None):
     assert resp.status_code == 200
     by_key = {b.session_key: b.session for b in RunnerBinding.objects.select_related("session")}
     assert by_key["ddd"].status == Session.ARCHIVED
+    # The re-reported one must stay ACTIVE — catches `archived` landing in the
+    # wrong argument slot (which would archive everything the runner reported).
+    assert by_key["live"].status == Session.ACTIVE
+
+
+def test_an_archived_session_drops_out_of_the_live_list():
+    """The archive signal must also retire the LIVE pointer: list_visible_sessions
+    filters on runner__isnull=False, so an archived binding that kept its runner FK
+    would keep showing up in the supervisor's open-sessions list forever (the runner
+    re-sends its whole recently-archived list on every report, so it never ages out)."""
+    user, ws, runner = _ctx()
+    services.replace_reported_sessions(runner, ws, [_Reported("ddd"), _Reported("live")])
+    assert {r.emdash_task for r in services.list_visible_sessions(user)} == {"ddd", "live"}
+
+    services.replace_reported_sessions(runner, ws, [_Reported("live")], archived=["ddd"])
+    assert {r.emdash_task for r in services.list_visible_sessions(user)} == {"live"}
+    assert RunnerBinding.objects.get(session_key="ddd").runner_id is None
