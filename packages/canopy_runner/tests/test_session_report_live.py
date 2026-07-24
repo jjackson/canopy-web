@@ -9,6 +9,7 @@ class _Cfg:
     session_tail_count = 30
     session_tail_limit = 8
     session_report_seconds = 10
+    session_report_limit = 100
     emdash_db = "/nonexistent"
     runner_id = "r"
 
@@ -33,7 +34,7 @@ def test_reports_on_growth_skips_idle_and_heartbeats(tmp_path, monkeypatch):
     p = tmp_path / "echo.jsonl"
     p.write_text(_asst("history"))
     sessions = [{"emdash_task": "echo-1", "project": "echo"}]
-    monkeypatch.setattr(m.emdash, "list_open_sessions", lambda _db: sessions)
+    monkeypatch.setattr(m.emdash, "list_open_sessions", lambda _db, limit=30: sessions)
     monkeypatch.setattr(m.transcript, "resolve_transcript", lambda _proj, _task, **_k: p)
     monkeypatch.setattr(m.transcript, "attach_recent_tail", lambda _s, **_k: None)
 
@@ -77,3 +78,18 @@ def test_a_failed_emdash_read_skips_the_report_entirely(tmp_path, monkeypatch):
     m._maybe_report_sessions(_Cfg(), c, now_fn=lambda: 100.0)
     assert c.reports == 0            # nothing posted
     assert c.sessions_seen == []     # and certainly not an empty list
+
+
+def test_report_honours_the_configured_limit(tmp_path, monkeypatch):
+    m._tail_readers.clear()
+    m._last_session_report = 0.0
+    seen = {}
+
+    def _list(db, limit=30):
+        seen["limit"] = limit
+        return []
+
+    monkeypatch.setattr(m.emdash, "list_open_sessions", _list)
+    monkeypatch.setattr(m.transcript, "attach_recent_tail", lambda _s, **_k: None)
+    m._maybe_report_sessions(_Cfg(), _Client(), now_fn=lambda: 100.0)
+    assert seen["limit"] == 100

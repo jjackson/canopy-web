@@ -456,7 +456,7 @@ def test_maybe_report_sessions_throttled(db, tmp_path, monkeypatch):
     from canopy_runner import transcript
     cfg = _cfg(db, tmp_path)  # session_report_seconds defaults to 10
     calls = []
-    monkeypatch.setattr(emdash, "list_open_sessions", lambda p: [])  # no sessions -> no change
+    monkeypatch.setattr(emdash, "list_open_sessions", lambda p, limit=30: [])  # no sessions -> no change
     monkeypatch.setattr(transcript, "attach_recent_tail", lambda *a, **k: calls.append(1))
     m._last_session_report = 0.0
     clock = [1000.0]

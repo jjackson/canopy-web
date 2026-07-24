@@ -238,7 +238,7 @@ def _maybe_report_sessions(cfg: Config, client: Client, now_fn=time.monotonic) -
     read of emdash's DB (runs even while CDP is down); best-effort — never stops a tick."""
     global _last_session_report
     try:
-        sessions = emdash.list_open_sessions(cfg.emdash_db)
+        sessions = emdash.list_open_sessions(cfg.emdash_db, cfg.session_report_limit)
     except emdash.EmdashReadError:
         # WARNING, not debug: this is the silent-degradation class verify-emdash
         # exists for. Skip the report entirely — an empty one would clear every
