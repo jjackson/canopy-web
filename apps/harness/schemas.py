@@ -27,6 +27,15 @@ class RunnerIn(Schema):
     workspace: str = ""  # tenant slug; defaults to the pairer's default workspace
 
 
+class UnclaimableTurnOut(Schema):
+    """A queued turn no online runner can claim — surfaced so a stall is loud."""
+    turn_id: str
+    target: str
+    prompt: str
+    created_at: dt.datetime
+    reason: str
+
+
 class RunnerCapabilitiesIn(Schema):
     # Wholesale replacement, like the skill catalog — the caller sends the full
     # capabilities it wants (e.g. {"agents": [...], "projects": ["canopy-web"]}).
